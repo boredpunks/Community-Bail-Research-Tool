@@ -12,6 +12,7 @@ import Research from '@/pages/research';
 import NewRecord from '@/pages/new-record';
 import Review from '@/pages/review';
 import Discovery from '@/pages/discovery';
+import Menu from '@/pages/menu';
 import { ThemeToggle } from '@/components/shell';
 import { applyStoredTheme } from '@/lib/theme';
 import { Redirect, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
@@ -144,13 +145,10 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-function HomeRedirect() {
-  return (
-    <>
-      <Show when="signed-in"><Redirect to="/research" /></Show>
-      <Show when="signed-out"><Home /></Show>
-    </>
-  );
+function ToSignIn() {
+  const [loc] = useLocation();
+  const back = `${basePath}${loc}`;
+  return <Redirect to={`/sign-in?redirect_url=${encodeURIComponent(back)}`} />;
 }
 
 function protect(Page: () => ReactNode) {
@@ -158,12 +156,14 @@ function protect(Page: () => ReactNode) {
     return (
       <>
         <Show when="signed-in"><Page /></Show>
-        <Show when="signed-out"><Redirect to="/" /></Show>
+        <Show when="signed-out"><ToSignIn /></Show>
       </>
     );
   };
 }
 
+function CandidatesPage() { return <Research candidates={true} />; }
+const CandidatesRoute = protect(CandidatesPage);
 const ResearchRoute = protect(Research);
 const NewRecordRoute = protect(NewRecord);
 const ReviewRoute = protect(Review);
@@ -174,7 +174,7 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   useEffect(() => {
     const page = location.startsWith('/sign-in') ? 'Sign in'
       : location.startsWith('/sign-up') ? 'Create an account'
-      : location === '/research' ? 'Search saved observations'
+      : location === '/research' || location === '/candidates' ? 'Search saved observations'
       : location === '/records/new' ? 'Enter source evidence'
       : location === '/review' ? 'Review source evidence'
       : location === '/discovery' ? 'Live court discovery'
@@ -214,7 +214,9 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <RoutedErrorBoundary>
             <Switch>
-              <Route path="/" component={HomeRedirect} />
+              <Route path="/" component={Home} />
+              <Route path="/menu" component={Menu} />
+              <Route path="/candidates" component={CandidatesRoute} />
               <Route path="/sign-in/*?" component={SignInPage} />
               <Route path="/sign-up/*?" component={SignUpPage} />
               <Route path="/research" component={ResearchRoute} />

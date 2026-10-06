@@ -147,7 +147,8 @@ export default function Discovery() {
   const pol = policy.data;
   const start = startE ?? pol?.minimumDate ?? '';
   const end = endE ?? start;
-  const recCap = recCapE ?? (pol ? String(pol.defaultRecordCap) : '');
+  const tgtNum = Number(target);
+  const recCap = recCapE ?? (pol ? String(Math.min(pol.maxRecordCap, Math.max(pol.defaultRecordCap, Number.isInteger(tgtNum) ? tgtNum : 0))) : '');
   const reqCap = reqCapE ?? (pol ? String(pol.defaultRequestCap) : '');
   const selected = jobId || jobs.data?.[0]?.id || '';
 
@@ -188,7 +189,8 @@ export default function Discovery() {
     if (dayNum(end) - dayNum(start) > 6) return setFormErr('The date window can cover at most 7 days.');
     if (!Number.isInteger(rc) || rc < 1 || rc > pol.maxRecordCap) return setFormErr(`Record budget must be a whole number from 1 to ${pol.maxRecordCap}.`);
     if (!Number.isInteger(qc2) || qc2 < 8 || qc2 > pol.maxRequestCap) return setFormErr(`Request budget must be a whole number from 8 to ${pol.maxRequestCap}.`);
-    if (!Number.isInteger(mt) || mt < 1 || mt > rc) return setFormErr('Matching target must be a whole number from 1 up to the processing safety cap.');
+    if (!Number.isInteger(mt) || mt < 1 || mt > pol.maxRecordCap) return setFormErr(`Number of matching dockets must be a whole number from 1 to ${pol.maxRecordCap}.`);
+    if (mt > rc) return setFormErr(`The processing safety cap (${rc}) is below the number of matches wanted (${mt}). Raise it under advanced details, up to ${pol.maxRecordCap}.`);
     if (collectMonetary && (upper == null || upper < 1 || upper > 2147483647)) return setFormErr('Enter a positive monetary upper bound in whole cents, such as 500.00.');
     create.mutate(
       { data: { courtOffice: 'CP-05-02-Crim', eventType: 'Bail Hearing', startDate: start, endDate: end,
@@ -228,12 +230,12 @@ export default function Discovery() {
 
   return (
     <Shell>
-      <PageHead label="Live discovery" title="Live court discovery">
-        Starts a bounded job on the server that reads public court pages and reports what it found. Results are provisional observations, not custody status and not an operative order. Nothing is saved until you choose an entry. Looking for records already saved here? <Link href="/research" className="underline text-primary" data-testid="link-research">Search saved records</Link>.
+      <PageHead label="Search" title="Search court records">
+        Begin starts a bounded job on the server that reads public court pages and reports what it found. Results are provisional observations, not custody status and not an operative order. Nothing is saved until you choose an entry. Looking for records already saved here? <Link href="/candidates" className="underline text-primary" data-testid="link-research">Open saved candidates</Link>.
       </PageHead>
 
       <section className="panel mb-8" aria-labelledby="scope-h" data-testid="section-scope">
-        <h2 id="scope-h" className="mono text-xl font-bold mb-2">Supported scope</h2>
+        <h2 id="scope-h" className="mono text-xl font-bold mb-2">Source status</h2>
         {policy.isLoading ? <div className="skel h-16" aria-busy="true" /> : policy.isError ? (
           <div className="errbox" role="alert"><p>Could not load discovery policy. {errMsg(policy.error)}</p>
             <button type="button" className="btn btn-danger mt-3" onClick={() => policy.refetch()} data-testid="button-retry-policy">Retry</button></div>
@@ -250,37 +252,38 @@ export default function Discovery() {
       </section>
 
       <form onSubmit={submit} className="panel mb-8" aria-label="Start a discovery job" data-testid="form-job">
-        <h2 className="mono text-xl font-bold mb-3">Start a bounded job</h2>
-        <div className="grid gap-4 sm:grid-cols-2 mb-4">
-          <div><label className="lbl" htmlFor="d-court">Court office</label>
-            <select id="d-court" className="field" value="CP-05-02-Crim" onChange={() => undefined} data-testid="select-court"><option value="CP-05-02-Crim">CP-05-02-Crim (Common Pleas)</option></select></div>
-          <div><label className="lbl" htmlFor="d-event">Event type</label>
-            <select id="d-event" className="field" value="Bail Hearing" onChange={() => undefined} data-testid="select-event"><option value="Bail Hearing">Bail Hearing</option></select></div>
-        </div>
+        <h2 className="mono text-xl font-bold mb-3">What are you looking for?</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div><label className="lbl" htmlFor="d-start">Start date</label>
             <input id="d-start" type="date" className="field" min={pol?.minimumDate} value={start} onChange={(e) => setStart(e.target.value)} data-testid="input-start" /></div>
           <div><label className="lbl" htmlFor="d-end">End date</label>
             <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + 6) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={(e) => setEnd(e.target.value)} data-testid="input-end" /></div>
-          <div><label className="lbl" htmlFor="d-rc">Processing safety cap (max {pol?.maxRecordCap ?? '...'})</label>
-            <input id="d-rc" inputMode="numeric" className="field" value={recCap} onChange={(e) => setRecCap(e.target.value)} data-testid="input-record-cap" /></div>
-          <div><label className="lbl" htmlFor="d-qc">Request budget (max {pol?.maxRequestCap ?? '...'})</label>
-            <input id="d-qc" inputMode="numeric" className="field" value={reqCap} onChange={(e) => setReqCap(e.target.value)} data-testid="input-request-cap" /></div>
+          <div><label className="lbl" htmlFor="d-match-bound">Maximum bail amount (dollars)</label>
+            <input id="d-match-bound" inputMode="decimal" className="field" disabled={!collectMonetary} value={collectBound} onChange={(e) => setCollectBound(e.target.value)} data-testid="input-collection-bound" /></div>
+          <div><label className="lbl" htmlFor="d-target">Number of matching dockets to return (max {pol?.maxRecordCap ?? '...'})</label>
+            <input id="d-target" inputMode="numeric" className="field" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-match-target" /></div>
         </div>
-        <fieldset className="mt-4 space-y-3 border border-border rounded p-4">
-          <legend className="mono font-bold px-2">Matching target and fixed collection filters</legend>
-          <div><label className="lbl" htmlFor="d-target">Desired number of matching dockets</label>
-            <input id="d-target" inputMode="numeric" className="field max-w-xs" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-match-target" /></div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require a monetary total bail entry strictly below this amount</label>
-          <div><label className="lbl" htmlFor="d-match-bound">Dollar upper bound for collection matches</label>
-            <input id="d-match-bound" inputMode="decimal" className="field max-w-xs" disabled={!collectMonetary} value={collectBound} onChange={(e) => setCollectBound(e.target.value)} data-testid="input-collection-bound" /></div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={collectPosted} onChange={(e) => setCollectPosted(e.target.checked)} data-testid="checkbox-collection-posted" /> Exclude dockets explicitly showing a posted entry</label>
-          <p className="hint">These filters are evaluated locally after extraction and stay fixed for this job. Each docket counts at most once, even with multiple matching entries. Any recorded monetary TOTAL_BAIL entry may qualify; this is not a current operative-order finding. Unknown/nonmonetary amounts never count as zero. An unknown posted state is not excluded as shown-posted, and does not prove custody.</p>
-        </fieldset>
-        <p className="hint mt-3">The worker continues one docket at a time toward the matching target. It stops when the target is reached, the returned calendar results run out, or a safety budget is reached; source failures pause collection. The target is not guaranteed and dates/budgets never expand automatically. Windows are limited to 7 days; initial budgets are small.</p>
+        <p className="hint mt-3">Matches are dockets with a recorded monetary total bail strictly below the amount. The window can cover at most 7 days. Raising the number also raises the processing budget unless you set it by hand under advanced details. Each docket counts once.</p>
+        <details className="mt-4 border border-border rounded p-4" data-testid="details-advanced">
+          <summary className="cursor-pointer mono font-bold text-primary">Advanced details: budgets, court, event, filters</summary>
+          <div className="grid gap-4 sm:grid-cols-2 my-4">
+            <div><label className="lbl" htmlFor="d-court">Court office</label>
+              <select id="d-court" className="field" value="CP-05-02-Crim" onChange={() => undefined} data-testid="select-court"><option value="CP-05-02-Crim">CP-05-02-Crim (Common Pleas)</option></select></div>
+            <div><label className="lbl" htmlFor="d-event">Event type</label>
+              <select id="d-event" className="field" value="Bail Hearing" onChange={() => undefined} data-testid="select-event"><option value="Bail Hearing">Bail Hearing</option></select></div>
+            <div><label className="lbl" htmlFor="d-rc">Processing safety cap (max {pol?.maxRecordCap ?? '...'})</label>
+              <input id="d-rc" inputMode="numeric" className="field" value={recCap} onChange={(e) => setRecCap(e.target.value)} data-testid="input-record-cap" /></div>
+            <div><label className="lbl" htmlFor="d-qc">Request budget (max {pol?.maxRequestCap ?? '...'})</label>
+              <input id="d-qc" inputMode="numeric" className="field" value={reqCap} onChange={(e) => setReqCap(e.target.value)} data-testid="input-request-cap" /></div>
+          </div>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require a monetary total bail entry strictly below the maximum amount</label>
+          <label className="flex items-center gap-2 mt-2"><input type="checkbox" checked={collectPosted} onChange={(e) => setCollectPosted(e.target.checked)} data-testid="checkbox-collection-posted" /> Exclude dockets explicitly showing a posted entry</label>
+          <p className="hint mt-3">Filters are evaluated locally after extraction and stay fixed for this job. Any recorded monetary TOTAL_BAIL entry may qualify; this is not a current operative-order finding. Unknown or nonmonetary amounts never count as zero. An unknown posted state is not excluded and does not prove custody.</p>
+          <p className="hint mt-2">The matching target is separate from the processing and request caps. The worker goes one docket at a time and stops when the target is reached, calendar results run out, or a cap is reached. Source failures pause collection. The target is not guaranteed and dates or budgets never expand automatically. Only Common Pleas Bail Hearing is supported; MDJ and Preliminary Arraignment searches are not offered.</p>
+        </details>
         {formErr ? <p className="errbox mt-3" role="alert" data-testid="text-form-error">{formErr}</p> : null}
         <button type="submit" className="btn btn-primary mt-4" disabled={!pol?.collectionEnabled || create.isPending} data-testid="button-start-job">
-          {create.isPending ? 'STARTING JOB...' : 'START LIVE JOB'}
+          {create.isPending ? 'Starting...' : 'Begin'}
         </button>
       </form>
 
@@ -306,8 +309,8 @@ export default function Discovery() {
 
       {selected ? (
         <section aria-labelledby="rep-h" data-testid="section-report">
-          <div className="bracket mb-1">Report</div>
-          <h2 id="rep-h" className="mono text-xl font-bold mb-3">Job report</h2>
+          <div className="bracket mb-1">Results</div>
+          <h2 id="rep-h" className="mono text-xl font-bold mb-3">Search results</h2>
           {report.isLoading ? <div className="space-y-3" aria-busy="true"><div className="skel h-24" /><div className="skel h-24" /></div>
           : report.isError ? (
             <div className="errbox" role="alert"><p>Could not load this job. {errMsg(report.error)}</p>
@@ -373,7 +376,7 @@ export default function Discovery() {
               {matching.length > 0 ? (
                 <div className="overflow-x-auto mb-6" data-testid="table-summary-wrap">
                   <table className="w-full text-left text-sm min-w-[56rem]" data-testid="table-summary">
-                    <caption className="text-left mono font-bold mb-2">Report summary ({matching.length} row{matching.length === 1 ? '' : 's'}, source order)</caption>
+                    <caption className="text-left mono font-bold mb-2">Results summary ({matching.length} row{matching.length === 1 ? '' : 's'}, source order)</caption>
                     <thead className="mono"><tr className="border-b-2 border-border">
                       <th scope="col" className="p-2">Pos.</th><th scope="col" className="p-2">Docket</th><th scope="col" className="p-2">Court</th><th scope="col" className="p-2">Event date</th>
                       <th scope="col" className="p-2">Bail entries</th><th scope="col" className="p-2">Posted state</th><th scope="col" className="p-2">Extraction</th><th scope="col" className="p-2">Verification</th><th scope="col" className="p-2">Evidence</th>

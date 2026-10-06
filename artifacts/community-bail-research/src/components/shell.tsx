@@ -33,10 +33,12 @@ function SignOut() {
 }
 
 const NAV = [
-  { href: '/research', label: 'Search records' },
-  { href: '/discovery', label: 'Live discovery' },
+  { href: '/menu', label: 'Menu' },
+  { href: '/discovery', label: 'Search' },
+  { href: '/review', label: 'Review' },
+  { href: '/candidates', label: 'Candidates' },
   { href: '/records/new', label: 'Enter record' },
-  { href: '/review', label: 'Review queue' },
+  { href: '/research', label: 'Saved records' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -61,7 +63,6 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav aria-label="Primary" className="max-w-6xl mx-auto px-4 pb-3 flex flex-wrap gap-2">
-          <Link href="/" className="navlink" aria-current={loc === '/' ? 'page' : undefined} data-testid="nav-about">About</Link>
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} className="navlink" aria-current={loc === n.href ? 'page' : undefined} data-testid={`nav-${n.href.slice(1).replace('/', '-')}`}>
               {n.label}
