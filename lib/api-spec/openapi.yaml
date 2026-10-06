@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Source-backed bail observations for a small volunteer research team. No synthetic docket or case records are permitted.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bail-records
+    description: Source-backed docket observations and descriptive bail ranges
 paths:
   /healthz:
     get:
@@ -24,6 +26,119 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /records:
+    get:
+      operationId: listBailRecords
+      tags: [bail-records]
+      summary: Search saved docket observations
+      description: Searches records already entered by volunteers. It does not contact court sources. No person-name search is supported.
+      parameters:
+        - in: query
+          name: query
+          schema: { type: string, maxLength: 120 }
+        - in: query
+          name: reviewStatus
+          schema: { $ref: "#/components/schemas/ReviewStatus" }
+        - in: query
+          name: courtLevel
+          schema: { $ref: "#/components/schemas/CourtLevel" }
+        - in: query
+          name: county
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: chargeGroup
+          schema: { type: string, maxLength: 120 }
+      responses:
+        "200":
+          description: Matching saved observations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BailRecordList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createBailRecord
+      tags: [bail-records]
+      summary: Enter a source-backed docket observation
+      description: Creates a pending-review observation. A source URL and source description are required. Never accepts synthetic dockets.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BailRecordInput"
+      responses:
+        "201":
+          description: Observation created and queued for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BailRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /records/{recordId}/review:
+    post:
+      operationId: reviewBailRecord
+      tags: [bail-records]
+      summary: Review a pending observation
+      description: Records a field-level human decision without overwriting the submitted source evidence.
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BailReviewInput"
+      responses:
+        "200":
+          description: Reviewed observation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BailRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /analytics/bail-range:
+    get:
+      operationId: getBailRange
+      tags: [bail-records]
+      summary: Calculate a descriptive range from reviewed records
+      description: Uses confirmed monetary-bail observations only. This is a descriptive summary, not a recommendation for an individual case.
+      parameters:
+        - in: query
+          name: courtLevel
+          schema: { $ref: "#/components/schemas/CourtLevel" }
+        - in: query
+          name: county
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: chargeGroup
+          schema: { type: string, maxLength: 120 }
+        - in: query
+          name: financialBasis
+          schema: { $ref: "#/components/schemas/FinancialBasis" }
+      responses:
+        "200":
+          description: Descriptive range and included record count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BailRange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +148,114 @@ components:
           type: string
       required:
         - status
+    CourtLevel:
+      type: string
+      enum: [MDJ, COMMON_PLEAS]
+    BailCategory:
+      type: string
+      enum: [MONETARY, NOMINAL, UNSECURED, NONMONETARY, RECOGNIZANCE, DENIED, UNKNOWN]
+    FinancialBasis:
+      type: string
+      enum: [TOTAL_BAIL, CASH_DEPOSIT, SURETY_BOND, UNSECURED_AMOUNT]
+    ReviewStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, REJECTED]
+    BailReviewDecision:
+      type: string
+      enum: [CONFIRMED, REJECTED]
+    BailRecord:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        docketNumber: { type: string }
+        county: { type: string }
+        courtLevel: { $ref: "#/components/schemas/CourtLevel" }
+        chargeGroup: { type: string }
+        bailCategory: { $ref: "#/components/schemas/BailCategory" }
+        financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+        amountCents: { type: ["integer", "null"], minimum: 0 }
+        orderDate: { type: ["string", "null"], format: date }
+        sourceTitle: { type: string }
+        sourceUrl: { type: string, format: uri }
+        sourceObservedAt: { type: ["string", "null"], format: date-time }
+        evidenceNote: { type: string }
+        reviewStatus: { $ref: "#/components/schemas/ReviewStatus" }
+        reviewComment: { type: ["string", "null"] }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+      required: [id, docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceObservedAt, evidenceNote, reviewStatus, reviewComment, reviewedAt, createdAt]
+    BailRecordInput:
+      type: object
+      properties:
+        docketNumber: { type: string, minLength: 1, maxLength: 80 }
+        county: { type: string, minLength: 1, maxLength: 80 }
+        courtLevel: { $ref: "#/components/schemas/CourtLevel" }
+        chargeGroup: { type: string, minLength: 1, maxLength: 120 }
+        bailCategory: { $ref: "#/components/schemas/BailCategory" }
+        financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+        amountCents: { type: ["integer", "null"], minimum: 0 }
+        orderDate: { type: ["string", "null"], format: date }
+        sourceTitle: { type: string, minLength: 1, maxLength: 160 }
+        sourceUrl: { type: string, format: uri, maxLength: 2000 }
+        sourceObservedAt: { type: ["string", "null"], format: date-time }
+        evidenceNote: { type: string, minLength: 1, maxLength: 4000 }
+      required: [docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceObservedAt, evidenceNote]
+    BailRecordList:
+      type: object
+      properties:
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/BailRecord" }
+        total: { type: integer, minimum: 0 }
+      required: [records, total]
+    BailReviewInput:
+      type: object
+      properties:
+        decision: { $ref: "#/components/schemas/BailReviewDecision" }
+        comment: { type: ["string", "null"], maxLength: 1000 }
+      required: [decision]
+    BailRange:
+      type: object
+      properties:
+        filters:
+          type: object
+          properties:
+            courtLevel: { oneOf: [{ $ref: "#/components/schemas/CourtLevel" }, { type: "null" }] }
+            county: { type: ["string", "null"] }
+            chargeGroup: { type: ["string", "null"] }
+            financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+          required: [courtLevel, county, chargeGroup, financialBasis]
+        reviewedRecordCount: { type: integer, minimum: 0 }
+        minimumCents: { type: ["integer", "null"], minimum: 0 }
+        medianCents: { type: ["integer", "null"], minimum: 0 }
+        maximumCents: { type: ["integer", "null"], minimum: 0 }
+        evaluatedAt: { type: string, format: date-time }
+        note: { type: string }
+      required: [filters, reviewedRecordCount, minimumCents, medianCents, maximumCents, evaluatedAt, note]
+    ApiError:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+  responses:
+    Unauthorized:
+      description: Sign in required
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    NotFound:
+      description: Record not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Conflict:
+      description: Record has already been reviewed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
 

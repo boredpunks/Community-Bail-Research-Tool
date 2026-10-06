@@ -1,0 +1,161 @@
+Here’s the revised shortlist: five online research surfaces, with their likely value, technical hurdles, and unresolved access questions. Networking and session-management tools are implementation choices to assess—not categorically excluded—but a successful connection still needs to return relevant, identifiable, sufficiently dated evidence.
+
+## Prospective sources
+
+### 1. WPRDC jail daily census
+
+**Source:** [Allegheny County Jail Daily Census](https://data.wprdc.org/dataset/allegheny-county-jail-daily-census)
+
+**Contribution:** dated population records for aggregation and coverage analysis. The dataset description identifies demographic fields including gender, race, age at booking, and current age.[1]
+
+**Prospective query approach:** inspect published resources and metadata; download suitable structured files and filter locally. Investigate whether a documented API supports resource discovery or querying.
+
+**Hurdles:**
+- Verify the actual latest observation date and update frequency.
+- Inspect the schema before assuming bail amounts or case identifiers exist.
+- Determine whether identifiers are anonymized, stable, or legitimately linkable to dockets.
+- Account for repeated daily census observations rather than counting rows as unique people.
+- Handle large files, schema changes, and replacement resources.
+- Establish whether the available data covers only ACJ or additional populations.
+
+**Decision point:** useful for aggregate context; person-level bail or custody matching remains unproven. Do not reconstruct identities from demographic combinations.
+
+### 2. UJS calendar-event search
+
+**Source:** [Pennsylvania UJS Case Search](https://ujsportal.pacourts.us/casesearch)
+
+**Contribution:** relevant case discovery through hearings rather than indiscriminate filing-date searches. The public search interface includes a “Calendar Event” search option.[2]
+
+**Prospective query approach:** inspect the actual supported calendar filters, then query bounded windows for Preliminary Arraignments and Bail Hearings where those labels are available.
+
+**Hurdles:**
+- Verify event names, court coverage, and historical access.
+- Determine whether returned events include usable docket identifiers.
+- Detect pagination, result caps, and incomplete searches.
+- Preserve canceled, continued, scheduled, and completed statuses.
+- Inspect session state, form tokens, browser requirements, and background requests.
+- Evaluate automation requirements and source-specific restrictions.
+
+**Decision point:** a good discovery path, but not evidence of current incarceration. People without events in the chosen window remain outside this path.
+
+### 3. UJS case search and docket sheets
+
+**Source:** [UJS court-case information](https://www.pacourts.us/public-records/court-case-information)
+
+**Contribution:** bail entries, order history, and older cases. The judiciary provides free online access to criminal Common Pleas and Magisterial District Court case information.[3]
+
+**Prospective query approach:** use supported case searches to obtain identifiers, retrieve available docket sheets, extract bail observations, and apply amount filters locally.
+
+**Hurdles:**
+- No demonstrated upstream bail-amount search or bulk API.
+- Several network requests may be required for one usable docket.
+- Calendar and docket retrieval may share infrastructure and collection limits.
+- Bail amounts may change; historical entries must not become duplicate current obligations.
+- MDJ and Common Pleas records may require evidence-supported linking.
+- PDF layout changes, unreadable documents, and ambiguous order sequences can defeat extraction.
+- Docket sheets are summaries: underlying filings are not necessarily downloadable through the docket interface.[4]
+
+**Decision point:** the primary bail-evidence candidate, subject to a demonstrated retrieval method and validated extraction.
+
+### 4. Pennsylvania VINE / PA SAVIN
+
+**Source:** [Pennsylvania VINE](https://vinelink.vineapps.com/state/pa)
+
+**Contribution:** potential custody-status corroboration. Pennsylvania VINE describes its service as providing custody-status and criminal-case information.[5]
+
+**Prospective query approach:** investigate supported public lookup functionality and any available authorized integration.
+
+**Hurdles:**
+- Establish actual Allegheny County facility coverage.
+- Determine required identifiers and how ambiguous matches are presented.
+- Inspect timestamps and what each custody status means.
+- Establish whether lookup supports individual searches only or broader querying.
+- Evaluate session handling, browser interaction, and any challenge mechanisms encountered.
+- Determine applicable automated-access requirements and whether an integration is available.
+
+**Decision point:** potentially important for custody confirmation, but autonomous access and ACJ coverage have not been demonstrated. A functioning public website is not yet a functioning app integration.
+
+### 5. Pennsylvania DOC inmate locator
+
+**Source:** [Pennsylvania DOC locator](https://inmatelocator.cor.pa.gov/)
+
+**Contribution:** supplemental state-custody information, potentially useful when investigating transfers. It concerns inmates and people supervised within the locator’s stated scope—not a county-jail census.[6]
+
+**Prospective query approach:** inspect supported identifiers and lookup behavior, then evaluate a permitted autonomous retrieval method.
+
+**Hurdles:**
+- State custody and ACJ custody are different populations.
+- Same-name matches need identity corroboration.
+- A current state-custody match does not establish the history or date of an ACJ transfer.
+- No match does not establish release or continued ACJ custody.
+- Update timing, exclusions, session requirements, and automation conditions need validation.
+
+**Decision point:** supplemental transfer-context research, not the foundation of ACJ population totals.
+
+## Shared networking hurdles
+
+The earlier UJS run stopped after 44 dockets. Your report that requests occurred more frequently than once every 30 seconds is useful diagnostic context, but it does not establish the cause or a reliable threshold.
+
+Give Replit this operating frame:
+
+```text
+Assess networking and access methods per source.
+
+Do not categorically exclude proxies, session-management tools,
+or browser automation. Explain the demonstrated purpose and
+implications of any proposed method before enabling it.
+
+Investigate:
+- Actual requests generated per search and per retrieved record.
+- Background browser traffic.
+- Session and form-token behavior.
+- Documented access requirements.
+- Response headers and existing blocking logs.
+- Shared limits across calendar and docket workflows.
+- Pagination, caching, and duplicate retrieval opportunities.
+
+Make pacing, concurrency, and retry behavior configurable.
+
+Do not describe a networking change as resolving access permission,
+data coverage, identity uncertainty, or source freshness.
+
+Detect block pages and challenges even when HTTP status is 200.
+Keep them distinct from valid empty search results.
+
+Preserve partial results and checkpoints.
+Report requests made, sources attempted, and unresolved barriers.
+Surface proposed access-strategy changes to the operator rather
+than switching silently.
+```
+
+## Recommended evaluation order
+
+| Order | Surface | First question |
+|---|---|---|
+| 1 | WPRDC census | What fields and dated resources are actually available? |
+| 2 | UJS calendars | Can a bounded query produce useful docket identifiers efficiently? |
+| 3 | UJS dockets | Can those identifiers yield accurately parsed bail evidence? |
+| 4 | Pennsylvania VINE | Can the app obtain dated, person-level ACJ custody evidence? |
+| 5 | DOC locator | Can it provide reliable supplemental state-custody matches? |
+
+The main unresolved dependency is still **custody**: bail extraction can work while custody confirmation remains unavailable. The app should report that gap explicitly rather than presenting its bail-search results as a verified list of incarcerated people.
+
+Approve or adjust this source order; it prioritizes inspecting structured data and establishing the bail workflow before investing heavily in uncertain custody integrations.
+
+Sources
+[1] Allegheny County Jail Daily Census - Dataset - CKAN https://data.wprdc.org/sv/dataset/allegheny-county-jail-daily-census
+[2] Case Search - UJS Portal - Unified Judicial System of Pennsylvania https://ujsportal.pacourts.us/casesearch
+[3] Court case information - Unified Judicial System of Pennsylvania https://www.pacourts.us/public-records/court-case-information
+[4] Unified Judicial System of Pennsylvania: Home https://www.pacourts.us/
+[5] Pennsylvania - VINE https://vinelink.vineapps.com/state/pa
+[6] Inmate/Department Supervised Individual Locator https://inmatelocator.cor.pa.gov/
+[7] UJS Portal - Unified Judicial System of Pennsylvania https://ujsportal.pacourts.us/
+[8] Case Information - UJS Portal https://ujsportal.pacourts.us/Home/CaseInformation
+[9] Case Search - UJS Web Portal Help https://ujswebportalhelp.pacourts.us/A_Topics/B_CaseInformation/Case%20Search.htm
+[10] [PDF] Search for and View Public Calendar Events and Schedules https://ujswebportalhelp.pacourts.us/A_Topics/B_CaseInformation/Case%20Search%20Redirects/View%20Calendar.htm
+[11] Dataset - CKAN - WPRDC https://data.wprdc.org/dataset/
+[12] Allegheny County - Organizations - CKAN - Dataset https://data.wprdc.org/en/organization/allegheny-county?tags=census
+[13] Allegheny County - Organizations - CKAN - Dataset https://data.wprdc.org/organization/allegheny-county
+[14] Өгөгдлийн бүрдэл - CKAN - Dataset - WPRDC https://data.wprdc.org/mn_MN/dataset/?_organization_limit=0&_groups_limit=0&_tags_limit=0&groups=public-safety-justice&tags=crime&license_id=cc-zero&organization=allegheny-county&res_format=CSV
+[15] ชุดข้อมูล - CKAN - Dataset https://data.wprdc.org/th/dataset/?license_id=cc-zero&groups=public-safety-justice
+[16] Data Use Agreement - Dataset - WPRDC https://data.wprdc.org/mk/dataset/?tags=crime&res_format=HTML&license_id=cc-zero

@@ -1,0 +1,1 @@
+- [No fabricated records](no-fabricated-records.md) — Never create synthetic docket or case records in this product.

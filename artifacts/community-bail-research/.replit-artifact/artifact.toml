@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Community Bail Research"
+description = "A small-group research workspace for community volunteers to review docket-backed bail observations, inspect evidence and see transparent descriptive ranges from verified records. Initial sample records are synthetic; live source retrieval is not enabled."
+version = "1.0.0"
+id = "artifacts/community-bail-research"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18930
+
+[services.development]
+run = "pnpm --filter @workspace/community-bail-research run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/community-bail-research", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/community-bail-research/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18930"
+BASE_PATH = "/"
