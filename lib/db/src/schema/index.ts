@@ -19,3 +19,4 @@
 
 export * from "./bail-records";
 export * from "./bail-reviews";
+export * from "./discovery";

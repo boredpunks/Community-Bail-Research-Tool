@@ -11,6 +11,7 @@ import Home from '@/pages/home';
 import Research from '@/pages/research';
 import NewRecord from '@/pages/new-record';
 import Review from '@/pages/review';
+import Discovery from '@/pages/discovery';
 import { ThemeToggle } from '@/components/shell';
 import { applyStoredTheme } from '@/lib/theme';
 import { Redirect, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
@@ -166,6 +167,7 @@ function protect(Page: () => ReactNode) {
 const ResearchRoute = protect(Research);
 const NewRecordRoute = protect(NewRecord);
 const ReviewRoute = protect(Review);
+const DiscoveryRoute = protect(Discovery);
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -175,11 +177,13 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
       : location === '/research' ? 'Search saved observations'
       : location === '/records/new' ? 'Enter source evidence'
       : location === '/review' ? 'Review source evidence'
+      : location === '/discovery' ? 'Live court discovery'
       : location === '/' ? 'Source-backed bail research'
       : 'Page not found';
     const title = `${page} | Community Bail Research`;
     const description = location === '/research' ? 'Search saved source-backed docket observations and inspect explicitly filtered descriptive financial ranges.'
       : location === '/records/new' ? 'Enter a real docket observation with source evidence and consultation time. Unknown details remain unknown.'
+      : location === '/discovery' ? 'Start bounded live court discovery jobs and inspect docket and bail results before saving any observation.'
       : location === '/review' ? 'Review source evidence and decide order interpretation separately before observations enter a descriptive range.'
       : location.startsWith('/sign-in') ? 'Sign in to your private source-backed bail research workspace.'
       : location.startsWith('/sign-up') ? 'Create a private research account. Shared team permissions are not enabled in this initial version.'
@@ -216,6 +220,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/research" component={ResearchRoute} />
               <Route path="/records/new" component={NewRecordRoute} />
               <Route path="/review" component={ReviewRoute} />
+              <Route path="/discovery" component={DiscoveryRoute} />
               <Route component={NotFound} />
             </Switch>
           </RoutedErrorBoundary>

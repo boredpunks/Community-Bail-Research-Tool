@@ -1,3 +1,5 @@
 - [No fabricated records](no-fabricated-records.md) — Never create synthetic docket or case records in this product.
 - [Date-only response validation](date-only-response-validation.md) — Generated Zod date coercion can change calendar-date output; validate without replacing the response payload.
 - [Calendar-first discovery](calendar-first-discovery.md) — Target Preliminary Arraignments and Bail Hearings instead of broad filing-date searches.
+- [Paced collection](paced-collection.md) — Support slow, resumable automation for useful research scale; a small access-check budget is not a permanent product limit.
+- [Client-specific source proof](source-access-proof.md) — Prove calendar and PDF retrieval with the actual integrated clients; another client's success does not establish access.

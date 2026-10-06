@@ -61,6 +61,12 @@ export default function Research() {
         Searches only observations already saved in this workspace. It does not contact court sources or search countywide. Names are not searchable.
       </PageHead>
 
+      <div className="panel mb-8" data-testid="panel-discovery-link">
+        <p className="mono font-bold">Saved search is not live discovery.</p>
+        <p className="hint mt-1">This page only searches what is already saved here. To fetch new court-backed observations from a source, start a bounded job in live discovery.</p>
+        <Link href="/discovery" className="btn mt-3" data-testid="link-discovery">Open live discovery</Link>
+      </div>
+
       <form onSubmit={submit} className="panel mb-8" aria-label="Search saved records">
         <label htmlFor="q" className="lbl">Docket number or charge text</label>
         <div className="flex flex-col sm:flex-row gap-3">

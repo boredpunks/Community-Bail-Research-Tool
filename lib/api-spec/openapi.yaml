@@ -13,6 +13,113 @@ tags:
   - name: bail-records
     description: Source-backed docket observations and descriptive bail ranges
 paths:
+  /discovery/policy:
+    get:
+      operationId: getDiscoveryPolicy
+      tags: [bail-records]
+      responses:
+        "200":
+          description: Demonstrated coverage and protected collection limits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /discovery/jobs:
+    get:
+      operationId: listDiscoveryJobs
+      tags: [bail-records]
+      responses:
+        "200":
+          description: This account's jobs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DiscoveryJob" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createDiscoveryJob
+      tags: [bail-records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DiscoveryCriteria" }
+      responses:
+        "201":
+          description: Bounded live collection explicitly queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/jobs/{jobId}:
+    get:
+      operationId: getDiscoveryJob
+      tags: [bail-records]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Persisted progress, evidence and request accounting
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryReport" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /discovery/jobs/{jobId}/control:
+    post:
+      operationId: controlDiscoveryJob
+      tags: [bail-records]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DiscoveryControl" }
+      responses:
+        "200":
+          description: Job paused, cancelled, or explicitly resumed within its original budget
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/jobs/{jobId}/items/{itemId}/save:
+    post:
+      operationId: saveDiscoveryObservation
+      tags: [bail-records]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DiscoveryObservationInput" }
+      responses:
+        "200":
+          description: Saved or already-saved pending source observation, never automatically confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailRecord" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /healthz:
     get:
       operationId: healthCheck
@@ -144,6 +251,138 @@ paths:
           $ref: "#/components/responses/Unauthorized"
 components:
   schemas:
+    DiscoveryCriteria:
+      type: object
+      properties:
+        courtOffice: { type: string, enum: [CP-05-02-Crim] }
+        eventType: { type: string, enum: [Bail Hearing] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        recordCap: { type: integer, minimum: 1, maximum: 200 }
+        requestCap: { type: integer, minimum: 8, maximum: 500 }
+        matchTarget: { type: integer, minimum: 1, maximum: 200, description: "Requested distinct matching dockets. Absent only for legacy processing-cap jobs." }
+        matchFilters: { $ref: "#/components/schemas/DiscoveryMatchFilters" }
+      required: [courtOffice, eventType, startDate, endDate, recordCap, requestCap]
+    DiscoveryMatchFilters:
+      type: object
+      properties:
+        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 1, maximum: 2147483647, description: "Strict local monetary TOTAL_BAIL upper bound; null disables this filter." }
+        excludeShownPosted: { type: boolean }
+      required: [monetaryUpperBoundCents, excludeShownPosted]
+    DiscoveryPolicy:
+      type: object
+      properties:
+        adapter: { type: string }
+        minimumDate: { type: string, format: date }
+        spacingMs: { type: integer }
+        concurrency: { type: integer }
+        automaticRetries: { type: integer }
+        defaultRecordCap: { type: integer }
+        maxRecordCap: { type: integer }
+        defaultRequestCap: { type: integer }
+        maxRequestCap: { type: integer }
+        pausedUntil: { type: ["string", "null"], format: date-time }
+        blockedReason: { type: ["string", "null"] }
+        collectionEnabled: { type: boolean }
+        coverageNote: { type: string }
+      required: [adapter, minimumDate, spacingMs, concurrency, automaticRetries, defaultRecordCap, maxRecordCap, defaultRequestCap, maxRequestCap, pausedUntil, blockedReason, collectionEnabled, coverageNote]
+    DiscoveryControl:
+      type: object
+      properties:
+        action: { type: string, enum: [PAUSE, CANCEL, RESUME] }
+      required: [action]
+    DiscoveryObservationInput:
+      type: object
+      properties:
+        entryIndex: { type: ["integer", "null"], minimum: 0 }
+      required: [entryIndex]
+    DiscoveryJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
+        status: { type: string, enum: [QUEUED, RUNNING, PAUSED, CANCELLED, COMPLETED, FAILED] }
+        requestsUsed: { type: integer }
+        completedRequests: { type: integer }
+        failedRequests: { type: integer }
+        discovered: { type: integer }
+        processed: { type: integer }
+        matching: { type: integer }
+        targetReached: { type: boolean }
+        failed: { type: integer }
+        unprocessed: { type: integer }
+        calendarComplete: { type: boolean }
+        paginationComplete: { type: boolean }
+        resultCapReached: { type: boolean }
+        message: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, criteria, status, requestsUsed, completedRequests, failedRequests, discovered, processed, matching, targetReached, failed, unprocessed, calendarComplete, paginationComplete, resultCapReached, message, createdAt, updatedAt]
+    PostedEntryState:
+      type: string
+      enum: [SHOWN_POSTED, NOT_SHOWN, UNKNOWN]
+    ExtractionOutcome:
+      type: string
+      enum: [UNPROCESSED, EXTRACTED, MISSING_BAIL_SECTION, UNREADABLE, UNSUPPORTED_LAYOUT, IDENTITY_MISMATCH, RETRIEVAL_FAILED]
+    DiscoveryEntry:
+      type: object
+      properties:
+        action: { type: string }
+        wording: { type: string }
+        orderDate: { type: ["string", "null"], format: date }
+        bailCategory: { $ref: "#/components/schemas/BailCategory" }
+        amountCents: { type: ["integer", "null"] }
+        financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+      required: [action, wording, orderDate, bailCategory, amountCents, financialBasis]
+    DiscoveryProvenance:
+      type: object
+      properties:
+        calendarUrl: { type: string, format: uri }
+        calendarRetrievedAt: { type: string, format: date-time }
+        eventType: { type: string }
+        eventDate: { type: ["string", "null"] }
+        filingDate: { type: ["string", "null"], format: date }
+        courtOffice: { type: string }
+        extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
+        postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
+        entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }
+      required: [calendarUrl, calendarRetrievedAt, eventType, eventDate, filingDate, courtOffice, extractionOutcome, postedEntryState, entries]
+    DiscoveryItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        docketNumber: { type: string }
+        position: { type: integer }
+        sourceUrl: { type: string, format: uri }
+        sourceRetrievedAt: { type: ["string", "null"], format: date-time }
+        excerpt: { type: ["string", "null"] }
+        detail: { type: ["string", "null"] }
+        provenance: { $ref: "#/components/schemas/DiscoveryProvenance" }
+        savedRecordIds: { type: array, items: { type: string, format: uuid } }
+        savedObservations: { type: array, items: { $ref: "#/components/schemas/DiscoverySavedObservation" } }
+      required: [id, docketNumber, position, sourceUrl, sourceRetrievedAt, excerpt, detail, provenance, savedRecordIds, savedObservations]
+    DiscoverySavedObservation:
+      type: object
+      properties:
+        entryIndex: { type: ["integer", "null"], minimum: 0 }
+        recordId: { type: string, format: uuid }
+        reviewStatus: { $ref: "#/components/schemas/ReviewStatus" }
+        orderInterpretation: { $ref: "#/components/schemas/OrderInterpretation" }
+      required: [entryIndex, recordId, reviewStatus, orderInterpretation]
+    DiscoveryEvent:
+      type: object
+      properties:
+        kind: { type: string }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [kind, message, createdAt]
+    DiscoveryReport:
+      type: object
+      properties:
+        job: { $ref: "#/components/schemas/DiscoveryJob" }
+        items: { type: array, items: { $ref: "#/components/schemas/DiscoveryItem" } }
+        events: { type: array, items: { $ref: "#/components/schemas/DiscoveryEvent" } }
+      required: [job, items, events]
     HealthStatus:
       type: object
       properties:
@@ -176,7 +415,7 @@ components:
         docketNumber: { type: string }
         county: { type: string }
         courtLevel: { $ref: "#/components/schemas/CourtLevel" }
-        chargeGroup: { type: string }
+        chargeGroup: { type: ["string", "null"] }
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
         amountCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647 }
@@ -186,6 +425,7 @@ components:
         sourceRetrievedAt: { type: string, format: date-time }
         sourceObservedAt: { type: ["string", "null"], format: date-time }
         evidenceNote: { type: string }
+        discoveryEvidence: { oneOf: [{ $ref: "#/components/schemas/DiscoveryProvenance" }, { type: "null" }] }
         reviewStatus: { $ref: "#/components/schemas/ReviewStatus" }
         orderInterpretation: { $ref: "#/components/schemas/OrderInterpretation" }
         reviewComment: { type: ["string", "null"] }

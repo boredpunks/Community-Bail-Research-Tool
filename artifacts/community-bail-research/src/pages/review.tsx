@@ -70,7 +70,7 @@ export default function Review() {
   return (
     <Shell>
       <PageHead label="Review queue" title="Review pending source evidence">
-        Compare each entry with its linked source. Confirming marks the entry as matching its source; only confirmed monetary entries are used in ranges. Decisions are final and do not overwrite the submitted evidence.
+        Compare each entry with its linked source. Confirming marks the entry as matching its source; it does not make the order operative. Ranges use only confirmed, reviewed-operative numeric entries in the selected category and financial basis. Leaving the operative order unresolved keeps the entry out of those ranges. Decisions are final and do not overwrite the submitted evidence.
       </PageHead>
       {list.isLoading ? (
         <div className="space-y-3" aria-busy="true"><div className="skel h-32" /><div className="skel h-32" /></div>

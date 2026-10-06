@@ -8,6 +8,343 @@
 import * as zod from 'zod';
 
 
+export const GetDiscoveryPolicyResponse = zod.object({
+  "adapter": zod.string(),
+  "minimumDate": zod.coerce.date(),
+  "spacingMs": zod.number().int(),
+  "concurrency": zod.number().int(),
+  "automaticRetries": zod.number().int(),
+  "defaultRecordCap": zod.number().int(),
+  "maxRecordCap": zod.number().int(),
+  "defaultRequestCap": zod.number().int(),
+  "maxRequestCap": zod.number().int(),
+  "pausedUntil": zod.coerce.date().nullable(),
+  "blockedReason": zod.string().nullable(),
+  "collectionEnabled": zod.boolean(),
+  "coverageNote": zod.string()
+})
+
+
+export const listDiscoveryJobsResponseCriteriaRecordCapMax = 200;
+
+export const listDiscoveryJobsResponseCriteriaRequestCapMin = 8;
+export const listDiscoveryJobsResponseCriteriaRequestCapMax = 500;
+
+export const listDiscoveryJobsResponseCriteriaMatchTargetMax = 200;
+
+export const listDiscoveryJobsResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const ListDiscoveryJobsResponseItem = zod.object({
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(listDiscoveryJobsResponseCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(listDiscoveryJobsResponseCriteriaRequestCapMin).max(listDiscoveryJobsResponseCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(listDiscoveryJobsResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(listDiscoveryJobsResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Strict local monetary TOTAL_BAIL upper bound; null disables this filter.'),
+  "excludeShownPosted": zod.boolean()
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListDiscoveryJobsResponse = zod.array(ListDiscoveryJobsResponseItem)
+
+
+export const createDiscoveryJobBodyRecordCapMax = 200;
+
+export const createDiscoveryJobBodyRequestCapMin = 8;
+export const createDiscoveryJobBodyRequestCapMax = 500;
+
+export const createDiscoveryJobBodyMatchTargetMax = 200;
+
+export const createDiscoveryJobBodyMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const CreateDiscoveryJobBody = zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(createDiscoveryJobBodyRecordCapMax),
+  "requestCap": zod.number().int().min(createDiscoveryJobBodyRequestCapMin).max(createDiscoveryJobBodyRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(createDiscoveryJobBodyMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(createDiscoveryJobBodyMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Strict local monetary TOTAL_BAIL upper bound; null disables this filter.'),
+  "excludeShownPosted": zod.boolean()
+}).optional()
+})
+
+export const createDiscoveryJobResponseCriteriaRecordCapMax = 200;
+
+export const createDiscoveryJobResponseCriteriaRequestCapMin = 8;
+export const createDiscoveryJobResponseCriteriaRequestCapMax = 500;
+
+export const createDiscoveryJobResponseCriteriaMatchTargetMax = 200;
+
+export const createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const CreateDiscoveryJobResponse = zod.object({
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(createDiscoveryJobResponseCriteriaRequestCapMin).max(createDiscoveryJobResponseCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Strict local monetary TOTAL_BAIL upper bound; null disables this filter.'),
+  "excludeShownPosted": zod.boolean()
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const GetDiscoveryJobParams = zod.object({
+  "jobId": zod.coerce.string().uuid()
+})
+
+export const getDiscoveryJobResponseJobCriteriaRecordCapMax = 200;
+
+export const getDiscoveryJobResponseJobCriteriaRequestCapMin = 8;
+export const getDiscoveryJobResponseJobCriteriaRequestCapMax = 500;
+
+export const getDiscoveryJobResponseJobCriteriaMatchTargetMax = 200;
+
+export const getDiscoveryJobResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+export const getDiscoveryJobResponseItemsItemSavedObservationsItemEntryIndexMin = 0;
+
+
+
+export const GetDiscoveryJobResponse = zod.object({
+  "job": zod.object({
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(getDiscoveryJobResponseJobCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(getDiscoveryJobResponseJobCriteriaRequestCapMin).max(getDiscoveryJobResponseJobCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(getDiscoveryJobResponseJobCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(getDiscoveryJobResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Strict local monetary TOTAL_BAIL upper bound; null disables this filter.'),
+  "excludeShownPosted": zod.boolean()
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "items": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "docketNumber": zod.string(),
+  "position": zod.number().int(),
+  "sourceUrl": zod.string().url(),
+  "sourceRetrievedAt": zod.coerce.date().nullable(),
+  "excerpt": zod.string().nullable(),
+  "detail": zod.string().nullable(),
+  "provenance": zod.object({
+  "calendarUrl": zod.string().url(),
+  "calendarRetrievedAt": zod.coerce.date(),
+  "eventType": zod.string(),
+  "eventDate": zod.string().nullable(),
+  "filingDate": zod.coerce.date().nullable(),
+  "courtOffice": zod.string(),
+  "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
+  "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
+  "entries": zod.array(zod.object({
+  "action": zod.string(),
+  "wording": zod.string(),
+  "orderDate": zod.coerce.date().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "amountCents": zod.number().int().nullable(),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+}))
+}),
+  "savedRecordIds": zod.array(zod.string().uuid()),
+  "savedObservations": zod.array(zod.object({
+  "entryIndex": zod.number().int().min(getDiscoveryJobResponseItemsItemSavedObservationsItemEntryIndexMin).nullable(),
+  "recordId": zod.string().uuid(),
+  "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED'])
+}))
+})),
+  "events": zod.array(zod.object({
+  "kind": zod.string(),
+  "message": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+export const ControlDiscoveryJobParams = zod.object({
+  "jobId": zod.coerce.string().uuid()
+})
+
+export const ControlDiscoveryJobBody = zod.object({
+  "action": zod.enum(['PAUSE', 'CANCEL', 'RESUME'])
+})
+
+export const controlDiscoveryJobResponseCriteriaRecordCapMax = 200;
+
+export const controlDiscoveryJobResponseCriteriaRequestCapMin = 8;
+export const controlDiscoveryJobResponseCriteriaRequestCapMax = 500;
+
+export const controlDiscoveryJobResponseCriteriaMatchTargetMax = 200;
+
+export const controlDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const ControlDiscoveryJobResponse = zod.object({
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(controlDiscoveryJobResponseCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(controlDiscoveryJobResponseCriteriaRequestCapMin).max(controlDiscoveryJobResponseCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(controlDiscoveryJobResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(controlDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Strict local monetary TOTAL_BAIL upper bound; null disables this filter.'),
+  "excludeShownPosted": zod.boolean()
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const SaveDiscoveryObservationParams = zod.object({
+  "jobId": zod.coerce.string().uuid(),
+  "itemId": zod.coerce.string().uuid()
+})
+
+export const saveDiscoveryObservationBodyEntryIndexMin = 0;
+
+
+
+export const SaveDiscoveryObservationBody = zod.object({
+  "entryIndex": zod.number().int().min(saveDiscoveryObservationBodyEntryIndexMin).nullable()
+})
+
+export const saveDiscoveryObservationResponseAmountCentsMin = 0;
+export const saveDiscoveryObservationResponseAmountCentsMax = 2147483647;
+
+
+
+export const SaveDiscoveryObservationResponse = zod.object({
+  "id": zod.string().uuid(),
+  "docketNumber": zod.string(),
+  "county": zod.string(),
+  "courtLevel": zod.enum(['MDJ', 'COMMON_PLEAS']),
+  "chargeGroup": zod.string().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "amountCents": zod.number().int().min(saveDiscoveryObservationResponseAmountCentsMin).max(saveDiscoveryObservationResponseAmountCentsMax).nullable(),
+  "orderDate": zod.coerce.date().nullable(),
+  "sourceTitle": zod.string(),
+  "sourceUrl": zod.string().url(),
+  "sourceRetrievedAt": zod.coerce.date(),
+  "sourceObservedAt": zod.coerce.date().nullable(),
+  "evidenceNote": zod.string(),
+  "discoveryEvidence": zod.union([zod.object({
+  "calendarUrl": zod.string().url(),
+  "calendarRetrievedAt": zod.coerce.date(),
+  "eventType": zod.string(),
+  "eventDate": zod.string().nullable(),
+  "filingDate": zod.coerce.date().nullable(),
+  "courtOffice": zod.string(),
+  "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
+  "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
+  "entries": zod.array(zod.object({
+  "action": zod.string(),
+  "wording": zod.string(),
+  "orderDate": zod.coerce.date().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "amountCents": zod.number().int().nullable(),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+}))
+}),zod.null()]).optional(),
+  "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
+  "reviewComment": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
 /**
  * Returns server health status
  * @summary Health check
@@ -50,7 +387,7 @@ export const ListBailRecordsResponse = zod.object({
   "docketNumber": zod.string(),
   "county": zod.string(),
   "courtLevel": zod.enum(['MDJ', 'COMMON_PLEAS']),
-  "chargeGroup": zod.string(),
+  "chargeGroup": zod.string().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
   "amountCents": zod.number().int().min(listBailRecordsResponseRecordsItemAmountCentsMin).max(listBailRecordsResponseRecordsItemAmountCentsMax).nullable(),
@@ -60,6 +397,24 @@ export const ListBailRecordsResponse = zod.object({
   "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
+  "discoveryEvidence": zod.union([zod.object({
+  "calendarUrl": zod.string().url(),
+  "calendarRetrievedAt": zod.coerce.date(),
+  "eventType": zod.string(),
+  "eventDate": zod.string().nullable(),
+  "filingDate": zod.coerce.date().nullable(),
+  "courtOffice": zod.string(),
+  "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
+  "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
+  "entries": zod.array(zod.object({
+  "action": zod.string(),
+  "wording": zod.string(),
+  "orderDate": zod.coerce.date().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "amountCents": zod.number().int().nullable(),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+}))
+}),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),
@@ -118,7 +473,7 @@ export const CreateBailRecordResponse = zod.object({
   "docketNumber": zod.string(),
   "county": zod.string(),
   "courtLevel": zod.enum(['MDJ', 'COMMON_PLEAS']),
-  "chargeGroup": zod.string(),
+  "chargeGroup": zod.string().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
   "amountCents": zod.number().int().min(createBailRecordResponseAmountCentsMin).max(createBailRecordResponseAmountCentsMax).nullable(),
@@ -128,6 +483,24 @@ export const CreateBailRecordResponse = zod.object({
   "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
+  "discoveryEvidence": zod.union([zod.object({
+  "calendarUrl": zod.string().url(),
+  "calendarRetrievedAt": zod.coerce.date(),
+  "eventType": zod.string(),
+  "eventDate": zod.string().nullable(),
+  "filingDate": zod.coerce.date().nullable(),
+  "courtOffice": zod.string(),
+  "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
+  "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
+  "entries": zod.array(zod.object({
+  "action": zod.string(),
+  "wording": zod.string(),
+  "orderDate": zod.coerce.date().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "amountCents": zod.number().int().nullable(),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+}))
+}),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),
@@ -164,7 +537,7 @@ export const ReviewBailRecordResponse = zod.object({
   "docketNumber": zod.string(),
   "county": zod.string(),
   "courtLevel": zod.enum(['MDJ', 'COMMON_PLEAS']),
-  "chargeGroup": zod.string(),
+  "chargeGroup": zod.string().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
   "amountCents": zod.number().int().min(reviewBailRecordResponseAmountCentsMin).max(reviewBailRecordResponseAmountCentsMax).nullable(),
@@ -174,6 +547,24 @@ export const ReviewBailRecordResponse = zod.object({
   "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
+  "discoveryEvidence": zod.union([zod.object({
+  "calendarUrl": zod.string().url(),
+  "calendarRetrievedAt": zod.coerce.date(),
+  "eventType": zod.string(),
+  "eventDate": zod.string().nullable(),
+  "filingDate": zod.coerce.date().nullable(),
+  "courtOffice": zod.string(),
+  "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
+  "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
+  "entries": zod.array(zod.object({
+  "action": zod.string(),
+  "wording": zod.string(),
+  "orderDate": zod.coerce.date().nullable(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "amountCents": zod.number().int().nullable(),
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+}))
+}),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),

@@ -5,16 +5,148 @@
  * Source-backed bail observations for a small volunteer research team. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
+export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
+
+
+export const DiscoveryCriteriaCourtOffice = {
+  'CP-05-02-Crim': 'CP-05-02-Crim',
+} as const;
+
+export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof typeof DiscoveryCriteriaEventType];
+
+
+export const DiscoveryCriteriaEventType = {
+  Bail_Hearing: 'Bail Hearing',
+} as const;
+
+export interface DiscoveryMatchFilters {
+  /**
+     * Strict local monetary TOTAL_BAIL upper bound; null disables this filter.
+     * @minimum 1
+     * @maximum 2147483647
+     * @nullable
+     */
+  monetaryUpperBoundCents: number | null;
+  excludeShownPosted: boolean;
 }
 
-export type CourtLevel = typeof CourtLevel[keyof typeof CourtLevel];
+export interface DiscoveryCriteria {
+  courtOffice: DiscoveryCriteriaCourtOffice;
+  eventType: DiscoveryCriteriaEventType;
+  startDate: string;
+  endDate: string;
+  /**
+     * @minimum 1
+     * @maximum 200
+     */
+  recordCap: number;
+  /**
+     * @minimum 8
+     * @maximum 500
+     */
+  requestCap: number;
+  /**
+     * Requested distinct matching dockets. Absent only for legacy processing-cap jobs.
+     * @minimum 1
+     * @maximum 200
+     */
+  matchTarget?: number;
+  matchFilters?: DiscoveryMatchFilters;
+}
+
+export interface DiscoveryPolicy {
+  adapter: string;
+  minimumDate: string;
+  spacingMs: number;
+  concurrency: number;
+  automaticRetries: number;
+  defaultRecordCap: number;
+  maxRecordCap: number;
+  defaultRequestCap: number;
+  maxRequestCap: number;
+  /** @nullable */
+  pausedUntil: string | null;
+  /** @nullable */
+  blockedReason: string | null;
+  collectionEnabled: boolean;
+  coverageNote: string;
+}
+
+export type DiscoveryControlAction = typeof DiscoveryControlAction[keyof typeof DiscoveryControlAction];
 
 
-export const CourtLevel = {
-  MDJ: 'MDJ',
-  COMMON_PLEAS: 'COMMON_PLEAS',
+export const DiscoveryControlAction = {
+  PAUSE: 'PAUSE',
+  CANCEL: 'CANCEL',
+  RESUME: 'RESUME',
+} as const;
+
+export interface DiscoveryControl {
+  action: DiscoveryControlAction;
+}
+
+export interface DiscoveryObservationInput {
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  entryIndex: number | null;
+}
+
+export type DiscoveryJobStatus = typeof DiscoveryJobStatus[keyof typeof DiscoveryJobStatus];
+
+
+export const DiscoveryJobStatus = {
+  QUEUED: 'QUEUED',
+  RUNNING: 'RUNNING',
+  PAUSED: 'PAUSED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+} as const;
+
+export interface DiscoveryJob {
+  id: string;
+  criteria: DiscoveryCriteria;
+  status: DiscoveryJobStatus;
+  requestsUsed: number;
+  completedRequests: number;
+  failedRequests: number;
+  discovered: number;
+  processed: number;
+  matching: number;
+  targetReached: boolean;
+  failed: number;
+  unprocessed: number;
+  calendarComplete: boolean;
+  paginationComplete: boolean;
+  resultCapReached: boolean;
+  /** @nullable */
+  message: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PostedEntryState = typeof PostedEntryState[keyof typeof PostedEntryState];
+
+
+export const PostedEntryState = {
+  SHOWN_POSTED: 'SHOWN_POSTED',
+  NOT_SHOWN: 'NOT_SHOWN',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
+export type ExtractionOutcome = typeof ExtractionOutcome[keyof typeof ExtractionOutcome];
+
+
+export const ExtractionOutcome = {
+  UNPROCESSED: 'UNPROCESSED',
+  EXTRACTED: 'EXTRACTED',
+  MISSING_BAIL_SECTION: 'MISSING_BAIL_SECTION',
+  UNREADABLE: 'UNREADABLE',
+  UNSUPPORTED_LAYOUT: 'UNSUPPORTED_LAYOUT',
+  IDENTITY_MISMATCH: 'IDENTITY_MISMATCH',
+  RETRIEVAL_FAILED: 'RETRIEVAL_FAILED',
 } as const;
 
 export type BailCategory = typeof BailCategory[keyof typeof BailCategory];
@@ -40,6 +172,31 @@ export const FinancialBasis = {
   UNSECURED_AMOUNT: 'UNSECURED_AMOUNT',
 } as const;
 
+export interface DiscoveryEntry {
+  action: string;
+  wording: string;
+  /** @nullable */
+  orderDate: string | null;
+  bailCategory: BailCategory;
+  /** @nullable */
+  amountCents: number | null;
+  financialBasis: FinancialBasis | null;
+}
+
+export interface DiscoveryProvenance {
+  calendarUrl: string;
+  calendarRetrievedAt: string;
+  eventType: string;
+  /** @nullable */
+  eventDate: string | null;
+  /** @nullable */
+  filingDate: string | null;
+  courtOffice: string;
+  extractionOutcome: ExtractionOutcome;
+  postedEntryState: PostedEntryState;
+  entries: DiscoveryEntry[];
+}
+
 export type ReviewStatus = typeof ReviewStatus[keyof typeof ReviewStatus];
 
 
@@ -59,6 +216,57 @@ export const OrderInterpretation = {
   UNRESOLVED: 'UNRESOLVED',
 } as const;
 
+export interface DiscoverySavedObservation {
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  entryIndex: number | null;
+  recordId: string;
+  reviewStatus: ReviewStatus;
+  orderInterpretation: OrderInterpretation;
+}
+
+export interface DiscoveryItem {
+  id: string;
+  docketNumber: string;
+  position: number;
+  sourceUrl: string;
+  /** @nullable */
+  sourceRetrievedAt: string | null;
+  /** @nullable */
+  excerpt: string | null;
+  /** @nullable */
+  detail: string | null;
+  provenance: DiscoveryProvenance;
+  savedRecordIds: string[];
+  savedObservations: DiscoverySavedObservation[];
+}
+
+export interface DiscoveryEvent {
+  kind: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface DiscoveryReport {
+  job: DiscoveryJob;
+  items: DiscoveryItem[];
+  events: DiscoveryEvent[];
+}
+
+export interface HealthStatus {
+  status: string;
+}
+
+export type CourtLevel = typeof CourtLevel[keyof typeof CourtLevel];
+
+
+export const CourtLevel = {
+  MDJ: 'MDJ',
+  COMMON_PLEAS: 'COMMON_PLEAS',
+} as const;
+
 export type BailReviewDecision = typeof BailReviewDecision[keyof typeof BailReviewDecision];
 
 
@@ -72,7 +280,8 @@ export interface BailRecord {
   docketNumber: string;
   county: string;
   courtLevel: CourtLevel;
-  chargeGroup: string;
+  /** @nullable */
+  chargeGroup: string | null;
   bailCategory: BailCategory;
   financialBasis: FinancialBasis | null;
   /**
@@ -89,6 +298,7 @@ export interface BailRecord {
   /** @nullable */
   sourceObservedAt: string | null;
   evidenceNote: string;
+  discoveryEvidence?: DiscoveryProvenance | null;
   reviewStatus: ReviewStatus;
   orderInterpretation: OrderInterpretation;
   /** @nullable */

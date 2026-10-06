@@ -34,6 +34,7 @@ function SignOut() {
 
 const NAV = [
   { href: '/research', label: 'Search records' },
+  { href: '/discovery', label: 'Live discovery' },
   { href: '/records/new', label: 'Enter record' },
   { href: '/review', label: 'Review queue' },
 ];

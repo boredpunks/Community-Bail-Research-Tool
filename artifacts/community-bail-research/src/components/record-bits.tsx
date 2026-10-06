@@ -34,6 +34,19 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
         {r.reviewedAt ? (<><dt className="mono text-sm">Reviewed</dt><dd>{formatInstant(r.reviewedAt)}</dd></>) : null}
         {r.reviewComment ? (<><dt className="mono text-sm">Review comment</dt><dd className="whitespace-pre-wrap">{r.reviewComment}</dd></>) : null}
       </dl>
+      {r.discoveryEvidence ? (
+        <div className="mt-3 border border-border rounded p-3" data-testid={`discovery-evidence-${r.id}`}>
+          <p className="mono text-sm font-semibold">Live discovery provenance</p>
+          <p className="hint break-all">Calendar: <a className="underline text-primary" href={r.discoveryEvidence.calendarUrl} target="_blank" rel="noopener noreferrer">{r.discoveryEvidence.calendarUrl}</a> retrieved {formatInstant(r.discoveryEvidence.calendarRetrievedAt)}</p>
+          <p className="hint">{r.discoveryEvidence.courtOffice}; {r.discoveryEvidence.eventType}; event date {r.discoveryEvidence.eventDate ?? 'not recorded'}; extraction {r.discoveryEvidence.extractionOutcome}; posted entry state {r.discoveryEvidence.postedEntryState}</p>
+          <ul className="mt-2 space-y-1 text-base">
+            {r.discoveryEvidence.entries.map((e, i) => (
+              <li key={i}>Entry {i + 1}: {e.action}, {e.orderDate ?? 'no date'}, {CATEGORY_LABEL[e.bailCategory]}{e.amountCents != null ? ` ${formatCents(e.amountCents)}` : ''}. <span className="hint">{e.wording}</span></li>
+            ))}
+            {r.discoveryEvidence.entries.length === 0 ? <li className="hint">No bail entries were extracted.</li> : null}
+          </ul>
+        </div>
+      ) : null}
     </details>
   );
 }
@@ -41,7 +54,7 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
 export function RecordSummaryLine({ r }: { r: BailRecord }) {
   return (
     <div className="text-base">
-      {r.county} County, {COURT_LABEL[r.courtLevel]} &middot; {r.chargeGroup} &middot; {CATEGORY_LABEL[r.bailCategory]}
+      {r.county} County, {COURT_LABEL[r.courtLevel]} &middot; {r.chargeGroup ?? 'Charge group not recorded'} &middot; {CATEGORY_LABEL[r.bailCategory]}
       {r.amountCents != null ? <> &middot; <span className="mono font-semibold">{formatCents(r.amountCents)}</span></> : null}
       {r.orderDate ? <> &middot; Order date {r.orderDate}</> : null}
     </div>

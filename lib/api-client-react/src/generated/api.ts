@@ -27,6 +27,12 @@ import type {
   BailRecordList,
   BailReviewInput,
   ConflictResponse,
+  DiscoveryControl,
+  DiscoveryCriteria,
+  DiscoveryJob,
+  DiscoveryObservationInput,
+  DiscoveryPolicy,
+  DiscoveryReport,
   GetBailRangeParams,
   HealthStatus,
   ListBailRecordsParams,
@@ -60,6 +66,469 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetDiscoveryPolicyUrl = () => {
+
+
+
+
+  return `/api/discovery/policy`
+}
+
+export const getDiscoveryPolicy = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryPolicy> => {
+
+  return customFetch<DiscoveryPolicy>(getGetDiscoveryPolicyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDiscoveryPolicyQueryKey = () => {
+    return [
+    `/api/discovery/policy`
+    ] as const;
+    }
+
+
+export const getGetDiscoveryPolicyQueryOptions = <TData = Awaited<ReturnType<typeof getDiscoveryPolicy>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDiscoveryPolicyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDiscoveryPolicy>>> = ({ signal }) => getDiscoveryPolicy({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryPolicy>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDiscoveryPolicyQueryResult = NonNullable<Awaited<ReturnType<typeof getDiscoveryPolicy>>>
+export type GetDiscoveryPolicyQueryError = ErrorType<UnauthorizedResponse>
+
+
+
+export function useGetDiscoveryPolicy<TData = Awaited<ReturnType<typeof getDiscoveryPolicy>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDiscoveryPolicyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListDiscoveryJobsUrl = () => {
+
+
+
+
+  return `/api/discovery/jobs`
+}
+
+export const listDiscoveryJobs = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob[]> => {
+
+  return customFetch<DiscoveryJob[]>(getListDiscoveryJobsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDiscoveryJobsQueryKey = () => {
+    return [
+    `/api/discovery/jobs`
+    ] as const;
+    }
+
+
+export const getListDiscoveryJobsQueryOptions = <TData = Awaited<ReturnType<typeof listDiscoveryJobs>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDiscoveryJobsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDiscoveryJobs>>> = ({ signal }) => listDiscoveryJobs({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryJobs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDiscoveryJobsQueryResult = NonNullable<Awaited<ReturnType<typeof listDiscoveryJobs>>>
+export type ListDiscoveryJobsQueryError = ErrorType<UnauthorizedResponse>
+
+
+
+export function useListDiscoveryJobs<TData = Awaited<ReturnType<typeof listDiscoveryJobs>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDiscoveryJobsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateDiscoveryJobUrl = () => {
+
+
+
+
+  return `/api/discovery/jobs`
+}
+
+export const createDiscoveryJob = async (discoveryCriteria: DiscoveryCriteria, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DiscoveryJob>(getCreateDiscoveryJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(discoveryCriteria)
+  }
+);}
+
+
+
+
+
+export const getCreateDiscoveryJobMutationKey = () => ['createDiscoveryJob'] as const;
+
+export const getCreateDiscoveryJobMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext> => {
+
+const mutationKey = getCreateDiscoveryJobMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDiscoveryJob>>, CreateDiscoveryJobMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDiscoveryJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDiscoveryJobMutationResult = NonNullable<Awaited<ReturnType<typeof createDiscoveryJob>>>
+    export type CreateDiscoveryJobMutationBody = BodyType<DiscoveryCriteria>
+    export type CreateDiscoveryJobMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type CreateDiscoveryJobMutationVariables = {data: BodyType<DiscoveryCriteria>}
+
+    export const useCreateDiscoveryJob = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDiscoveryJob>>,
+        TError,
+        CreateDiscoveryJobMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateDiscoveryJobMutationOptions(options));
+    }
+
+export const getGetDiscoveryJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/discovery/jobs/${jobId}`
+}
+
+export const getDiscoveryJob = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryReport> => {
+
+  return customFetch<DiscoveryReport>(getGetDiscoveryJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDiscoveryJobQueryKey = (jobId: string,) => {
+    return [
+    `/api/discovery/jobs/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetDiscoveryJobQueryOptions = <TData = Awaited<ReturnType<typeof getDiscoveryJob>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDiscoveryJobQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDiscoveryJob>>> = ({ signal }) => getDiscoveryJob(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDiscoveryJobQueryResult = NonNullable<Awaited<ReturnType<typeof getDiscoveryJob>>>
+export type GetDiscoveryJobQueryError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+
+
+
+export function useGetDiscoveryJob<TData = Awaited<ReturnType<typeof getDiscoveryJob>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscoveryJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDiscoveryJobQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getControlDiscoveryJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/discovery/jobs/${jobId}/control`
+}
+
+export const controlDiscoveryJob = async (jobId: string,
+    discoveryControl: DiscoveryControl, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DiscoveryJob>(getControlDiscoveryJobUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(discoveryControl)
+  }
+);}
+
+
+
+
+
+export const getControlDiscoveryJobMutationKey = () => ['controlDiscoveryJob'] as const;
+
+export const getControlDiscoveryJobMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof controlDiscoveryJob>>, TError,ControlDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof controlDiscoveryJob>>, TError,ControlDiscoveryJobMutationVariables, TContext> => {
+
+const mutationKey = getControlDiscoveryJobMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof controlDiscoveryJob>>, ControlDiscoveryJobMutationVariables> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  controlDiscoveryJob(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ControlDiscoveryJobMutationResult = NonNullable<Awaited<ReturnType<typeof controlDiscoveryJob>>>
+    export type ControlDiscoveryJobMutationBody = BodyType<DiscoveryControl>
+    export type ControlDiscoveryJobMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type ControlDiscoveryJobMutationVariables = {jobId: string;data: BodyType<DiscoveryControl>}
+
+    export const useControlDiscoveryJob = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof controlDiscoveryJob>>, TError,ControlDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof controlDiscoveryJob>>,
+        TError,
+        ControlDiscoveryJobMutationVariables,
+        TContext
+      > => {
+      return useMutation(getControlDiscoveryJobMutationOptions(options));
+    }
+
+export const getSaveDiscoveryObservationUrl = (jobId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/discovery/jobs/${jobId}/items/${itemId}/save`
+}
+
+export const saveDiscoveryObservation = async (jobId: string,
+    itemId: string,
+    discoveryObservationInput: DiscoveryObservationInput, options?: Parameters<typeof customFetch>[1]): Promise<BailRecord> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BailRecord>(getSaveDiscoveryObservationUrl(jobId,itemId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(discoveryObservationInput)
+  }
+);}
+
+
+
+
+
+export const getSaveDiscoveryObservationMutationKey = () => ['saveDiscoveryObservation'] as const;
+
+export const getSaveDiscoveryObservationMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryObservation>>, TError,SaveDiscoveryObservationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryObservation>>, TError,SaveDiscoveryObservationMutationVariables, TContext> => {
+
+const mutationKey = getSaveDiscoveryObservationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveDiscoveryObservation>>, SaveDiscoveryObservationMutationVariables> = (props) => {
+          const {jobId,itemId,data} = props ?? {};
+
+          return  saveDiscoveryObservation(jobId,itemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveDiscoveryObservationMutationResult = NonNullable<Awaited<ReturnType<typeof saveDiscoveryObservation>>>
+    export type SaveDiscoveryObservationMutationBody = BodyType<DiscoveryObservationInput>
+    export type SaveDiscoveryObservationMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse>
+    export type SaveDiscoveryObservationMutationVariables = {jobId: string;itemId: string;data: BodyType<DiscoveryObservationInput>}
+
+    export const useSaveDiscoveryObservation = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryObservation>>, TError,SaveDiscoveryObservationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveDiscoveryObservation>>,
+        TError,
+        SaveDiscoveryObservationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveDiscoveryObservationMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

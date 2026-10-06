@@ -7,6 +7,7 @@
  */
 import type { BailCategory } from './bailCategory';
 import type { CourtLevel } from './courtLevel';
+import type { DiscoveryProvenance } from './discoveryProvenance';
 import type { FinancialBasis } from './financialBasis';
 import type { OrderInterpretation } from './orderInterpretation';
 import type { ReviewStatus } from './reviewStatus';
@@ -16,7 +17,8 @@ export interface BailRecord {
   docketNumber: string;
   county: string;
   courtLevel: CourtLevel;
-  chargeGroup: string;
+  /** @nullable */
+  chargeGroup: string | null;
   bailCategory: BailCategory;
   financialBasis: FinancialBasis | null;
   /**
@@ -33,6 +35,7 @@ export interface BailRecord {
   /** @nullable */
   sourceObservedAt: Date | null;
   evidenceNote: string;
+  discoveryEvidence?: DiscoveryProvenance | null;
   reviewStatus: ReviewStatus;
   orderInterpretation: OrderInterpretation;
   /** @nullable */

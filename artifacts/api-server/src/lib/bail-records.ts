@@ -16,6 +16,7 @@ export function serializeBailRecord(record: BailRecordRow) {
     sourceRetrievedAt: record.sourceRetrievedAt.toISOString(),
     sourceObservedAt: record.sourceObservedAt?.toISOString() ?? null,
     evidenceNote: record.evidenceNote,
+    discoveryEvidence: record.discoveryEvidence,
     reviewStatus: record.reviewStatus,
     orderInterpretation: record.orderInterpretation,
     reviewComment: record.reviewComment,

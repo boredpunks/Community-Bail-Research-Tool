@@ -14,3 +14,9 @@ Official UJS search forms and help text can contain illustrative docket identifi
 **Why:** A source-assessment response returned the search form, whose embedded help example produced a false-positive docket match even though no search-result rows had been demonstrated.
 
 **How to apply:** Extract identifiers only from a validated result structure, and validate retrieved docket-document identity separately. A returned form is neither a completed search nor proof of an empty result set.
+
+A genuine UJS result page can also contain the original search form. Do not reject results just because the form is present.
+
+**Why:** A normal browser calendar submission returned a validated results table and the search form together, after direct form submissions had returned only forms.
+
+**How to apply:** Distinguish valid rows and structurally valid empty results from returned forms by the results table/header/link identities, not by the presence or absence of the form.
