@@ -28,3 +28,15 @@ packages = ["chromium", "freetype", "gitFull", "gumbo", "harfbuzz", "jbig2dec", 
 [userenv.shared]
 UJS_MAX_RECORDS = "200"
 UJS_MAX_REQUESTS = "500"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 18930
+externalPort = 80
