@@ -20,3 +20,9 @@ The requested target counts distinct dockets matching the selected bail filters,
 **Why:** The user explicitly said, “if the search process requires a slow pacing in order to query, say, 200 dockets, then we should build around that.”
 
 **How to apply:** Keep proof-of-access runs small, but do not confuse the diagnostic budget with the eventual research scale. Once access is demonstrated, preserve checkpoints and partial results across pauses and restarts. Larger budgets must remain explicit and operator-controlled. Pacing does not guarantee the source will avoid rate limits; pause rather than bypass them.
+
+Prioritize anticipating rate-limit failures through a shared scheduler, persistent rolling budgets, response-aware pacing and slowdown, complete request accounting, deduplication, and durable source-wide stops. Validate these controls in bounded, approved stages before scaling.
+
+**Why:** The user clarified that they want practical anticipatory measures, not a guarantee, then explicitly endorsed the proposed safeguards and requested a game plan.
+
+**How to apply:** Treat initial pacing and quota values as proposed safeguards, not established court limits. Implementation approval does not authorize live verification requests or the larger research sample.

@@ -1,5 +1,4 @@
 import { Link } from 'wouter';
-import { Show } from '@clerk/react';
 import { CageRoom } from '@/components/cage-room';
 import { ThemeToggle } from '@/components/shell';
 
@@ -28,7 +27,6 @@ export default function Menu() {
         <Link href="/records/new" className="navlink" data-testid="link-menu-manual">Enter a record by hand</Link>
         <Link href="/research" className="navlink" data-testid="link-menu-saved">Saved-record search</Link>
         <Link href="/" className="navlink" data-testid="link-menu-home">Back to start</Link>
-        <Show when="signed-out"><span className="hint">You will be asked to sign in when you pick a panel.</span></Show>
         <ThemeToggle />
       </div>
     </CageRoom>

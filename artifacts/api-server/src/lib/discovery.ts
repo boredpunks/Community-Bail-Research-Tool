@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type DiscoveryJobRow, type DiscoveryCriteriaData, type DiscoveryProvenanceData } from "@workspace/db";
+import { resultsDeadline } from "./discovery-safety";
 
 function policyInteger(key: string, initial: number, min: number, max: number): number {
   const raw = process.env[key];
@@ -27,7 +28,8 @@ export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, fil
   const upper = filters?.monetaryUpperBoundCents;
   return upper == null || provenance.entries.some((entry) => entry.bailCategory === "MONETARY"
     && entry.financialBasis === "TOTAL_BAIL" && entry.amountCents !== null
-    && Number.isSafeInteger(entry.amountCents) && entry.amountCents >= 0 && entry.amountCents < upper);
+    && Number.isSafeInteger(entry.amountCents) && entry.amountCents >= 0
+    && (filters?.inclusiveMaximum ? entry.amountCents <= upper : entry.amountCents < upper));
 }
 
 export async function jobSummary(job: DiscoveryJobRow) {
@@ -38,16 +40,20 @@ export async function jobSummary(job: DiscoveryJobRow) {
   const unprocessed = items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").length;
   const failed = items.filter((item) => !["UNPROCESSED", "EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)).length;
   const matching = items.filter((item) => matchesDiscoveryFilters(item.provenance, job.criteria.matchFilters)).length;
+  const counts = job.resultCounts ?? { discovered: items.length, processed: items.length - unprocessed, matching, failed, unprocessed };
   return {
     id: job.id, criteria: job.criteria, status: job.status,
     requestsUsed: job.requestsUsed,
     completedRequests: requests.filter((request) => request.outcome !== "IN_FLIGHT").length,
     failedRequests: requests.filter((request) => !["IN_FLIGHT", "OK"].includes(request.outcome)).length,
-    discovered: items.length, processed: items.length - unprocessed, matching,
-    targetReached: job.criteria.matchTarget != null && matching >= job.criteria.matchTarget, failed, unprocessed,
+    ...counts,
+    targetReached: job.criteria.matchTarget != null && counts.matching >= job.criteria.matchTarget,
     calendarComplete: job.calendarComplete, paginationComplete: job.paginationComplete,
     resultCapReached: job.resultCapReached, message: job.message,
     createdAt: job.createdAt.toISOString(), updatedAt: job.updatedAt.toISOString(),
+    resultsExpireAt: resultsDeadline(job)?.toISOString() ?? null,
+    resultsExpiredAt: job.resultsExpiredAt?.toISOString() ?? null,
+    candidateDockets: items.filter((item) => item.movedToCandidatesAt).length,
   };
 }
 

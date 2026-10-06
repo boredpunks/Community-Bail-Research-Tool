@@ -1,8 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-@layer theme, base, clerk, components, utilities;
+@layer theme, base, components, utilities;
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '@clerk/themes/shadcn.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -194,6 +193,12 @@
     justify-content: center;
     text-align: center;
   }
+  .standard-view-toggle {
+    min-height: 2.35rem;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.025em;
+  }
   .btn:hover:not(:disabled) { background: hsl(var(--primary) / 0.14); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
   .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
@@ -264,6 +269,19 @@
   .navlink[aria-current='page'] {
     border-color: hsl(var(--primary));
     color: hsl(var(--primary));
+  }
+}
+
+.cage-room-backdrop {
+  background-position: center 36%;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .cage-room-backdrop {
+    background-position: center top;
+    background-size: 100% auto;
   }
 }
 

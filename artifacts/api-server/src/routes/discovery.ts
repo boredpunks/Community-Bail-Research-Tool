@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { getAuth } from "@clerk/express";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { bailRecordsTable, db, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoverySourceTable } from "@workspace/db";
 import {
@@ -11,7 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { actualDate, discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
 import { serializeBailRecord } from "../lib/bail-records";
-import { requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
+import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
@@ -34,8 +33,9 @@ router.get("/discovery/policy", async (_req, res): Promise<void> => {
   res.json(payload);
 });
 
-router.get("/discovery/jobs", async (req, res): Promise<void> => {
-  const rows = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.ownerId, getAuth(req).userId!)).orderBy(desc(discoveryJobsTable.createdAt)).limit(100);
+router.get("/discovery/jobs", async (_req, res): Promise<void> => {
+  const { ownerIds } = getWorkspaceIdentity(res);
+  const rows = await db.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.ownerId, ownerIds)).orderBy(desc(discoveryJobsTable.createdAt)).limit(100);
   const payload = await Promise.all(rows.map(jobSummary));
   ListDiscoveryJobsResponse.parse(payload);
   res.json(payload);
@@ -55,22 +55,22 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
   if (!body.data.matchFilters || !body.data.matchTarget || body.data.matchTarget > body.data.recordCap) {
     res.status(400).json({ error: "New jobs require fixed matching filters and a matching-docket target no greater than the document-processing safety cap." }); return;
   }
-  const ownerId = getAuth(req).userId!;
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
   const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
   if (source?.blockedReason && (!source.pausedUntil || source.pausedUntil > new Date())) {
     res.status(409).json({ error: "Source-wide pause: no new collection jobs can start until the cooldown ends or an operator assesses the access denial." }); return;
   }
-  // Serialize account job creation without depending on frontend button state.
+  // Serialize shared-workspace job creation without depending on frontend button state.
   const result = await db.transaction(async (tx) => {
     await tx.execute(`SELECT pg_advisory_xact_lock(hashtext('ujs-job-creation'))`);
-    const [active] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.ownerId, ownerId), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
+    const [active] = await tx.select().from(discoveryJobsTable).where(and(inArray(discoveryJobsTable.ownerId, ownerIds), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
     if (active) return null;
     const [job] = await tx.insert(discoveryJobsTable).values({
       ownerId, criteria: { ...body.data, startDate, endDate }, message: "Explicit live job queued. Saved-record searches do not collect data.",
     }).returning();
     return job!;
   });
-  if (!result) { res.status(409).json({ error: "An active job already exists in your account. Pause or cancel it first." }); return; }
+  if (!result) { res.status(409).json({ error: "An active job already exists in the shared workspace. Pause or cancel it first." }); return; }
   await discoveryEvent(result, "QUEUED", `Target: ${result.criteria.matchTarget} matching dockets with fixed local filters. Safety budget: ${result.criteria.requestCap} total requests; ${result.criteria.recordCap} processed documents. One request at a time; at least ${discoveryPolicy.spacingMs / 1000}s after the previous response completes; no automatic retries.`);
   const payload = await jobSummary(result);
   CreateDiscoveryJobResponse.parse(payload);
@@ -80,13 +80,13 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
 router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
   const params = GetDiscoveryJobParams.safeParse(req.params);
   if (!params.success) { res.status(404).json({ error: "Job not found." }); return; }
-  const ownerId = getAuth(req).userId!;
-  const [job] = await db.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), eq(discoveryJobsTable.ownerId, ownerId)));
-  if (!job) { res.status(404).json({ error: "Job not found in your account." }); return; }
+  const { ownerIds } = getWorkspaceIdentity(res);
+  const [job] = await db.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)));
+  if (!job) { res.status(404).json({ error: "Job not found in the shared workspace." }); return; }
   const [items, events, saved] = await Promise.all([
-    db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.ownerId, ownerId))).orderBy(asc(discoveryItemsTable.position)),
-    db.select().from(discoveryEventsTable).where(and(eq(discoveryEventsTable.jobId, job.id), eq(discoveryEventsTable.ownerId, ownerId))).orderBy(asc(discoveryEventsTable.createdAt)),
-    db.select({ id: bailRecordsTable.id, key: bailRecordsTable.discoveryKey, reviewStatus: bailRecordsTable.reviewStatus, orderInterpretation: bailRecordsTable.orderInterpretation }).from(bailRecordsTable).where(eq(bailRecordsTable.ownerId, ownerId)),
+    db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), inArray(discoveryItemsTable.ownerId, ownerIds))).orderBy(asc(discoveryItemsTable.position)),
+    db.select().from(discoveryEventsTable).where(and(eq(discoveryEventsTable.jobId, job.id), inArray(discoveryEventsTable.ownerId, ownerIds))).orderBy(asc(discoveryEventsTable.createdAt)),
+    db.select({ id: bailRecordsTable.id, key: bailRecordsTable.discoveryKey, reviewStatus: bailRecordsTable.reviewStatus, orderInterpretation: bailRecordsTable.orderInterpretation }).from(bailRecordsTable).where(inArray(bailRecordsTable.ownerId, ownerIds)),
   ]);
   const payload = {
     job: await jobSummary(job),
@@ -116,8 +116,9 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
   const body = ControlDiscoveryJobBody.safeParse(req.body);
   if (!params.success || !body.success) { res.status(400).json({ error: "Choose pause, cancel or resume." }); return; }
   const result = await db.transaction(async (tx) => {
-    const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), eq(discoveryJobsTable.ownerId, getAuth(req).userId!))).for("update");
-    if (!job) return { error: "Job not found in your account.", status: 404 };
+    const { ownerIds } = getWorkspaceIdentity(res);
+    const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
+    if (!job) return { error: "Job not found in the shared workspace.", status: 404 };
     const action = body.data.action;
     if (action === "RESUME") {
       if (!["PAUSED", "CANCELLED", "FAILED"].includes(job.status)) return { error: "Only a stopped job can resume.", status: 409 };
@@ -125,8 +126,8 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
       if (source?.blockedReason && (!source.pausedUntil || source.pausedUntil > new Date())) return { error: source.pausedUntil ? `Source-wide pause until ${source.pausedUntil.toISOString()}. No requests will be retried before then.` : "Source access requires operator assessment before resuming.", status: 409 };
       if (!job.calendarComplete && job.criteria.startDate < easternToday()) return { error: "The original calendar date is no longer supported. This job cannot silently switch dates.", status: 409 };
-      const [active] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.ownerId, job.ownerId), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
-      if (active) return { error: "Another job is active in your account.", status: 409 };
+      const [active] = await tx.select().from(discoveryJobsTable).where(and(inArray(discoveryJobsTable.ownerId, ownerIds), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
+      if (active) return { error: "Another job is active in the shared workspace.", status: 409 };
     } else if (!["QUEUED", "RUNNING", "PAUSED"].includes(job.status)) {
       return { error: "This job is already stopped.", status: 409 };
     }
@@ -144,9 +145,9 @@ router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promi
   const params = SaveDiscoveryObservationParams.safeParse(req.params);
   const body = SaveDiscoveryObservationBody.safeParse(req.body);
   if (!params.success || !body.success) { res.status(400).json({ error: "Choose an extracted bail entry to save." }); return; }
-  const ownerId = getAuth(req).userId!;
-  const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, params.data.jobId), eq(discoveryItemsTable.ownerId, ownerId)));
-  if (!item) { res.status(404).json({ error: "Evidence not found in your account." }); return; }
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+  const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, params.data.jobId), inArray(discoveryItemsTable.ownerId, ownerIds)));
+  if (!item) { res.status(404).json({ error: "Evidence not found in the shared workspace." }); return; }
   const entry = body.data.entryIndex === null ? null : item.provenance.entries[body.data.entryIndex];
   if (!item.sourceRetrievedAt || (item.provenance.extractionOutcome === "MISSING_BAIL_SECTION" ? body.data.entryIndex !== null : item.provenance.extractionOutcome !== "EXTRACTED" || !entry)) {
     res.status(400).json({ error: "Only identity-checked extracted evidence or an explicit missing-bail-section outcome can be saved. Failed or unsupported extraction is not an observation." }); return;

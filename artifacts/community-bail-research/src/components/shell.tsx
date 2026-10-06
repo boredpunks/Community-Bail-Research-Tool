@@ -1,14 +1,14 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Show, useClerk } from '@clerk/react';
 import { useStandardView } from '@/lib/theme';
+import { useWorkspaceAccess } from '@/lib/workspace-access';
 
 export function ThemeToggle() {
   const { standard, toggle } = useStandardView();
   return (
     <button
       type="button"
-      className="btn"
+      className="btn standard-view-toggle"
       onClick={toggle}
       aria-pressed={standard}
       data-testid="button-standard-view"
@@ -18,17 +18,28 @@ export function ThemeToggle() {
   );
 }
 
-function SignOut() {
-  const { signOut } = useClerk();
+function LockWorkspace() {
+  const { lockWorkspace, isLocking } = useWorkspaceAccess();
+  const [, setLocation] = useLocation();
+  const [error, setError] = useState('');
+
+  async function lock() {
+    setError('');
+    try {
+      await lockWorkspace();
+      setLocation('/');
+    } catch {
+      setError('The workspace could not be locked. Please try again.');
+    }
+  }
+
   return (
-    <button
-      type="button"
-      className="btn"
-      data-testid="button-sign-out"
-      onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL || '/' })}
-    >
-      Sign out
-    </button>
+    <>
+      <button type="button" className="btn" data-testid="button-lock-workspace" onClick={lock} disabled={isLocking}>
+        {isLocking ? 'Locking…' : 'Lock workspace'}
+      </button>
+      {error ? <span role="alert" className="hint text-destructive">{error}</span> : null}
+    </>
   );
 }
 
@@ -56,10 +67,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex flex-wrap gap-2 items-center">
             <ThemeToggle />
-            <Show when="signed-in"><SignOut /></Show>
-            <Show when="signed-out">
-              <Link href="/sign-in" className="btn btn-primary" data-testid="link-sign-in">Sign in</Link>
-            </Show>
+            <LockWorkspace />
           </div>
         </div>
         <nav aria-label="Primary" className="max-w-6xl mx-auto px-4 pb-3 flex flex-wrap gap-2">

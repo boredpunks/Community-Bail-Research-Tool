@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
-import { getAuth } from "@clerk/express";
-import { and, desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { bailRecordsTable, bailReviewsTable, db } from "@workspace/db";
 import {
   CreateBailRecordBody,
@@ -14,13 +13,13 @@ import {
   ReviewBailRecordResponse,
 } from "@workspace/api-zod";
 import { descriptiveRange, escapeLike, serializeBailRecord } from "../lib/bail-records";
-import { requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
+import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
 
-function cohortConditions(ownerId: string, filters: { county?: string; courtLevel?: "MDJ" | "COMMON_PLEAS"; chargeGroup?: string }): SQL[] {
-  const conditions = [eq(bailRecordsTable.ownerId, ownerId)];
+function cohortConditions(ownerIds: string[], filters: { county?: string; courtLevel?: "MDJ" | "COMMON_PLEAS"; chargeGroup?: string }): SQL[] {
+  const conditions = [inArray(bailRecordsTable.ownerId, ownerIds)];
   if (filters.county?.trim()) {
     conditions.push(sql`lower(${bailRecordsTable.county}) = ${filters.county.trim().toLowerCase()}`);
   }
@@ -37,7 +36,8 @@ router.get("/records", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Check the search filters and try again." });
     return;
   }
-  const conditions = cohortConditions(getAuth(req).userId!, parsed.data);
+  const { ownerIds } = getWorkspaceIdentity(res);
+  const conditions = cohortConditions(ownerIds, parsed.data);
   if (parsed.data.reviewStatus) conditions.push(eq(bailRecordsTable.reviewStatus, parsed.data.reviewStatus));
   if (parsed.data.query?.trim()) {
     const pattern = `%${escapeLike(parsed.data.query.trim())}%`;
@@ -56,6 +56,7 @@ router.post("/records", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
+  const { ownerId } = getWorkspaceIdentity(res);
   if (!input.realRecordAttestation) {
     res.status(400).json({ error: "Confirm that this is a real docket observation supported by the stated source." });
     return;
@@ -103,7 +104,7 @@ router.post("/records", async (req, res): Promise<void> => {
   const docketNumber = input.docketNumber.trim().toUpperCase();
   const county = input.county.trim();
   const [record] = await db.insert(bailRecordsTable).values({
-    ownerId: getAuth(req).userId!,
+    ownerId,
     caseKey: `${county.toLowerCase()}|${input.courtLevel}|${docketNumber}`,
     docketNumber,
     county,
@@ -131,17 +132,18 @@ router.post("/records/:recordId/review", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Choose a review decision and order interpretation." });
     return;
   }
-  const ownerId = getAuth(req).userId!;
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
   try {
     const result = await db.transaction(async (tx) => {
-      const [record] = await tx.select().from(bailRecordsTable).where(and(eq(bailRecordsTable.id, params.data.recordId), eq(bailRecordsTable.ownerId, ownerId))).for("update");
-      if (!record) return { status: 404, error: "Record not found in your research workspace." };
+      const [record] = await tx.select().from(bailRecordsTable).where(and(eq(bailRecordsTable.id, params.data.recordId), inArray(bailRecordsTable.ownerId, ownerIds))).for("update");
+      if (!record) return { status: 404, error: "Record not found in the shared research workspace." };
       if (record.reviewStatus !== "PENDING") return { status: 409, error: "This observation has already been reviewed. The original evidence is preserved." };
       const interpretation = body.data.decision === "REJECTED" ? "UNRESOLVED" as const : body.data.orderInterpretation;
       if (interpretation === "REVIEWED_OPERATIVE") {
         if (!record.orderDate) return { status: 400, error: "An order date is required before an observation can be interpreted as operative." };
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`bail-operative:${record.caseKey}`}))`);
         const [existing] = await tx.select({ id: bailRecordsTable.id }).from(bailRecordsTable).where(and(
-          eq(bailRecordsTable.ownerId, ownerId),
+          inArray(bailRecordsTable.ownerId, ownerIds),
           eq(bailRecordsTable.caseKey, record.caseKey),
           eq(bailRecordsTable.reviewStatus, "CONFIRMED"),
           eq(bailRecordsTable.orderInterpretation, "REVIEWED_OPERATIVE"),
@@ -158,7 +160,7 @@ router.post("/records/:recordId/review", async (req, res): Promise<void> => {
       }).where(eq(bailRecordsTable.id, record.id)).returning();
       await tx.insert(bailReviewsTable).values({
         recordId: record.id,
-        ownerId,
+        ownerId: record.ownerId,
         reviewerId: ownerId,
         decision: body.data.decision,
         orderInterpretation: interpretation,
@@ -192,16 +194,31 @@ router.get("/analytics/bail-range", async (req, res): Promise<void> => {
   }
   const financialBasis = parsed.data.financialBasis ?? "TOTAL_BAIL";
   const bailCategory = parsed.data.bailCategory ?? "MONETARY";
+  const { ownerIds } = getWorkspaceIdentity(res);
   const conditions = [
-    ...cohortConditions(getAuth(req).userId!, parsed.data),
+    ...cohortConditions(ownerIds, parsed.data),
     eq(bailRecordsTable.reviewStatus, "CONFIRMED"),
     eq(bailRecordsTable.orderInterpretation, "REVIEWED_OPERATIVE"),
     eq(bailRecordsTable.bailCategory, bailCategory),
     eq(bailRecordsTable.financialBasis, financialBasis),
     isNotNull(bailRecordsTable.amountCents),
   ];
-  const rows = await db.select({ amountCents: bailRecordsTable.amountCents }).from(bailRecordsTable).where(and(...conditions));
-  const amounts = rows.map((row) => row.amountCents!).filter((amount) => amount !== null);
+  const rows = await db.select({
+    caseKey: bailRecordsTable.caseKey,
+    amountCents: bailRecordsTable.amountCents,
+  }).from(bailRecordsTable).where(and(...conditions));
+  const amountsByDocket = new Map<string, Set<number>>();
+  for (const row of rows) {
+    if (row.amountCents === null) continue;
+    const amountsForDocket = amountsByDocket.get(row.caseKey) ?? new Set<number>();
+    amountsForDocket.add(row.amountCents);
+    amountsByDocket.set(row.caseKey, amountsForDocket);
+  }
+  const conflictingDockets = [...amountsByDocket.values()].filter((amountsForDocket) => amountsForDocket.size > 1).length;
+  const amounts = [...amountsByDocket.values()]
+    .filter((amountsForDocket) => amountsForDocket.size === 1)
+    .map((amountsForDocket) => [...amountsForDocket][0]!);
+  const range = conflictingDockets > 0 ? descriptiveRange([]) : descriptiveRange(amounts);
   const payload = {
     filters: {
       courtLevel: parsed.data.courtLevel ?? null,
@@ -210,12 +227,14 @@ router.get("/analytics/bail-range", async (req, res): Promise<void> => {
       financialBasis,
       bailCategory,
     },
-    reviewedRecordCount: amounts.length,
-    ...descriptiveRange(amounts),
+    reviewedRecordCount: conflictingDockets > 0 ? 0 : amounts.length,
+    ...range,
     evaluatedAt: new Date().toISOString(),
-    note: amounts.length === 0
-      ? "No confirmed, reviewed-operative numeric observations match these filters. Saved records only; no live sources were queried."
-      : `Descriptive only: one reviewed-operative observation per docket, with the same bail category and monetary basis. Not a recommended bail amount. Sources were consulted at their listed times; there is no live refresh. Median is rounded to the nearest cent.${!parsed.data.county || !parsed.data.courtLevel || !parsed.data.chargeGroup ? " Some cohort filters are unset; observations may span counties, court levels, or charge groups." : ""}${amounts.length < 5 ? " Small comparison set: fewer than five records." : ""}`,
+    note: conflictingDockets > 0
+      ? `${conflictingDockets} docket${conflictingDockets === 1 ? "" : "s"} has conflicting confirmed operative amounts in the shared workspace. Resolve those records before using a shared range; no range is shown.`
+      : amounts.length === 0
+        ? "No confirmed, reviewed-operative numeric observations match these filters. Saved records only; no live sources were queried."
+        : `Descriptive only: one reviewed-operative observation per docket, with the same bail category and monetary basis. Duplicate identical observations from earlier accounts are counted once. Not a recommended bail amount. Sources were consulted at their listed times; there is no live refresh. Median is rounded to the nearest cent.${!parsed.data.county || !parsed.data.courtLevel || !parsed.data.chargeGroup ? " Some cohort filters are unset; observations may span counties, court levels, or charge groups." : ""}${amounts.length < 5 ? " Small comparison set: fewer than five records." : ""}`,
   };
   GetBailRangeResponse.parse(payload);
   res.json(payload);

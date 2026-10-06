@@ -1,0 +1,29 @@
+Understood—you’re asking for concrete measures to anticipate and reduce rate-limit failures. **These are the safeguards I would implement:**
+
+1. **One shared request scheduler.** All searches, users, and server processes use the same queue. Only one court request can be in flight—not merely one per search.
+
+2. **Pacing after the response finishes.** Start conservatively, for example with at least **60 seconds between requests**, rather than sending requests on a timer that could overlap. That is a proposed starting pace, not a known court limit.
+
+3. **Rolling request limits.** Add source-wide hourly and daily budgets alongside each search’s budget. Starting another search or restarting the app must not reset those limits.
+
+4. **Count every transmitted request.** Calendar submissions, required scripts/styles, and PDF downloads all count. Block unnecessary images, fonts, analytics, and speculative downloads before transmission.
+
+5. **Slow down when the source deteriorates.** Track response times, timeouts, and server errors. Sustained deterioration should increase the spacing or pause collection before more requests accumulate. Do not automatically accelerate after a few successes.
+
+6. **A persistent source-wide stop mechanism.** A `429`, access denial, challenge page, or unexpected redirect stops all collection—not just the affected docket. Preserve that stop across restarts. A `403` should remain an access issue, not be assumed to mean rate limiting.
+
+7. **Respect the server’s cooldown.** Honor `Retry-After`, with a conservative minimum cooldown when it is absent. Resumption should require an explicit action and use a slower pace; no background retry loop.
+
+8. **Prevent repeat downloads.** Reuse evidence already retrieved during that search. Persist checkpoints so refreshes, interruptions, and resumes do not download completed dockets again. Keep the planned 24-hour retention rule for unsaved results.
+
+9. **Verify the actual app path.** Test the same calendar browser and PDF downloader the worker uses. A successful download through another client must not enable collection. The status display, job creation, resume, and request permission checks must all use the same access gate.
+
+10. **Validate responses before continuing.** An HTTP `200` is insufficient: detect returned search forms, challenge pages, invalid PDFs, and docket-identity mismatches. Those must not become “no matches” or trigger further speculative requests.
+
+11. **Increase volume in approved stages.** Start with one integrated download, then a small batch, then a somewhat larger batch spaced across different times. Record failures and actual request volume. Do not jump directly from one successful download to 100.
+
+12. **Check the request cost before starting.** The target is **100 matching dockets**, so it may require more than 100 downloads. Estimate that cost, enforce a fixed ceiling, and report a shortfall instead of silently expanding the search.
+
+**My first priorities would be the shared scheduler, rolling limits, adaptive slowdown, and persistent source-wide stop.** Then I would validate them through a bounded pilot before authorizing the 100-docket sample.
+
+These are proposed safeguards—not a claim that the current app already enforces all of them.

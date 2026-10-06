@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Source-backed bail observations for a small volunteer research team. No synthetic docket or case records are permitted.
+  description: Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
 servers:
   - url: /api
     description: Base API path
@@ -12,7 +12,52 @@ tags:
     description: Health operations
   - name: bail-records
     description: Source-backed docket observations and descriptive bail ranges
+  - name: workspace-access
+    description: Shared password access to the research workspace
 paths:
+  /workspace-access/session:
+    get:
+      operationId: getWorkspaceSession
+      tags: [workspace-access]
+      summary: Check shared workspace access
+      responses:
+        "200":
+          description: Whether the browser has a valid workspace session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceSession" }
+  /workspace-access/enter:
+    post:
+      operationId: enterWorkspace
+      tags: [workspace-access]
+      summary: Unlock the shared workspace with its password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspacePasswordInput" }
+      responses:
+        "200":
+          description: Workspace session created in an HttpOnly cookie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceSession" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /workspace-access/lock:
+    post:
+      operationId: lockWorkspace
+      tags: [workspace-access]
+      summary: Lock the current browser session
+      security:
+        - workspaceAccessCookie: []
+      responses:
+        "204":
+          description: Session cookie cleared
+        "403": { $ref: "#/components/responses/Forbidden" }
   /discovery/policy:
     get:
       operationId: getDiscoveryPolicy
@@ -30,7 +75,7 @@ paths:
       tags: [bail-records]
       responses:
         "200":
-          description: This account's jobs
+          description: Jobs in the shared workspace
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscoveryJob" } }
@@ -89,6 +134,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/jobs/{jobId}/candidates:
+    post:
+      operationId: saveDiscoveryCandidates
+      tags: [bail-records]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DiscoveryCandidateSelection" }
+      responses:
+        "200":
+          description: Selected dockets and all extracted bail observations saved atomically as pending candidates
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryCandidateResult" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -250,7 +319,23 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 components:
+  securitySchemes:
+    workspaceAccessCookie:
+      type: apiKey
+      in: cookie
+      name: cbr_workspace
   schemas:
+    WorkspacePasswordInput:
+      type: object
+      properties:
+        password: { type: string, minLength: 1, maxLength: 256, format: password }
+      required: [password]
+    WorkspaceSession:
+      type: object
+      properties:
+        authenticated: { type: boolean }
+        expiresInSeconds: { type: integer, minimum: 1 }
+      required: [authenticated]
     DiscoveryCriteria:
       type: object
       properties:
@@ -266,8 +351,9 @@ components:
     DiscoveryMatchFilters:
       type: object
       properties:
-        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 1, maximum: 2147483647, description: "Strict local monetary TOTAL_BAIL upper bound; null disables this filter." }
+        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 1, maximum: 2147483647, description: "Local monetary TOTAL_BAIL maximum; null disables this filter." }
         excludeShownPosted: { type: boolean }
+        inclusiveMaximum: { type: boolean, description: "Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved." }
       required: [monetaryUpperBoundCents, excludeShownPosted]
     DiscoveryPolicy:
       type: object
@@ -284,8 +370,28 @@ components:
         pausedUntil: { type: ["string", "null"], format: date-time }
         blockedReason: { type: ["string", "null"] }
         collectionEnabled: { type: boolean }
+        accessVerifiedAt: { type: ["string", "null"], format: date-time }
+        verifiedMethod: { type: ["string", "null"] }
+        collectionApprovedAt: { type: ["string", "null"], format: date-time }
         coverageNote: { type: string }
-      required: [adapter, minimumDate, spacingMs, concurrency, automaticRetries, defaultRecordCap, maxRecordCap, defaultRequestCap, maxRequestCap, pausedUntil, blockedReason, collectionEnabled, coverageNote]
+      required: [adapter, minimumDate, spacingMs, concurrency, automaticRetries, defaultRecordCap, maxRecordCap, defaultRequestCap, maxRequestCap, pausedUntil, blockedReason, collectionEnabled, accessVerifiedAt, verifiedMethod, collectionApprovedAt, coverageNote]
+    DiscoveryCandidateSelection:
+      type: object
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items: { type: string, format: uuid }
+      required: [itemIds]
+    DiscoveryCandidateResult:
+      type: object
+      properties:
+        docketCount: { type: integer }
+        observationCount: { type: integer }
+        recordIds: { type: array, items: { type: string, format: uuid } }
+      required: [docketCount, observationCount, recordIds]
     DiscoveryControl:
       type: object
       properties:
@@ -317,7 +423,10 @@ components:
         message: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, criteria, status, requestsUsed, completedRequests, failedRequests, discovered, processed, matching, targetReached, failed, unprocessed, calendarComplete, paginationComplete, resultCapReached, message, createdAt, updatedAt]
+        resultsExpireAt: { type: ["string", "null"], format: date-time }
+        resultsExpiredAt: { type: ["string", "null"], format: date-time }
+        candidateDockets: { type: integer }
+      required: [id, criteria, status, requestsUsed, completedRequests, failedRequests, discovered, processed, matching, targetReached, failed, unprocessed, calendarComplete, paginationComplete, resultCapReached, message, createdAt, updatedAt, resultsExpireAt, resultsExpiredAt, candidateDockets]
     PostedEntryState:
       type: string
       enum: [SHOWN_POSTED, NOT_SHOWN, UNKNOWN]
@@ -493,7 +602,7 @@ components:
       required: [error]
   responses:
     Unauthorized:
-      description: Sign in required
+      description: Workspace password required or incorrect
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ApiError" }
@@ -509,6 +618,21 @@ components:
           schema: { $ref: "#/components/schemas/ApiError" }
     Conflict:
       description: Record has already been reviewed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Forbidden:
+      description: Request did not originate from the research app
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    TooManyRequests:
+      description: Too many incorrect workspace passwords were entered
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Unavailable:
+      description: Workspace password or session signing secret is not configured
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ApiError" }

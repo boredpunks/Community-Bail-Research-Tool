@@ -1,0 +1,123 @@
+:root {
+  --background: 140 25% 4%;
+  --foreground: 140 70% 85%;
+  --border: 141 23% 25%;
+  --card: 145 24% 8%;
+  --card-foreground: 140 70% 85%;
+  --primary: 138 100% 70%;
+  --primary-foreground: 140 25% 5%;
+  --secondary: 145 20% 14%;
+  --secondary-foreground: 140 70% 85%;
+  --muted: 145 20% 12%;
+  --muted-foreground: 138 12% 68%;
+  --destructive: 0 100% 78%;
+  --input: 141 28% 38%;
+  --ring: 41 100% 70%;
+  --glow: 0 0 12px hsl(138 100% 70% / 0.45);
+  --grid: hsl(141 23% 25% / 0.35);
+  --app-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --app-font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --radius: 0.25rem;
+}
+
+:root.standard {
+  --background: 45 25% 96%;
+  --foreground: 150 25% 9%;
+  --border: 140 10% 70%;
+  --card: 45 30% 99%;
+  --card-foreground: 150 25% 9%;
+  --primary: 150 75% 20%;
+  --primary-foreground: 45 30% 98%;
+  --secondary: 45 15% 90%;
+  --secondary-foreground: 150 25% 9%;
+  --muted: 45 15% 92%;
+  --muted-foreground: 150 10% 30%;
+  --destructive: 0 70% 38%;
+  --input: 150 10% 40%;
+  --ring: 215 80% 40%;
+  --glow: 0 0 0 transparent;
+  --grid: hsl(140 10% 70% / 0.3);
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--app-font-sans);
+  line-height: 1.6;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.cbr-preview {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1.25rem;
+  background: hsl(var(--background));
+}
+
+.cbr-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(180deg, rgb(1 8 4 / .12), transparent 40%, rgb(1 8 4 / .16)),
+    url('/__mockup/images/community-bail-research-prison-landscape.png');
+  background-position: center 36%;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.cbr-preview-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.cbr-preview-logo {
+  display: block;
+  width: min(78vw, 26rem);
+  height: auto;
+}
+
+.cbr-preview .btn {
+  min-height: 3rem;
+  padding: 0.5rem 1.25rem;
+  border: 1px solid hsl(var(--primary));
+  border-radius: var(--radius);
+  background: transparent;
+  color: hsl(var(--primary));
+  font-family: var(--app-font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.cbr-preview .btn:hover {
+  background: hsl(var(--primary) / 0.14);
+}
+
+.cbr-preview .theme-toggle-compact {
+  min-height: 2.35rem;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.025em;
+}
+
+@media (max-width: 640px) {
+  .cbr-preview-backdrop {
+    background-position: center top;
+    background-size: 100% auto;
+  }
+}

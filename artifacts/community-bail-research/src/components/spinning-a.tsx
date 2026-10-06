@@ -4,6 +4,7 @@ type V = [number, number, number];
 const N = 56;
 const D = 0.14;
 const PERIOD_MS = 32000;
+const INNER_RADIUS = 0.84;
 
 function build() {
   const verts: V[] = [];
@@ -17,7 +18,7 @@ function build() {
     for (let i = 0; i < N; i++) edges.push([s + i, s + ((i + 1) % N)]);
     return s;
   };
-  const of = loop(1, D), ob = loop(1, -D), inf = loop(0.84, D), inb = loop(0.84, -D);
+  const of = loop(1, D), ob = loop(1, -D), inf = loop(INNER_RADIUS, D), inb = loop(INNER_RADIUS, -D);
   for (let i = 0; i < N; i++) {
     edges.push([of + i, ob + i], [inf + i, inb + i]);
     if (i % 2 === 0) edges.push([of + i, inf + i], [ob + i, inb + i]);
@@ -28,8 +29,13 @@ function build() {
     pts.forEach(([x, y]) => verts.push([x, y, -D]));
     for (let i = 0; i < 4; i++) edges.push([f + i, f + ((i + 1) % 4)], [f + 4 + i, f + 4 + ((i + 1) % 4)], [f + i, f + 4 + i]);
   };
-  quad([[-0.08, 0.66], [0.08, 0.66], [0.5, -0.56], [0.33, -0.56]]);
-  quad([[-0.08, 0.66], [0.08, 0.66], [-0.33, -0.56], [-0.5, -0.56]]);
+  const topY = Math.sqrt(INNER_RADIUS ** 2 - 0.08 ** 2);
+  const outerFootX = 0.56;
+  const outerFootY = -Math.sqrt(INNER_RADIUS ** 2 - outerFootX ** 2);
+  const innerFootX = 0.33;
+  const innerFootY = -Math.sqrt(INNER_RADIUS ** 2 - innerFootX ** 2);
+  quad([[-0.08, topY], [0.08, topY], [outerFootX, outerFootY], [innerFootX, innerFootY]]);
+  quad([[-0.08, topY], [0.08, topY], [-innerFootX, innerFootY], [-outerFootX, outerFootY]]);
   quad([[-0.3, -0.2], [0.3, -0.2], [0.3, -0.06], [-0.3, -0.06]]);
   return { verts, edges };
 }

@@ -6,6 +6,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db, pool, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import { logger } from "./logger";
+import { collectionBlock } from "./discovery-safety";
+import { clearExpiredDiscoveryResults } from "./discovery-retention";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -37,7 +39,7 @@ export async function grant(job: DiscoveryJobRow, requestPath: unknown, method: 
     if (!current || current.status !== (assessment ? "PAUSED" : "RUNNING") || stopping) return { allow: false };
     if (assessment && (current.requestsUsed !== assessmentRequestsUsed || !current.calendarComplete
         || control?.blockedReason !== "ACCESS_DENIED" || control.pausedUntil)) return { allow: false };
-    if (!assessment && control?.blockedReason && (!control.pausedUntil || control.pausedUntil > new Date())) {
+    if (!assessment && collectionBlock(control)) {
       await tx.update(discoveryJobsTable).set({ status: "PAUSED", message: "Source-wide pause. No new source requests permitted.", updatedAt: new Date() }).where(eq(discoveryJobsTable.id, job.id));
       return { allow: false };
     }
@@ -46,7 +48,11 @@ export async function grant(job: DiscoveryJobRow, requestPath: unknown, method: 
       return { allow: false };
     }
     const now = new Date();
-    await tx.update(discoverySourceTable).set(assessment ? { lastRequestAt: now } : { lastRequestAt: now, pausedUntil: null, blockedReason: null }).where(eq(discoverySourceTable.id, sourceId));
+    // A granted request is not access proof. Clear only a genuinely expired
+    // rate-limit cooldown; preserve every other unresolved source block.
+    await tx.update(discoverySourceTable).set(!assessment && control?.blockedReason === "RATE_LIMIT"
+      ? { lastRequestAt: now, pausedUntil: null, blockedReason: null }
+      : { lastRequestAt: now }).where(eq(discoverySourceTable.id, sourceId));
     const [request] = await tx.insert(discoveryRequestsTable).values({ jobId: job.id, ownerId: job.ownerId, path: requestPath, method: String(method), startedAt: now }).returning();
     await tx.update(discoveryJobsTable).set({ requestsUsed: current.requestsUsed + 1, updatedAt: now, message: `Request ${current.requestsUsed + 1}/${current.criteria.requestCap}: ${method} ${requestPath}` }).where(eq(discoveryJobsTable.id, job.id));
     return { allow: true, requestId: request!.id };
@@ -77,7 +83,11 @@ export async function sourceOutcome(job: DiscoveryJobRow, message: Record<string
     pausedUntil = new Date(retryAt);
   }
   if (["RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "REDIRECT"].includes(message.outcome)) {
-    await db.update(discoverySourceTable).set({ blockedReason: message.outcome, pausedUntil }).where(eq(discoverySourceTable.id, sourceId));
+    await db.update(discoverySourceTable).set({
+      blockedReason: message.outcome, pausedUntil,
+      ...(["ACCESS_DENIED", "CHALLENGE", "REDIRECT"].includes(message.outcome)
+        ? { accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null } : {}),
+    }).where(eq(discoverySourceTable.id, sourceId));
     const jobs = await db.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]));
     for (const affected of jobs) await pauseOrQueued(affected, `${message.outcome}: all source traffic stopped.${pausedUntil ? ` Earliest permitted resume: ${pausedUntil.toISOString()}.` : " Operator assessment required; no automatic workaround or retry."}`);
   } else {
@@ -216,7 +226,12 @@ export async function startDiscoveryWorker() {
       if (uncertain.length) {
         await db.update(discoverySourceTable).set({ pausedUntil: new Date(Date.now() + 45_000), blockedReason: "RESTART_IN_FLIGHT" }).where(eq(discoverySourceTable.id, sourceId));
       }
+      let cleanupAt = 0;
       while (!stopping) {
+        if (Date.now() >= cleanupAt) {
+          await clearExpiredDiscoveryResults();
+          cleanupAt = Date.now() + 60_000;
+        }
         const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "QUEUED")).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
         if (job) {
           try { await runJob(job); }

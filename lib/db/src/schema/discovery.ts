@@ -13,6 +13,8 @@ export interface DiscoveryCriteriaData {
   matchFilters?: {
     monetaryUpperBoundCents: number | null;
     excludeShownPosted: boolean;
+    // Absent on legacy jobs, which retain their original strict comparison.
+    inclusiveMaximum?: boolean;
   };
 }
 export interface DiscoveryEntryData {
@@ -45,6 +47,10 @@ export const discoveryJobsTable = pgTable("discovery_jobs", {
   paginationComplete: boolean("pagination_complete").notNull().default(false),
   resultCapReached: boolean("result_cap_reached").notNull().default(false),
   message: text("message"),
+  resultsExpiredAt: timestamp("results_expired_at", { withTimezone: true }),
+  resultCounts: jsonb("result_counts").$type<{
+    discovered: number; processed: number; matching: number; failed: number; unprocessed: number;
+  }>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("discovery_owner_created").on(t.ownerId, t.createdAt)]);
@@ -60,6 +66,7 @@ export const discoveryItemsTable = pgTable("discovery_items", {
   excerpt: text("excerpt"),
   detail: text("detail"),
   provenance: jsonb("provenance").$type<DiscoveryProvenanceData>().notNull(),
+  movedToCandidatesAt: timestamp("moved_to_candidates_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("discovery_job_docket").on(t.jobId, t.docketNumber), index("discovery_items_owner_job").on(t.ownerId, t.jobId)]);
 
 export const discoveryEventsTable = pgTable("discovery_events", {
@@ -89,6 +96,9 @@ export const discoverySourceTable = pgTable("discovery_source_control", {
   lastCompletedAt: timestamp("last_completed_at", { withTimezone: true }),
   pausedUntil: timestamp("paused_until", { withTimezone: true }),
   blockedReason: text("blocked_reason"),
+  accessVerifiedAt: timestamp("access_verified_at", { withTimezone: true }),
+  verifiedMethod: text("verified_method"),
+  collectionApprovedAt: timestamp("collection_approved_at", { withTimezone: true }),
 });
 
 export const insertDiscoveryJobSchema = createInsertSchema(discoveryJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
