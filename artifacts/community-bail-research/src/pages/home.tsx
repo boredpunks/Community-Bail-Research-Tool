@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { useLocation } from 'wouter';
 import { CageRoom } from '@/components/cage-room';
 import { SpinningA } from '@/components/spinning-a';
-import { ThemeToggle } from '@/components/shell';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useWorkspaceAccess } from '@/lib/workspace-access';
 
@@ -94,7 +93,6 @@ export default function Home() {
       <p className="hint mt-8 max-w-md text-center">
         One shared password opens all records; actions are not tied to individual accounts. A shared workspace for aggregating and analyzing 412 bail data.
       </p>
-      <div className="mt-4"><ThemeToggle /></div>
     </CageRoom>
   );
 }

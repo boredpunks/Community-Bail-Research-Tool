@@ -5,13 +5,13 @@ import { resultRetentionMs, resultsDeadline } from "./discovery-safety";
 
 // Run periodically and before reading or saving results. Both cleanup and
 // saving lock the job row, so the transaction cannot erase a concurrent save.
-export async function clearExpiredDiscoveryResults(now = new Date()) {
-  const jobs = await db.select({ id: discoveryJobsTable.id }).from(discoveryJobsTable).where(and(
+export async function clearExpiredDiscoveryResults(now = new Date(), store = db) {
+  const jobs = await store.select({ id: discoveryJobsTable.id }).from(discoveryJobsTable).where(and(
     isNull(discoveryJobsTable.resultsExpiredAt),
     notInArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]),
     lt(discoveryJobsTable.updatedAt, new Date(now.getTime() - resultRetentionMs)),
   ));
-  for (const job of jobs) await db.transaction(async (tx) => {
+  for (const job of jobs) await store.transaction(async (tx) => {
     const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
     if (!current || current.resultsExpiredAt || !resultsDeadline(current) || resultsDeadline(current)! > now) return;
     const items = await tx.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id));

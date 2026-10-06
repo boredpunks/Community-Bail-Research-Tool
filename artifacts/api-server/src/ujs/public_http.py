@@ -1,6 +1,7 @@
 """The assessed public HTTP document method. No cookies, redirects or retries."""
 import asyncio
 from urllib import error, request
+from source_protocol import allowed
 
 
 class NoRedirect(request.HTTPRedirectHandler):
@@ -22,6 +23,8 @@ class Response:
 
 
 def _download(url):
+    if not allowed(url, "GET") or "/Report/CpDocketSheet?" not in url:
+        raise ValueError("REQUEST_NOT_PERMITTED")
     opener = request.build_opener(NoRedirect())
     req = request.Request(url, headers={
         "User-Agent": "CommunityBailResearch-SourceAssessment/1.0",

@@ -27,6 +27,7 @@ import type {
   BailRecordList,
   BailReviewInput,
   ConflictResponse,
+  DiscoveryAssessment,
   DiscoveryCandidateResult,
   DiscoveryCandidateSelection,
   DiscoveryControl,
@@ -537,6 +538,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getCreateDiscoveryJobMutationOptions(options));
     }
 
+export const getListDiscoveryAssessmentsUrl = () => {
+
+
+
+
+  return `/api/discovery/assessments`
+}
+
+/**
+ * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
+ */
+export const listDiscoveryAssessments = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryAssessment[]> => {
+
+  return customFetch<DiscoveryAssessment[]>(getListDiscoveryAssessmentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDiscoveryAssessmentsQueryKey = () => {
+    return [
+    `/api/discovery/assessments`
+    ] as const;
+    }
+
+
+export const getListDiscoveryAssessmentsQueryOptions = <TData = Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDiscoveryAssessmentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDiscoveryAssessments>>> = ({ signal }) => listDiscoveryAssessments({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDiscoveryAssessmentsQueryResult = NonNullable<Awaited<ReturnType<typeof listDiscoveryAssessments>>>
+export type ListDiscoveryAssessmentsQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
+ */
+
+export function useListDiscoveryAssessments<TData = Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDiscoveryAssessmentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetDiscoveryJobUrl = (jobId: string,) => {
 
 
@@ -731,7 +809,7 @@ return customFetch<DiscoveryCandidateResult>(getSaveDiscoveryCandidatesUrl(jobId
 
 export const getSaveDiscoveryCandidatesMutationKey = () => ['saveDiscoveryCandidates'] as const;
 
-export const getSaveDiscoveryCandidatesMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+export const getSaveDiscoveryCandidatesMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext> => {
 
@@ -760,10 +838,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SaveDiscoveryCandidatesMutationResult = NonNullable<Awaited<ReturnType<typeof saveDiscoveryCandidates>>>
     export type SaveDiscoveryCandidatesMutationBody = BodyType<DiscoveryCandidateSelection>
-    export type SaveDiscoveryCandidatesMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type SaveDiscoveryCandidatesMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>
     export type SaveDiscoveryCandidatesMutationVariables = {jobId: string;data: BodyType<DiscoveryCandidateSelection>}
 
-    export const useSaveDiscoveryCandidates = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    export const useSaveDiscoveryCandidates = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof saveDiscoveryCandidates>>,

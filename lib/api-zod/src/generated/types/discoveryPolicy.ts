@@ -27,5 +27,20 @@ export interface DiscoveryPolicy {
   verifiedMethod: string | null;
   /** @nullable */
   collectionApprovedAt: Date | null;
+  hourlyRequestCap: number;
+  dailyRequestCap: number;
+  hourlyRequestsUsed: number;
+  dailyRequestsUsed: number;
+  currentSpacingMs: number;
+  /** @nullable */
+  nextEligibleAt: Date | null;
+  requestInFlight: boolean;
+  /** @nullable */
+  lastLatencyMs: number | null;
+  /** @nullable */
+  latencyWarning: string | null;
+  throttleCount: number;
+  pilotState: string;
+  calendarRequestAllowance: number;
   coverageNote: string;
 }

@@ -14,3 +14,9 @@ A bounded download assessment is not approval to resume broader collection, even
 **Why:** The user approved one standard-HTTP check after an integrated-client denial. That check succeeded while the source-wide pause remained intact; its approval covered one request only.
 
 **How to apply:** Count the approved check against the original job budget and retain its evidence. Obtain separate approval before enabling a changed collection method or making additional source requests. Do not reuse a single-request approval.
+
+An empty development request ledger does not erase the earlier unresolved denial or supply fresh access proof.
+
+**Why:** During safeguard preparation, the development source row had null verification/approval fields and no recorded requests, despite the previously observed integrated-client denial.
+
+**How to apply:** Keep collection disabled when proof is missing. Do not seed successful proof or reuse the consumed one-request approval to make the search interface usable; obtain a newly scoped exact-client assessment.

@@ -15,7 +15,10 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: {
+      index: path.resolve(artifactDir, "src/index.ts"),
+      pilot: path.resolve(artifactDir, "src/ujs/pilot.ts"),
+    },
     platform: "node",
     bundle: true,
     format: "esm",
@@ -119,7 +122,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
-  for (const file of ["worker.py", "evidence.py", "public_http.py"]) {
+  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }
 }

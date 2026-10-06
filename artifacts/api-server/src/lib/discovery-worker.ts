@@ -2,12 +2,14 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { db, pool, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
-import { discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
+import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
+import { allowedSourceRequest } from "./discovery-safety";
+import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { logger } from "./logger";
-import { collectionBlock } from "./discovery-safety";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
+import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -19,88 +21,30 @@ async function pause(job: DiscoveryJobRow, message: string) {
   await discoveryEvent(job, "PAUSE", message);
 }
 
-// Operator-only assessment calls retain the source pause and use an expected
-// counter as a single-use permit. There is no HTTP endpoint for this override.
-export async function grant(job: DiscoveryJobRow, requestPath: unknown, method: unknown, assessmentRequestsUsed?: number) {
-  const assessment = assessmentRequestsUsed !== undefined;
-  if (assessment && (requestPath !== "/Report/CpDocketSheet" || method !== "GET"
-      || !Number.isSafeInteger(assessmentRequestsUsed) || assessmentRequestsUsed! < 0)) return { allow: false };
-  if (typeof requestPath !== "string" || !["/CaseSearch", "/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css", "/Report/CpDocketSheet"].includes(requestPath)
-      || !["GET", "POST"].includes(String(method)) || (method === "POST" && requestPath !== "/CaseSearch")) {
-    await pause(job, "Unexpected source request blocked; operator assessment required.");
-    return { allow: false };
-  }
-  const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId));
-  const anchor = Math.max(source?.lastRequestAt?.getTime() ?? 0, source?.lastCompletedAt?.getTime() ?? 0);
-  if (anchor) await delay(Math.max(0, anchor + discoveryPolicy.spacingMs - Date.now()));
-  return db.transaction(async (tx) => {
-    const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
-    const [control] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
-    if (!current || current.status !== (assessment ? "PAUSED" : "RUNNING") || stopping) return { allow: false };
-    if (assessment && (current.requestsUsed !== assessmentRequestsUsed || !current.calendarComplete
-        || control?.blockedReason !== "ACCESS_DENIED" || control.pausedUntil)) return { allow: false };
-    if (!assessment && collectionBlock(control)) {
-      await tx.update(discoveryJobsTable).set({ status: "PAUSED", message: "Source-wide pause. No new source requests permitted.", updatedAt: new Date() }).where(eq(discoveryJobsTable.id, job.id));
-      return { allow: false };
-    }
-    if (current.requestsUsed >= current.criteria.requestCap) {
-      await tx.update(discoveryJobsTable).set({ status: "PAUSED", message: "Explicit request budget exhausted. Partial evidence retained; budget will not increase automatically.", updatedAt: new Date() }).where(eq(discoveryJobsTable.id, job.id));
-      return { allow: false };
-    }
-    const now = new Date();
-    // A granted request is not access proof. Clear only a genuinely expired
-    // rate-limit cooldown; preserve every other unresolved source block.
-    await tx.update(discoverySourceTable).set(!assessment && control?.blockedReason === "RATE_LIMIT"
-      ? { lastRequestAt: now, pausedUntil: null, blockedReason: null }
-      : { lastRequestAt: now }).where(eq(discoverySourceTable.id, sourceId));
-    const [request] = await tx.insert(discoveryRequestsTable).values({ jobId: job.id, ownerId: job.ownerId, path: requestPath, method: String(method), startedAt: now }).returning();
-    await tx.update(discoveryJobsTable).set({ requestsUsed: current.requestsUsed + 1, updatedAt: now, message: `Request ${current.requestsUsed + 1}/${current.criteria.requestCap}: ${method} ${requestPath}` }).where(eq(discoveryJobsTable.id, job.id));
-    return { allow: true, requestId: request!.id };
-  });
+export async function grant(job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId?: string | number, url?: unknown) {
+  return reserveSourceRequest(job, requestPath, method, permitId, url, () => stopping);
 }
 
 export async function sourceOutcome(job: DiscoveryJobRow, message: Record<string, unknown>) {
-  if (typeof message.requestId !== "string" || typeof message.outcome !== "string") throw new Error("Malformed source response accounting");
-  const completedAt = new Date();
+  return accountSourceResponse(job, message);
+}
+
+async function validationStop(reason: string) {
   await db.transaction(async (tx) => {
-    const accounted = await tx.update(discoveryRequestsTable).set({
-      statusCode: typeof message.status === "number" ? message.status : null,
-      outcome: String(message.outcome), completedAt,
-    }).where(and(eq(discoveryRequestsTable.id, String(message.requestId)), eq(discoveryRequestsTable.jobId, job.id),
-      eq(discoveryRequestsTable.ownerId, job.ownerId), eq(discoveryRequestsTable.outcome, "IN_FLIGHT"))).returning();
-    if (accounted.length !== 1) throw new Error("Source request was not pending in this job");
-    await tx.update(discoverySourceTable).set({ lastCompletedAt: completedAt }).where(eq(discoverySourceTable.id, sourceId));
-  });
-  if (message.outcome === "OK") return;
-  let pausedUntil: Date | null = null;
-  if (message.outcome === "RATE_LIMIT") {
-    let retryAt = Date.now() + discoveryPolicy.cooldownMs;
-    if (typeof message.retryAfter === "string") {
-      const seconds = Number(message.retryAfter);
-      const time = /^\d+$/.test(message.retryAfter) ? Date.now() + seconds * 1000 : Date.parse(message.retryAfter);
-      if (Number.isFinite(time) && time <= 8_640_000_000_000_000) retryAt = Math.max(retryAt, time);
-    }
-    pausedUntil = new Date(retryAt);
-  }
-  if (["RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "REDIRECT"].includes(message.outcome)) {
-    await db.update(discoverySourceTable).set({
-      blockedReason: message.outcome, pausedUntil,
-      ...(["ACCESS_DENIED", "CHALLENGE", "REDIRECT"].includes(message.outcome)
-        ? { accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null } : {}),
+    const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
+    // Preserve the original network stop and Retry-After, including a 429
+    // followed by a retrieval-failed message from the same download.
+    if (source && !source.blockedReason) await tx.update(discoverySourceTable).set({
+      blockedReason: reason, accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null,
     }).where(eq(discoverySourceTable.id, sourceId));
-    const jobs = await db.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]));
-    for (const affected of jobs) await pauseOrQueued(affected, `${message.outcome}: all source traffic stopped.${pausedUntil ? ` Earliest permitted resume: ${pausedUntil.toISOString()}.` : " Operator assessment required; no automatic workaround or retry."}`);
-  } else {
-    await pause(job, `Source request failed (${message.outcome}). No automatic retries. Partial evidence retained.`);
-  }
+    await tx.update(discoveryJobsTable).set({ status: "PAUSED", updatedAt: new Date(), message: `${reason}: source validation stopped collection; no next request.` }).where(inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]));
+  });
 }
 
-async function pauseOrQueued(job: DiscoveryJobRow, message: string) {
-  await db.update(discoveryJobsTable).set({ status: "PAUSED", message, updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"])));
-  await discoveryEvent(job, "SOURCE_PAUSE", message);
-}
+const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.provenance;
 
-async function runJob(job: DiscoveryJobRow) {
+export async function runJob(job: DiscoveryJobRow, permitId?: string) {
+  if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
   const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
@@ -136,15 +80,18 @@ async function runJob(job: DiscoveryJobRow) {
       if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (message.kind === "request") {
-        child.stdin.write(JSON.stringify(await grant(job, message.path, message.method)) + "\n");
+        child.stdin.write(JSON.stringify(await grant(job, message.path, message.method, permitId, message.url)) + "\n");
       } else if (message.kind === "response") {
-        await sourceOutcome(job, message);
+        child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
       } else if (message.kind === "calendar") {
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null }[];
-        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string") throw new Error("Invalid calendar checkpoint");
+        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string" || !Number.isFinite(Date.parse(message.retrievedAt))) throw new Error("Invalid calendar checkpoint");
         await db.transaction(async (tx) => {
           for (const row of rows) {
-            if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !row.sourceUrl.startsWith("https://ujsportal.pacourts.us/Report/CpDocketSheet?")) throw new Error("Calendar identity conflict");
+            if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
+              || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
+              || !Number.isSafeInteger(row.position) || row.position < 0
+              || row.eventDate !== null && !actualDate(row.eventDate) || row.filingDate !== null && !actualDate(row.filingDate)) throw new Error("Calendar identity conflict");
             await tx.insert(discoveryItemsTable).values({
               jobId: job.id, ownerId: job.ownerId, ...row,
               provenance: {
@@ -166,6 +113,16 @@ async function runJob(job: DiscoveryJobRow) {
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
         if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
+        extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries });
+        // Validate, never replace raw calendar-date strings with Zod's coerced Dates.
+        if (!(message.retrievedAt === null || typeof message.retrievedAt === "string" && Number.isFinite(Date.parse(message.retrievedAt)))
+          || !(message.excerpt === null || typeof message.excerpt === "string" && message.excerpt.length <= 200_000)
+          || !(message.detail === null || typeof message.detail === "string" && message.detail.length <= 10_000)
+          || (message.entries as DiscoveryEntryData[]).length > 1000
+          || (message.entries as DiscoveryEntryData[]).some((entry) => entry.orderDate !== null && !actualDate(entry.orderDate)
+            || entry.amountCents !== null && (!Number.isSafeInteger(entry.amountCents) || entry.amountCents < 0 || entry.amountCents > 2_147_483_647))) throw new Error("Invalid extraction payload");
+        if (outcome === "EXTRACTED" && (!(message.entries as unknown[]).length || !message.excerpt || !message.retrievedAt)
+          || outcome === "MISSING_BAIL_SECTION" && ((message.entries as unknown[]).length || !message.detail || !message.retrievedAt)) throw new Error("Extraction evidence is incomplete");
         await db.update(discoveryItemsTable).set({
           sourceRetrievedAt: typeof message.retrievedAt === "string" ? new Date(message.retrievedAt) : null,
           excerpt: typeof message.excerpt === "string" ? message.excerpt : null,
@@ -177,6 +134,7 @@ async function runJob(job: DiscoveryJobRow) {
           },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
+        if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) await validationStop("DOCUMENT_VALIDATION_FAILED");
       } else if (message.kind === "checkpoint") {
         const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
         const counts = current ? await jobSummary(current) : null;
@@ -184,6 +142,7 @@ async function runJob(job: DiscoveryJobRow) {
       } else if (message.kind === "finished") {
         finished = true;
       } else if (message.kind === "barrier") {
+        await validationStop("SOURCE_VALIDATION_BARRIER");
         await pause(job, `Source barrier: ${String(message.code).slice(0, 180)}. Not an empty search. Completed results retained.`);
       } else {
         throw new Error("Unrecognized worker protocol");
@@ -204,27 +163,51 @@ async function runJob(job: DiscoveryJobRow) {
         await discoveryEvent(job, "FINISHED", message);
       } else await pause(job, `Worker stopped before completion (exit ${code}; ${stderrBytes} diagnostic bytes). No automatic retry; partial results retained.`);
     }
+  } catch (error) {
+    await validationStop("WORKER_PROTOCOL_FAILURE");
+    throw error;
   } finally {
     if (child.pid) {
       try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already exited. */ }
     }
     activeChild = null;
+    const pending = await db.select().from(discoveryRequestsTable).where(and(
+      eq(discoveryRequestsTable.jobId, job.id), eq(discoveryRequestsTable.outcome, "IN_FLIGHT"),
+    ));
+    for (const request of pending) await sourceOutcome(job, {
+      requestId: request.id, status: null, outcome: "UNCERTAIN_AFTER_WORKER", retryAfter: null,
+    });
   }
 }
 
 export async function startDiscoveryWorker() {
   while (!stopping) {
     const lease = await pool.connect();
+    let ownsLease = false;
     try {
       const acquired = await lease.query("SELECT pg_try_advisory_lock(74651283) AS acquired");
       if (!acquired.rows[0]?.acquired) { await delay(5000); continue; }
+      ownsLease = true;
       await db.insert(discoverySourceTable).values({ id: sourceId }).onConflictDoNothing();
       // Recovery never retries source work silently. Consumed slots stay consumed.
       const interrupted = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "RUNNING"));
       for (const job of interrupted) await pause(job, "Application restarted during collection. Partial results and consumed request slots preserved. Resume explicitly.");
-      const uncertain = await db.update(discoveryRequestsTable).set({ outcome: "UNCERTAIN_AFTER_RESTART", completedAt: new Date() }).where(eq(discoveryRequestsTable.outcome, "IN_FLIGHT")).returning();
-      if (uncertain.length) {
-        await db.update(discoverySourceTable).set({ pausedUntil: new Date(Date.now() + 45_000), blockedReason: "RESTART_IN_FLIGHT" }).where(eq(discoverySourceTable.id, sourceId));
+      await recoverUncertainRequests();
+      // Holding the worker lease proves no pilot runner is active. Interrupted
+      // single-use permits are failed, never returned to the approval queue.
+      const abandoned = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.state, "ATTEMPTED"));
+      for (const permit of abandoned) {
+        const requests = permit.jobId ? await db.select().from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, permit.jobId)) : [];
+        const items = permit.jobId ? await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, permit.jobId)) : [];
+        await db.update(discoveryAssessmentsTable).set({
+          state: "FAILED", completedAt: new Date(),
+          report: { requests: requests.length, validDocuments: items.filter((item) => ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)).length,
+            failures: requests.filter((request) => request.outcome !== "OK").length,
+            reason: "Runner interrupted. Request/history evidence retained; permit consumed; no automatic retry." },
+        }).where(eq(discoveryAssessmentsTable.id, permit.id));
+        if (permit.jobId) await db.update(discoveryJobsTable).set({
+          status: "PAUSED", updatedAt: new Date(), message: "Pilot interrupted. Single-use permit consumed; a new stage needs separate approval.",
+        }).where(and(eq(discoveryJobsTable.id, permit.jobId), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
       }
       let cleanupAt = 0;
       while (!stopping) {
@@ -232,7 +215,7 @@ export async function startDiscoveryWorker() {
           await clearExpiredDiscoveryResults();
           cleanupAt = Date.now() + 60_000;
         }
-        const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "QUEUED")).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
+        const [job] = await db.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.status, "QUEUED"), isNull(discoveryJobsTable.assessmentId))).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
         if (job) {
           try { await runJob(job); }
           catch (error) {
@@ -241,11 +224,13 @@ export async function startDiscoveryWorker() {
           }
         } else await delay(1000);
       }
-      await lease.query("SELECT pg_advisory_unlock(74651283)");
     } catch (error) {
       logger.error({ err: error instanceof Error ? { name: error.name } : undefined }, "Discovery worker unavailable");
       await delay(5000);
-    } finally { lease.release(); }
+    } finally {
+      if (ownsLease) await lease.query("SELECT pg_advisory_unlock(74651283)");
+      lease.release();
+    }
   }
 }
 

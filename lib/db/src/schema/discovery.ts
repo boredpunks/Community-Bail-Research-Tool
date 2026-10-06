@@ -1,5 +1,6 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 
 export interface DiscoveryCriteriaData {
   courtOffice: "CP-05-02-Crim";
@@ -51,6 +52,7 @@ export const discoveryJobsTable = pgTable("discovery_jobs", {
   resultCounts: jsonb("result_counts").$type<{
     discovered: number; processed: number; matching: number; failed: number; unprocessed: number;
   }>(),
+  assessmentId: uuid("assessment_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("discovery_owner_created").on(t.ownerId, t.createdAt)]);
@@ -82,13 +84,21 @@ export const discoveryRequestsTable = pgTable("discovery_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
   jobId: uuid("job_id").notNull().references(() => discoveryJobsTable.id),
   ownerId: text("owner_id").notNull(),
+  sourceId: text("source_id").notNull().default("UJS"),
+  resourceKey: text("resource_key"),
+  itemId: uuid("item_id"),
   path: text("path").notNull(),
   method: text("method").notNull(),
   statusCode: integer("status_code"),
   outcome: text("outcome").notNull().default("IN_FLIGHT"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
-}, (t) => [index("discovery_requests_job").on(t.jobId, t.startedAt)]);
+  durationMs: integer("duration_ms"),
+}, (t) => [
+  index("discovery_requests_job").on(t.jobId, t.startedAt),
+  index("discovery_requests_source_time").on(t.sourceId, t.startedAt),
+  uniqueIndex("discovery_one_in_flight").on(t.sourceId).where(sql`${t.outcome} = 'IN_FLIGHT'`),
+]);
 
 export const discoverySourceTable = pgTable("discovery_source_control", {
   id: text("id").primaryKey(),
@@ -99,6 +109,31 @@ export const discoverySourceTable = pgTable("discovery_source_control", {
   accessVerifiedAt: timestamp("access_verified_at", { withTimezone: true }),
   verifiedMethod: text("verified_method"),
   collectionApprovedAt: timestamp("collection_approved_at", { withTimezone: true }),
+  activeRequestId: uuid("active_request_id"),
+  adaptiveSpacingMs: integer("adaptive_spacing_ms").notNull().default(60000),
+  slowResponseStreak: integer("slow_response_streak").notNull().default(0),
+  throttleCount: integer("throttle_count").notNull().default(0),
+  lastLatencyMs: integer("last_latency_ms"),
+  latencyWarning: text("latency_warning"),
+});
+
+// Prepared protocols are not authorization. Only an operator can approve and
+// execute an expiring, single-use permit; there is no public bypass endpoint.
+export const discoveryAssessmentsTable = pgTable("discovery_assessments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stage: text("stage").notNull(),
+  state: text("state").notNull().default("PREPARED"),
+  criteria: jsonb("criteria").$type<DiscoveryCriteriaData>().notNull(),
+  expectedMethod: text("expected_method").notNull(),
+  jobId: uuid("job_id").references(() => discoveryJobsTable.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  report: jsonb("report").$type<{
+    requests: number; validDocuments: number; failures: number; reason: string;
+  }>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertDiscoveryJobSchema = createInsertSchema(discoveryJobsTable).omit({ id: true, createdAt: true, updatedAt: true });

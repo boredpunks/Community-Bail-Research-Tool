@@ -62,6 +62,18 @@ export const GetDiscoveryPolicyResponse = zod.object({
   "accessVerifiedAt": zod.coerce.date().nullable(),
   "verifiedMethod": zod.string().nullable(),
   "collectionApprovedAt": zod.coerce.date().nullable(),
+  "hourlyRequestCap": zod.number().int(),
+  "dailyRequestCap": zod.number().int(),
+  "hourlyRequestsUsed": zod.number().int(),
+  "dailyRequestsUsed": zod.number().int(),
+  "currentSpacingMs": zod.number().int(),
+  "nextEligibleAt": zod.coerce.date().nullable(),
+  "requestInFlight": zod.boolean(),
+  "lastLatencyMs": zod.number().int().nullable(),
+  "latencyWarning": zod.string().nullable(),
+  "throttleCount": zod.number().int(),
+  "pilotState": zod.string(),
+  "calendarRequestAllowance": zod.number().int(),
   "coverageNote": zod.string()
 })
 
@@ -111,7 +123,8 @@ export const ListDiscoveryJobsResponseItem = zod.object({
   "updatedAt": zod.coerce.date(),
   "resultsExpireAt": zod.coerce.date().nullable(),
   "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int()
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
 })
 export const ListDiscoveryJobsResponse = zod.array(ListDiscoveryJobsResponseItem)
 
@@ -187,8 +200,56 @@ export const CreateDiscoveryJobResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "resultsExpireAt": zod.coerce.date().nullable(),
   "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int()
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
 })
+
+
+/**
+ * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
+ */
+export const listDiscoveryAssessmentsResponseCriteriaRecordCapMax = 200;
+
+export const listDiscoveryAssessmentsResponseCriteriaRequestCapMin = 8;
+export const listDiscoveryAssessmentsResponseCriteriaRequestCapMax = 500;
+
+export const listDiscoveryAssessmentsResponseCriteriaMatchTargetMax = 200;
+
+export const listDiscoveryAssessmentsResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const ListDiscoveryAssessmentsResponseItem = zod.object({
+  "id": zod.string().uuid(),
+  "stage": zod.enum(['SINGLE', 'SMALL', 'MODEST']),
+  "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED']),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "eventType": zod.enum(['Bail Hearing']),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(listDiscoveryAssessmentsResponseCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(listDiscoveryAssessmentsResponseCriteriaRequestCapMin).max(listDiscoveryAssessmentsResponseCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(listDiscoveryAssessmentsResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(listDiscoveryAssessmentsResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
+  "excludeShownPosted": zod.boolean(),
+  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
+}).optional()
+}),
+  "expectedMethod": zod.string(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "report": zod.union([zod.object({
+  "requests": zod.number().int(),
+  "validDocuments": zod.number().int(),
+  "failures": zod.number().int(),
+  "reason": zod.string()
+}),zod.null()])
+})
+export const ListDiscoveryAssessmentsResponse = zod.array(ListDiscoveryAssessmentsResponseItem)
 
 
 export const GetDiscoveryJobParams = zod.object({
@@ -243,7 +304,8 @@ export const GetDiscoveryJobResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "resultsExpireAt": zod.coerce.date().nullable(),
   "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int()
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
 }),
   "items": zod.array(zod.object({
   "id": zod.string().uuid(),
@@ -340,7 +402,8 @@ export const ControlDiscoveryJobResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "resultsExpireAt": zod.coerce.date().nullable(),
   "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int()
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
 })
 
 

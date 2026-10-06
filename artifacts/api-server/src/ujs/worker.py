@@ -11,9 +11,10 @@ import shutil
 import sys
 from urllib.parse import urlsplit, parse_qs
 
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, extract_bail
 from public_http import download
+from source_protocol import allowed, classify_response
 
 
 def emit(kind, **values):
@@ -24,21 +25,6 @@ class SourceFailure(RuntimeError):
     def __init__(self, outcome, attempted=False):
         super().__init__(outcome)
         self.attempted = attempted
-
-
-def allowed(url, method):
-    parsed = urlsplit(url)
-    if (parsed.scheme != "https" or parsed.hostname != "ujsportal.pacourts.us"
-            or parsed.port not in (None, 443) or parsed.username or parsed.password):
-        return False
-    if parsed.path == "/CaseSearch":
-        return method in ("GET", "POST") and not parsed.query
-    if parsed.path in ("/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"):
-        return method == "GET"
-    if parsed.path == "/Report/CpDocketSheet":
-        docket = parse_qs(parsed.query).get("docketNumber", [""])[0]
-        return method == "GET" and DOCKET.fullmatch(docket) and set(parse_qs(parsed.query)) <= {"docketNumber", "dnh"}
-    return False
 
 
 async def main():
@@ -63,7 +49,7 @@ async def main():
             async with lock:
                 if stopped or not allowed(url, method):
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
-                emit("request", path=urlsplit(url).path, method=method)
+                emit("request", path=urlsplit(url).path, method=method, url=url)
                 permission = json.loads(await asyncio.to_thread(sys.stdin.readline))
                 if not permission.get("allow"):
                     stopped = True
@@ -73,23 +59,13 @@ async def main():
                 try:
                     response = await fetcher()
                     body = await response.body()
-                    outcome = "OK"
-                    if response.status == 429:
-                        outcome = "RATE_LIMIT"
-                    elif response.status in (401, 403):
-                        outcome = "ACCESS_DENIED"
-                    elif 300 <= response.status < 400:
-                        outcome = "REDIRECT"
-                    elif response.status != 200:
-                        outcome = "HTTP_ERROR"
-                    elif len(body) > 4_000_000:
-                        outcome = "SIZE_LIMIT"
-                    elif "text/html" in response.headers.get("content-type", "") and re.search(
-                        rb"verify you are human|cf-chl-|g-recaptcha|hcaptcha", body, re.I
-                    ):
-                        outcome = "CHALLENGE"
+                    outcome = classify_response(response.status, response.headers, body,
+                                                pdf=urlsplit(url).path == "/Report/CpDocketSheet")
                     emit("response", requestId=permission["requestId"], status=response.status,
                          outcome=outcome, retryAfter=response.headers.get("retry-after"))
+                    acknowledgement = json.loads(await asyncio.to_thread(sys.stdin.readline))
+                    if not acknowledgement.get("continue"):
+                        stopped = True
                     if outcome != "OK":
                         stopped = True
                         await response.dispose()
@@ -100,7 +76,9 @@ async def main():
                 except Exception as error:
                     if not stopped:
                         emit("response", requestId=permission["requestId"], status=None,
-                             outcome="NETWORK_ERROR", retryAfter=None)
+                             outcome="TIMEOUT" if isinstance(error, (TimeoutError, BrowserTimeout)) else "NETWORK_ERROR",
+                             retryAfter=None)
+                        await asyncio.to_thread(sys.stdin.readline)
                     stopped = True
                     if isinstance(error, SourceFailure):
                         raise

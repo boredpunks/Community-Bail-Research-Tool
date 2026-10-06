@@ -3,6 +3,9 @@ import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetDiscoveryPolicy,
+  useListDiscoveryAssessments,
+  getListDiscoveryAssessmentsQueryKey,
+  getGetDiscoveryPolicyQueryKey,
   useListDiscoveryJobs,
   useCreateDiscoveryJob,
   useGetDiscoveryJob,
@@ -119,7 +122,8 @@ function ItemRow({ jobId, it, saving, onSave, err }: {
 
 export default function Discovery() {
   const qc = useQueryClient();
-  const policy = useGetDiscoveryPolicy();
+  const policy = useGetDiscoveryPolicy({ query: { queryKey: getGetDiscoveryPolicyQueryKey(), refetchInterval: 30_000 } });
+  const assessments = useListDiscoveryAssessments({ query: { queryKey: getListDiscoveryAssessmentsQueryKey(), refetchInterval: 30_000 } });
   const jobs = useListDiscoveryJobs({ query: {
     queryKey: getListDiscoveryJobsQueryKey(),
     refetchInterval: (q) => q.state.data?.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING') ? POLL_MS : false,
@@ -175,12 +179,14 @@ export default function Discovery() {
   function refreshJob(id: string) {
     qc.invalidateQueries({ queryKey: getGetDiscoveryJobQueryKey(id) });
     qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetDiscoveryPolicyQueryKey() });
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     setFormErr(null);
     if (!pol) return;
+    if (!pol.collectionEnabled) return setFormErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
     const rc = Number(recCap), qc2 = Number(reqCap);
     const mt = Number(target), upper = parseDollarsToCents(collectBound);
     if (!start || !end) return setFormErr('Choose a start and end date.');
@@ -195,9 +201,9 @@ export default function Discovery() {
     create.mutate(
       { data: { courtOffice: 'CP-05-02-Crim', eventType: 'Bail Hearing', startDate: start, endDate: end,
         recordCap: rc, requestCap: qc2, matchTarget: mt,
-        matchFilters: { monetaryUpperBoundCents: collectMonetary ? upper : null, excludeShownPosted: collectPosted } } },
+        matchFilters: { monetaryUpperBoundCents: collectMonetary ? upper : null, excludeShownPosted: collectPosted, inclusiveMaximum: true } } },
       {
-        onSuccess: (j) => { setJobId(j.id); setCtlMsg(null); qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() }); },
+        onSuccess: (j) => { setJobId(j.id); setCtlMsg(null); refreshJob(j.id); },
         onError: (er) => setFormErr(errMsg(er)),
       },
     );
@@ -223,7 +229,8 @@ export default function Discovery() {
     });
   }
 
-  const canResume = job?.status === 'PAUSED' || job?.status === 'CANCELLED' || job?.status === 'FAILED';
+  const canResume = !job?.isAssessment && !job?.resultsExpiredAt && (job?.status === 'PAUSED' || job?.status === 'CANCELLED' || job?.status === 'FAILED');
+  const estimatedRequests = Number.isInteger(tgtNum) && tgtNum > 0 ? tgtNum + (pol?.calendarRequestAllowance ?? 8) : null;
   const localCapReached = !!job && job.processed >= job.criteria.recordCap && job.unprocessed > 0;
   const sourceFailed = !!job && (job.status === 'FAILED' || job.failedRequests > 0);
   const active = job?.status === 'QUEUED' || job?.status === 'RUNNING';
@@ -244,9 +251,19 @@ export default function Discovery() {
             <p>Court: <span className="mono font-semibold">CP-05-02-Crim</span> (Common Pleas). Event: <span className="mono font-semibold">Bail Hearing</span>.</p>
             <p className="hint">Not supported yet: Magisterial District Court (MDJ) searches and the Preliminary Arraignment event are unproven, so they are not offered and nothing is substituted for them. History before {pol.minimumDate} is not covered.</p>
             <p className="hint" data-testid="text-coverage">{pol.coverageNote}</p>
-            <p className="hint">Pacing: at least {pol.spacingMs / 1000} seconds after each response finishes, concurrency {pol.concurrency}, automatic retries {pol.automaticRetries}. Budget maxima: {pol.maxRecordCap} processed dockets, {pol.maxRequestCap} requests. Pacing cannot guarantee access or prevent rate limits.</p>
-            {pol.pausedUntil ? <p className="errbox" role="status">Source cooldown active until {formatInstant(pol.pausedUntil)}. New requests may fail until then.</p> : null}
+            <p className="hint">Current pacing: at least {pol.currentSpacingMs / 1000} seconds after each response finishes, concurrency {pol.concurrency}, automatic retries {pol.automaticRetries}. Protected maxima: {pol.maxRecordCap} processed dockets, {pol.maxRequestCap} requests per job. These safeguards cannot guarantee access or prevent rate limits.</p>
+            <p className="mono text-sm" data-testid="text-rolling-budgets">Rolling hour: {pol.hourlyRequestsUsed}/{pol.hourlyRequestCap} requests. Rolling day: {pol.dailyRequestsUsed}/{pol.dailyRequestCap}. Required assets, failed attempts and uncertain transmissions all count.</p>
+            <p className="hint" data-testid="text-access-proof">Exact-client proof: {pol.accessVerifiedAt ? `${pol.verifiedMethod}, ${formatInstant(pol.accessVerifiedAt)}` : 'Not verified'}. Broader collection approval: {pol.collectionApprovedAt ? formatInstant(pol.collectionApprovedAt) : 'Not approved'}.</p>
+            <p className="hint">Request in flight: {pol.requestInFlight ? 'yes; no next request can start' : 'no'}. Last response duration: {pol.lastLatencyMs === null ? 'not measured' : `${(pol.lastLatencyMs / 1000).toFixed(1)} seconds`}. Throttles observed: {pol.throttleCount}.</p>
+            {pol.nextEligibleAt ? <p className="hint" data-testid="text-next-eligible">Earliest timing/quota eligibility: {formatInstant(pol.nextEligibleAt)}. This is not authorization and never resumes a stopped job automatically.</p> : null}
+            {pol.latencyWarning ? <p className="errbox" role="status">{pol.latencyWarning}</p> : null}
+            {pol.pausedUntil && Date.parse(pol.pausedUntil) > Date.now() ? <p className="errbox" role="status">Source cooldown until {formatInstant(pol.pausedUntil)}. No new requests permitted before then.</p> : null}
             {!pol.collectionEnabled ? <p className="errbox" role="status">Collection is paused source-wide: {pol.blockedReason}. No new court requests will start. Access denial requires operator assessment, not an automatic retry.</p> : null}
+            <details className="border border-border rounded p-3" data-testid="details-pilot-status">
+              <summary className="mono cursor-pointer font-semibold">Staged verification: preparation is not approval</summary>
+              <p className="hint mt-2">Separate approvals are required for one identity-checked PDF, then 3, then 10 at a separate time. Each stage includes the exact browser calendar client and public HTTP PDF client, calendar overhead and fixed dates/budgets. The 10-document stage exceeds current protected limits and needs separate budget approval. Passing a pilot does not enable collection or start the 100-match sample.</p>
+              {assessments.isError ? <p className="errbox mt-2">Pilot status could not be loaded.</p> : assessments.isLoading ? <p className="hint">Loading pilot status…</p> : !assessments.data?.length ? <p className="hint mt-2">No scoped pilot prepared or approved. No court request authorized by this implementation.</p> : <ul className="mt-2 space-y-2">{assessments.data.map((pilot) => <li key={pilot.id} className="hint"><strong>{pilot.stage}: {pilot.state}</strong> — {pilot.criteria.startDate} to {pilot.criteria.endDate}; {pilot.criteria.recordCap} documents, {pilot.criteria.requestCap} total requests. {pilot.report?.reason ?? 'No completed access report.'}</li>)}</ul>}
+            </details>
           </div>
         ) : null}
       </section>
@@ -263,7 +280,8 @@ export default function Discovery() {
           <div><label className="lbl" htmlFor="d-target">Number of matching dockets to return (max {pol?.maxRecordCap ?? '...'})</label>
             <input id="d-target" inputMode="numeric" className="field" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-match-target" /></div>
         </div>
-        <p className="hint mt-3">Matches are dockets with a recorded monetary total bail strictly below the amount. The window can cover at most 7 days. Raising the number also raises the processing budget unless you set it by hand under advanced details. Each docket counts once.</p>
+        <p className="hint mt-3">New matches include recorded monetary TOTAL_BAIL at or below the maximum, including exact equality. Legacy jobs retain their original strict comparison. The window covers at most 7 days and each docket counts once.</p>
+        {pol && estimatedRequests ? <p className="hint mt-3" data-testid="text-request-cost">Planning estimate: {pol.calendarRequestAllowance} calendar/asset requests + at least {tgtNum} PDF requests = {estimatedRequests} requests if every PDF matches. Allow at least {Math.ceil((estimatedRequests - 1) * pol.currentSpacingMs / 60_000)} minutes of pacing, plus response time and quota/cooldown waits. Nonmatches may require more PDFs; this is not a guaranteed completion estimate. {estimatedRequests > Number(reqCap) ? 'Your fixed request budget is below this planning estimate; expect a possible target shortfall.' : ''} A 100-match sample may require more than 100 PDFs and is not authorized here.</p> : null}
         <details className="mt-4 border border-border rounded p-4" data-testid="details-advanced">
           <summary className="cursor-pointer mono font-bold text-primary">Advanced details: budgets, court, event, filters</summary>
           <div className="grid gap-4 sm:grid-cols-2 my-4">
@@ -276,7 +294,7 @@ export default function Discovery() {
             <div><label className="lbl" htmlFor="d-qc">Request budget (max {pol?.maxRequestCap ?? '...'})</label>
               <input id="d-qc" inputMode="numeric" className="field" value={reqCap} onChange={(e) => setReqCap(e.target.value)} data-testid="input-request-cap" /></div>
           </div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require a monetary total bail entry strictly below the maximum amount</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require monetary total bail at or below the maximum amount</label>
           <label className="flex items-center gap-2 mt-2"><input type="checkbox" checked={collectPosted} onChange={(e) => setCollectPosted(e.target.checked)} data-testid="checkbox-collection-posted" /> Exclude dockets explicitly showing a posted entry</label>
           <p className="hint mt-3">Filters are evaluated locally after extraction and stay fixed for this job. Any recorded monetary TOTAL_BAIL entry may qualify; this is not a current operative-order finding. Unknown or nonmonetary amounts never count as zero. An unknown posted state is not excluded and does not prove custody.</p>
           <p className="hint mt-2">The matching target is separate from the processing and request caps. The worker goes one docket at a time and stops when the target is reached, calendar results run out, or a cap is reached. Source failures pause collection. The target is not guaranteed and dates or budgets never expand automatically. Only Common Pleas Bail Hearing is supported; MDJ and Preliminary Arraignment searches are not offered.</p>
@@ -322,9 +340,10 @@ export default function Discovery() {
                 <p>{job.criteria.courtOffice}, {job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
                 {job.message ? <p className="mt-1" data-testid="text-job-message">{job.message}</p> : null}
                 <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
-                  ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `strictly under ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
+                  ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
                   : 'Legacy job: processing budget only; no matching target was selected. Its original criteria have not been changed.'}</p>
                 {job.criteria.matchTarget && !job.targetReached && job.status === 'COMPLETED' ? <p className="hint text-warning" data-testid="text-target-shortfall">Target not reached: {job.matching} of {job.criteria.matchTarget}. Collection stopped within the original scope and safety limits.</p> : null}
+                {job.resultsExpiredAt ? <p className="errbox mt-2" role="status">Unsaved results expired after 24 hours. Historical counts and request use remain; saved candidates remain available. This checkpoint cannot resume or replay collection.</p> : job.resultsExpireAt ? <p className="hint mt-2">Unsaved stopped-search results expire {formatInstant(job.resultsExpireAt)}. Save source-backed observations before then; saved candidates are retained.</p> : null}
                 {active ? <p className="hint mt-1">Working. This tab refreshes every {POLL_MS / 1000} seconds until the job stops; refreshing pauses if the tab is in the background.</p> : null}
                 <button type="button" className="btn mt-2" disabled={report.isFetching} onClick={() => report.refetch()} data-testid="button-refresh">{report.isFetching ? 'Refreshing...' : 'Refresh now'}</button>
                 <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -347,7 +366,7 @@ export default function Discovery() {
                 </ul>
                 <div className="flex flex-wrap gap-2 mt-4">
                   {active ? <button type="button" className="btn" disabled={control.isPending} onClick={() => act('PAUSE')} data-testid="button-pause">Pause</button> : null}
-                  {canResume ? <button type="button" className="btn btn-primary" disabled={control.isPending} onClick={() => act('RESUME')} data-testid="button-resume">Resume</button> : null}
+                  {canResume ? <button type="button" className="btn btn-primary" disabled={control.isPending || !pol?.collectionEnabled} onClick={() => act('RESUME')} data-testid="button-resume">Resume</button> : null}
                   {active || job.status === 'PAUSED' ? <button type="button" className="btn btn-danger" disabled={control.isPending} onClick={() => act('CANCEL')} data-testid="button-cancel">Cancel</button> : null}
                 </div>
                 <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p>

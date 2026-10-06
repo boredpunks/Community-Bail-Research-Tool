@@ -97,6 +97,18 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/assessments:
+    get:
+      operationId: listDiscoveryAssessments
+      tags: [bail-records]
+      summary: Read operator-prepared pilot scopes and evidence status; never approve or run them
+      responses:
+        "200":
+          description: Pilot protocols, explicitly distinct from authorization to collect
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DiscoveryAssessment" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /discovery/jobs/{jobId}:
     get:
       operationId: getDiscoveryJob
@@ -162,6 +174,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /discovery/jobs/{jobId}/items/{itemId}/save:
     post:
       operationId: saveDiscoveryObservation
@@ -373,8 +386,42 @@ components:
         accessVerifiedAt: { type: ["string", "null"], format: date-time }
         verifiedMethod: { type: ["string", "null"] }
         collectionApprovedAt: { type: ["string", "null"], format: date-time }
+        hourlyRequestCap: { type: integer }
+        dailyRequestCap: { type: integer }
+        hourlyRequestsUsed: { type: integer }
+        dailyRequestsUsed: { type: integer }
+        currentSpacingMs: { type: integer }
+        nextEligibleAt: { type: ["string", "null"], format: date-time }
+        requestInFlight: { type: boolean }
+        lastLatencyMs: { type: ["integer", "null"] }
+        latencyWarning: { type: ["string", "null"] }
+        throttleCount: { type: integer }
+        pilotState: { type: string }
+        calendarRequestAllowance: { type: integer }
         coverageNote: { type: string }
-      required: [adapter, minimumDate, spacingMs, concurrency, automaticRetries, defaultRecordCap, maxRecordCap, defaultRequestCap, maxRequestCap, pausedUntil, blockedReason, collectionEnabled, accessVerifiedAt, verifiedMethod, collectionApprovedAt, coverageNote]
+      required: [adapter, minimumDate, spacingMs, concurrency, automaticRetries, defaultRecordCap, maxRecordCap, defaultRequestCap, maxRequestCap, pausedUntil, blockedReason, collectionEnabled, accessVerifiedAt, verifiedMethod, collectionApprovedAt, hourlyRequestCap, dailyRequestCap, hourlyRequestsUsed, dailyRequestsUsed, currentSpacingMs, nextEligibleAt, requestInFlight, lastLatencyMs, latencyWarning, throttleCount, pilotState, calendarRequestAllowance, coverageNote]
+    DiscoveryAssessment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        stage: { type: string, enum: [SINGLE, SMALL, MODEST] }
+        state: { type: string, enum: [PREPARED, APPROVED, ATTEMPTED, FAILED, VERIFIED] }
+        criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
+        expectedMethod: { type: string }
+        approvedAt: { type: ["string", "null"], format: date-time }
+        expiresAt: { type: ["string", "null"], format: date-time }
+        startedAt: { type: ["string", "null"], format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        report: { oneOf: [{ $ref: "#/components/schemas/DiscoveryAssessmentResult" }, { type: "null" }] }
+      required: [id, stage, state, criteria, expectedMethod, approvedAt, expiresAt, startedAt, completedAt, report]
+    DiscoveryAssessmentResult:
+      type: object
+      properties:
+        requests: { type: integer }
+        validDocuments: { type: integer }
+        failures: { type: integer }
+        reason: { type: string }
+      required: [requests, validDocuments, failures, reason]
     DiscoveryCandidateSelection:
       type: object
       properties:
@@ -426,7 +473,8 @@ components:
         resultsExpireAt: { type: ["string", "null"], format: date-time }
         resultsExpiredAt: { type: ["string", "null"], format: date-time }
         candidateDockets: { type: integer }
-      required: [id, criteria, status, requestsUsed, completedRequests, failedRequests, discovered, processed, matching, targetReached, failed, unprocessed, calendarComplete, paginationComplete, resultCapReached, message, createdAt, updatedAt, resultsExpireAt, resultsExpiredAt, candidateDockets]
+        isAssessment: { type: boolean }
+      required: [id, criteria, status, requestsUsed, completedRequests, failedRequests, discovered, processed, matching, targetReached, failed, unprocessed, calendarComplete, paginationComplete, resultCapReached, message, createdAt, updatedAt, resultsExpireAt, resultsExpiredAt, candidateDockets, isAssessment]
     PostedEntryState:
       type: string
       enum: [SHOWN_POSTED, NOT_SHOWN, UNKNOWN]

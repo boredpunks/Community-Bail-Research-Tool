@@ -33,4 +33,5 @@ export interface DiscoveryJob {
   /** @nullable */
   resultsExpiredAt: Date | null;
   candidateDockets: number;
+  isAssessment: boolean;
 }

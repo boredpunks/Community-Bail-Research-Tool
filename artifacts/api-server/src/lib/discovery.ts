@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type DiscoveryJobRow, type DiscoveryCriteriaData, type DiscoveryProvenanceData } from "@workspace/db";
-import { resultsDeadline } from "./discovery-safety";
+import { qualifyingMonetaryTotal, resultsDeadline } from "./discovery-safety";
 
 function policyInteger(key: string, initial: number, min: number, max: number): number {
   const raw = process.env[key];
@@ -10,10 +10,12 @@ function policyInteger(key: string, initial: number, min: number, max: number): 
   return value;
 }
 export const discoveryPolicy = {
-  spacingMs: policyInteger("UJS_SPACING_MS", 30_000, 30_000, 3_600_000),
+  spacingMs: Math.max(60_000, policyInteger("UJS_SPACING_MS", 60_000, 30_000, 3_600_000)),
   maxRecordCap: policyInteger("UJS_MAX_RECORDS", 5, 1, 200),
   maxRequestCap: policyInteger("UJS_MAX_REQUESTS", 12, 8, 500),
   cooldownMs: policyInteger("UJS_RATE_LIMIT_COOLDOWN_MS", 900_000, 900_000, 86_400_000),
+  hourlyRequestCap: policyInteger("UJS_MAX_HOURLY_REQUESTS", 30, 1, 500),
+  dailyRequestCap: policyInteger("UJS_MAX_DAILY_REQUESTS", 120, 1, 2000),
 };
 
 export function easternToday() {
@@ -26,10 +28,8 @@ export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, fil
   if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(provenance.extractionOutcome)) return false;
   if (filters?.excludeShownPosted && provenance.postedEntryState === "SHOWN_POSTED") return false;
   const upper = filters?.monetaryUpperBoundCents;
-  return upper == null || provenance.entries.some((entry) => entry.bailCategory === "MONETARY"
-    && entry.financialBasis === "TOTAL_BAIL" && entry.amountCents !== null
-    && Number.isSafeInteger(entry.amountCents) && entry.amountCents >= 0
-    && (filters?.inclusiveMaximum ? entry.amountCents <= upper : entry.amountCents < upper));
+  return upper == null || provenance.entries.some((entry) => qualifyingMonetaryTotal(
+    entry.bailCategory, entry.financialBasis, entry.amountCents, upper, filters?.inclusiveMaximum === true));
 }
 
 export async function jobSummary(job: DiscoveryJobRow) {
@@ -54,6 +54,7 @@ export async function jobSummary(job: DiscoveryJobRow) {
     resultsExpireAt: resultsDeadline(job)?.toISOString() ?? null,
     resultsExpiredAt: job.resultsExpiredAt?.toISOString() ?? null,
     candidateDockets: items.filter((item) => item.movedToCandidatesAt).length,
+    isAssessment: !!job.assessmentId,
   };
 }
 

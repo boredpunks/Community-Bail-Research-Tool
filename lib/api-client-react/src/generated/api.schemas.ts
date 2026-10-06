@@ -91,7 +91,66 @@ export interface DiscoveryPolicy {
   verifiedMethod: string | null;
   /** @nullable */
   collectionApprovedAt: string | null;
+  hourlyRequestCap: number;
+  dailyRequestCap: number;
+  hourlyRequestsUsed: number;
+  dailyRequestsUsed: number;
+  currentSpacingMs: number;
+  /** @nullable */
+  nextEligibleAt: string | null;
+  requestInFlight: boolean;
+  /** @nullable */
+  lastLatencyMs: number | null;
+  /** @nullable */
+  latencyWarning: string | null;
+  throttleCount: number;
+  pilotState: string;
+  calendarRequestAllowance: number;
   coverageNote: string;
+}
+
+export type DiscoveryAssessmentStage = typeof DiscoveryAssessmentStage[keyof typeof DiscoveryAssessmentStage];
+
+
+export const DiscoveryAssessmentStage = {
+  SINGLE: 'SINGLE',
+  SMALL: 'SMALL',
+  MODEST: 'MODEST',
+} as const;
+
+export type DiscoveryAssessmentState = typeof DiscoveryAssessmentState[keyof typeof DiscoveryAssessmentState];
+
+
+export const DiscoveryAssessmentState = {
+  PREPARED: 'PREPARED',
+  APPROVED: 'APPROVED',
+  ATTEMPTED: 'ATTEMPTED',
+  FAILED: 'FAILED',
+  VERIFIED: 'VERIFIED',
+} as const;
+
+export interface DiscoveryAssessmentResult {
+  requests: number;
+  validDocuments: number;
+  failures: number;
+  reason: string;
+}
+
+export interface DiscoveryAssessment {
+  id: string;
+  stage: DiscoveryAssessmentStage;
+  state: DiscoveryAssessmentState;
+  criteria: DiscoveryCriteria;
+  expectedMethod: string;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  expiresAt: string | null;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  report: DiscoveryAssessmentResult | null;
 }
 
 export interface DiscoveryCandidateSelection {
@@ -166,6 +225,7 @@ export interface DiscoveryJob {
   /** @nullable */
   resultsExpiredAt: string | null;
   candidateDockets: number;
+  isAssessment: boolean;
 }
 
 export type PostedEntryState = typeof PostedEntryState[keyof typeof PostedEntryState];
