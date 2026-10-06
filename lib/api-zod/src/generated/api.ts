@@ -38,6 +38,7 @@ export const ListBailRecordsQueryParams = zod.object({
 })
 
 export const listBailRecordsResponseRecordsItemAmountCentsMin = 0;
+export const listBailRecordsResponseRecordsItemAmountCentsMax = 2147483647;
 
 export const listBailRecordsResponseTotalMin = 0;
 
@@ -52,13 +53,15 @@ export const ListBailRecordsResponse = zod.object({
   "chargeGroup": zod.string(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
-  "amountCents": zod.number().int().min(listBailRecordsResponseRecordsItemAmountCentsMin).nullable(),
+  "amountCents": zod.number().int().min(listBailRecordsResponseRecordsItemAmountCentsMin).max(listBailRecordsResponseRecordsItemAmountCentsMax).nullable(),
   "orderDate": zod.coerce.date().nullable(),
   "sourceTitle": zod.string(),
   "sourceUrl": zod.string().url(),
+  "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -68,7 +71,7 @@ export const ListBailRecordsResponse = zod.object({
 
 
 /**
- * Creates a pending-review observation. A source URL and source description are required. Never accepts synthetic dockets.
+ * Creates a pending-review observation. Requires a source URL, evidence, source-consultation timestamp and a real-source attestation. Synthetic docket records are prohibited.
  * @summary Enter a source-backed docket observation
  */
 export const createBailRecordBodyDocketNumberMax = 80;
@@ -78,6 +81,7 @@ export const createBailRecordBodyCountyMax = 80;
 export const createBailRecordBodyChargeGroupMax = 120;
 
 export const createBailRecordBodyAmountCentsMin = 0;
+export const createBailRecordBodyAmountCentsMax = 2147483647;
 
 export const createBailRecordBodySourceTitleMax = 160;
 
@@ -94,15 +98,18 @@ export const CreateBailRecordBody = zod.object({
   "chargeGroup": zod.string().min(1).max(createBailRecordBodyChargeGroupMax),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
-  "amountCents": zod.number().int().min(createBailRecordBodyAmountCentsMin).nullable(),
+  "amountCents": zod.number().int().min(createBailRecordBodyAmountCentsMin).max(createBailRecordBodyAmountCentsMax).nullable(),
   "orderDate": zod.coerce.date().nullable(),
   "sourceTitle": zod.string().min(1).max(createBailRecordBodySourceTitleMax),
   "sourceUrl": zod.string().url().max(createBailRecordBodySourceUrlMax),
+  "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
-  "evidenceNote": zod.string().min(1).max(createBailRecordBodyEvidenceNoteMax)
+  "evidenceNote": zod.string().min(1).max(createBailRecordBodyEvidenceNoteMax),
+  "realRecordAttestation": zod.boolean()
 })
 
 export const createBailRecordResponseAmountCentsMin = 0;
+export const createBailRecordResponseAmountCentsMax = 2147483647;
 
 
 
@@ -114,13 +121,15 @@ export const CreateBailRecordResponse = zod.object({
   "chargeGroup": zod.string(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
-  "amountCents": zod.number().int().min(createBailRecordResponseAmountCentsMin).nullable(),
+  "amountCents": zod.number().int().min(createBailRecordResponseAmountCentsMin).max(createBailRecordResponseAmountCentsMax).nullable(),
   "orderDate": zod.coerce.date().nullable(),
   "sourceTitle": zod.string(),
   "sourceUrl": zod.string().url(),
+  "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -128,7 +137,7 @@ export const CreateBailRecordResponse = zod.object({
 
 
 /**
- * Records a field-level human decision without overwriting the submitted source evidence.
+ * Records a human evidence decision and a separate order interpretation without overwriting the submitted source evidence.
  * @summary Review a pending observation
  */
 export const ReviewBailRecordParams = zod.object({
@@ -141,10 +150,12 @@ export const reviewBailRecordBodyCommentMax = 1000;
 
 export const ReviewBailRecordBody = zod.object({
   "decision": zod.enum(['CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "comment": zod.string().max(reviewBailRecordBodyCommentMax).nullish()
 })
 
 export const reviewBailRecordResponseAmountCentsMin = 0;
+export const reviewBailRecordResponseAmountCentsMax = 2147483647;
 
 
 
@@ -156,13 +167,15 @@ export const ReviewBailRecordResponse = zod.object({
   "chargeGroup": zod.string(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
-  "amountCents": zod.number().int().min(reviewBailRecordResponseAmountCentsMin).nullable(),
+  "amountCents": zod.number().int().min(reviewBailRecordResponseAmountCentsMin).max(reviewBailRecordResponseAmountCentsMax).nullable(),
   "orderDate": zod.coerce.date().nullable(),
   "sourceTitle": zod.string(),
   "sourceUrl": zod.string().url(),
+  "sourceRetrievedAt": zod.coerce.date(),
   "sourceObservedAt": zod.coerce.date().nullable(),
   "evidenceNote": zod.string(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
+  "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
   "reviewComment": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -170,7 +183,7 @@ export const ReviewBailRecordResponse = zod.object({
 
 
 /**
- * Uses confirmed monetary-bail observations only. This is a descriptive summary, not a recommendation for an individual case.
+ * Uses confirmed, reviewed-operative observations only, one bail category and one financial basis at a time. This is a descriptive summary, not a recommendation for an individual case.
  * @summary Calculate a descriptive range from reviewed records
  */
 export const getBailRangeQueryCountyMax = 80;
@@ -183,7 +196,8 @@ export const GetBailRangeQueryParams = zod.object({
   "courtLevel": zod.enum(['MDJ', 'COMMON_PLEAS']).optional(),
   "county": zod.coerce.string().max(getBailRangeQueryCountyMax).optional(),
   "chargeGroup": zod.coerce.string().max(getBailRangeQueryChargeGroupMax).optional(),
-  "financialBasis": zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']).optional()
+  "financialBasis": zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']).optional(),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']).optional()
 })
 
 export const getBailRangeResponseReviewedRecordCountMin = 0;
@@ -201,7 +215,8 @@ export const GetBailRangeResponse = zod.object({
   "courtLevel": zod.union([zod.enum(['MDJ', 'COMMON_PLEAS']),zod.null()]),
   "county": zod.string().nullable(),
   "chargeGroup": zod.string().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN'])
 }),
   "reviewedRecordCount": zod.number().int().min(getBailRangeResponseReviewedRecordCountMin),
   "minimumCents": zod.number().int().min(getBailRangeResponseMinimumCentsMin).nullable(),

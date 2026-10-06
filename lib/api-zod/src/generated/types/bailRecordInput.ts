@@ -30,6 +30,7 @@ export interface BailRecordInput {
   financialBasis: FinancialBasis | null;
   /**
      * @minimum 0
+     * @maximum 2147483647
      * @nullable
      */
   amountCents: number | null;
@@ -42,6 +43,7 @@ export interface BailRecordInput {
   sourceTitle: string;
   /** @maxLength 2000 */
   sourceUrl: string;
+  sourceRetrievedAt: Date;
   /** @nullable */
   sourceObservedAt: Date | null;
   /**
@@ -49,4 +51,5 @@ export interface BailRecordInput {
      * @maxLength 4000
      */
   evidenceNote: string;
+  realRecordAttestation: boolean;
 }

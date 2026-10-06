@@ -1,7 +1,7 @@
 kind = "web"
 previewPath = "/"
 title = "Community Bail Research"
-description = "A small-group research workspace for community volunteers to review docket-backed bail observations, inspect evidence and see transparent descriptive ranges from verified records. Initial sample records are synthetic; live source retrieval is not enabled."
+description = "A small-group research workspace for community volunteers to review docket-backed bail observations, inspect evidence and see transparent descriptive ranges from real, verifiable records. No synthetic docket or case records are permitted. Live source retrieval is not enabled."
 version = "1.0.0"
 id = "artifacts/community-bail-research"
 router = "path"

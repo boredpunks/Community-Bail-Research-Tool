@@ -49,6 +49,16 @@ export const ReviewStatus = {
   REJECTED: 'REJECTED',
 } as const;
 
+export type OrderInterpretation = typeof OrderInterpretation[keyof typeof OrderInterpretation];
+
+
+export const OrderInterpretation = {
+  UNREVIEWED: 'UNREVIEWED',
+  REVIEWED_OPERATIVE: 'REVIEWED_OPERATIVE',
+  SUPERSEDED: 'SUPERSEDED',
+  UNRESOLVED: 'UNRESOLVED',
+} as const;
+
 export type BailReviewDecision = typeof BailReviewDecision[keyof typeof BailReviewDecision];
 
 
@@ -67,6 +77,7 @@ export interface BailRecord {
   financialBasis: FinancialBasis | null;
   /**
      * @minimum 0
+     * @maximum 2147483647
      * @nullable
      */
   amountCents: number | null;
@@ -74,10 +85,12 @@ export interface BailRecord {
   orderDate: string | null;
   sourceTitle: string;
   sourceUrl: string;
+  sourceRetrievedAt: string;
   /** @nullable */
   sourceObservedAt: string | null;
   evidenceNote: string;
   reviewStatus: ReviewStatus;
+  orderInterpretation: OrderInterpretation;
   /** @nullable */
   reviewComment: string | null;
   /** @nullable */
@@ -106,6 +119,7 @@ export interface BailRecordInput {
   financialBasis: FinancialBasis | null;
   /**
      * @minimum 0
+     * @maximum 2147483647
      * @nullable
      */
   amountCents: number | null;
@@ -118,6 +132,7 @@ export interface BailRecordInput {
   sourceTitle: string;
   /** @maxLength 2000 */
   sourceUrl: string;
+  sourceRetrievedAt: string;
   /** @nullable */
   sourceObservedAt: string | null;
   /**
@@ -125,6 +140,7 @@ export interface BailRecordInput {
      * @maxLength 4000
      */
   evidenceNote: string;
+  realRecordAttestation: boolean;
 }
 
 export interface BailRecordList {
@@ -133,8 +149,18 @@ export interface BailRecordList {
   total: number;
 }
 
+export type BailReviewInputOrderInterpretation = typeof BailReviewInputOrderInterpretation[keyof typeof BailReviewInputOrderInterpretation];
+
+
+export const BailReviewInputOrderInterpretation = {
+  REVIEWED_OPERATIVE: 'REVIEWED_OPERATIVE',
+  SUPERSEDED: 'SUPERSEDED',
+  UNRESOLVED: 'UNRESOLVED',
+} as const;
+
 export interface BailReviewInput {
   decision: BailReviewDecision;
+  orderInterpretation: BailReviewInputOrderInterpretation;
   /**
      * @maxLength 1000
      * @nullable
@@ -149,6 +175,7 @@ export type BailRangeFilters = {
   /** @nullable */
   chargeGroup: string | null;
   financialBasis: FinancialBasis | null;
+  bailCategory: BailCategory;
 };
 
 export interface BailRange {
@@ -226,5 +253,6 @@ county?: string;
  */
 chargeGroup?: string;
 financialBasis?: FinancialBasis;
+bailCategory?: BailCategory;
 };
 

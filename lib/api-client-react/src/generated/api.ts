@@ -233,7 +233,7 @@ export const getCreateBailRecordUrl = () => {
 }
 
 /**
- * Creates a pending-review observation. A source URL and source description are required. Never accepts synthetic dockets.
+ * Creates a pending-review observation. Requires a source URL, evidence, source-consultation timestamp and a real-source attestation. Synthetic docket records are prohibited.
  * @summary Enter a source-backed docket observation
  */
 export const createBailRecord = async (bailRecordInput: BailRecordInput, options?: Parameters<typeof customFetch>[1]): Promise<BailRecord> => {
@@ -322,7 +322,7 @@ export const getReviewBailRecordUrl = (recordId: string,) => {
 }
 
 /**
- * Records a field-level human decision without overwriting the submitted source evidence.
+ * Records a human evidence decision and a separate order interpretation without overwriting the submitted source evidence.
  * @summary Review a pending observation
  */
 export const reviewBailRecord = async (recordId: string,
@@ -419,7 +419,7 @@ export const getGetBailRangeUrl = (params?: GetBailRangeParams,) => {
 }
 
 /**
- * Uses confirmed monetary-bail observations only. This is a descriptive summary, not a recommendation for an individual case.
+ * Uses confirmed, reviewed-operative observations only, one bail category and one financial basis at a time. This is a descriptive summary, not a recommendation for an individual case.
  * @summary Calculate a descriptive range from reviewed records
  */
 export const getBailRange = async (params?: GetBailRangeParams, options?: Parameters<typeof customFetch>[1]): Promise<BailRange> => {

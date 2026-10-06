@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BailReviewDecision } from './bailReviewDecision';
+import type { BailReviewInputOrderInterpretation } from './bailReviewInputOrderInterpretation';
 
 export interface BailReviewInput {
   decision: BailReviewDecision;
+  orderInterpretation: BailReviewInputOrderInterpretation;
   /**
      * @maxLength 1000
      * @nullable

@@ -8,6 +8,7 @@
 import type { BailCategory } from './bailCategory';
 import type { CourtLevel } from './courtLevel';
 import type { FinancialBasis } from './financialBasis';
+import type { OrderInterpretation } from './orderInterpretation';
 import type { ReviewStatus } from './reviewStatus';
 
 export interface BailRecord {
@@ -20,6 +21,7 @@ export interface BailRecord {
   financialBasis: FinancialBasis | null;
   /**
      * @minimum 0
+     * @maximum 2147483647
      * @nullable
      */
   amountCents: number | null;
@@ -27,10 +29,12 @@ export interface BailRecord {
   orderDate: Date | null;
   sourceTitle: string;
   sourceUrl: string;
+  sourceRetrievedAt: Date;
   /** @nullable */
   sourceObservedAt: Date | null;
   evidenceNote: string;
   reviewStatus: ReviewStatus;
+  orderInterpretation: OrderInterpretation;
   /** @nullable */
   reviewComment: string | null;
   /** @nullable */

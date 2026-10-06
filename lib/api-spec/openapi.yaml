@@ -61,7 +61,7 @@ paths:
       operationId: createBailRecord
       tags: [bail-records]
       summary: Enter a source-backed docket observation
-      description: Creates a pending-review observation. A source URL and source description are required. Never accepts synthetic dockets.
+      description: Creates a pending-review observation. Requires a source URL, evidence, source-consultation timestamp and a real-source attestation. Synthetic docket records are prohibited.
       requestBody:
         required: true
         content:
@@ -84,7 +84,7 @@ paths:
       operationId: reviewBailRecord
       tags: [bail-records]
       summary: Review a pending observation
-      description: Records a field-level human decision without overwriting the submitted source evidence.
+      description: Records a human evidence decision and a separate order interpretation without overwriting the submitted source evidence.
       parameters:
         - in: path
           name: recordId
@@ -116,7 +116,7 @@ paths:
       operationId: getBailRange
       tags: [bail-records]
       summary: Calculate a descriptive range from reviewed records
-      description: Uses confirmed monetary-bail observations only. This is a descriptive summary, not a recommendation for an individual case.
+      description: Uses confirmed, reviewed-operative observations only, one bail category and one financial basis at a time. This is a descriptive summary, not a recommendation for an individual case.
       parameters:
         - in: query
           name: courtLevel
@@ -130,6 +130,9 @@ paths:
         - in: query
           name: financialBasis
           schema: { $ref: "#/components/schemas/FinancialBasis" }
+        - in: query
+          name: bailCategory
+          schema: { $ref: "#/components/schemas/BailCategory" }
       responses:
         "200":
           description: Descriptive range and included record count
@@ -160,6 +163,9 @@ components:
     ReviewStatus:
       type: string
       enum: [PENDING, CONFIRMED, REJECTED]
+    OrderInterpretation:
+      type: string
+      enum: [UNREVIEWED, REVIEWED_OPERATIVE, SUPERSEDED, UNRESOLVED]
     BailReviewDecision:
       type: string
       enum: [CONFIRMED, REJECTED]
@@ -173,17 +179,19 @@ components:
         chargeGroup: { type: string }
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
-        amountCents: { type: ["integer", "null"], minimum: 0 }
+        amountCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647 }
         orderDate: { type: ["string", "null"], format: date }
         sourceTitle: { type: string }
         sourceUrl: { type: string, format: uri }
+        sourceRetrievedAt: { type: string, format: date-time }
         sourceObservedAt: { type: ["string", "null"], format: date-time }
         evidenceNote: { type: string }
         reviewStatus: { $ref: "#/components/schemas/ReviewStatus" }
+        orderInterpretation: { $ref: "#/components/schemas/OrderInterpretation" }
         reviewComment: { type: ["string", "null"] }
         reviewedAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
-      required: [id, docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceObservedAt, evidenceNote, reviewStatus, reviewComment, reviewedAt, createdAt]
+      required: [id, docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceRetrievedAt, sourceObservedAt, evidenceNote, reviewStatus, orderInterpretation, reviewComment, reviewedAt, createdAt]
     BailRecordInput:
       type: object
       properties:
@@ -193,13 +201,15 @@ components:
         chargeGroup: { type: string, minLength: 1, maxLength: 120 }
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
-        amountCents: { type: ["integer", "null"], minimum: 0 }
+        amountCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647 }
         orderDate: { type: ["string", "null"], format: date }
         sourceTitle: { type: string, minLength: 1, maxLength: 160 }
         sourceUrl: { type: string, format: uri, maxLength: 2000 }
+        sourceRetrievedAt: { type: string, format: date-time }
         sourceObservedAt: { type: ["string", "null"], format: date-time }
         evidenceNote: { type: string, minLength: 1, maxLength: 4000 }
-      required: [docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceObservedAt, evidenceNote]
+        realRecordAttestation: { type: boolean }
+      required: [docketNumber, county, courtLevel, chargeGroup, bailCategory, financialBasis, amountCents, orderDate, sourceTitle, sourceUrl, sourceRetrievedAt, sourceObservedAt, evidenceNote, realRecordAttestation]
     BailRecordList:
       type: object
       properties:
@@ -212,8 +222,11 @@ components:
       type: object
       properties:
         decision: { $ref: "#/components/schemas/BailReviewDecision" }
+        orderInterpretation:
+          type: string
+          enum: [REVIEWED_OPERATIVE, SUPERSEDED, UNRESOLVED]
         comment: { type: ["string", "null"], maxLength: 1000 }
-      required: [decision]
+      required: [decision, orderInterpretation]
     BailRange:
       type: object
       properties:
@@ -224,7 +237,8 @@ components:
             county: { type: ["string", "null"] }
             chargeGroup: { type: ["string", "null"] }
             financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
-          required: [courtLevel, county, chargeGroup, financialBasis]
+            bailCategory: { $ref: "#/components/schemas/BailCategory" }
+          required: [courtLevel, county, chargeGroup, financialBasis, bailCategory]
         reviewedRecordCount: { type: integer, minimum: 0 }
         minimumCents: { type: ["integer", "null"], minimum: 0 }
         medianCents: { type: ["integer", "null"], minimum: 0 }

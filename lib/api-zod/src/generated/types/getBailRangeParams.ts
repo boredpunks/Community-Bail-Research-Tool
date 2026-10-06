@@ -5,6 +5,7 @@
  * Source-backed bail observations for a small volunteer research team. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { BailCategory } from './bailCategory';
 import type { CourtLevel } from './courtLevel';
 import type { FinancialBasis } from './financialBasis';
 
@@ -19,4 +20,5 @@ county?: string;
  */
 chargeGroup?: string;
 financialBasis?: FinancialBasis;
+bailCategory?: BailCategory;
 };
