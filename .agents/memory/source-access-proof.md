@@ -126,8 +126,9 @@ The user approved revised bounded read-only court-control inspections and said
 three-GET, redacted-public-metadata scope, with fresh single-use
 permits and all existing pacing, quotas and mandatory stops. Do not ask again for
 identical scoped observation merely because its permit is new. This standing
-diagnostic approval does not authorize Search, PDFs, date entry, court/county/
-case/office activation, alternate methods or wider collection.
+diagnostic approval does not itself authorize Search, PDFs, date entry, court/county/
+case/office activation, alternate methods or wider collection. Later explicit
+action-scope extensions are recorded below.
 
 The user explicitly extended continued inspections to allow local **Advanced
 Search activation** after filing mode, with no other selections, Search, dates
@@ -139,24 +140,42 @@ or PDFs.
 caps, pacing and stops, resolve the unique exact source-labeled native checkbox
 in the search form after filing mode is established, and check it idempotently.
 Never use a generic word match, retained ordinal or guessed selector. Keep all
-dependent transmissions blocked. This does not authorize court/county/case/
-office activation or submitted discovery.
+dependent transmissions blocked. This Advanced Search approval alone does not
+authorize court/county/case/office activation or submitted discovery.
+
+The user extended continued inspections to allow local **Allegheny County
+selection** after filing mode and Advanced Search.
+
+**Why:** The user selected “Allow local Allegheny selection,” with no additional
+comments.
+
+**How to apply:** Keep fresh current-method permits and the unchanged three
+paced bootstrap GETs. Select only the unique exact source-labeled County native
+select's single enabled exact Allegheny choice, when visible/enabled and owned
+by the search form, with in-bounds options. Use ephemeral source handles, never
+a retained ordinal or guessed identity/value. Observe resulting controls only;
+block dependent requests and stop. This does not authorize another county,
+court/case/office selection, Search, dates, PDFs, wider collection, cap changes
+or stop overrides.
 
 Filing mode followed by **Advanced Search** activates the source's **County**
-control, but does not establish MDJ context or submitted bindings.
+control; local Allegheny selection activates a court-office-related dropdown.
+Neither establishes MDJ context or submitted bindings.
 
 **Why:** Source-backed read-only inventories observed one search-form-owned,
 public-group-associated Advanced Search native checkbox changing from hidden/
 disabled to eligible after filing selection. Later approved source observations
 checked it and observed County active with an exact Allegheny choice, unselected.
-The court-labeled dropdown stayed disabled; the exact Docket Type dropdown had
-a Criminal choice but stayed hidden/disabled. Its dependency sequence and MDJ
-context remain unproven.
+The court-related dropdown stayed disabled until the separately approved local
+Allegheny selection, then became enabled and populated locally. Only generic
+court/office words were recognized, not its exact public label or MDJ choices.
+The exact Docket Type dropdown had a Criminal choice but stayed hidden/disabled.
+The later dependency sequence and MDJ context remain unproven.
 
 **How to apply:** Recognize the exact source-listed Advanced Search label, not a
 guessed identity or generic word match. Its eligibility is not proof of its
 native submission bindings. Advanced Search activation is now approved within
-the scope above; keep dependent traffic blocked. County selection is a separate,
-not-yet-approved action. Do not treat the available Allegheny choice, an
-unclassified disabled court dropdown or hidden Criminal choice as MDJ coverage,
+the scope above; keep dependent traffic blocked. Local Allegheny selection is
+now separately approved under the limits above. Do not treat the available Allegheny choice, an
+unclassified court-office-related dropdown, its option count or hidden Criminal choice as MDJ coverage,
 an absence proof, a submitted binding or permission to choose Common Pleas.

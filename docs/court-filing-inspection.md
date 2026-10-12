@@ -13,9 +13,81 @@ authorizes another request.
 When approving the revised inventory, the user added **“as many as it takes.”**
 This authorizes continued needed read-only diagnostic inspections within the
 same request/action limits, using a fresh single-use permit each time. It does
-not authorize Search, PDF, date/court/county/case/office activation, source-stop
+not itself authorize Search, PDF, date/court/county/case/office activation, source-stop
 overrides, higher budgets, alternate clients or wider collection. No identical
 inspection is repeated without a new evidence need.
+
+### Approved local Allegheny selection — October 12, 2026
+
+The user selected **“Allow local Allegheny selection”**, with no additional
+comments. Continued needed inspections may now select filing mode, check the
+unique exact Advanced Search checkbox, and locally select the exact Allegheny
+option in the unique eligible source-labeled County native select. This does not
+authorize another county, court/case/office selection, dates, Search, PDFs,
+dependent transmissions, budget changes or collection.
+
+Current method: `playwright-filing-control-inventory-v6`, with ordered phases
+`INITIAL`, `FILING`, `ADVANCED`, `COUNTY`, `FINAL`. A closed `county` object reports
+candidate count, eligibility and selected state. The parent independently
+validates these against the redacted controls and requires eligible/selected in
+the final two phases. Eligibility requires established filing mode and checked
+Advanced Search, one exact County native select, search-form ownership, public
+association, visibility/enabled state, in-bounds options and one enabled exact
+Allegheny choice. The action uses ephemeral source option/select handles; no
+retained ordinal, guessed identity or private value is used as an adapter binding.
+Already-selected Allegheny is not changed again. Missing/ambiguous/inactive
+controls or options fail closed with `FILING_COUNTY_NOT_ESTABLISHED`. Any dependent
+request is locally aborted and stops all later actions; it is never transmitted
+or retried. All original three-GET caps, pacing and mandatory stops are unchanged.
+Historical reports remain readable, including v5, but only a fresh current-method
+permit can execute this scope.
+
+#### Completed local County selection and focused label check
+
+| Permit (consumed) | Job | State | Run UTC | GETs | Minimum completion-to-start pause | Maximum request duration |
+| --- | --- | --- | --- | --- | --- | --- |
+| `e8d12048-c0f4-4cf7-903a-2e8e4cb2e4b4` | `d90750d0-5ef2-4ef0-97d6-26e9d8975b4e` | INSPECTED | 21:33:19–21:35:40 | 3 | 66.264 s | 881 ms |
+| `6f2ed2b8-dd54-47a5-933f-0469a7beffdf` | `1bf781f4-bc01-452c-86d4-773e5d8bd0f8` | INSPECTED | 21:38:06–21:40:57 | 3 | 72.227 s | 806 ms |
+
+All six GETs completed HTTP 200/OK, with zero failures or documents. All five
+ordered phases passed parent validation, with 36 retained controls. County became
+eligible after Advanced Search and its exact Allegheny choice became selected in
+`COUNTY` and stayed selected in `FINAL`. The previously disabled court-related
+native select became visible/enabled and went from zero to 49 observed options,
+without any dependent transmission. No court option was selected.
+
+The first run did not recognize its exact public label. A focused vocabulary-only
+revision added generic Court Number/No/#/Code/ID/Identifier/Division/Jurisdiction,
+Court Offices/Office(s)/(s), required/optional Court labels, Trial/Local/County/
+Municipal Court labels, and matching fixed public words. Typecheck/build and the
+targeted no-other-action/redaction fixture passed. This did not change the v6
+metadata or action contract or retain arbitrary labels, identities or values.
+
+The second run recognized only the generic words **court** and **office** on this
+active 49-option select; its exact label remains unknown. No exact public MDJ
+choice was established. This is not proof that MDJ options are absent, nor does
+it prove that the 49 options are MDJ courts or offices. Docket Type stayed hidden/
+disabled with one exact Criminal choice among eight options. Judicial District,
+Case Category, Case Status and the separately recognized Court Office widget
+also stayed inactive. The oversized active unknown-type list stayed uninspected.
+
+Offline preparation passed 226 safety checks, typecheck/build and the 42 Python
+tests across the initial pass and focused corrected-fixture recheck. The duplicate
+County fixture required proper label-for association instead of a wrapping label
+whose text included option text. Fixtures are hypothetical public controls only.
+The subsequent vocabulary revision passed typecheck/build and its focused fixture.
+
+Both permits are consumed. The API was restored and started cleanly. The source
+still has `SOURCE_VALIDATION_BARRIER`, no active request, pause, latency warning,
+access proof or collection approval. No dates, other county, court/case/office
+selection, Search, remote POST, PDFs or records were entered, transmitted or
+collected. The engine and all three discovery/PDF/extraction routes remain
+**blocked, not complete**.
+
+Next evidence needed: identify public court-office choices and their MDJ context.
+Extending retained metadata to public office labels/codes requires explicit
+metadata-scope approval and a new method. No office selection, private value/
+identity retention, source-stop override or extra transmission is authorized.
 
 ### Approved Advanced Search activation — October 12, 2026
 
@@ -25,7 +97,7 @@ Advanced Search native checkbox owned by the search form, then observe resulting
 public controls. This does not authorize any other selections, Search, dates,
 remote POST, PDFs, wider collection or budget/stop changes.
 
-Current method: `playwright-filing-control-inventory-v5`. Ordered phases are
+At this stage the method was `playwright-filing-control-inventory-v5`. Ordered phases are
 `INITIAL`, `FILING`, `ADVANCED`, `FINAL`. A closed `advancedSearch` object records
 candidate count, eligibility and checked state; the parent independently checks
 candidate/eligibility consistency and requires an eligible checked checkbox in
@@ -86,7 +158,7 @@ purpose or whether County activation will populate it merely from generic words.
 
 The next meaningful action to test would be local selection of the unique
 source-labeled County control's exact Allegheny choice, then observation only.
-That is **not yet approved**. It must not imply an MDJ court selection, substitute
+That required the separate approval now recorded above. It must not imply an MDJ court selection, substitute
 Common Pleas, click Search, enter dates or select another filter. Within the
 unchanged diagnostic cap, any dependent request must still be aborted locally
 and stop the attempt rather than transmitted or retried.

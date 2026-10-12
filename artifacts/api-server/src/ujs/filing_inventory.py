@@ -1,8 +1,8 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v5"
-PHASES = ("INITIAL", "FILING", "ADVANCED", "FINAL")
+METHOD = "playwright-filing-control-inventory-v6"
+PHASES = ("INITIAL", "FILING", "ADVANCED", "COUNTY", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
     "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
@@ -23,11 +23,17 @@ INVENTORY = """({phase}) => {
     'CP Court', 'CP County', 'MDJ Court', 'MDJ County', 'MDC Court', 'MDC County',
     'Magisterial District Court', 'Magisterial District Courts', 'Court of Common Pleas',
     'Common Pleas Court', 'Originating Court', 'Originating County', 'Court Name',
-    'Court Location', 'Docket Type', 'Docket Category', 'Case Status', 'Active Only'];
+    'Court Location', 'Docket Type', 'Docket Category', 'Case Status', 'Active Only',
+    'Court Number', 'Court No', 'Court No.', 'Court #', 'Court Code', 'Court ID',
+    'Court Identifier', 'Court Division', 'Court Jurisdiction', 'Court Offices',
+    'Court Office(s)', 'Court(s)', 'Court (Required)', 'Court (Optional)',
+    'Trial Court', 'Local Court', 'County Court', 'Municipal Court'];
   const publicWords = ['all','court','courts','case','cases','criminal','search','system',
     'type','types','county','closed','include','exclude','magisterial','district','common','pleas','level','by',
     'advanced','enable','enabled','show','options','filters','filter','limit','limited','restrict','restricted',
-    'specific','within','only','use','criteria','cp','mdj','mdc','originating','location','docket','status','active'];
+     'specific','within','only','use','criteria','cp','mdj','mdc','originating','location','docket','status','active',
+     'number','no','code','id','identifier','division','jurisdiction','office','offices','required','optional',
+     'trial','local','municipal'];
   const choices = {
     FILING: ['Date Filed', 'Filing Date', 'Date of Filing'],
     MDJ: ['Magisterial District Court', 'Magisterial District Courts', 'Magisterial District', 'MDJ'],
@@ -157,8 +163,16 @@ INVENTORY = """({phase}) => {
     eligible: advanced.length === 1 && modeMatchesFiling && advanced[0].visible && advanced[0].enabled
       && advanced[0].ownership === 'SEARCH' && advanced[0].hasPublicLabel,
     checked: advanced.length === 1 ? nodes[advanced[0].ordinal].checked === true : null};
-  return {method: 'playwright-filing-control-inventory-v5', phase, modeMatchesFiling,
-    controls, omittedSensitiveControls, advancedSearch};
+  const counties = controls.filter(row => row.widget === 'SELECT' && row.labels.includes('County'));
+  const county = {candidates: counties.length,
+    eligible: counties.length === 1 && advancedSearch.eligible && advancedSearch.checked === true
+      && counties[0].visible && counties[0].enabled && counties[0].ownership === 'SEARCH'
+      && counties[0].hasPublicLabel && counties[0].optionState === 'OBSERVED'
+      && counties[0].publicChoices.ALLEGHENY === 1,
+    selected: counties.length === 1 && counties[0].optionState === 'OBSERVED'
+      ? counties[0].selectedPublicChoices.ALLEGHENY === 1 : null};
+  return {method: 'playwright-filing-control-inventory-v6', phase, modeMatchesFiling,
+    controls, omittedSensitiveControls, advancedSearch, county};
 }"""
 
 # Resolve an ephemeral ElementHandle from the same bounded, exact public-label
@@ -170,6 +184,17 @@ ADVANCED_NODE = """() => {
   const nodes = document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
     + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button],a,[role=link]');
   return nodes[row.ordinal] || null;
+}"""
+
+COUNTY_OPTION = """() => {
+  const state = (""" + INVENTORY + """)({phase: 'ADVANCED'});
+  if (state.error || !state.county.eligible) return null;
+  const row = state.controls.find(row => row.widget === 'SELECT' && row.labels.includes('County'));
+  const nodes = document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
+    + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button],a,[role=link]');
+  return [...nodes[row.ordinal].options].find(option => !option.matches(':disabled')
+    && !option.closest('[aria-disabled=true]')
+    && option.textContent.trim().replace(/[:*]\\s*$/, '').trim().replace(/\\s+/g, ' ').toLowerCase() === 'allegheny') || null;
 }"""
 
 
@@ -194,6 +219,26 @@ async def observe(page, emit, can_continue=lambda: True):
                 raise RuntimeError("FILING_ADVANCED_NOT_ESTABLISHED") from error
             finally:
                 await handle.dispose()
+        if phase == "COUNTY":
+            handle = await page.evaluate_handle(COUNTY_OPTION)
+            select_handle = None
+            try:
+                option = handle.as_element()
+                if option is None:
+                    raise RuntimeError("FILING_COUNTY_NOT_ESTABLISHED")
+                select_handle = await option.evaluate_handle("(option) => option.closest('select')")
+                select = select_handle.as_element()
+                if select is None:
+                    raise RuntimeError("FILING_COUNTY_NOT_ESTABLISHED")
+                if not await option.evaluate("(option) => option.selected"):
+                    # Native selection of this ephemeral source option, not a guessed value.
+                    await select.select_option(element=option, timeout=5_000)
+            except Exception as error:
+                raise RuntimeError("FILING_COUNTY_NOT_ESTABLISHED") from error
+            finally:
+                if select_handle is not None:
+                    await select_handle.dispose()
+                await handle.dispose()
         await page.wait_for_timeout(100)
         if not can_continue():
             raise RuntimeError("FILING_UNEXPECTED_LOCAL_REQUEST")
@@ -202,9 +247,13 @@ async def observe(page, emit, can_continue=lambda: True):
             code = metadata.get("error") if isinstance(metadata, dict) else None
             raise RuntimeError(code if isinstance(code, str) and code in INVENTORY_ERRORS
                                else "FILING_CONTROL_INVALID")
-        if phase in ("ADVANCED", "FINAL") and not (
+        if phase in ("ADVANCED", "COUNTY", "FINAL") and not (
                 metadata.get("modeMatchesFiling") is True
                 and metadata.get("advancedSearch", {}).get("eligible") is True
                 and metadata.get("advancedSearch", {}).get("checked") is True):
             raise RuntimeError("FILING_ADVANCED_NOT_ESTABLISHED")
+        if phase in ("COUNTY", "FINAL") and not (
+                metadata.get("county", {}).get("eligible") is True
+                and metadata.get("county", {}).get("selected") is True):
+            raise RuntimeError("FILING_COUNTY_NOT_ESTABLISHED")
         emit("filing_metadata", **metadata)

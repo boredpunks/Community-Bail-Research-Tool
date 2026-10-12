@@ -105,15 +105,16 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         document.addEventListener('change', () => {
           const type = document.getElementById('fixtureCourt'), county = document.getElementById('fixtureCounty');
           const criminal = document.getElementById('fixtureCase'), office = document.getElementById('fixtureOffice');
-          if (type.value || county.value || criminal.value) throw Error('Scope selection prohibited');
+          if (type.value || criminal.value) throw Error('Other scope selection prohibited');
         });"""
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
         self.assertEqual(len(fetches), 3)
         metadata = [message for message in messages if message["kind"] == "filing_metadata"]
-        self.assertEqual([row["phase"] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
+        self.assertEqual([row["phase"] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'COUNTY', 'FINAL'])
         final = metadata[-1]
         self.assertTrue(final['modeMatchesFiling'])
         self.assertEqual(final['advancedSearch'], {'candidates': 1, 'eligible': True, 'checked': True})
+        self.assertEqual(final['county'], {'candidates': 1, 'eligible': True, 'selected': True})
         self.assertNotIn('scopeReady', final)
         self.assertNotIn('officeCodes', final)
         court = next(row for row in final['controls'] if 'Court Type' in row['labels'])
@@ -248,7 +249,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
         self.assertEqual(len(fetches), 3)
         metadata = [row for row in messages if row['kind'] == 'filing_metadata']
-        self.assertEqual([row['phase'] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
+        self.assertEqual([row['phase'] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'COUNTY', 'FINAL'])
         self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
         self.assertFalse(any(row['kind'] == 'barrier' for row in messages))
         for phase in metadata:
@@ -281,13 +282,15 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
           <label><input type="checkbox">PRIVATE_LABEL_SENTINEL cases by county</label>
           <label for="fixtureCp">CP Court</label><select id="fixtureCp" disabled><option>Choose</option></select>
           <label for="fixtureMdj">MDJ County</label><select id="fixtureMdj" disabled><option>Choose</option></select>
+          <label for="fixtureNumber">Court Number</label><select id="fixtureNumber" disabled><option>Choose</option></select>
+          <label for="fixtureOptional">Court (Optional)</label><select id="fixtureOptional" disabled><option>Choose</option></select>
           <button>PRIVATE_LABEL_SENTINEL</button>
         """
         script = """document.addEventListener('click', event => {
             if (event.target.id !== 'fixtureAdvanced') throw Error('Navigation prohibited');
           });
           document.addEventListener('change', event => {
-            if (!event.target.closest('#SearchBy-Control') && event.target.id !== 'fixtureAdvanced')
+            if (!event.target.closest('#SearchBy-Control') && !['fixtureAdvanced', 'fixtureCounty'].includes(event.target.id))
               throw Error('Other selection prohibited');
           });"""
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
@@ -314,6 +317,12 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         mdj = next(row for row in final['controls'] if 'MDJ County' in row['labels'])
         self.assertEqual(mdj['labelWords'], ['county', 'mdj'])
         self.assertFalse(mdj['enabled'])
+        number = next(row for row in final['controls'] if 'Court Number' in row['labels'])
+        self.assertEqual(number['labelWords'], ['court', 'number'])
+        self.assertFalse(number['enabled'])
+        optional = next(row for row in final['controls'] if 'Court (Optional)' in row['labels'])
+        self.assertEqual(optional['labelWords'], ['court', 'optional'])
+        self.assertFalse(optional['enabled'])
         self.assertNotIn('SENTINEL', json.dumps(metadata))
 
     async def test_advanced_search_reveals_controls_without_selecting_them(self):
@@ -328,7 +337,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
         self.assertEqual(len(fetches), 3)
         phases = [row for row in messages if row['kind'] == 'filing_metadata']
-        self.assertEqual([row['phase'] for row in phases], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
+        self.assertEqual([row['phase'] for row in phases], ['INITIAL', 'FILING', 'ADVANCED', 'COUNTY', 'FINAL'])
         court = lambda phase: next(row for row in phase['controls'] if 'Court Type' in row['labels'])
         self.assertFalse(court(phases[1])['enabled'])
         self.assertTrue(court(phases[2])['enabled'])
@@ -373,6 +382,67 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(fetches), 3)
         self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
         self.assertTrue(all(row['advancedSearch']['checked'] for row in messages if row['kind'] == 'filing_metadata'))
+
+    async def test_county_missing_ambiguous_inactive_unknown_or_wrong_form_never_selected(self):
+        base = self.filing_fixture()
+        for fixture in [
+            base.replace('County:</label>', 'Unknown public county filter:</label>'),
+            base + '<label for="duplicateCounty">County</label><select id="duplicateCounty"><option>Allegheny</option></select>',
+            base.replace('id="fixtureCounty" ', 'id="fixtureCounty" disabled '),
+            base.replace('id="fixtureCounty" ', 'id="fixtureCounty" style="display:none" '),
+            base.replace('id="fixtureCounty" ', 'id="fixtureCounty" form="missing" '),
+            base.replace('>Allegheny</option>', '>Another County</option>'),
+            base.replace('>Allegheny</option>', '>Allegheny</option><option>Allegheny</option>'),
+            base.replace('value="fixture_county"', 'disabled value="fixture_county"'),
+            base.replace('>Allegheny</option>', '>Allegheny</option>' + '<option>PRIVATE_SENTINEL</option>' * 2001),
+        ]:
+            with self.subTest(fixture=fixture[:30]):
+                messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+                self.assertEqual(len(fetches), 3)
+                self.assertTrue(any(row.get('code') == 'FILING_COUNTY_NOT_ESTABLISHED' for row in messages))
+                self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+                self.assertFalse(any(row.get('phase') in ['COUNTY', 'FINAL'] for row in messages))
+                self.assertNotIn('SENTINEL', json.dumps(messages))
+
+    async def test_county_selection_reveals_local_controls_without_selecting_them(self):
+        fixture = self.filing_fixture().replace('id="fixtureCourt" name="fixtureCourt"',
+            'id="fixtureCourt" name="fixtureCourt" disabled')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureCounty') document.getElementById('fixtureCourt').disabled = false;
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        phases = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertEqual(len(fetches), 3)
+        self.assertEqual([row['phase'] for row in phases], ['INITIAL', 'FILING', 'ADVANCED', 'COUNTY', 'FINAL'])
+        self.assertFalse(phases[2]['county']['selected'])
+        self.assertTrue(phases[3]['county']['selected'])
+        for phase in phases:
+            court = next(row for row in phase['controls'] if 'Court Type' in row['labels'])
+            self.assertEqual(court['selectedPublicChoices']['MDJ'], 0)
+            self.assertEqual(court['enabled'], phase['phase'] in ['COUNTY', 'FINAL'])
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+
+    async def test_county_dependent_request_aborted_and_no_later_phase(self):
+        for method in ['GET', 'POST']:
+            script = """document.addEventListener('change', event => {
+              if (event.target.id === 'fixtureCounty') fetch('/CaseSearch', {method:'""" + method + """'});
+            });"""
+            messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
+            self.assertEqual(len(fetches), 3)
+            self.assertTrue(all(method == 'GET' for method, _ in fetches))
+            self.assertTrue(any(row.get('code') == 'FILING_UNEXPECTED_LOCAL_REQUEST' for row in messages))
+            self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+            self.assertFalse(any(row.get('phase') in ['COUNTY', 'FINAL'] for row in messages))
+
+    async def test_county_already_selected_is_not_changed(self):
+        fixture = self.filing_fixture().replace('value="fixture_county"', 'selected value="fixture_county"')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureCounty') throw Error('Repeated county activation prohibited');
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertTrue(all(row['county']['selected'] for row in messages if row['kind'] == 'filing_metadata'))
 
     async def test_coverage_inventory_without_search_or_pdf(self):
         # Hypothetical public filter options ONLY, not source support or cases.

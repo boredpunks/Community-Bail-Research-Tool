@@ -263,21 +263,22 @@ try {
     labelWords: ["court", "level"], publicChoices, selectedPublicChoices: { ...publicChoices, MDJ: 0 }, nativeSuccessful: false };
   const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FILING",
     modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl],
-    advancedSearch: { candidates: 0, eligible: false, checked: null } };
+    advancedSearch: { candidates: 0, eligible: false, checked: null },
+    county: { candidates: 0, eligible: false, selected: null } };
   check(validFilingInventoryMetadata(inventory));
   check(validFilingMetadata(inventory));
   check(!validFilingInventoryMetadata(filingMetadata));
   const { optionState: _omitted, labelWords: _words, ...legacyControl } = inventoryControl;
   const { COMMON_PLEAS: _cp, ...legacyChoices } = publicChoices;
   for (const method of ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3"]) {
-    const { advancedSearch: _advanced, ...historical } = inventory;
+    const { advancedSearch: _advanced, county: _county, ...historical } = inventory;
     const legacyInventory = { ...historical, method, controls: [{ ...legacyControl,
       ...(method.endsWith("v3") ? { optionState: "OBSERVED" } : {}),
       publicChoices: legacyChoices, selectedPublicChoices: { ...legacyChoices, MDJ: 0 } }] };
     check(validFilingMetadata(legacyInventory));
     check(!validFilingInventoryMetadata(legacyInventory));
   }
-  const { advancedSearch: _advancedV4, ...historicalV4 } = inventory;
+  const { advancedSearch: _advancedV4, county: _countyV4, ...historicalV4 } = inventory;
   const v4 = { ...historicalV4, method: "playwright-filing-control-inventory-v4", phase: "FINAL" };
   check(validFilingMetadata(v4));
   check(!validFilingInventoryMetadata(v4));
@@ -287,7 +288,26 @@ try {
   const completedAdvanced = { ...inventory, phase: "ADVANCED", controls: [inventoryControl, advancedControl],
     advancedSearch: { candidates: 1, eligible: true, checked: true } };
   check(validFilingInventoryMetadata(completedAdvanced));
-  check(validFilingInventoryMetadata({ ...completedAdvanced, phase: "FINAL" }));
+  const { county: _countyV5, ...historicalV5 } = completedAdvanced;
+  check(validFilingMetadata({ ...historicalV5, method: "playwright-filing-control-inventory-v5", phase: "FINAL" }));
+  check(!validFilingInventoryMetadata({ ...historicalV5, method: "playwright-filing-control-inventory-v5" }));
+  check(!validFilingInventoryMetadata({ ...completedAdvanced, phase: "FINAL" }));
+  const countyControl = { ...inventoryControl, ordinal: 2, widget: "SELECT", ownership: "SEARCH",
+    labels: ["County"], labelWords: ["county"], optionCount: 2,
+    publicChoices: { ...publicChoices, MDJ: 0, ALLEGHENY: 1 },
+    selectedPublicChoices: { ...publicChoices, MDJ: 0, ALLEGHENY: 1 } };
+  const completedCounty = { ...completedAdvanced, phase: "COUNTY",
+    controls: [inventoryControl, advancedControl, countyControl],
+    county: { candidates: 1, eligible: true, selected: true } };
+  check(validFilingInventoryMetadata(completedCounty));
+  check(validFilingInventoryMetadata({ ...completedCounty, phase: "FINAL" }));
+  for (const change of [{ candidates: 0 }, { eligible: false }, { selected: false }, { selected: "true" }, { value: "private" }])
+    check(!validFilingInventoryMetadata({ ...completedCounty, county: { ...completedCounty.county, ...change } }));
+  for (const change of [{ visible: false }, { enabled: false }, { ownership: "OTHER" }, { hasPublicLabel: false },
+    { labels: ["MDJ County"] }, { selectedPublicChoices: { ...countyControl.selectedPublicChoices, ALLEGHENY: 0 } },
+    { publicChoices: { ...countyControl.publicChoices, ALLEGHENY: 2 } }])
+    check(!validFilingInventoryMetadata({ ...completedCounty,
+      controls: [inventoryControl, advancedControl, { ...countyControl, ...change }] }));
   for (const change of [
     { candidates: 0 }, { eligible: false }, { checked: false }, { checked: "true" }, { value: "private" },
   ]) check(!validFilingInventoryMetadata({ ...completedAdvanced,

@@ -1,7 +1,7 @@
 /** Closed, redacted source-form observations; never submitted search proof. */
-export const filingInspectionMethod = "playwright-filing-control-inventory-v5";
-const legacyInventoryMethods = ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3", "playwright-filing-control-inventory-v4"];
-export const filingPhases = ["INITIAL", "FILING", "ADVANCED", "FINAL"] as const;
+export const filingInspectionMethod = "playwright-filing-control-inventory-v6";
+const legacyInventoryMethods = ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3", "playwright-filing-control-inventory-v4", "playwright-filing-control-inventory-v5"];
+export const filingPhases = ["INITIAL", "FILING", "ADVANCED", "COUNTY", "FINAL"] as const;
 const legacyInventoryPhases = ["INITIAL", "FILING", "FINAL"];
 const legacyFilingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
 export const filingRoles = ["SEARCH_MODE", "COURT_TYPE", "COUNTY", "CASE_TYPE", "COURT_OFFICE"] as const;
@@ -56,11 +56,17 @@ export const filingPublicLabels = ["Search By", "Court", "Courts", "Court Type",
   "CP Court", "CP County", "MDJ Court", "MDJ County", "MDC Court", "MDC County",
   "Magisterial District Court", "Magisterial District Courts", "Court of Common Pleas",
   "Common Pleas Court", "Originating Court", "Originating County", "Court Name",
-  "Court Location", "Docket Type", "Docket Category", "Case Status", "Active Only"] as const;
+  "Court Location", "Docket Type", "Docket Category", "Case Status", "Active Only",
+  "Court Number", "Court No", "Court No.", "Court #", "Court Code", "Court ID",
+  "Court Identifier", "Court Division", "Court Jurisdiction", "Court Offices",
+  "Court Office(s)", "Court(s)", "Court (Required)", "Court (Optional)",
+  "Trial Court", "Local Court", "County Court", "Municipal Court"] as const;
 export const filingPublicWords = ["all", "court", "courts", "case", "cases", "criminal", "search", "system",
   "type", "types", "county", "closed", "include", "exclude", "magisterial", "district", "common", "pleas", "level", "by",
   "advanced", "enable", "enabled", "show", "options", "filters", "filter", "limit", "limited", "restrict", "restricted",
-  "specific", "within", "only", "use", "criteria", "cp", "mdj", "mdc", "originating", "location", "docket", "status", "active"] as const;
+  "specific", "within", "only", "use", "criteria", "cp", "mdj", "mdc", "originating", "location", "docket", "status", "active",
+  "number", "no", "code", "id", "identifier", "division", "jurisdiction", "office", "offices", "required", "optional",
+  "trial", "local", "municipal"] as const;
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const subset = (value: unknown, vocabulary: readonly string[]) => Array.isArray(value)
@@ -69,11 +75,13 @@ const subset = (value: unknown, vocabulary: readonly string[]) => Array.isArray(
 export function validFilingInventoryMetadata(message: Record<string, unknown>, allowHistorical = false) {
   const legacy = allowHistorical && legacyInventoryMethods.includes(String(message.method));
   const legacyV2 = legacy && message.method === legacyInventoryMethods[0];
-  const wordInventory = !legacy || message.method === legacyInventoryMethods[2];
-  const allowedPhases: readonly string[] = legacy ? legacyInventoryPhases : filingPhases;
+  const legacyV5 = legacy && message.method === legacyInventoryMethods[3];
+  const wordInventory = !legacy || message.method === legacyInventoryMethods[2] || legacyV5;
+  const allowedPhases: readonly string[] = legacyV5 ? ["INITIAL", "FILING", "ADVANCED", "FINAL"]
+    : legacy ? legacyInventoryPhases : filingPhases;
   const choiceKeys = ["FILING", "MDJ", "ALLEGHENY", "CRIMINAL", ...(wordInventory ? ["COMMON_PLEAS"] : [])];
   if (!exactKeys(message, ["kind", "method", "phase", "modeMatchesFiling", "controls", "omittedSensitiveControls",
-      ...(legacy ? [] : ["advancedSearch"])])
+      ...(!legacy || legacyV5 ? ["advancedSearch"] : []), ...(legacy ? [] : ["county"])])
     || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod && !legacy
     || !allowedPhases.includes(String(message.phase))
     || typeof message.modeMatchesFiling !== "boolean" || !count(message.omittedSensitiveControls, 128)
@@ -108,13 +116,25 @@ export function validFilingInventoryMetadata(message: Record<string, unknown>, a
     }
     priorOrdinal = Number(row.ordinal);
   }
-  if (legacy) return true;
+  if (legacy && !legacyV5) return true;
   const advanced = message.advancedSearch;
   const candidates = message.controls.filter(row => row.widget === "CHECKBOX" && row.labels.includes("Advanced Search"));
   const eligible = candidates.length === 1 && message.modeMatchesFiling && candidates[0].visible
     && candidates[0].enabled && candidates[0].ownership === "SEARCH" && candidates[0].hasPublicLabel;
-  return object(advanced) && exactKeys(advanced, ["candidates", "eligible", "checked"])
+  if (!(object(advanced) && exactKeys(advanced, ["candidates", "eligible", "checked"])
     && advanced.candidates === candidates.length && advanced.eligible === eligible
     && (candidates.length === 1 ? typeof advanced.checked === "boolean" : advanced.checked === null)
-    && (!["ADVANCED", "FINAL"].includes(String(message.phase)) || eligible && advanced.checked === true);
+    && (!["ADVANCED", "COUNTY", "FINAL"].includes(String(message.phase)) || eligible && advanced.checked === true))) return false;
+  if (legacyV5) return true;
+  const counties = message.controls.filter(row => row.widget === "SELECT" && row.labels.includes("County"));
+  const countyEligible = counties.length === 1 && eligible && advanced.checked === true
+    && counties[0].visible && counties[0].enabled && counties[0].ownership === "SEARCH"
+    && counties[0].hasPublicLabel && counties[0].optionState === "OBSERVED"
+    && counties[0].publicChoices.ALLEGHENY === 1;
+  const selected = counties.length === 1 && counties[0].optionState === "OBSERVED"
+    ? counties[0].selectedPublicChoices.ALLEGHENY === 1 : null;
+  return object(message.county) && exactKeys(message.county, ["candidates", "eligible", "selected"])
+    && message.county.candidates === counties.length && message.county.eligible === countyEligible
+    && message.county.selected === selected
+    && (!["COUNTY", "FINAL"].includes(String(message.phase)) || countyEligible && selected === true);
 }
