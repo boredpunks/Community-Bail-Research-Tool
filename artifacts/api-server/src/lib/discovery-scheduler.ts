@@ -5,6 +5,7 @@ import { discoveryPolicy } from "./discovery";
 import { allowedSourceRequest, collectionBlock, integratedSourceMethod, paceEligibleAt, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage } from "./discovery-safety";
 import { formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
 import { coverageInspectionMethod } from "./coverage-inspection";
+import { filingInspectionMethod } from "./filing-inspection";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,10 +34,10 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         if (permitId !== current.assessmentId || !permit || permit.state !== "ATTEMPTED"
-          || permit.jobId !== current.id || permit.expectedMethod !== (permit.stage === "COVERAGE" ? coverageInspectionMethod : permit.stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod)
+          || permit.jobId !== current.id || permit.expectedMethod !== (permit.stage === "FILING_INSPECT" ? filingInspectionMethod : permit.stage === "COVERAGE" ? coverageInspectionMethod : permit.stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod)
           || !permit.approvedAt || !permit.expiresAt || permit.expiresAt <= now
           || JSON.stringify(permit.criteria) !== JSON.stringify(current.criteria)) return deny("ASSESSMENT_NOT_APPROVED");
-        if (["INSPECT", "COVERAGE"].includes(permit.stage) && (current.criteria.requestCap !== 3
+        if (["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage) && (current.criteria.requestCap !== 3
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
           || !inspectionRequestAllowed(requestPath, method))) return deny("INSPECTION_REQUEST_NOT_PERMITTED");
         if (source.pausedUntil && source.pausedUntil > now) return deny("SOURCE_COOLDOWN");

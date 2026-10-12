@@ -11,12 +11,13 @@ import { runJob } from "../lib/discovery-worker";
 import { WORKSPACE_OWNER_ID } from "../middlewares/researchAuth";
 import { formInspectionMethod } from "../lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage-inspection";
+import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 
 // INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
 // child prohibit every document request and every transmitted POST.
-const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1 } as const;
-const diagnostic = (stage: string) => ["INSPECT", "COVERAGE"].includes(stage);
-const currentMethod = (stage: string) => stage === "COVERAGE" ? coverageInspectionMethod : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
+const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1 } as const;
+const diagnostic = (stage: string) => ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(stage);
+const currentMethod = (stage: string) => stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageInspectionMethod : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
 const args = process.argv.slice(2);
 const command = args.shift();
 const value = (key: string) => args.includes(`--${key}`) ? args[args.indexOf(`--${key}`) + 1] : undefined;
@@ -29,7 +30,7 @@ async function main() {
     if (!stageCaps[stage] || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
       || !Number.isInteger(requestCap) || requestCap < (diagnostic(stage) ? 3 : 8)
-      || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days.");
+      || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE/FILING_INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days.");
     const [row] = await db.insert(discoveryAssessmentsTable).values({
       stage, expectedMethod: currentMethod(stage),
       criteria: { courtOffice: "CP-05-02-Crim", eventType: "Bail Hearing", startDate, endDate,
@@ -39,7 +40,7 @@ async function main() {
     console.log(JSON.stringify({ id: row!.id, stage, state: "PREPARED", criteria: row!.criteria,
       documentCap: diagnostic(stage) ? 0 : row!.criteria.recordCap,
       remotePostCap: diagnostic(stage) ? 0 : null,
-      notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. Diagnostic criteria recordCap is a storage placeholder, not permission to fetch a document. COVERAGE observes public options/date constraints for judicial district 05; dates are a permit validity window, never submitted." }));
+      notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. Diagnostic criteria recordCap and dates are legacy storage placeholders, never PDF permission or submitted dates. FILING_INSPECT only locally selects uniquely source-labeled filing/MDJ/Allegheny/Criminal options; no Search, office selection or date entry." }));
     return;
   }
   const id = value("id");
@@ -48,17 +49,17 @@ async function main() {
     const [row] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
     if (!row) throw new Error("Pilot not found.");
     const coverageEvidence: Record<string, unknown>[] = [];
-    if (row.stage === "COVERAGE" && row.jobId) {
+    if (["COVERAGE", "FILING_INSPECT"].includes(row.stage) && row.jobId) {
       const events = await db.select().from(discoveryEventsTable).where(and(
-        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind, "COVERAGE_METADATA"),
+        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind, row.stage === "COVERAGE" ? "COVERAGE_METADATA" : "FILING_METADATA"),
       )).orderBy(asc(discoveryEventsTable.createdAt));
       for (const event of events) {
         const metadata = JSON.parse(event.message) as Record<string, unknown>;
-        if (!validCoverageMetadata(metadata)) throw new Error("Stored coverage metadata is invalid; no raw content returned.");
+        if (!(row.stage === "COVERAGE" ? validCoverageMetadata(metadata) : validFilingMetadata(metadata))) throw new Error("Stored inspection metadata is invalid; no raw content returned.");
         coverageEvidence.push(metadata);
       }
     }
-    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" ? { coverageEvidence } : {}), ...(diagnostic(row.stage) ? {
+    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" ? { coverageEvidence } : row.stage === "FILING_INSPECT" ? { filingEvidence: coverageEvidence } : {}), ...(diagnostic(row.stage) ? {
       documentCap: 0, remotePostCap: 0, notice: "Operator-only diagnostic; criteria recordCap is a storage placeholder. No document or transmitted POST permitted.",
     } : {}) }));
     return;
@@ -150,7 +151,9 @@ async function main() {
       const completedAt = new Date();
        const state = inspected ? "INSPECTED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
-         reason: inspected ? (assessment?.stage === "COVERAGE"
+         reason: inspected ? (assessment?.stage === "FILING_INSPECT"
+           ? "Public filing controls and candidate native FormData counts observed locally; no Search, dates, remote POST, PDF or submitted binding proof. Collection disabled; existing source state preserved."
+           : assessment?.stage === "COVERAGE"
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."
            : "Public metadata inspected; native POST intercepted locally, never transmitted. Not calendar/PDF access proof. Existing source pause and access proof unchanged; no collection enablement.")
            : verified ? "Both integrated clients passed within fixed scope and timing; not approval for broader collection."

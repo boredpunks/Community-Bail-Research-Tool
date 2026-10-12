@@ -10,6 +10,7 @@ import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/
 
 import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
+import { filingInspectionMethod, filingRoles, validFilingMetadata } from "../src/lib/filing-inspection";
 
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
@@ -239,7 +240,24 @@ try {
     { ...coverageMetadata, dates: [{ purpose: "FILING", minimum: "2026-02-30", maximum: null, visible: true, enabled: true }] },
     { ...coverageMetadata, dates: [{ purpose: "FILING", minimum: null, maximum: null, visible: true, enabled: true, value: "forbidden" }] },
   ]) check(!validCoverageMetadata(bad));
-  for (const stage of ["INSPECT", "COVERAGE"]) for (const [path, method, url] of [
+  const filingMetadata = { kind: "filing_metadata", phase: "FINAL", scopeReady: false,
+    modeMatchesFiling: false, officeCodes: [], dates: [], unclassifiedSelects: 0,
+    controls: filingRoles.map(role => ({ role, candidates: 0, visible: false, enabled: false,
+      optionCount: 0, choicePresent: false, selectedChoiceMatches: false, nativeNamed: 0,
+      nativeMatches: 0, association: "NONE" })) };
+  check(validFilingMetadata(filingMetadata));
+  for (const bad of [
+    { ...filingMetadata, html: "forbidden" }, { ...filingMetadata, phase: "SEARCHED" },
+    { ...filingMetadata, officeCodes: ["MJ-05-2-01"] },
+    { ...filingMetadata, officeCodes: ["CP-05-02-Crim"] },
+    { ...filingMetadata, scopeReady: true },
+    { ...filingMetadata, controls: [...filingMetadata.controls].reverse() },
+    { ...filingMetadata, controls: filingMetadata.controls.map(row => ({ ...row, value: "forbidden" })) },
+    { ...filingMetadata, controls: filingMetadata.controls.map(row => ({ ...row, nativeMatches: 1 })) },
+    { ...filingMetadata, dates: [{ minimum: "2026-02-30", maximum: null, visible: true, enabled: true, nativeNamed: true, nativeSuccessful: true }] },
+    { ...filingMetadata, dates: [{ minimum: null, maximum: null, visible: true, enabled: false, nativeNamed: true, nativeSuccessful: true }] },
+  ]) check(!validFilingMetadata(bad));
+  for (const stage of ["INSPECT", "COVERAGE", "FILING_INSPECT"]) for (const [path, method, url] of [
     ["/CaseSearch", "GET", requestUrl],
     ["/CaseSearch", "POST", requestUrl],
     ["/Report/CpDocketSheet", "GET", "https://ujsportal.pacourts.us/Report/CpDocketSheet"],
@@ -248,7 +266,7 @@ try {
     await store.update(sources).set({ blockedReason: "SOURCE_VALIDATION_BARRIER" }).where(eq(sources.id, "UJS"));
     const inspectCriteria = { ...criteria, requestCap: 3 };
     const [inspectionPermit] = await store.insert(pilots).values({
-      stage, expectedMethod: stage === "COVERAGE" ? coverageInspectionMethod : formInspectionMethod, criteria: inspectCriteria,
+      stage, expectedMethod: stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageInspectionMethod : formInspectionMethod, criteria: inspectCriteria,
       state: "ATTEMPTED", approvedAt: instant, expiresAt: new Date(now0 + 3_600_000),
     }).returning();
     const inspectionJob = await createJob({ criteria: inspectCriteria, assessmentId: inspectionPermit!.id });

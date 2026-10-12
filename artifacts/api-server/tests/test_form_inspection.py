@@ -34,7 +34,7 @@ def public_fixture():
 
 
 class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
-    async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None):
+    async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None, filing=False):
         messages, fetches = [], []
         html = fixture if fixture is not None else public_fixture()
         original_fulfill = Route.fulfill
@@ -66,7 +66,8 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                                               headers=response.headers, body=response.content)
             return await original_fulfill(route, **kwargs)
 
-        config = {"criteria": CRITERIA, "inspectionOnly": not coverage, "coverageOnly": coverage, "calendarComplete": False,
+        config = {"criteria": CRITERIA, "inspectionOnly": not (coverage or filing), "coverageOnly": coverage,
+                  "filingInspectionOnly": filing, "calendarComplete": False,
                   "pendingItems": [], "remainingRecords": 1}
         lines = [json.dumps(config)]
         for index in range(3):
@@ -79,6 +80,69 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(worker, "download", side_effect=AssertionError("PDFs prohibited")):
             await worker.main()
         return messages, fetches
+
+    def filing_fixture(self):
+        # Hypothetical public filter controls, NOT portal evidence or case data.
+        fixture = public_fixture().replace('value="CalendarEvent">SEARCH_MODE', 'value="fixture_filing">Date Filed')
+        groups = ''
+        for role, label, options in [
+            ('fixtureCourt', 'Court Type', [('', 'Choose'), ('fixture_mdj', 'Magisterial District Court')]),
+            ('fixtureCounty', 'County', [('', 'Choose'), ('fixture_county', 'Allegheny')]),
+            ('fixtureCase', 'Case Type', [('', 'Choose'), ('fixture_criminal', 'Criminal')]),
+            ('fixtureOffice', 'Court Office', [('', 'Choose')]),
+        ]:
+            groups += f'<label for="{role}">{label}:</label><select id="{role}" name="{role}">'
+            groups += ''.join(f'<option value="{value}">{text}</option>' for value, text in options) + '</select>'
+        groups += '<input type="date" name="fixtureFilingStart" min="1899-01-01" max="2026-10-12">'
+        groups += '<input type="date" name="fixtureFilingEnd" min="1899-01-01" max="2026-10-12">'
+        return fixture.replace('<button id="btnSearch">', groups + '<button id="btnSearch">')
+
+    async def test_filing_source_labels_only_and_native_counts_redacted(self):
+        script = """document.addEventListener('submit', () => {throw Error('Search prohibited');});
+        document.addEventListener('change', () => {
+          const type = document.getElementById('fixtureCourt'), county = document.getElementById('fixtureCounty');
+          const criminal = document.getElementById('fixtureCase'), office = document.getElementById('fixtureOffice');
+          if (type.value && county.value && criminal.value) office.innerHTML = '<option value="MJ-05-2-01">Public office</option>';
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
+        self.assertEqual(len(fetches), 3)
+        metadata = [message for message in messages if message["kind"] == "filing_metadata"]
+        self.assertEqual([row["phase"] for row in metadata], ['FILING', 'COURT_TYPE', 'COUNTY', 'CASE_TYPE', 'FINAL'])
+        final = metadata[-1]
+        self.assertTrue(final['scopeReady'])
+        self.assertEqual(final['officeCodes'], ['MJ-05-2-01'])  # public court code, never a docket
+        self.assertTrue(all(row['nativeMatches'] == 1 for row in final['controls'][1:4]))
+        self.assertEqual(len(final['dates']), 2)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertFalse(any(row['kind'] in ['barrier', 'docket', 'calendar', 'finished'] for row in messages))
+        for forbidden in ['fixture_mdj', 'fixtureCounty', 'fixtureFilingStart', 'fixture_criminal', 'REDACTION_SENTINEL']:
+            self.assertNotIn(forbidden, json.dumps(metadata))
+
+    async def test_filing_missing_court_labels_not_substituted(self):
+        fixture = self.filing_fixture().replace('Court Type:', 'Unrecognized filter:')
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        metadata = [message for message in messages if message['kind'] == 'filing_metadata']
+        self.assertEqual(metadata[-1]['controls'][1]['candidates'], 0)
+        self.assertFalse(metadata[-1]['scopeReady'])
+        self.assertEqual(metadata[-1]['officeCodes'], [])
+        self.assertNotIn('Unrecognized filter', json.dumps(metadata))
+
+    async def test_filing_ambiguous_source_options_fail_closed(self):
+        fixture = self.filing_fixture().replace(
+            '<option value="fixture_mdj">Magisterial District Court</option>',
+            '<option value="fixture_mdj">Magisterial District Court</option><option value="other">MDJ</option>')
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertTrue(any(row.get('code') == 'FILING_CONTROL_AMBIGUOUS' for row in messages))
+
+    async def test_filing_dependent_request_is_aborted_not_transmitted(self):
+        messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(),
+                                                 script="document.addEventListener('change', () => fetch('/CaseSearch'));")
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row.get('code') == 'FILING_UNEXPECTED_LOCAL_REQUEST' for row in messages))
+        self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
 
     async def test_coverage_inventory_without_search_or_pdf(self):
         # Hypothetical public filter options ONLY, not source support or cases.
