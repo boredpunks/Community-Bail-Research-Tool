@@ -264,21 +264,22 @@ try {
   const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FILING",
     modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl],
     advancedSearch: { candidates: 0, eligible: false, checked: null },
-    county: { candidates: 0, eligible: false, selected: null } };
+    county: { candidates: 0, eligible: false, selected: null },
+    officeIdentification: { state: "NOT_READY", candidates: 0, controlOrdinal: null, codes: null, unrecognizedOptions: null } };
   check(validFilingInventoryMetadata(inventory));
   check(validFilingMetadata(inventory));
   check(!validFilingInventoryMetadata(filingMetadata));
   const { optionState: _omitted, labelWords: _words, ...legacyControl } = inventoryControl;
   const { COMMON_PLEAS: _cp, ...legacyChoices } = publicChoices;
   for (const method of ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3"]) {
-    const { advancedSearch: _advanced, county: _county, ...historical } = inventory;
+    const { advancedSearch: _advanced, county: _county, officeIdentification: _office, ...historical } = inventory;
     const legacyInventory = { ...historical, method, controls: [{ ...legacyControl,
       ...(method.endsWith("v3") ? { optionState: "OBSERVED" } : {}),
       publicChoices: legacyChoices, selectedPublicChoices: { ...legacyChoices, MDJ: 0 } }] };
     check(validFilingMetadata(legacyInventory));
     check(!validFilingInventoryMetadata(legacyInventory));
   }
-  const { advancedSearch: _advancedV4, county: _countyV4, ...historicalV4 } = inventory;
+  const { advancedSearch: _advancedV4, county: _countyV4, officeIdentification: _officeV4, ...historicalV4 } = inventory;
   const v4 = { ...historicalV4, method: "playwright-filing-control-inventory-v4", phase: "FINAL" };
   check(validFilingMetadata(v4));
   check(!validFilingInventoryMetadata(v4));
@@ -288,7 +289,7 @@ try {
   const completedAdvanced = { ...inventory, phase: "ADVANCED", controls: [inventoryControl, advancedControl],
     advancedSearch: { candidates: 1, eligible: true, checked: true } };
   check(validFilingInventoryMetadata(completedAdvanced));
-  const { county: _countyV5, ...historicalV5 } = completedAdvanced;
+  const { county: _countyV5, officeIdentification: _officeV5, ...historicalV5 } = completedAdvanced;
   check(validFilingMetadata({ ...historicalV5, method: "playwright-filing-control-inventory-v5", phase: "FINAL" }));
   check(!validFilingInventoryMetadata({ ...historicalV5, method: "playwright-filing-control-inventory-v5" }));
   check(!validFilingInventoryMetadata({ ...completedAdvanced, phase: "FINAL" }));
@@ -298,9 +299,30 @@ try {
     selectedPublicChoices: { ...publicChoices, MDJ: 0, ALLEGHENY: 1 } };
   const completedCounty = { ...completedAdvanced, phase: "COUNTY",
     controls: [inventoryControl, advancedControl, countyControl],
-    county: { candidates: 1, eligible: true, selected: true } };
+    county: { candidates: 1, eligible: true, selected: true },
+    officeIdentification: { state: "MISSING", candidates: 0, controlOrdinal: null, codes: null, unrecognizedOptions: null } };
   check(validFilingInventoryMetadata(completedCounty));
   check(validFilingInventoryMetadata({ ...completedCounty, phase: "FINAL" }));
+  const { officeIdentification: _officeV6, ...historicalV6 } = completedCounty;
+  check(validFilingMetadata({ ...historicalV6, method: "playwright-filing-control-inventory-v6" }));
+  check(!validFilingInventoryMetadata({ ...historicalV6, method: "playwright-filing-control-inventory-v6" }));
+  const officeControl = { ...countyControl, ordinal: 3, labels: ["Court Office"], labelWords: ["court", "office"],
+    publicChoices: { ...publicChoices, MDJ: 0 }, selectedPublicChoices: { ...publicChoices, MDJ: 0 } };
+  const identified = { ...completedCounty, controls: [...completedCounty.controls, officeControl],
+    officeIdentification: { state: "OBSERVED", candidates: 1, controlOrdinal: 3, unrecognizedOptions: 1,
+      codes: [{ code: "05-2-99", kind: "DISTRICT_CODE_UNVERIFIED", enabled: true, selected: false }] } };
+  check(validFilingInventoryMetadata(identified));
+  for (const change of [{ state: "MDJ_VERIFIED" }, { candidates: 2 }, { controlOrdinal: 0 }, { unrecognizedOptions: 0 },
+    { codes: null }, { privateValue: "secret" },
+    ...[{ code: "06-2-99" }, { kind: "MDJ" }, { selected: "false" }, { value: "private" }, { label: "Person" }]
+      .map(change => ({ codes: [{ ...identified.officeIdentification.codes[0], ...change }] }))])
+    check(!validFilingInventoryMetadata({ ...identified, officeIdentification: { ...identified.officeIdentification, ...change } }));
+  const unknownOffice = { ...officeControl, optionState: "OVER_LIMIT", optionCount: null, publicChoices: null, selectedPublicChoices: null };
+  const unknownIdentification = { state: "OVER_LIMIT", candidates: 1, controlOrdinal: 3, codes: null, unrecognizedOptions: null };
+  check(validFilingInventoryMetadata({ ...completedCounty, controls: [...completedCounty.controls, unknownOffice],
+    officeIdentification: unknownIdentification }));
+  check(!validFilingInventoryMetadata({ ...completedCounty, controls: [...completedCounty.controls, unknownOffice],
+    officeIdentification: { ...unknownIdentification, codes: [] } }));
   for (const change of [{ candidates: 0 }, { eligible: false }, { selected: false }, { selected: "true" }, { value: "private" }])
     check(!validFilingInventoryMetadata({ ...completedCounty, county: { ...completedCounty.county, ...change } }));
   for (const change of [{ visible: false }, { enabled: false }, { ownership: "OTHER" }, { hasPublicLabel: false },

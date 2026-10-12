@@ -17,6 +17,82 @@ not itself authorize Search, PDF, date/court/county/case/office activation, sour
 overrides, higher budgets, alternate clients or wider collection. No identical
 inspection is repeated without a new evidence need.
 
+### Approved public office identification — October 12, 2026
+
+The user selected **“Allow public office identification”**, with no additional
+comments. This extends retained diagnostic metadata to bounded recognized public
+institutional labels and displayed district-05 office codes, with no private
+option values, arbitrary labels, names or identities. It does not authorize
+office selection, other filters, Search, dates, PDFs or dependent transmissions.
+
+Current method: `playwright-filing-control-inventory-v7`, preserving the five
+v6 phases and action sequence. After local Allegheny selection, a closed
+`officeIdentification` object reports candidate count, snapshot control ordinal,
+state, recognized displayed codes and unrecognized option count. A visible,
+enabled, publicly associated search-form-owned native select with court/office
+words is only an observation candidate, not a verified control role or binding.
+Missing/ambiguous/oversized candidates retain no codes; oversized options are
+never read. At most 250 recognized codes emit; exceeding this stops with
+`FILING_OFFICE_CODE_LIMIT`, without retaining a partial code list.
+
+Displayed `MJ`/`MDJ` or Magisterial District Court prefixes classify codes as
+`EXPLICIT_MDJ`; plain numeric `05-n-nn` codes stay `DISTRICT_CODE_UNVERIFIED`.
+Only the code token and classification/enabled/selected flags emit; trailing
+names are excluded, docket-like suffixes rejected, and option values never used
+for identification. Duplicate displayed codes are preserved as observations,
+not deduplicated into assumed unique choices. Unknown options stay unknown.
+Codes are recognized as standalone displayed tokens, including compact prefixed
+MJ/MDJ notation canonicalized to `05-n-nn`. Multiple code tokens in one label stay
+unknown. Native `option.label` is used, because that is the browser's displayed
+label and can differ from underlying text. No private option values are read for
+identification.
+The parent independently validates candidate/state accounting, code grammar,
+closed keys, counts and phase readiness. Historical v6 reports remain readable
+but cannot execute v7. Trailing colon/asterisk label markers are normalized as a
+sequence; added exact institutional labels remain a closed vocabulary.
+
+#### Completed identification checks — unresolved
+
+| Permit (consumed) | Job | State | Run UTC | GETs | Minimum completion-to-start pause | Maximum request duration |
+| --- | --- | --- | --- | --- | --- | --- |
+| `d45acd9d-847b-44ef-848f-443aabaf87bc` | `ed856f4c-3015-4444-9942-69fcbbad64d7` | INSPECTED | 22:08:08–22:10:29 | 3 | 64.309 s | 950 ms |
+| `a1a41b03-377c-4a48-b2e7-ccb56c960822` | `4bb93170-86dc-4e18-8406-66eb8609158a` | INSPECTED | 22:12:42–22:15:21 | 3 | 77.230 s | 810 ms |
+| `06bc06f9-3429-468a-9763-ea6155378a6d` | `da37b8b0-294f-4cce-9b50-a4648a9cc851` | INSPECTED | 22:16:53–22:19:01 | 3 | 60.886 s | 664 ms |
+
+All nine bootstrap GETs completed HTTP 200/OK, with no failures or documents.
+Each attempt parent-validated all five phases. Office identification stayed
+`NOT_READY` until County selection, then observed one active native search-form
+candidate with a public group association and 49 options. Only generic court/
+office words were recognized; the exact institutional label stayed unrecognized.
+All 49 displayed options remained unrecognized and no codes were retained in
+`COUNTY` or `FINAL`.
+
+The first check used the initial prefix formats. The second broadened code-token
+position recognition and compact MJ/MDJ formatting, preserving the same closed
+metadata/action contract and code cap. The final check corrected the label
+reader to use browser-displayed `option.label` rather than underlying text.
+Each recognizer change passed its focused redaction fixture before source use.
+No further identical or speculative-format inspection is justified by these
+results. A redacted public label/option example is needed to resolve recognition
+without reading private values, guessing an office or assuming a court type.
+
+An empty retained code list is **not** an empty source dropdown, an absence proof,
+unsupported MDJ coverage, or access proof. `INSPECTED` is protocol completion
+only; the requested public office identification remains unresolved. No names,
+arbitrary labels or private values were retained, and no office, case category,
+date or Search action was taken. No dependent requests, remote POSTs, PDFs or
+records were transmitted/collected.
+
+Offline verification passed API typecheck/build, 242 safety checks and all 44
+network-blocked Python tests. The later token-format and displayed-label reader
+changes each passed the focused public-office redaction test and build checks.
+Fixtures are hypothetical public form controls, not docket/case records.
+The managed API was restored after each attempt and started cleanly; the public
+app rendered without browser errors. All permits are consumed. Source state has
+`SOURCE_VALIDATION_BARRIER` and no pause, active request, latency warning, access
+proof or collection approval. All three discovery/PDF/extraction routes and the
+overall task remain **blocked, not complete**.
+
 ### Approved local Allegheny selection — October 12, 2026
 
 The user selected **“Allow local Allegheny selection”**, with no additional
@@ -26,7 +102,7 @@ option in the unique eligible source-labeled County native select. This does not
 authorize another county, court/case/office selection, dates, Search, PDFs,
 dependent transmissions, budget changes or collection.
 
-Current method: `playwright-filing-control-inventory-v6`, with ordered phases
+At this stage the method was `playwright-filing-control-inventory-v6`, with ordered phases
 `INITIAL`, `FILING`, `ADVANCED`, `COUNTY`, `FINAL`. A closed `county` object reports
 candidate count, eligibility and selected state. The parent independently
 validates these against the redacted controls and requires eligible/selected in
@@ -85,8 +161,8 @@ collected. The engine and all three discovery/PDF/extraction routes remain
 **blocked, not complete**.
 
 Next evidence needed: identify public court-office choices and their MDJ context.
-Extending retained metadata to public office labels/codes requires explicit
-metadata-scope approval and a new method. No office selection, private value/
+Extending retained metadata to public office labels/codes required the explicit
+metadata-scope approval now recorded above and a new method. No office selection, private value/
 identity retention, source-stop override or extra transmission is authorized.
 
 ### Approved Advanced Search activation — October 12, 2026

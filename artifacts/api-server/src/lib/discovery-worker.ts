@@ -228,7 +228,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       if (finished && code === 0) {
         const counts = await jobSummary(current);
         const message = filingInspectionOnly
-          ? "Bounded public control inventory observed before/after filing mode, the unique source-labeled Advanced Search checkbox and local County = Allegheny selection. No other county, court/case/office selection, Search, date entry, dependent transmission, remote POST or PDF. Court context and submission bindings remain unproven; collection remains disabled."
+          ? "Bounded public control inventory after filing mode, Advanced Search and local County = Allegheny, including redacted displayed public office codes. No private option values or identities, other county, court/case/office selection, Search, date entry, dependent transmission, remote POST or PDF. Numeric district codes alone do not establish MDJ context or submission bindings; collection remains disabled."
           : coverageOnly
           ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
           : inspectionOnly

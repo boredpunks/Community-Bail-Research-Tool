@@ -158,6 +158,21 @@ block dependent requests and stop. This does not authorize another county,
 court/case/office selection, Search, dates, PDFs, wider collection, cap changes
 or stop overrides.
 
+The user also approved read-only **public court-office label and displayed-code
+identification**, with no additional comments.
+
+**Why:** The user selected “Allow public office identification.”
+
+**How to apply:** Retain only bounded, recognized institutional labels and
+displayed public office codes, after the approved filing/Advanced Search/Allegheny
+sequence. Exclude private option values, names and identities. Preserve the same
+three paced GETs, fresh permits and all stops; no office selection, Search, dates,
+PDFs or dependent transmissions. Plain numeric district codes must remain
+court-type-unverified; they are not MDJ-context or submitted-binding proof.
+An empty recognized-code list leaves source choices unresolved, not absent.
+After bounded recognition approaches fail, request a redacted public example
+rather than silently inspecting underlying option values or guessing an office.
+
 Filing mode followed by **Advanced Search** activates the source's **County**
 control; local Allegheny selection activates a court-office-related dropdown.
 Neither establishes MDJ context or submitted bindings.

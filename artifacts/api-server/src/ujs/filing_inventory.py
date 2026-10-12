@@ -1,12 +1,12 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v6"
+METHOD = "playwright-filing-control-inventory-v7"
 PHASES = ("INITIAL", "FILING", "ADVANCED", "COUNTY", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
     "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
-    "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT",
+    "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT", "FILING_OFFICE_CODE_LIMIT",
 })
 
 # Exact public vocabulary only. Unknown text, identifiers and values never emit.
@@ -27,7 +27,9 @@ INVENTORY = """({phase}) => {
     'Court Number', 'Court No', 'Court No.', 'Court #', 'Court Code', 'Court ID',
     'Court Identifier', 'Court Division', 'Court Jurisdiction', 'Court Offices',
     'Court Office(s)', 'Court(s)', 'Court (Required)', 'Court (Optional)',
-    'Trial Court', 'Local Court', 'County Court', 'Municipal Court'];
+    'Trial Court', 'Local Court', 'County Court', 'Municipal Court',
+    'MDJ Court Office', 'Court Office (MDJ)', 'Court Office (MJ)',
+    'Magisterial District Court Office'];
   const publicWords = ['all','court','courts','case','cases','criminal','search','system',
     'type','types','county','closed','include','exclude','magisterial','district','common','pleas','level','by',
     'advanced','enable','enabled','show','options','filters','filter','limit','limited','restrict','restricted',
@@ -42,7 +44,7 @@ INVENTORY = """({phase}) => {
     CRIMINAL: ['Criminal']
   };
   const sensitive = /token|password|secret|session|cookie|captcha|verification|auth|birth|dob|defendant|participant|attorney|judge|docket|name|address|email|phone|ssn/i;
-  const normalize = text => (text || '').trim().replace(/[:*]\\s*$/, '').trim().replace(/\\s+/g, ' ').toLowerCase();
+   const normalize = text => (text || '').trim().replace(/(?:[:*]\\s*)+$/, '').trim().replace(/\\s+/g, ' ').toLowerCase();
   const category = text => Object.keys(choices).filter(key =>
     choices[key].some(label => normalize(label) === normalize(text)));
   const nodes = [...document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
@@ -171,8 +173,39 @@ INVENTORY = """({phase}) => {
       && counties[0].publicChoices.ALLEGHENY === 1,
     selected: counties.length === 1 && counties[0].optionState === 'OBSERVED'
       ? counties[0].selectedPublicChoices.ALLEGHENY === 1 : null};
-  return {method: 'playwright-filing-control-inventory-v6', phase, modeMatchesFiling,
-    controls, omittedSensitiveControls, advancedSearch, county};
+  // Candidates only: generic court/office words do not establish a role/binding.
+  const officeCandidates = controls.filter(row => row.widget === 'SELECT'
+    && row.visible && row.enabled && row.ownership === 'SEARCH' && row.hasPublicLabel
+    && row.labelWords.includes('court') && (row.labelWords.includes('office') || row.labelWords.includes('offices')));
+  const ready = county.eligible && county.selected === true && ['COUNTY','FINAL'].includes(phase);
+  const officeIdentification = {state: !ready ? 'NOT_READY' : officeCandidates.length === 0 ? 'MISSING'
+    : officeCandidates.length !== 1 ? 'AMBIGUOUS' : officeCandidates[0].optionState === 'OVER_LIMIT' ? 'OVER_LIMIT' : 'OBSERVED',
+    candidates: officeCandidates.length, controlOrdinal: ready && officeCandidates.length === 1 ? officeCandidates[0].ordinal : null,
+    codes: null, unrecognizedOptions: null};
+  if (officeIdentification.state === 'OBSERVED') {
+    const options = [...nodes[officeIdentification.controlOrdinal].options];
+    const codes = [];
+    for (const option of options) {
+      // Displayed text only. No option.value/name/id, arbitrary labels or names emit.
+      const text = (option.label || '').trim().replace(/\\s+/g, ' ');
+      const matches = [...text.matchAll(/(?:^|[\\s(\\[])((?:(?:MJ|MDJ)[ -])?05-\\d-\\d{2}|(?:MJ|MDJ)[ -]05\\d{3})(?=$|[\\s)\\],;:])/gi)];
+      // Multiple tokens remain unknown, never pick the first arbitrarily.
+      if (matches.length !== 1) continue;
+      const match = matches[0], token = match[1];
+      const explicit = /^(?:MJ|MDJ)[ -]/i.test(token)
+        || /\\bMagisterial District Courts?\\s*$/i.test(text.slice(0, match.index));
+      const displayed = token.replace(/^(?:MJ|MDJ)[ -]/i, '');
+      const code = /^05\\d{3}$/.test(displayed)
+        ? displayed.slice(0, 2) + '-' + displayed[2] + '-' + displayed.slice(3) : displayed;
+      codes.push({code, kind: explicit ? 'EXPLICIT_MDJ' : 'DISTRICT_CODE_UNVERIFIED',
+        enabled: !option.matches(':disabled') && !option.closest('[aria-disabled=true]'), selected: option.selected === true});
+      if (codes.length > 250) return {error: 'FILING_OFFICE_CODE_LIMIT'};
+    }
+    officeIdentification.codes = codes;
+    officeIdentification.unrecognizedOptions = options.length - codes.length;
+  }
+  return {method: 'playwright-filing-control-inventory-v7', phase, modeMatchesFiling,
+    controls, omittedSensitiveControls, advancedSearch, county, officeIdentification};
 }"""
 
 # Resolve an ephemeral ElementHandle from the same bounded, exact public-label
@@ -194,7 +227,7 @@ COUNTY_OPTION = """() => {
     + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button],a,[role=link]');
   return [...nodes[row.ordinal].options].find(option => !option.matches(':disabled')
     && !option.closest('[aria-disabled=true]')
-    && option.textContent.trim().replace(/[:*]\\s*$/, '').trim().replace(/\\s+/g, ' ').toLowerCase() === 'allegheny') || null;
+    && option.textContent.trim().replace(/(?:[:*]\\s*)+$/, '').trim().replace(/\\s+/g, ' ').toLowerCase() === 'allegheny') || null;
 }"""
 
 

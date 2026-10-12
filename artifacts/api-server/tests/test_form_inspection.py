@@ -444,6 +444,66 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
         self.assertTrue(all(row['county']['selected'] for row in messages if row['kind'] == 'filing_metadata'))
 
+    async def test_public_office_codes_are_displayed_only_bounded_and_not_selected(self):
+        fixture = self.filing_fixture().replace('Court Office:</label>', 'Court Office*: *</label>').replace(
+            '<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option></select>',
+            '<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option>'
+            '<option value="PRIVATE_VALUE_SENTINEL">05-2-99 - PRIVATE_NAME_SENTINEL</option>'
+            '<option value="PRIVATE_VALUE_SENTINEL">MJ-05-1-99</option>'
+            '<option value="PRIVATE_VALUE_SENTINEL">Magisterial District Court 05-3-99</option>'
+            '<option value="05-2-98">PRIVATE_LABEL_SENTINEL</option>'
+            '<option>PRIVATE_NAME_SENTINEL (MJ-05297)</option>'
+            '<option>PRIVATE_NAME_SENTINEL 05-2-96</option>'
+            '<option>05-2-95 and 05-2-94 PRIVATE_NAME_SENTINEL</option>'
+            '<option label="MJ-05293">PRIVATE_HIDDEN_TEXT_SENTINEL</option>'
+            '<option label="PRIVATE_DISPLAY_LABEL_SENTINEL">05-2-91</option>'
+            '<option>05-2-99-CR-PRIVATE_DOCKET_SENTINEL</option></select>')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureOffice') throw Error('Office selection prohibited');
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertEqual(len(metadata), 5)
+        for phase in metadata[:3]:
+            self.assertEqual(phase['officeIdentification']['state'], 'NOT_READY')
+            self.assertIsNone(phase['officeIdentification']['codes'])
+        final = metadata[-1]['officeIdentification']
+        self.assertEqual(final['state'], 'OBSERVED')
+        self.assertEqual(final['unrecognizedOptions'], 5)
+        self.assertEqual(final['codes'], [
+            {'code': '05-2-99', 'kind': 'DISTRICT_CODE_UNVERIFIED', 'enabled': True, 'selected': False},
+            {'code': '05-1-99', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
+            {'code': '05-3-99', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
+            {'code': '05-2-97', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
+            {'code': '05-2-96', 'kind': 'DISTRICT_CODE_UNVERIFIED', 'enabled': True, 'selected': False},
+            {'code': '05-2-93', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
+        ])
+        self.assertTrue(any('Court Office' in row['labels'] for row in metadata[-1]['controls']))
+        self.assertNotIn('SENTINEL', json.dumps(messages))
+        self.assertNotIn('05-2-98', json.dumps(metadata))
+        self.assertNotIn('05-2-91', json.dumps(metadata))
+
+    async def test_office_code_limit_unknown_and_ambiguous_candidates_fail_closed(self):
+        base = self.filing_fixture()
+        replacement = '<select id="fixtureOffice" name="fixtureOffice">' + '<option>05-2-99</option>' * 251 + '</select>'
+        fixture = base.replace('<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option></select>', replacement)
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row.get('code') == 'FILING_OFFICE_CODE_LIMIT' for row in messages))
+        self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+        for fixture, state in [
+            (base.replace('<button id="btnSearch">',
+                '<label for="anotherOffice">Court Office</label><select id="anotherOffice"><option>05-2-99</option></select><button id="btnSearch">'), 'AMBIGUOUS'),
+            (base.replace('<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option></select>',
+                '<select id="fixtureOffice" name="fixtureOffice">' + '<option>05-2-99</option>' * 2001 + '</select>'), 'OVER_LIMIT'),
+        ]:
+            # The unknown candidate's oversized options remain uninspected.
+            messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+            metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+            self.assertEqual(metadata[-1]['officeIdentification']['state'], state)
+            self.assertIsNone(metadata[-1]['officeIdentification']['codes'])
+
     async def test_coverage_inventory_without_search_or_pdf(self):
         # Hypothetical public filter options ONLY, not source support or cases.
         fixture = public_fixture().replace('value="CalendarEvent">SEARCH_MODE',
