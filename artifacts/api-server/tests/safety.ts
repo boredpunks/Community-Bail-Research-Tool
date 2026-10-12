@@ -10,7 +10,7 @@ import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/
 
 import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
-import { filingInspectionMethod, filingRoles, validFilingMetadata } from "../src/lib/filing-inspection";
+import { filingInspectionMethod, filingRoles, validFilingMetadata, validFilingInventoryMetadata } from "../src/lib/filing-inspection";
 
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
@@ -257,6 +257,27 @@ try {
     { ...filingMetadata, dates: [{ minimum: "2026-02-30", maximum: null, visible: true, enabled: true, nativeNamed: true, nativeSuccessful: true }] },
     { ...filingMetadata, dates: [{ minimum: null, maximum: null, visible: true, enabled: false, nativeNamed: true, nativeSuccessful: true }] },
   ]) check(!validFilingMetadata(bad));
+  const publicChoices = { FILING: 0, MDJ: 1, ALLEGHENY: 0, CRIMINAL: 0 };
+  const inventoryControl = { ordinal: 0, widget: "RADIO", labels: ["Court Level"], associations: ["GROUP", "LABEL"],
+    hasPublicLabel: true, visible: true, enabled: true, ownership: "NONE", optionCount: 0,
+    publicChoices, selectedPublicChoices: { ...publicChoices, MDJ: 0 }, nativeSuccessful: false };
+  const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FINAL",
+    modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl] };
+  check(validFilingInventoryMetadata(inventory));
+  check(validFilingMetadata(inventory));
+  check(!validFilingInventoryMetadata(filingMetadata));
+  for (const bad of [
+    { ...inventory, html: "forbidden" }, { ...inventory, method: "playwright-filing-form-inspection-v1" },
+    { ...inventory, phase: "COURT_TYPE" }, { ...inventory, modeMatchesFiling: false },
+    { ...inventory, omittedSensitiveControls: 128 }, { ...inventory, controls: [inventoryControl, inventoryControl] },
+    ...[
+      { labels: ["raw unknown label"] }, { associations: ["guessed_binding"] }, { widget: "TEXT" },
+      { ownership: "GUESSED" }, { ordinal: 128 }, { value: "private" }, { nativeSuccessful: true },
+      { publicChoices: { ...publicChoices, MDJ: 2 } },
+      { publicChoices: { ...publicChoices, PRIVATE: 1 } },
+      { selectedPublicChoices: { ...publicChoices, MDJ: 2 } },
+    ].map(change => ({ ...inventory, controls: [{ ...inventoryControl, ...change }] })),
+  ]) check(!validFilingInventoryMetadata(bad));
   for (const stage of ["INSPECT", "COVERAGE", "FILING_INSPECT"]) for (const [path, method, url] of [
     ["/CaseSearch", "GET", requestUrl],
     ["/CaseSearch", "POST", requestUrl],

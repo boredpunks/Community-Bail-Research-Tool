@@ -71,3 +71,18 @@ network cause from this state. Prepare source-backed public-control evidence
 without assuming a particular Court Type select label or native-form ownership
 boundary. Native submission still requires validated form ownership and
 bindings; a completed diagnostic protocol is not successful court coverage.
+
+Broader observational inventory is not permission to interact with newly
+discovered controls or infer their role from a recognized option.
+
+**Why:** The failed select-only recognizer could not reveal controls outside the
+search form or non-select widgets. Expanding observation addresses that blind
+spot, but an MDJ-labeled option alone does not establish the controlling court
+context or its dependency sequence.
+
+**How to apply:** Separate evidence collection from adapter actions. Observe
+bounded public-label/widget/ownership categories before and after the already
+established filing-mode change; do not click or select unknown court controls.
+Keep unknown text and private identities redacted, historical diagnostics
+readable, and require fresh method-specific approval for any later source
+observation. Broader observation never relaxes native submitted-binding checks.

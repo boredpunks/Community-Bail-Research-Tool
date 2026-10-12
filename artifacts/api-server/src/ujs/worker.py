@@ -216,7 +216,7 @@ async def main():
                 calendar_preflight("READY")
                 if filing_inspection_only:
                     inspection_local = True
-                    from filing_inspection import observe
+                    from filing_inventory import observe
                     await observe(page, emit)
                     await asyncio.sleep(0.1)
                     if inspection_error:

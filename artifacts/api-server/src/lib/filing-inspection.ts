@@ -1,6 +1,7 @@
 /** Closed, redacted source-form observations; never submitted search proof. */
-export const filingInspectionMethod = "playwright-filing-form-inspection-v1";
-export const filingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
+export const filingInspectionMethod = "playwright-filing-control-inventory-v2";
+export const filingPhases = ["INITIAL", "FILING", "FINAL"] as const;
+const legacyFilingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
 export const filingRoles = ["SEARCH_MODE", "COURT_TYPE", "COUNTY", "CASE_TYPE", "COURT_OFFICE"] as const;
 const exactKeys = (row: Record<string, unknown>, keys: string[]) => Object.keys(row).sort().join() === [...keys].sort().join();
 const count = (value: unknown, max: number) => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= max;
@@ -8,8 +9,10 @@ const realDate = (value: unknown) => value === null || typeof value === "string"
   && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value))
   && new Date(value).toISOString().slice(0, 10) === value;
 export function validFilingMetadata(message: Record<string, unknown>) {
+  // Keep consumed v1 reports readable without accepting v1 in the current worker.
+  if (message.method === filingInspectionMethod) return validFilingInventoryMetadata(message);
   if (!exactKeys(message, ["kind", "phase", "controls", "scopeReady", "modeMatchesFiling", "officeCodes", "dates", "unclassifiedSelects"])
-    || message.kind !== "filing_metadata" || !filingPhases.includes(message.phase as typeof filingPhases[number])
+    || message.kind !== "filing_metadata" || !legacyFilingPhases.includes(message.phase as typeof legacyFilingPhases[number])
     || typeof message.scopeReady !== "boolean" || typeof message.modeMatchesFiling !== "boolean"
     || !count(message.unclassifiedSelects, 64)
     || !Array.isArray(message.controls) || message.controls.length !== filingRoles.length
@@ -39,4 +42,43 @@ export function validFilingMetadata(message: Record<string, unknown>) {
       && ["visible", "enabled", "nativeNamed", "nativeSuccessful"].every(key => typeof row[key] === "boolean")
       && (!row.nativeSuccessful || row.nativeNamed && row.enabled);
   });
+}
+
+export const filingPublicLabels = ["Search By", "Court", "Courts", "Court Type", "Court Level",
+  "Court System", "Court Selection", "Court Category", "Court of Record",
+  "Judicial District", "County", "Case Type", "Case Category", "Court Office"] as const;
+const choiceKeys = ["FILING", "MDJ", "ALLEGHENY", "CRIMINAL"];
+const object = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+const subset = (value: unknown, vocabulary: readonly string[]) => Array.isArray(value)
+  && value.length <= vocabulary.length && value.every(key => typeof key === "string" && vocabulary.includes(key))
+  && new Set(value).size === value.length;
+export function validFilingInventoryMetadata(message: Record<string, unknown>) {
+  if (!exactKeys(message, ["kind", "method", "phase", "modeMatchesFiling", "controls", "omittedSensitiveControls"])
+    || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod
+    || !filingPhases.includes(message.phase as typeof filingPhases[number])
+    || typeof message.modeMatchesFiling !== "boolean" || !count(message.omittedSensitiveControls, 128)
+    || !Array.isArray(message.controls) || message.controls.length + Number(message.omittedSensitiveControls) > 128
+    || message.phase !== "INITIAL" && !message.modeMatchesFiling) return false;
+  let priorOrdinal = -1;
+  for (const row of message.controls) {
+    if (!object(row) || !exactKeys(row, ["ordinal", "widget", "labels", "associations", "hasPublicLabel",
+      "visible", "enabled", "ownership", "optionCount", "publicChoices", "selectedPublicChoices", "nativeSuccessful"])
+      || !count(row.ordinal, 127) || Number(row.ordinal) <= priorOrdinal
+      || typeof row.widget !== "string" || !["SELECT", "RADIO", "CHECKBOX", "COMBOBOX", "TAB", "MENUITEMRADIO", "BUTTON"].includes(row.widget)
+      || !subset(row.labels, filingPublicLabels) || !subset(row.associations, ["LABEL", "ARIA", "GROUP", "TEXT"])
+      || typeof row.ownership !== "string" || !["SEARCH", "OTHER", "NONE"].includes(row.ownership) || !count(row.optionCount, 2000)
+      || !["hasPublicLabel", "visible", "enabled", "nativeSuccessful"].every(key => typeof row[key] === "boolean")
+      || !object(row.publicChoices) || !object(row.selectedPublicChoices)
+      || !exactKeys(row.publicChoices, choiceKeys) || !exactKeys(row.selectedPublicChoices, choiceKeys)
+      || row.nativeSuccessful && (row.ownership !== "SEARCH" || !row.enabled
+        || !["SELECT", "RADIO", "CHECKBOX"].includes(String(row.widget)))) return false;
+    for (const key of choiceKeys) {
+      const max = ["SELECT", "COMBOBOX"].includes(String(row.widget)) ? Number(row.optionCount) : 1;
+      if (!count(row.publicChoices[key], max)
+        || !count(row.selectedPublicChoices[key], Number(row.publicChoices[key]))) return false;
+    }
+    priorOrdinal = Number(row.ordinal);
+  }
+  return true;
 }

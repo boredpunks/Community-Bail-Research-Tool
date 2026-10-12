@@ -8,6 +8,93 @@ only; execution was authorized by the later filing-inspection approval form.
 Both this permit and the earlier coverage permit are consumed. Neither
 authorizes another request.
 
+## Current offline revision — October 12, 2026
+
+The user approved **offline preparation only**. The current `FILING_INSPECT`
+method is `playwright-filing-control-inventory-v2`. It has not been approved
+for live execution or run against the portal. No new permit or job was created,
+no court request was made, and collection remains disabled.
+
+The revision replaces the v1 select-only, search-form-owned recognizer with
+a bounded observational inventory:
+
+- Observe `INITIAL`, `FILING`, then `FINAL`; select the previously established
+  public filing mode only when its source-listed option is unique.
+- Never select court type, county, case category or office. Never click a tab,
+  radio, button, custom dropdown, Search or other navigation control. Never
+  enter dates or transmit a search.
+- Inspect native selects, radios and checkboxes, plus ARIA comboboxes, radios,
+  tabs and radio menu items. Observe relevant public buttons without clicking.
+  Native and ARIA controls outside the search form are included.
+- Read directly associated labels, ARIA references, fieldset/group labels and
+  source DOM control-group labels. Do not infer ownership from proximity.
+  Custom dropdown options are observed only if already present inside the
+  widget or its explicitly ARIA-controlled container; no popup is opened.
+- Retain only exact allowlisted public labels: Search By; Court; Courts;
+  Court Type; Court Level; Court System; Court Selection; Court Category;
+  Court of Record; Judicial District; County; Case Type; Case Category;
+  Court Office. Matching ignores capitalization, whitespace and trailing
+  label punctuation. Unknown label text is never retained.
+- Retain counts of recognized filing, MDJ, Allegheny and Criminal public
+  choices and selected choices. Duplicate matches remain counts, not an
+  instruction to pick one. Recognized choices identify **candidates**, not
+  verified control purpose, MDJ scope or source coverage.
+- Retain widget type, direct/ARIA/group/text association categories, presence
+  of a public label, visible/enabled flags, native owner category
+  (`SEARCH`, `OTHER`, `NONE`) and a native successful-field boolean.
+  This last flag describes local pre-submit FormData only, not server bindings.
+- Retain only per-snapshot ordinal numbers, not DOM IDs, selectors, field
+  names, option values, raw labels, input values, hidden fields, HTML, cookies,
+  tokens, console text, office codes, result rows or date values/constraints.
+  Ordinals are not durable selectors; page changes may reorder controls.
+- Fail closed above 128 candidate widgets, 512 search-form elements,
+  2,000 options per widget or eight ARIA references per association.
+  Sensitive-identity controls are omitted and counted. The parent validates
+  the exact metadata shape, closed vocabulary, counts and phase order.
+- The later source-observation scope remains at most the same **three bootstrap
+  GETs**, zero POSTs and zero PDFs. All subsequent nonoptional requests,
+  including dependencies triggered by filing selection, abort locally and
+  stop the diagnostic. No retries or asset/cap expansion. Existing shared
+  pacing, rolling quotas, source health stops and single-use permits remain.
+
+The current worker accepts only v2 inventory metadata. Historical v1 reports
+remain readable, but old or consumed permits cannot execute the revised method.
+`INSPECTED` would still mean protocol completion, not successful court-context
+recognition or discovery/PDF proof. Missing and inactive controls remain missing
+evidence, not proof of unsupported coverage.
+
+### Offline verification
+
+- API typecheck passed.
+- All 179 safety checks passed, including closed redaction/metadata validation,
+  rejection of v1 metadata by the current inventory validator, unchanged
+  three-GET scheduler restrictions and preservation of collection/source stops.
+  Database tests used a disposable empty schema, not application case data.
+- 30 of 31 network-blocked Python tests passed in the initial combined run;
+  the sole failure was an unchanged calendar-click fixture's one-second
+  timeout. That exact test passed when rerun alone. No calendar production
+  code or timeouts were changed.
+- All new/updated inventory fixtures passed: outside-form controls, native radio,
+  ARIA tab/input-combobox, unknown-label redaction, hidden/disabled controls,
+  filing-triggered local activation, duplicate MDJ observations without selection,
+  ambiguous filing-mode stop, overflow stop and aborted dependent requests.
+  Fixtures contain hypothetical public form controls only, never case records.
+- Managed API build/restart passed with the new inventory module packaged and
+  the old executable excluded. Startup logs were clean; the public app screenshot
+  rendered normally with no browser errors. Whitespace checks passed.
+
+### Later operator scope (not authorized)
+
+Only after fresh explicit approval of this **inventory-only** scope may an
+operator prepare/approve/run a new current-method single-use permit. Do not use
+the consumed v1 permit. Existing CLI dates and CP/calendar criteria are storage
+placeholders, never filing dates or substituted search permission. No approval,
+source verification or collection enablement follows from this offline revision.
+
+The engine remains **blocked, not complete**. The actual court-context control,
+source activation sequence, submitted filing bindings, earlier post-Search failure
+and separately approved integrated discovery/PDF/extraction proofs remain unresolved.
+
 The three-method engine remains **blocked, not complete**. The earlier approved
 inventory established a locally selectable filing mode and public filing date
 bounds, but did not establish MDJ criminal court controls or submitted field
@@ -71,7 +158,7 @@ diagnostic offline before proposing new bounded source observation. Do not retry
 this consumed inspection, start a Search/PDF pilot, widen a date/court scope,
 or interpret unavailable widgets as confirmed absence of source support.
 
-## Proposed single-use scope
+## Historical consumed single-use scope (v1)
 
 Operator stage: `FILING_INSPECT`.
 Method: `playwright-filing-form-inspection-v1`.
@@ -143,7 +230,7 @@ Legacy CP/Bail Hearing criteria, record-cap-one and stored start/end dates are
 storage placeholders only. Actual PDF and POST caps are zero. Stored dates are
 never entered or submitted; they are not a filing-date search authorization.
 
-## Offline checks and operator flow
+## Historical v1 offline checks and operator flow
 
 Passed: 160 offline safety checks, 27 network-blocked Python protocol/browser
 tests, API typecheck/build and whitespace checks. Tests use hypothetical public

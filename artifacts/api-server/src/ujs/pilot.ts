@@ -40,7 +40,7 @@ async function main() {
     console.log(JSON.stringify({ id: row!.id, stage, state: "PREPARED", criteria: row!.criteria,
       documentCap: diagnostic(stage) ? 0 : row!.criteria.recordCap,
       remotePostCap: diagnostic(stage) ? 0 : null,
-      notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. Diagnostic criteria recordCap and dates are legacy storage placeholders, never PDF permission or submitted dates. FILING_INSPECT only locally selects uniquely source-labeled filing/MDJ/Allegheny/Criminal options; no Search, office selection or date entry." }));
+       notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. Diagnostic criteria recordCap and dates are legacy storage placeholders, never PDF permission or submitted dates. Current FILING_INSPECT observes bounded public widgets before/after selecting filing mode only; no court/county/case/office selection, Search or date entry." }));
     return;
   }
   const id = value("id");
@@ -152,7 +152,7 @@ async function main() {
        const state = inspected ? "INSPECTED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
          reason: inspected ? (assessment?.stage === "FILING_INSPECT"
-           ? "Public filing controls and candidate native FormData counts observed locally; no Search, dates, remote POST, PDF or submitted binding proof. Collection disabled; existing source state preserved."
+            ? "Bounded public widget inventory before/after filing mode only; no court/county/case/office selection, Search, dates, remote POST, PDF or submitted binding proof. Court context remains unproven. Collection disabled; existing source state preserved."
            : assessment?.stage === "COVERAGE"
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."
            : "Public metadata inspected; native POST intercepted locally, never transmitted. Not calendar/PDF access proof. Existing source pause and access proof unchanged; no collection enablement.")

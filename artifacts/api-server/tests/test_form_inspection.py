@@ -102,17 +102,20 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         document.addEventListener('change', () => {
           const type = document.getElementById('fixtureCourt'), county = document.getElementById('fixtureCounty');
           const criminal = document.getElementById('fixtureCase'), office = document.getElementById('fixtureOffice');
-          if (type.value && county.value && criminal.value) office.innerHTML = '<option value="MJ-05-2-01">Public office</option>';
+          if (type.value || county.value || criminal.value) throw Error('Scope selection prohibited');
         });"""
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
         self.assertEqual(len(fetches), 3)
         metadata = [message for message in messages if message["kind"] == "filing_metadata"]
-        self.assertEqual([row["phase"] for row in metadata], ['FILING', 'COURT_TYPE', 'COUNTY', 'CASE_TYPE', 'FINAL'])
+        self.assertEqual([row["phase"] for row in metadata], ['INITIAL', 'FILING', 'FINAL'])
         final = metadata[-1]
-        self.assertTrue(final['scopeReady'])
-        self.assertEqual(final['officeCodes'], ['MJ-05-2-01'])  # public court code, never a docket
-        self.assertTrue(all(row['nativeMatches'] == 1 for row in final['controls'][1:4]))
-        self.assertEqual(len(final['dates']), 2)
+        self.assertTrue(final['modeMatchesFiling'])
+        self.assertNotIn('scopeReady', final)
+        self.assertNotIn('officeCodes', final)
+        court = next(row for row in final['controls'] if 'Court Type' in row['labels'])
+        self.assertEqual(court['publicChoices']['MDJ'], 1)
+        self.assertEqual(court['selectedPublicChoices']['MDJ'], 0)
+        self.assertTrue(court['nativeSuccessful'])
         self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
         self.assertFalse(any(row['kind'] in ['barrier', 'docket', 'calendar', 'finished'] for row in messages))
         for forbidden in ['fixture_mdj', 'fixtureCounty', 'fixtureFilingStart', 'fixture_criminal', 'REDACTION_SENTINEL']:
@@ -123,19 +126,93 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
         self.assertEqual(len(fetches), 3)
         metadata = [message for message in messages if message['kind'] == 'filing_metadata']
-        self.assertEqual(metadata[-1]['controls'][1]['candidates'], 0)
-        self.assertFalse(metadata[-1]['scopeReady'])
-        self.assertEqual(metadata[-1]['officeCodes'], [])
+        court = next(row for row in metadata[-1]['controls'] if row['publicChoices']['MDJ'])
+        self.assertEqual(court['labels'], [])
+        self.assertTrue(court['hasPublicLabel'])
+        self.assertEqual(court['selectedPublicChoices']['MDJ'], 0)
         self.assertNotIn('Unrecognized filter', json.dumps(metadata))
 
-    async def test_filing_ambiguous_source_options_fail_closed(self):
+    async def test_filing_multiple_mdj_options_observed_never_selected(self):
         fixture = self.filing_fixture().replace(
             '<option value="fixture_mdj">Magisterial District Court</option>',
             '<option value="fixture_mdj">Magisterial District Court</option><option value="other">MDJ</option>')
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
         self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        court = next(row for row in metadata[-1]['controls'] if row['publicChoices']['MDJ'])
+        self.assertEqual(court['publicChoices']['MDJ'], 2)
+        self.assertEqual(court['selectedPublicChoices']['MDJ'], 0)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+
+    async def test_filing_ambiguous_mode_fails_without_selection(self):
+        fixture = self.filing_fixture().replace('>Date Filed</option>',
+            '>Date Filed</option><option value="other">Filing Date</option>')
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
         self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
-        self.assertTrue(any(row.get('code') == 'FILING_CONTROL_AMBIGUOUS' for row in messages))
+        self.assertTrue(any(row.get('code') == 'FILING_MODE_NOT_ESTABLISHED' for row in messages))
+
+    async def test_filing_inventory_outside_form_radio_tabs_and_custom_dropdown(self):
+        fixture = self.filing_fixture() + """
+        <fieldset><legend>Court Level</legend>
+          <label><input type="radio" name="fixtureScope" value="private">MDJ</label>
+        </fieldset>
+        <button role="tab" aria-selected="false">Magisterial District Courts</button>
+        <input role="combobox" aria-label="Court System" aria-controls="fixtureOptions" value="PRIVATE_VALUE_SENTINEL">
+        <div id="fixtureOptions" role="listbox"><div role="option">Magisterial District Court</div></div>
+        <form><label for="outside">Court Selection</label><select id="outside" name="privateField">
+          <option>Choose</option><option value="private">MDJ</option></select></form>
+        <label for="sensitiveName">Court</label><select id="sensitiveName" name="defendant">
+          <option>PRIVATE_LABEL_SENTINEL</option></select>
+        <input type="hidden" name="privateToken" value="PRIVATE_VALUE_SENTINEL">
+        """
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        final = metadata[-1]
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        for widget in ['RADIO', 'TAB', 'COMBOBOX']:
+            row = next(row for row in final['controls'] if row['widget'] == widget)
+            self.assertEqual(row['ownership'], 'NONE')
+            self.assertEqual(row['publicChoices']['MDJ'], 1)
+            self.assertEqual(row['selectedPublicChoices']['MDJ'], 0)
+            self.assertFalse(row['nativeSuccessful'])
+        radio = next(row for row in final['controls'] if row['widget'] == 'RADIO')
+        self.assertIn('Court Level', radio['labels'])
+        self.assertIn('GROUP', radio['associations'])
+        outside = next(row for row in final['controls'] if 'Court Selection' in row['labels'])
+        self.assertEqual(outside['ownership'], 'OTHER')
+        self.assertFalse(outside['nativeSuccessful'])
+        self.assertEqual(final['omittedSensitiveControls'], 1)
+        for forbidden in ['PRIVATE_LABEL_SENTINEL', 'PRIVATE_VALUE_SENTINEL', 'fixtureScope',
+                          'privateField', 'defendant', 'fixtureOptions', 'privateToken']:
+            self.assertNotIn(forbidden, json.dumps(metadata))
+
+    async def test_filing_inventory_observes_hidden_disabled_and_local_activation(self):
+        fixture = self.filing_fixture().replace('id="fixtureCourt" name="fixtureCourt"',
+            'id="fixtureCourt" name="fixtureCourt" disabled style="display:none"')
+        script = """document.addEventListener('change', event => {
+          if (event.target.closest('#SearchBy-Control')) {
+            const court = document.getElementById('fixtureCourt');
+            court.disabled = false; court.style.display = '';
+          }
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        court = lambda phase: next(row for row in phase['controls'] if 'Court Type' in row['labels'])
+        self.assertFalse(court(metadata[0])['enabled'])
+        self.assertFalse(court(metadata[0])['visible'])
+        self.assertTrue(court(metadata[1])['enabled'])
+        self.assertTrue(court(metadata[1])['visible'])
+        self.assertEqual(court(metadata[1])['selectedPublicChoices']['MDJ'], 0)
+
+    async def test_filing_inventory_overflow_fails_closed(self):
+        fixture = self.filing_fixture() + '<select><option>Choose</option></select>' * 129
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row.get('code') == 'FILING_CONTROL_INVALID' for row in messages))
+        self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
 
     async def test_filing_dependent_request_is_aborted_not_transmitted(self):
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(),
