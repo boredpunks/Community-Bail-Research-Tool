@@ -2,22 +2,70 @@
 
 ## Status
 
-Offline preparation only. The three-choice search engine is **blocked, not
-complete**. No source request is approved by this document or by accepting the
+The approved single-use inspection completed. The three-choice search engine is
+**blocked, not complete**. No further source request is approved by this document or by accepting the
 implementation task. The latest integrated calendar pilot failed after Search;
 no validated results or PDF were obtained and its cause remains unresolved.
 The existing source-wide validation stop must remain intact.
 
 Offline scope prepared October 12, 2026:
 
-- Permit: `2c0d340d-ecec-4f4e-af97-959f1516685d`, `PREPARED`.
+- Permit: `2c0d340d-ecec-4f4e-af97-959f1516685d`, now `INSPECTED` and consumed.
 - Legacy stored dates: October 14–20, 2026, never filled/submitted.
-- Three total GETs; zero POSTs/PDFs; no approval, start, job or request history.
+- Explicit user approval was recorded October 12, 2026. The bounded run started
+  at 16:07:45 UTC and completed at 16:10:40 UTC.
 - API typecheck/build and whitespace checks passed; 143 offline safety checks
   and 23 network-blocked Python protocol/browser tests passed. The API workflow
   restarted successfully and the unchanged public landing page rendered.
 
 These checks prove the diagnostic's offline behavior, not portal support.
+
+## Approved live findings — October 12, 2026
+
+All three phases completed with three HTTP 200 GETs and no Search clicks,
+transmitted POSTs, PDFs or docket records:
+
+| Request | Duration | Since previous response completion |
+| --- | --- | --- |
+| `/CaseSearch` | 903 ms | — |
+| `/resource/css/sitemain.min.css` | 194 ms | 86.455 seconds |
+| `/resource/js/sitemain.min.js` | 195 ms | 67.260 seconds |
+
+Persisted job: `f0b091ed-c2dc-452c-884f-1d58c2dff1dd`.
+The operator report retains the closed, redacted INITIAL/CALENDAR/FILING
+inventory; no page bodies or source option values were saved.
+
+- Both a recognized public filing-date choice and a calendar choice were
+  present and locally selectable.
+- Under district 05 / CP-05-02-Crim, the public event list contained exactly
+  recognized **Bail Hearing** and singular **Preliminary Arraignment** labels.
+  The plural Preliminary Arraignments label was not observed.
+- The scoped calendar office list contained CP-05-02-Crim, CP-05-02-Fam and
+  CP-05-02-Juv. This is not evidence establishing MDJ office availability.
+- Both enabled, visible filing date controls had a public minimum of
+  1899-01-01 and maximum of 2026-10-12.
+- Both enabled, visible calendar date controls had a public minimum of
+  2026-10-12 and maximum of 2999-12-31.
+- Filing mode disabled the inspected judicial-district selector. No scoped
+  filing court-office codes could therefore be established by this inspector.
+  Its absence is missing coverage evidence, not proof that MDJ is unsupported.
+
+These are client-observed public form constraints, **not** successful submitted
+searches, server acceptance of any date range, PDF access, or extraction proof.
+The earlier post-Search failure remains unresolved. Subsequent read-only
+database checks found no active source request, access-verification proof or
+collection approval. The explicit source blocked-reason field was empty;
+missing access proof still prevents collection, and does not erase the earlier
+failure. The diagnostic does not authorize clearing that barrier.
+
+The managed API workflow was restored and came up cleanly. No further court
+request, retry or approval was performed.
+
+Remaining evidence: filing-mode court/county controls and native submitted-field
+bindings, MDJ criminal coverage, exact calendar event coverage, and fresh
+separately approved submitted discovery/PDF/extraction proof for all three
+advertised methods. Prepare any further diagnostic offline first; new court
+traffic requires a new exact-scope approval.
 
 ## Fixed diagnostic scope
 

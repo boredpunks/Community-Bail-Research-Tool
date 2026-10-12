@@ -44,3 +44,16 @@ Distinguish public UI widgets from their native submitted model controls; do not
 **Why:** A live preflight identified unnamed public widgets. A later hidden-model/layout assumption also failed without identifying their actual native submission model. The source backing-field layout was not retained.
 
 **How to apply:** Require unambiguous source-DOM association and matching actual native submission data before accepting a backing control. Never infer a server field name, waive readback, or treat a hypothetical public form fixture as source proof. Collect all bounded public-control failures in one pass. When a guessed backing layout fails, stop repeating PDF pilots and obtain separately authorized source-backed public form/submission evidence first.
+
+Use the exact source event label, not grammatical variants inferred from a
+user-facing method name.
+
+**Why:** The October 12, 2026 approved public-form inventory found singular
+“Preliminary Arraignment” under the Allegheny Common Pleas criminal office, but
+not plural “Preliminary Arraignments.” This observation established a public
+option, not submitted search/PDF proof or MDJ coverage.
+
+**How to apply:** Preserve the user's chosen method while distinguishing its
+display name from the exact observed portal event. Disclose the precise label
+in later verification scopes; never silently substitute events or treat a
+recognized public option as permission to submit a search.
