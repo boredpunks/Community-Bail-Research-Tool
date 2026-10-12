@@ -57,3 +57,17 @@ option, not submitted search/PDF proof or MDJ coverage.
 display name from the exact observed portal event. Disclose the precise label
 in later verification scopes; never silently substitute events or treat a
 recognized public option as permission to submit a search.
+
+If a filing-mode inspection leaves court selection unestablished, investigate
+the recognizer's blind spots before another Search/PDF pilot.
+
+**Why:** An approved public-form observation could select filing mode but did
+not identify a Court Type widget; recognized court-related widgets were
+inactive and other selects were unclassified. It did not establish the actual
+court-context label, control type, ownership or dependency sequence.
+
+**How to apply:** Do not infer unsupported MDJ coverage, an empty search or a
+network cause from this state. Prepare source-backed public-control evidence
+without assuming a particular Court Type select label or native-form ownership
+boundary. Native submission still requires validated form ownership and
+bindings; a completed diagnostic protocol is not successful court coverage.

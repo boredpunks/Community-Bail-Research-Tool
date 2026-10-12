@@ -2,10 +2,11 @@
 
 ## Status and purpose
 
-Offline preparation only; no court request authorized by the user's “proceed”
-instruction. That instruction accepted the offer to prepare the diagnostic
-offline, not to execute it. The earlier coverage permit is consumed and cannot
-authorize this different method.
+The single-use read-only inspection completed under separate explicit user
+approval. The earlier “proceed” instruction authorized offline preparation
+only; execution was authorized by the later filing-inspection approval form.
+Both this permit and the earlier coverage permit are consumed. Neither
+authorizes another request.
 
 The three-method engine remains **blocked, not complete**. The earlier approved
 inventory established a locally selectable filing mode and public filing date
@@ -19,6 +20,56 @@ Prepared October 12, 2026:
 - Three-GET cap, zero PDF/POST caps, no job or source requests.
 - Operator report confirmed no approval/start/completion timestamps or evidence.
 - API workflow restarted successfully after the offline code batch.
+
+## Approved live result — October 12, 2026
+
+Permit `454fbf03-5ed8-44a2-a1a9-241a7acfaafd` is now `INSPECTED`, consumed.
+Job: `d6ab9cd1-c98b-486f-bc80-7d85f14031f9`.
+Approval: 18:34:51 UTC; run: 18:34:53–18:37:43 UTC.
+
+| GET | HTTP status | Duration | Since prior response completion |
+| --- | --- | --- | --- |
+| `/CaseSearch` | 200 | 1063 ms | — |
+| `/resource/css/sitemain.min.css` | 200 | 338 ms | 67.223 seconds |
+| `/resource/js/sitemain.min.js` | 200 | 312 ms | 77.921 seconds |
+
+No failures, Search clicks, date entry, office selection, POSTs, PDFs or docket
+records. All five metadata phases were retained and validated. The managed API
+workflow was restored and started cleanly.
+
+### What was established
+
+- The filing mode was selected. Its public widget had one matching candidate
+  native FormData field, not submitted binding proof.
+- Both public filing date controls were visible/enabled, with bounds
+  1899-01-01 through 2026-10-12 and one successful native FormData entry each.
+- The recognized County, Case Type and Court Office widgets were hidden and
+  disabled. The County widget contained 68 options, but the diagnostic did
+  not establish any eligible county choice or select Allegheny.
+
+### Semantic goal not established
+
+The recognizer identified no Court Type control and counted 23 unclassified
+form select widgets. The evidence does not reveal their labels, the actual
+court-context widget, its control type/ownership, or the activation sequence.
+Do not infer any particular cause from those counts.
+
+Consequently no MDJ or Criminal choice was selected, no scoped MDJ office code
+was established, and the local scope-ready flag stayed false in every phase.
+`INSPECTED` means protocol/accounting completion, **not successful MDJ coverage**.
+This is a diagnostic recognition gap, not proof that filing search or MDJ
+coverage is unsupported, and not a network denial or an empty case search.
+
+Post-run source checks found no active request, access-verification proof or
+collection approval. The explicit blocked-reason field was empty; missing proof
+still prevents collection and does not resolve the earlier post-Search failure.
+
+Next evidence needed: the actual public court-context control and active filing
+filter associations, without assuming a Court Type select label, the source
+form ownership boundary or a particular backing-field layout. Revise the
+diagnostic offline before proposing new bounded source observation. Do not retry
+this consumed inspection, start a Search/PDF pilot, widen a date/court scope,
+or interpret unavailable widgets as confirmed absence of source support.
 
 ## Proposed single-use scope
 
