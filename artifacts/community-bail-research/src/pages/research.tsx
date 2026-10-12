@@ -8,12 +8,57 @@ import {
   type ListBailRecordsParams,
   type GetBailRangeParams,
   type BailCategory,
+  type BailRecord,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { EvidenceDetails, StatusTag } from '@/components/record-bits';
 import { BASIS_LABEL, CATEGORY_LABEL, COURT_LABEL, errMsg, formatCents, formatInstant } from '@/lib/money';
 
 type Basis = NonNullable<GetBailRangeParams['financialBasis']>;
+
+type DocketGroup = {
+  docketNumber: string;
+  county: string;
+  courtLevel: BailRecord['courtLevel'];
+  records: BailRecord[];
+};
+
+function groupByDocket(records: BailRecord[]): DocketGroup[] {
+  const groups = new Map<string, DocketGroup>();
+  for (const record of records) {
+    const key = [record.courtLevel, record.county.trim().toLocaleLowerCase('en-US'), record.docketNumber.trim().toLocaleLowerCase('en-US')].join('|');
+    const group = groups.get(key);
+    if (group) {
+      group.records.push(record);
+    } else {
+      groups.set(key, {
+        docketNumber: record.docketNumber,
+        county: record.county,
+        courtLevel: record.courtLevel,
+        records: [record],
+      });
+    }
+  }
+
+  return Array.from(groups.values(), (group) => ({
+    ...group,
+    records: [...group.records].sort((a, b) => {
+      for (const [left, right] of [
+        [a.orderDate, b.orderDate],
+        [a.sourceObservedAt, b.sourceObservedAt],
+        [a.sourceRetrievedAt, b.sourceRetrievedAt],
+        [a.createdAt, b.createdAt],
+      ]) {
+        if (left === right) continue;
+        if (left == null) return 1;
+        if (right == null) return -1;
+        const comparison = left.localeCompare(right);
+        if (comparison !== 0) return comparison;
+      }
+      return a.id.localeCompare(b.id);
+    }),
+  }));
+}
 
 export default function Research({ candidates = false }: { candidates?: boolean } = {}) {
   const [q, setQ] = useState('');
@@ -52,6 +97,7 @@ export default function Research({ candidates = false }: { candidates?: boolean 
   }
 
   const records = list.data?.records ?? [];
+  const docketGroups = candidates ? groupByDocket(records) : [];
   const r = rangeQ.data;
   const hasRange = !!r && r.reviewedRecordCount > 0 && r.medianCents != null;
 
@@ -185,38 +231,86 @@ export default function Research({ candidates = false }: { candidates?: boolean 
               <table className="w-full text-left border-separate border-spacing-y-2">
                 <thead className="mono text-sm">
                   <tr>
-                    <th className="px-3 py-2">Docket</th><th className="px-3 py-2">Court / County</th>
+                    {candidates ? null : <><th className="px-3 py-2">Docket</th><th className="px-3 py-2">Court / County</th></>}
                     <th className="px-3 py-2">Charge group</th><th className="px-3 py-2">Bail</th>
-                    <th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                    {candidates ? <th className="px-3 py-2">Order date</th> : null}
+                    <th className="px-3 py-2">Status</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {records.map((rec) => (
-                    <tr key={rec.id} className="bg-card align-top" data-testid={`row-record-${rec.id}`}>
-                      <td className="px-3 py-3 border-y border-l border-border rounded-l"><span className="mono font-semibold select-all">{rec.docketNumber}</span></td>
-                      <td className="px-3 py-3 border-y border-border">{COURT_LABEL[rec.courtLevel]}<br /><span className="hint">{rec.county} County</span></td>
-                      <td className="px-3 py-3 border-y border-border">{rec.chargeGroup}</td>
-                      <td className="px-3 py-3 border-y border-border">{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? <><br /><span className="hint">{BASIS_LABEL[rec.financialBasis]}</span></> : null}</td>
-                      <td className="px-3 py-3 border-y border-border text-right mono font-semibold">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</td>
-                      <td className="px-3 py-3 border-y border-r border-border rounded-r"><StatusTag status={rec.reviewStatus} /><EvidenceDetails r={rec} /></td>
+                {candidates ? docketGroups.map((group) => (
+                  <tbody key={`${group.courtLevel}|${group.county}|${group.docketNumber}`} data-testid="table-docket-group">
+                    <tr className="bg-muted/60">
+                      <th colSpan={5} className="px-3 py-3 border border-border rounded text-left">
+                        <span className="mono font-bold select-all">{group.docketNumber}</span>
+                        <span className="hint ml-3">{COURT_LABEL[group.courtLevel]}, {group.county} County</span>
+                        <span className="hint block mt-1">{group.records.length} matching observation{group.records.length === 1 ? '' : 's'}, ordered by court order date</span>
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
+                    {group.records.map((rec) => (
+                      <tr key={rec.id} className="bg-card align-top" data-testid={`row-record-${rec.id}`}>
+                        <td className="px-3 py-3 border-y border-l border-border">{rec.chargeGroup ?? 'Charge group not recorded'}</td>
+                        <td className="px-3 py-3 border-y border-border">{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? <><br /><span className="hint">{BASIS_LABEL[rec.financialBasis]}</span></> : null}</td>
+                        <td className="px-3 py-3 border-y border-border text-right mono font-semibold">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</td>
+                        <td className="px-3 py-3 border-y border-border">{rec.orderDate ?? 'Not recorded'}</td>
+                        <td className="px-3 py-3 border-y border-r border-border rounded-r"><StatusTag status={rec.reviewStatus} /><EvidenceDetails r={rec} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                )) : (
+                  <tbody>
+                    {records.map((rec) => (
+                      <tr key={rec.id} className="bg-card align-top" data-testid={`row-record-${rec.id}`}>
+                        <td className="px-3 py-3 border-y border-l border-border rounded-l"><span className="mono font-semibold select-all">{rec.docketNumber}</span></td>
+                        <td className="px-3 py-3 border-y border-border">{COURT_LABEL[rec.courtLevel]}<br /><span className="hint">{rec.county} County</span></td>
+                        <td className="px-3 py-3 border-y border-border">{rec.chargeGroup}</td>
+                        <td className="px-3 py-3 border-y border-border">{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? <><br /><span className="hint">{BASIS_LABEL[rec.financialBasis]}</span></> : null}</td>
+                        <td className="px-3 py-3 border-y border-border text-right mono font-semibold">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</td>
+                        <td className="px-3 py-3 border-y border-r border-border rounded-r"><StatusTag status={rec.reviewStatus} /><EvidenceDetails r={rec} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                )}
               </table>
             </div>
-            <ul className="md:hidden space-y-3">
-              {records.map((rec) => (
-                <li key={rec.id} className="panel" data-testid={`card-record-${rec.id}`}>
-                  <div className="mono font-bold select-all break-all">{rec.docketNumber}</div>
-                  <div className="my-2"><StatusTag status={rec.reviewStatus} /></div>
-                  <p>{COURT_LABEL[rec.courtLevel]}, {rec.county} County</p>
-                  <p>{rec.chargeGroup}</p>
-                  <p>{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? ` (${BASIS_LABEL[rec.financialBasis]})` : ''}</p>
-                  <p className="mono font-semibold text-right">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</p>
-                  <EvidenceDetails r={rec} />
-                </li>
-              ))}
-            </ul>
+            {candidates ? (
+              <ul className="md:hidden space-y-4">
+                {docketGroups.map((group) => (
+                  <li key={`${group.courtLevel}|${group.county}|${group.docketNumber}`} className="panel" data-testid="card-docket-group">
+                    <div className="mono font-bold select-all break-all">{group.docketNumber}</div>
+                    <p className="hint mt-1">{COURT_LABEL[group.courtLevel]}, {group.county} County · {group.records.length} matching observation{group.records.length === 1 ? '' : 's'}</p>
+                    <ol className="mt-3 space-y-3">
+                      {group.records.map((rec) => (
+                        <li key={rec.id} className="border border-border rounded p-3" data-testid={`card-record-${rec.id}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="mono text-sm font-semibold">Order date: {rec.orderDate ?? 'Not recorded'}</span>
+                            <StatusTag status={rec.reviewStatus} />
+                          </div>
+                          <p className="mt-2">{rec.chargeGroup ?? 'Charge group not recorded'}</p>
+                          <p>{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? ` (${BASIS_LABEL[rec.financialBasis]})` : ''}</p>
+                          <p className="mono font-semibold text-right">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</p>
+                          <EvidenceDetails r={rec} />
+                        </li>
+                      ))}
+                    </ol>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="md:hidden space-y-3">
+                {records.map((rec) => (
+                  <li key={rec.id} className="panel" data-testid={`card-record-${rec.id}`}>
+                    <div className="mono font-bold select-all break-all">{rec.docketNumber}</div>
+                    <div className="my-2"><StatusTag status={rec.reviewStatus} /></div>
+                    <p>{COURT_LABEL[rec.courtLevel]}, {rec.county} County</p>
+                    <p>{rec.chargeGroup}</p>
+                    <p>{CATEGORY_LABEL[rec.bailCategory]}{rec.financialBasis ? ` (${BASIS_LABEL[rec.financialBasis]})` : ''}</p>
+                    <p className="mono font-semibold text-right">{rec.amountCents != null ? formatCents(rec.amountCents) : 'None'}</p>
+                    <EvidenceDetails r={rec} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </section>

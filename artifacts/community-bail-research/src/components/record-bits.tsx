@@ -26,6 +26,7 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
         <dd className="break-all"><a className="underline text-primary" href={r.sourceUrl} target="_blank" rel="noopener noreferrer">{r.sourceUrl}</a></dd>
         <dt className="mono text-sm">Source consulted</dt><dd>{formatInstant(r.sourceRetrievedAt)}</dd>
         <dt className="mono text-sm">Source's own as-of time</dt><dd>{formatInstant(r.sourceObservedAt)}</dd>
+        <dt className="mono text-sm">Order date</dt><dd>{r.orderDate ?? 'Not recorded'}</dd>
         <dt className="mono text-sm">Bail category</dt><dd>{CATEGORY_LABEL[r.bailCategory]}</dd>
         <dt className="mono text-sm">Financial basis</dt><dd>{r.financialBasis ? BASIS_LABEL[r.financialBasis] : 'Not applicable'}</dd>
         <dt className="mono text-sm">Evidence note</dt><dd className="whitespace-pre-wrap">{r.evidenceNote}</dd>
