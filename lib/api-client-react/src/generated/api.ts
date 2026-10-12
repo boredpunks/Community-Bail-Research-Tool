@@ -809,7 +809,7 @@ return customFetch<DiscoveryCandidateResult>(getSaveDiscoveryCandidatesUrl(jobId
 
 export const getSaveDiscoveryCandidatesMutationKey = () => ['saveDiscoveryCandidates'] as const;
 
-export const getSaveDiscoveryCandidatesMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>,
+export const getSaveDiscoveryCandidatesMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext> => {
 
@@ -838,10 +838,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SaveDiscoveryCandidatesMutationResult = NonNullable<Awaited<ReturnType<typeof saveDiscoveryCandidates>>>
     export type SaveDiscoveryCandidatesMutationBody = BodyType<DiscoveryCandidateSelection>
-    export type SaveDiscoveryCandidatesMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>
+    export type SaveDiscoveryCandidatesMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>
     export type SaveDiscoveryCandidatesMutationVariables = {jobId: string;data: BodyType<DiscoveryCandidateSelection>}
 
-    export const useSaveDiscoveryCandidates = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse | UnavailableResponse>,
+    export const useSaveDiscoveryCandidates = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDiscoveryCandidates>>, TError,SaveDiscoveryCandidatesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof saveDiscoveryCandidates>>,

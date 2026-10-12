@@ -166,7 +166,7 @@ paths:
             schema: { $ref: "#/components/schemas/DiscoveryCandidateSelection" }
       responses:
         "200":
-          description: Selected dockets and all extracted bail observations saved atomically as pending candidates
+          description: Selected source-backed dockets and their extracted observations saved atomically; existing review states are preserved
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DiscoveryCandidateResult" }
@@ -174,7 +174,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "503": { $ref: "#/components/responses/Unavailable" }
   /discovery/jobs/{jobId}/items/{itemId}/save:
     post:
       operationId: saveDiscoveryObservation

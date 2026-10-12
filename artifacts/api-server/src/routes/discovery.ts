@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoverySourceTable } from "@workspace/db";
 import {
   ControlDiscoveryJobBody, ControlDiscoveryJobParams, ControlDiscoveryJobResponse,
   CreateDiscoveryJobBody, CreateDiscoveryJobResponse, GetDiscoveryJobParams,
   GetDiscoveryJobResponse, GetDiscoveryPolicyResponse, ListDiscoveryJobsResponse,
   SaveDiscoveryObservationBody, SaveDiscoveryObservationParams, SaveDiscoveryObservationResponse,
+  SaveDiscoveryCandidatesBody, SaveDiscoveryCandidatesParams, SaveDiscoveryCandidatesResponse,
   ListDiscoveryAssessmentsResponse,
 } from "@workspace/api-zod";
 import { actualDate, discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
@@ -195,8 +196,73 @@ router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promi
   SaveDiscoveryObservationResponse.parse(payload); res.json(payload);
 });
 
-router.post("/discovery/jobs/:jobId/candidates", (_req, res) => {
-  res.status(503).json({ error: "Bulk candidate selection is not yet available. Individual source-backed observation saving remains available." });
+router.post("/discovery/jobs/:jobId/candidates", async (req, res): Promise<void> => {
+  // This endpoint is deliberately source-evidence-only. It never starts or
+  // resumes collection; the selected checkpoint is locked against retention.
+  const params = SaveDiscoveryCandidatesParams.safeParse(req.params);
+  const body = SaveDiscoveryCandidatesBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Choose between 1 and 200 distinct dockets from this search." });
+    return;
+  }
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+  const result = await db.transaction(async (tx) => {
+    const [job] = await tx.select().from(discoveryJobsTable)
+      .where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)))
+      .for("update");
+    if (!job) return { error: "Job not found in the shared workspace.", status: 404 as const };
+    const deadline = resultsDeadline(job);
+    if (job.resultsExpiredAt || (deadline && deadline <= new Date())) {
+      return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 as const };
+    }
+    const items = await tx.select().from(discoveryItemsTable).where(and(
+      eq(discoveryItemsTable.jobId, job.id),
+      inArray(discoveryItemsTable.id, body.data.itemIds),
+      inArray(discoveryItemsTable.ownerId, ownerIds),
+    )).orderBy(asc(discoveryItemsTable.position));
+    if (items.length !== body.data.itemIds.length) {
+      return { error: "One or more selected dockets were not found in this search.", status: 404 as const };
+    }
+    if (items.some((item) => !candidateEligible(item))) {
+      return { error: "Only identity-checked, source-backed dockets with extracted evidence can be saved.", status: 400 as const };
+    }
+
+    const observations = items.flatMap((item) => {
+      const entries = item.provenance.extractionOutcome === "MISSING_BAIL_SECTION"
+        ? [null] : item.provenance.entries;
+      return entries.map((entry) => observationValues(ownerId, item, entry));
+    });
+    const valuesByKey = new Map(observations.map((value) => [value.discoveryKey, value]));
+    const uniqueValues = [...valuesByKey.values()];
+    await tx.insert(bailRecordsTable).values(uniqueValues)
+      .onConflictDoNothing({ target: [bailRecordsTable.ownerId, bailRecordsTable.discoveryKey] });
+    const records = await tx.select({ id: bailRecordsTable.id, key: bailRecordsTable.discoveryKey })
+      .from(bailRecordsTable)
+      .where(and(eq(bailRecordsTable.ownerId, ownerId), inArray(bailRecordsTable.discoveryKey, uniqueValues.map((value) => value.discoveryKey))));
+    if (records.length !== uniqueValues.length) throw new Error("Saved candidate observations could not be confirmed.");
+    await tx.update(discoveryItemsTable).set({ movedToCandidatesAt: new Date() }).where(and(
+      eq(discoveryItemsTable.jobId, job.id),
+      inArray(discoveryItemsTable.id, items.map((item) => item.id)),
+      isNull(discoveryItemsTable.movedToCandidatesAt),
+    ));
+    return {
+      docketCount: new Set(items.map((item) => item.docketNumber)).size,
+      observationCount: uniqueValues.length,
+      recordIds: uniqueValues.map((value) => records.find((record) => record.key === value.discoveryKey)!.id),
+      status: 200 as const,
+    };
+  });
+  if (!("recordIds" in result)) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  const payload = {
+    docketCount: result.docketCount,
+    observationCount: result.observationCount,
+    recordIds: result.recordIds,
+  };
+  SaveDiscoveryCandidatesResponse.parse(payload);
+  res.json(payload);
 });
 
 export default router;

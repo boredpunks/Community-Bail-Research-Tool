@@ -11,6 +11,7 @@ import {
   useGetDiscoveryJob,
   useControlDiscoveryJob,
   useSaveDiscoveryObservation,
+  useSaveDiscoveryCandidates,
   getListDiscoveryJobsQueryKey,
   getGetDiscoveryJobQueryKey,
   type DiscoveryItem,
@@ -40,19 +41,33 @@ function amountText(e: DiscoveryItem['provenance']['entries'][number]) {
   return e.bailCategory === 'MONETARY' || e.bailCategory === 'UNKNOWN' ? 'Amount unknown' : 'No amount (unpriced)';
 }
 
+function canSaveCandidate(it: DiscoveryItem) {
+  if (!it.sourceRetrievedAt || !Number.isFinite(Date.parse(it.sourceRetrievedAt))) return false;
+  if (it.provenance.extractionOutcome === 'EXTRACTED') return it.provenance.entries.length > 0 && !!it.excerpt;
+  if (it.provenance.extractionOutcome === 'MISSING_BAIL_SECTION') return it.provenance.entries.length === 0 && !!it.detail;
+  return false;
+}
+
 function amountMatches(it: DiscoveryItem, boundCents: number): boolean {
   return it.provenance.entries.some((e) => isMonetaryTotal(e) && (e.amountCents as number) < boundCents);
 }
 
-function ItemRow({ jobId, it, saving, onSave, err }: {
+function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
   jobId: string; it: DiscoveryItem; saving: boolean; err: string | null;
   onSave: (itemId: string, entryIndex: number | null) => void;
+  selected: boolean; onSelect: (itemId: string, checked: boolean) => void;
 }) {
   const p = it.provenance;
   const saved = it.savedObservations.length > 0;
   return (
     <li id={`item-${it.id}`} className="panel scroll-mt-4" data-testid={`row-item-${it.id}`}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        {canSaveCandidate(it) ? (
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={selected} onChange={(e) => onSelect(it.id, e.target.checked)} data-testid={`checkbox-candidate-${it.id}`} />
+            Select docket
+          </label>
+        ) : null}
         <span className="mono text-sm">Source position {it.position + 1}</span>
         <a className="mono font-bold underline text-primary break-all" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">{it.docketNumber}</a>
         {saved
@@ -131,6 +146,7 @@ export default function Discovery() {
   const create = useCreateDiscoveryJob();
   const control = useControlDiscoveryJob();
   const save = useSaveDiscoveryObservation();
+  const saveCandidates = useSaveDiscoveryCandidates();
 
   const [jobId, setJobId] = useState<string>('');
   const [startE, setStart] = useState<string | undefined>();
@@ -140,6 +156,8 @@ export default function Discovery() {
   const [formErr, setFormErr] = useState<string | null>(null);
   const [ctlMsg, setCtlMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<{ id: string; msg: string } | null>(null);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [candidateMsg, setCandidateMsg] = useState<string | null>(null);
   const [filterOn, setFilterOn] = useState(false);
   const [postedOff, setPostedOff] = useState(false);
   const [bound, setBound] = useState('500');
@@ -203,7 +221,7 @@ export default function Discovery() {
         recordCap: rc, requestCap: qc2, matchTarget: mt,
         matchFilters: { monetaryUpperBoundCents: collectMonetary ? upper : null, excludeShownPosted: collectPosted, inclusiveMaximum: true } } },
       {
-        onSuccess: (j) => { setJobId(j.id); setCtlMsg(null); refreshJob(j.id); },
+        onSuccess: (j) => { setJobId(j.id); setSelectedCandidateIds([]); setCandidateMsg(null); setCtlMsg(null); refreshJob(j.id); },
         onError: (er) => setFormErr(errMsg(er)),
       },
     );
@@ -229,6 +247,34 @@ export default function Discovery() {
     });
   }
 
+  function toggleCandidate(itemId: string, checked: boolean) {
+    setSelectedCandidateIds((current) => checked
+      ? current.includes(itemId) ? current : [...current, itemId]
+      : current.filter((id) => id !== itemId));
+  }
+
+  function selectVisibleCandidates() {
+    const visibleIds = matching.filter(canSaveCandidate).map((item) => item.id);
+    setSelectedCandidateIds((current) => [...new Set([...current, ...visibleIds])]);
+  }
+
+  function saveSelectedCandidates() {
+    if (!selected || !selectedCandidateIds.length) return;
+    setCandidateMsg(null);
+    saveCandidates.mutate({ jobId: selected, data: { itemIds: selectedCandidateIds } }, {
+      onSuccess: (result) => {
+        setSelectedCandidateIds([]);
+        setCandidateMsg(`Saved ${result.docketCount} docket${result.docketCount === 1 ? '' : 's'} and ${result.observationCount} source-backed observation${result.observationCount === 1 ? '' : 's'} as candidates.`);
+        qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('/api/records') });
+        refreshJob(selected);
+      },
+      onError: (er) => {
+        setCandidateMsg(`Selected dockets were not saved: ${errMsg(er)}`);
+        refreshJob(selected);
+      },
+    });
+  }
+
   const canResume = !job?.isAssessment && !job?.resultsExpiredAt && (job?.status === 'PAUSED' || job?.status === 'CANCELLED' || job?.status === 'FAILED');
   const estimatedRequests = Number.isInteger(tgtNum) && tgtNum > 0 ? tgtNum + (pol?.calendarRequestAllowance ?? 8) : null;
   const localCapReached = !!job && job.processed >= job.criteria.recordCap && job.unprocessed > 0;
@@ -238,7 +284,7 @@ export default function Discovery() {
   return (
     <Shell>
       <PageHead label="Search" title="Search court records">
-        Begin starts a bounded job on the server that reads public court pages and reports what it found. Results are provisional observations, not custody status and not an operative order. Nothing is saved until you choose an entry. Looking for records already saved here? <Link href="/candidates" className="underline text-primary" data-testid="link-research">Open saved candidates</Link>.
+        Begin starts a bounded job on the server that reads public court pages and reports what it found. Results are provisional observations, not custody status and not an operative order. Nothing is saved until you choose an entry or select dockets to save together. Looking for records already saved here? <Link href="/candidates" className="underline text-primary" data-testid="link-research">Open saved candidates</Link>.
       </PageHead>
 
       <section className="panel mb-8" aria-labelledby="scope-h" data-testid="section-scope">
@@ -316,7 +362,7 @@ export default function Discovery() {
           <ul className="space-y-2">
             {jobs.data!.map((j) => (
               <li key={j.id}>
-                <button type="button" className="btn w-full text-left" aria-pressed={j.id === selected} onClick={() => setJobId(j.id)} data-testid={`button-job-${j.id}`}>
+                <button type="button" className="btn w-full text-left" aria-pressed={j.id === selected} onClick={() => { setJobId(j.id); setSelectedCandidateIds([]); setCandidateMsg(null); }} data-testid={`button-job-${j.id}`}>
                   <span className="mono font-semibold">{j.status}</span> &middot; {j.criteria.startDate} to {j.criteria.endDate} &middot; {j.processed}/{j.discovered} processed &middot; {j.matching}{j.criteria.matchTarget ? `/${j.criteria.matchTarget}` : ''} matching &middot; created {formatInstant(j.createdAt)}
                 </button>
               </li>
@@ -390,6 +436,17 @@ export default function Discovery() {
                 </div>
                 {filterOn && boundCents == null ? <p className="errbox mt-3" role="alert">Enter a dollar amount such as 500 or 500.00. The amount filter is not applied.</p> : null}
                 <p className="mt-3" data-testid="text-match-count">{anyFilter ? `${matching.length} of ${items.length} rows pass the active filters.` : `Showing all ${items.length} rows; no filters active.`}</p>
+                <div className="mt-4 border-t border-border pt-4" data-testid="bulk-candidate-selection">
+                  <p className="hint">Select identity-checked dockets to save every extracted bail observation together. Existing review statuses are kept.</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button type="button" className="btn" onClick={selectVisibleCandidates} disabled={!matching.some(canSaveCandidate)} data-testid="button-select-visible-candidates">Select eligible visible dockets</button>
+                    <span className="mono text-sm">{selectedCandidateIds.length} selected</span>
+                    <button type="button" className="btn btn-primary" onClick={saveSelectedCandidates} disabled={!selectedCandidateIds.length || saveCandidates.isPending} data-testid="button-save-selected-candidates">
+                      {saveCandidates.isPending ? 'Saving candidates…' : 'Save selected as candidates'}
+                    </button>
+                  </div>
+                  {candidateMsg ? <p className={candidateMsg.startsWith('Selected dockets were not saved') ? 'errbox mt-3' : 'mt-3'} role="status" data-testid="text-candidate-save-result">{candidateMsg}</p> : null}
+                </div>
               </div>
 
               {matching.length > 0 ? (
@@ -428,7 +485,8 @@ export default function Discovery() {
               ) : (
                 <ul className="space-y-4">
                   {matching.map((it) => (
-                    <ItemRow key={it.id} jobId={selected} it={it} saving={save.isPending} onSave={doSave} err={saveErr?.id === it.id ? saveErr.msg : null} />
+                    <ItemRow key={it.id} jobId={selected} it={it} saving={save.isPending} onSave={doSave} err={saveErr?.id === it.id ? saveErr.msg : null}
+                      selected={selectedCandidateIds.includes(it.id)} onSelect={toggleCandidate} />
                   ))}
                 </ul>
               )}
