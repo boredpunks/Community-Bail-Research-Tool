@@ -3,6 +3,17 @@ import { db, discoveryItemsTable, discoveryJobsTable } from "@workspace/db";
 import { matchesDiscoveryFilters } from "./discovery";
 import { resultRetentionMs, resultsDeadline } from "./discovery-safety";
 
+export function expiredResumeConflict(job: {
+  status: string;
+  updatedAt: Date;
+  resultsExpiredAt: Date | null;
+}, now = new Date()) {
+  const deadline = resultsDeadline(job);
+  return job.resultsExpiredAt || (deadline && deadline <= now)
+    ? { status: 409 as const, error: "Unsaved results/checkpoints expired after 24 hours. This job cannot replay collection." }
+    : null;
+}
+
 // Run periodically and before reading or saving results. Both cleanup and
 // saving lock the job row, so the transaction cannot erase a concurrent save.
 export async function clearExpiredDiscoveryResults(now = new Date(), store = db) {

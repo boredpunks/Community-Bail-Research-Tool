@@ -18,6 +18,7 @@ import {
   type DiscoveryControlAction,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
+import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-retention';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
@@ -275,7 +276,6 @@ export default function Discovery() {
     });
   }
 
-  const canResume = !job?.isAssessment && !job?.resultsExpiredAt && (job?.status === 'PAUSED' || job?.status === 'CANCELLED' || job?.status === 'FAILED');
   const estimatedRequests = Number.isInteger(tgtNum) && tgtNum > 0 ? tgtNum + (pol?.calendarRequestAllowance ?? 8) : null;
   const localCapReached = !!job && job.processed >= job.criteria.recordCap && job.unprocessed > 0;
   const sourceFailed = !!job && (job.status === 'FAILED' || job.failedRequests > 0);
@@ -389,7 +389,7 @@ export default function Discovery() {
                   ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
                   : 'Legacy job: processing budget only; no matching target was selected. Its original criteria have not been changed.'}</p>
                 {job.criteria.matchTarget && !job.targetReached && job.status === 'COMPLETED' ? <p className="hint text-warning" data-testid="text-target-shortfall">Target not reached: {job.matching} of {job.criteria.matchTarget}. Collection stopped within the original scope and safety limits.</p> : null}
-                {job.resultsExpiredAt ? <p className="errbox mt-2" role="status">Unsaved results expired after 24 hours. Historical counts and request use remain; saved candidates remain available. This checkpoint cannot resume or replay collection.</p> : job.resultsExpireAt ? <p className="hint mt-2">Unsaved stopped-search results expire {formatInstant(job.resultsExpireAt)}. Save source-backed observations before then; saved candidates are retained.</p> : null}
+                {job.resultsExpiredAt ? <ExpiredResultsNotice resultsExpiredAt={job.resultsExpiredAt} items={items} /> : job.resultsExpireAt ? <p className="hint mt-2">Unsaved stopped-search results expire {formatInstant(job.resultsExpireAt)}. Save source-backed observations before then; saved candidates are retained.</p> : null}
                 {active ? <p className="hint mt-1">Working. This tab refreshes every {POLL_MS / 1000} seconds until the job stops; refreshing pauses if the tab is in the background.</p> : null}
                 <button type="button" className="btn mt-2" disabled={report.isFetching} onClick={() => report.refetch()} data-testid="button-refresh">{report.isFetching ? 'Refreshing...' : 'Refresh now'}</button>
                 <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -412,7 +412,7 @@ export default function Discovery() {
                 </ul>
                 <div className="flex flex-wrap gap-2 mt-4">
                   {active ? <button type="button" className="btn" disabled={control.isPending} onClick={() => act('PAUSE')} data-testid="button-pause">Pause</button> : null}
-                  {canResume ? <button type="button" className="btn btn-primary" disabled={control.isPending || !pol?.collectionEnabled} onClick={() => act('RESUME')} data-testid="button-resume">Resume</button> : null}
+                  <ResumeControl job={job} pending={control.isPending} collectionEnabled={!!pol?.collectionEnabled} onResume={() => act('RESUME')} />
                   {active || job.status === 'PAUSED' ? <button type="button" className="btn btn-danger" disabled={control.isPending} onClick={() => act('CANCEL')} data-testid="button-cancel">Cancel</button> : null}
                 </div>
                 <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p>
@@ -478,7 +478,7 @@ export default function Discovery() {
                 </div>
               ) : null}
 
-              {items.length === 0 ? (
+              {items.length === 0 && job.resultsExpiredAt ? null : items.length === 0 ? (
                 <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-items">{active ? 'No dockets found yet.' : sourceFailed ? 'No records were retrieved: the source failed or requests failed. This says nothing about whether dockets exist.' : !job.calendarComplete ? 'No records were retrieved and the calendar table was not validated, so this may be a barrier rather than an empty calendar.' : 'The validated calendar table returned no matching dockets for this window and event.'}</p>
               ) : matching.length === 0 ? (
                 <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-matches">No rows match the current filter. Turn it off to see every row.</p>

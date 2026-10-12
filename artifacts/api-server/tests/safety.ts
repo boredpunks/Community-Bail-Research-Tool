@@ -6,7 +6,7 @@ import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
 import { allowedSourceRequest, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
-import { clearExpiredDiscoveryResults } from "../src/lib/discovery-retention";
+import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 
 import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 
@@ -199,6 +199,11 @@ try {
   check(expiredState!.resultCounts?.discovered === 0);
   check((await store.select().from(schema.discoveryItemsTable)).length === 0);
   check((await store.select().from(schema.bailRecordsTable)).length === 0);
+  assert.deepEqual(expiredResumeConflict(expiredState!, new Date(time)), {
+    status: 409,
+    error: "Unsaved results/checkpoints expired after 24 hours. This job cannot replay collection.",
+  });
+  checks++;
   const inspectionMetadata = { kind: "inspection_metadata", phase: "BEFORE", controls:
     ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].map(control => ({
       control, uiPresent: true, uiNamed: false, uiEnabled: true, uiSameForm: true, uiMatches: true,

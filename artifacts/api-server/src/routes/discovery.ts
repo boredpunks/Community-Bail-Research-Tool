@@ -15,7 +15,7 @@ import { serializeBailRecord } from "../lib/bail-records";
 import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
 import { collectionBlock, resultsDeadline } from "../lib/discovery-safety";
 import { discoverySourceStatus, sourceAdmissionBlock } from "../lib/discovery-source-status";
-import { clearExpiredDiscoveryResults } from "../lib/discovery-retention";
+import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/discovery-retention";
 import { candidateEligible, observationValues } from "../lib/discovery-candidates";
 
 const router: IRouter = Router();
@@ -151,7 +151,8 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
     const action = body.data.action;
     if (action === "RESUME") {
       if (job.assessmentId) return { error: "Pilot permits are single-use and operator-only. They cannot be resumed from this endpoint.", status: 409 };
-      if (job.resultsExpiredAt || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())) return { error: "Unsaved results/checkpoints expired after 24 hours. This job cannot replay collection.", status: 409 };
+      const expired = expiredResumeConflict(job);
+      if (expired) return expired;
       if (!["PAUSED", "CANCELLED", "FAILED"].includes(job.status)) return { error: "Only a stopped job can resume.", status: 409 };
       if (job.requestsUsed >= job.criteria.requestCap) return { error: "Original request budget is exhausted. It will not be silently increased.", status: 409 };
       const block = await sourceAdmissionBlock(tx, source);
