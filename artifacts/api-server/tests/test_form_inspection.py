@@ -220,8 +220,6 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
             ('FILING_FORM_ELEMENT_LIMIT', self.filing_fixture().replace(
                 '<button id="btnSearch">', '<input type="hidden" value="PRIVATE_VALUE_SENTINEL">' * 513
                 + '<button id="btnSearch">')),
-            ('FILING_OPTION_LIMIT', self.filing_fixture()
-                + '<select>' + '<option>PRIVATE_LABEL_SENTINEL</option>' * 2001 + '</select>'),
             ('FILING_ARIA_REFERENCE_LIMIT', self.filing_fixture()
                 + f'<input role="combobox" aria-labelledby="{refs}">'),
             ('FILING_GROUP_REFERENCE_LIMIT', self.filing_fixture()
@@ -235,6 +233,34 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(any(row['kind'] in ['filing_metadata', 'filing_finished', 'docket', 'calendar']
                                      for row in messages))
                 self.assertNotIn('SENTINEL', json.dumps(messages))
+
+    async def test_filing_oversized_options_are_unknown_not_empty_and_do_not_abort_inventory(self):
+        fixture = self.filing_fixture() + """
+          <label for="oversized">Court</label><select id="oversized">
+        """ + '<option>PRIVATE_LABEL_SENTINEL</option>' * 2001 + """</select>
+          <input role="combobox" aria-label="Court Level" aria-controls="oversizedOptions">
+          <div id="oversizedOptions">
+        """ + '<div role="option">PRIVATE_LABEL_SENTINEL</div>' * 2001 + '</div>'
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertEqual([row['phase'] for row in metadata], ['INITIAL', 'FILING', 'FINAL'])
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertFalse(any(row['kind'] == 'barrier' for row in messages))
+        for phase in metadata:
+            uninspected = [row for row in phase['controls'] if row['optionState'] == 'OVER_LIMIT']
+            self.assertEqual(len(uninspected), 2)
+            self.assertEqual({row['widget'] for row in uninspected}, {'SELECT', 'COMBOBOX'})
+            for row in uninspected:
+                self.assertIsNone(row['optionCount'])
+                self.assertIsNone(row['publicChoices'])
+                self.assertIsNone(row['selectedPublicChoices'])
+            court = next(row for row in phase['controls'] if 'Court Type' in row['labels'])
+            self.assertEqual(court['optionState'], 'OBSERVED')
+            self.assertEqual(court['publicChoices']['MDJ'], 1)
+            self.assertEqual(court['selectedPublicChoices']['MDJ'], 0)
+        self.assertNotIn('SENTINEL', json.dumps(metadata))
+        self.assertNotIn('oversized', json.dumps(metadata))
 
     async def test_filing_dependent_request_is_aborted_not_transmitted(self):
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(),

@@ -8,7 +8,77 @@ only; execution was authorized by the later filing-inspection approval form.
 Both this permit and the earlier coverage permit are consumed. Neither
 authorizes another request.
 
-## Latest approved live result — October 12, 2026
+## Latest approved guard inspection — October 12, 2026
+
+The user separately approved one inspection to identify the failing guard.
+Permit `0ac5c77c-866a-444a-b0ce-ae5f1b1e938d` is `FAILED`, consumed.
+Job: `99f44bae-27bf-4eb3-a2c1-1f6821b531c3`.
+Approval: 19:19:50 UTC; run: 19:19:59–19:22:45 UTC.
+
+| GET | HTTP status | Duration | Since prior response completion |
+| --- | --- | --- | --- |
+| `/CaseSearch` | 200 | 1089 ms | — |
+| `/resource/css/sitemain.min.css` | 200 | 365 ms | 79.765 seconds |
+| `/resource/js/sitemain.min.js` | 200 | 331 ms | 79.679 seconds |
+
+The diagnostic identified **`FILING_OPTION_LIMIT`** before retaining any
+inventory phase. At least one nonsensitive-identity dropdown exceeded the
+2,000-option observation limit. Its label, form ownership, exact count and
+purpose were not retained; do not assume it is the court selector or assign this
+guard retrospectively to the earlier generic failure.
+
+All three requests completed `OK`; no Search, date entry, court/county/case/office
+selection, POST, PDF, case record or retry. The API was restored and started
+cleanly. The existing `SOURCE_VALIDATION_BARRIER` remains; no active request,
+latency warning, access proof or collection approval. The inspection did not
+establish the actual court control, MDJ scope or submitted bindings.
+
+## Current offline oversized-option correction (v3)
+
+Current method: `playwright-filing-control-inventory-v3`. This revision was
+prepared and tested **offline only** after the consumed guard inspection.
+It has not been approved for live execution or run against the portal.
+
+The option limit remains **2,000**, not increased or bypassed. An oversized
+native select or custom combobox has:
+
+- `optionState: OVER_LIMIT`;
+- `optionCount`, `publicChoices` and `selectedPublicChoices` all `null`;
+- only the same bounded, allowlisted public label, association, visibility,
+  enabled, ownership and native-success metadata observed.
+
+No option labels, selected labels or values are inspected for an oversized set.
+In-bounds controls retain `optionState: OBSERVED` and their validated counts.
+Other controls can therefore be observed without pretending that the skipped
+list was empty or lacked MDJ options. Unknown choices establish no role, scope,
+absence, binding or source support. No selectors, filter actions or office
+codes are inferred from incomplete inventory.
+
+Widget/form/ARIA/group guards still stop the whole diagnostic. The initial
+filing-mode recognizer still requires its existing unique eligible source
+option and 64-option bound. No court/county/case/office control, popup or tab is
+activated; Search, dates, PDFs, extra requests, retries and collection remain
+prohibited. All original shared request caps, pauses, quotas, health stops and
+single-use approvals remain unchanged.
+
+The parent validates explicit observed/unknown states and rejects unknown states
+disguised as zero counts. Current-worker metadata and prepared permits require
+v3. Historical v1/v2 reports remain readable, but their permits cannot execute
+this revision.
+
+Verification: API typecheck, all 191 offline safety checks and six targeted
+network-blocked worker tests passed. Fixtures cover oversized native/custom
+lists remaining unknown while other controls are inventoried, redaction,
+remaining guard failures, outside-form widgets and blocked dependencies.
+There was no second live attempt, source-state reset, new permit or Search/PDF
+assessment after this correction.
+
+A later v3 source observation needs **fresh explicit approval** of the partial,
+inventory-only scope (at most three bootstrap GETs, zero POSTs/PDFs, filing mode
+only). Its protocol completion would not establish search or collection proof.
+The overall engine remains **blocked, not complete**.
+
+## Previous approved inventory failure — October 12, 2026
 
 The separately approved **one** v2 inventory attempt has now run and stopped.
 Permit `9a2d8ad0-26fc-45c2-918d-337f4cdcbd84` is `FAILED`, consumed.
@@ -54,10 +124,10 @@ Another source observation requires a fresh separately approved single-use
 scope. All three discovery/PDF/extraction routes and the earlier post-Search
 failure remain unresolved. The overall engine is **blocked, not complete**.
 
-## Current offline revision — October 12, 2026
+## Historical offline inventory revision (v2) — October 12, 2026
 
 The original preparation approval covered **offline preparation only**.
-The current `FILING_INSPECT` method is `playwright-filing-control-inventory-v2`.
+That `FILING_INSPECT` method was `playwright-filing-control-inventory-v2`.
 At preparation time no permit/job was created or court request made. The later
 separately approved, failed live result is recorded above; it supplies no access
 proof or permission to retry. Collection remains disabled.

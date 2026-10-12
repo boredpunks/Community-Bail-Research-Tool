@@ -1,5 +1,6 @@
 /** Closed, redacted source-form observations; never submitted search proof. */
-export const filingInspectionMethod = "playwright-filing-control-inventory-v2";
+export const filingInspectionMethod = "playwright-filing-control-inventory-v3";
+const legacyInventoryMethod = "playwright-filing-control-inventory-v2";
 export const filingPhases = ["INITIAL", "FILING", "FINAL"] as const;
 const legacyFilingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
 export const filingRoles = ["SEARCH_MODE", "COURT_TYPE", "COUNTY", "CASE_TYPE", "COURT_OFFICE"] as const;
@@ -10,7 +11,8 @@ const realDate = (value: unknown) => value === null || typeof value === "string"
   && new Date(value).toISOString().slice(0, 10) === value;
 export function validFilingMetadata(message: Record<string, unknown>) {
   // Keep consumed v1 reports readable without accepting v1 in the current worker.
-  if (message.method === filingInspectionMethod) return validFilingInventoryMetadata(message);
+  if (message.method === filingInspectionMethod || message.method === legacyInventoryMethod)
+    return validFilingInventoryMetadata(message, true);
   if (!exactKeys(message, ["kind", "phase", "controls", "scopeReady", "modeMatchesFiling", "officeCodes", "dates", "unclassifiedSelects"])
     || message.kind !== "filing_metadata" || !legacyFilingPhases.includes(message.phase as typeof legacyFilingPhases[number])
     || typeof message.scopeReady !== "boolean" || typeof message.modeMatchesFiling !== "boolean"
@@ -53,9 +55,10 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const subset = (value: unknown, vocabulary: readonly string[]) => Array.isArray(value)
   && value.length <= vocabulary.length && value.every(key => typeof key === "string" && vocabulary.includes(key))
   && new Set(value).size === value.length;
-export function validFilingInventoryMetadata(message: Record<string, unknown>) {
+export function validFilingInventoryMetadata(message: Record<string, unknown>, allowHistorical = false) {
+  const legacy = allowHistorical && message.method === legacyInventoryMethod;
   if (!exactKeys(message, ["kind", "method", "phase", "modeMatchesFiling", "controls", "omittedSensitiveControls"])
-    || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod
+    || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod && !legacy
     || !filingPhases.includes(message.phase as typeof filingPhases[number])
     || typeof message.modeMatchesFiling !== "boolean" || !count(message.omittedSensitiveControls, 128)
     || !Array.isArray(message.controls) || message.controls.length + Number(message.omittedSensitiveControls) > 128
@@ -63,16 +66,24 @@ export function validFilingInventoryMetadata(message: Record<string, unknown>) {
   let priorOrdinal = -1;
   for (const row of message.controls) {
     if (!object(row) || !exactKeys(row, ["ordinal", "widget", "labels", "associations", "hasPublicLabel",
-      "visible", "enabled", "ownership", "optionCount", "publicChoices", "selectedPublicChoices", "nativeSuccessful"])
+      "visible", "enabled", "ownership", "optionCount", "publicChoices", "selectedPublicChoices", "nativeSuccessful",
+      ...(legacy ? [] : ["optionState"])])
       || !count(row.ordinal, 127) || Number(row.ordinal) <= priorOrdinal
       || typeof row.widget !== "string" || !["SELECT", "RADIO", "CHECKBOX", "COMBOBOX", "TAB", "MENUITEMRADIO", "BUTTON"].includes(row.widget)
       || !subset(row.labels, filingPublicLabels) || !subset(row.associations, ["LABEL", "ARIA", "GROUP", "TEXT"])
-      || typeof row.ownership !== "string" || !["SEARCH", "OTHER", "NONE"].includes(row.ownership) || !count(row.optionCount, 2000)
+      || typeof row.ownership !== "string" || !["SEARCH", "OTHER", "NONE"].includes(row.ownership)
       || !["hasPublicLabel", "visible", "enabled", "nativeSuccessful"].every(key => typeof row[key] === "boolean")
-      || !object(row.publicChoices) || !object(row.selectedPublicChoices)
-      || !exactKeys(row.publicChoices, choiceKeys) || !exactKeys(row.selectedPublicChoices, choiceKeys)
       || row.nativeSuccessful && (row.ownership !== "SEARCH" || !row.enabled
         || !["SELECT", "RADIO", "CHECKBOX"].includes(String(row.widget)))) return false;
+    if (!legacy && (typeof row.optionState !== "string" || !["OBSERVED", "OVER_LIMIT"].includes(row.optionState))) return false;
+    if (!legacy && row.optionState === "OVER_LIMIT") {
+      if (!["SELECT", "COMBOBOX"].includes(row.widget) || row.optionCount !== null
+        || row.publicChoices !== null || row.selectedPublicChoices !== null) return false;
+      priorOrdinal = Number(row.ordinal);
+      continue;
+    }
+    if (!count(row.optionCount, 2000) || !object(row.publicChoices) || !object(row.selectedPublicChoices)
+      || !exactKeys(row.publicChoices, choiceKeys) || !exactKeys(row.selectedPublicChoices, choiceKeys)) return false;
     for (const key of choiceKeys) {
       const max = ["SELECT", "COMBOBOX"].includes(String(row.widget)) ? Number(row.optionCount) : 1;
       if (!count(row.publicChoices[key], max)

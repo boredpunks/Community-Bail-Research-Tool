@@ -259,13 +259,20 @@ try {
   ]) check(!validFilingMetadata(bad));
   const publicChoices = { FILING: 0, MDJ: 1, ALLEGHENY: 0, CRIMINAL: 0 };
   const inventoryControl = { ordinal: 0, widget: "RADIO", labels: ["Court Level"], associations: ["GROUP", "LABEL"],
-    hasPublicLabel: true, visible: true, enabled: true, ownership: "NONE", optionCount: 0,
+    hasPublicLabel: true, visible: true, enabled: true, ownership: "NONE", optionState: "OBSERVED", optionCount: 0,
     publicChoices, selectedPublicChoices: { ...publicChoices, MDJ: 0 }, nativeSuccessful: false };
   const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FINAL",
     modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl] };
   check(validFilingInventoryMetadata(inventory));
   check(validFilingMetadata(inventory));
   check(!validFilingInventoryMetadata(filingMetadata));
+  const { optionState: _omitted, ...legacyControl } = inventoryControl;
+  const legacyInventory = { ...inventory, method: "playwright-filing-control-inventory-v2", controls: [legacyControl] };
+  check(validFilingMetadata(legacyInventory));
+  check(!validFilingInventoryMetadata(legacyInventory));
+  const overLimitControl = { ...inventoryControl, widget: "SELECT", optionState: "OVER_LIMIT",
+    optionCount: null, publicChoices: null, selectedPublicChoices: null };
+  check(validFilingInventoryMetadata({ ...inventory, controls: [overLimitControl] }));
   for (const bad of [
     { ...inventory, html: "forbidden" }, { ...inventory, method: "playwright-filing-form-inspection-v1" },
     { ...inventory, phase: "COURT_TYPE" }, { ...inventory, modeMatchesFiling: false },
@@ -276,8 +283,14 @@ try {
       { publicChoices: { ...publicChoices, MDJ: 2 } },
       { publicChoices: { ...publicChoices, PRIVATE: 1 } },
       { selectedPublicChoices: { ...publicChoices, MDJ: 2 } },
+      { optionState: "TRUNCATED" }, { optionCount: 2001 },
+      { optionState: "OVER_LIMIT" }, { optionState: "OBSERVED", publicChoices: null },
     ].map(change => ({ ...inventory, controls: [{ ...inventoryControl, ...change }] })),
   ]) check(!validFilingInventoryMetadata(bad));
+  for (const change of [
+    { widget: "RADIO" }, { optionCount: 2001 }, { publicChoices },
+    { selectedPublicChoices: publicChoices }, { optionState: "OBSERVED" },
+  ]) check(!validFilingInventoryMetadata({ ...inventory, controls: [{ ...overLimitControl, ...change }] }));
   for (const stage of ["INSPECT", "COVERAGE", "FILING_INSPECT"]) for (const [path, method, url] of [
     ["/CaseSearch", "GET", requestUrl],
     ["/CaseSearch", "POST", requestUrl],

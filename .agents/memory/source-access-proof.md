@@ -101,3 +101,18 @@ raw text or private identities. Do not retrospectively assign a category to
 the generic historical failure, raise limits or reuse its consumed approval.
 Generic calendar exception-path status/visibility markers are not source-DOM
 observations or proof that a filing diagnostic attempted Search.
+
+For observational inventory only, oversized option lists can remain explicitly
+uninspected while other bounded controls are observed; unknown is not zero.
+
+**Why:** A source-backed guard inspection established that at least one dropdown
+exceeded the option-observation limit, causing the broad inventory to retain no
+control metadata. The offending widget's identity/purpose was not established.
+
+**How to apply:** Keep the existing option limit; do not read or truncate
+oversized choices. Mark their counts and recognized/selected choices unknown,
+retain only otherwise permitted public control-state metadata, and observe
+in-bounds controls separately. This is partial diagnostic evidence, never
+coverage, absence or submission proof. Required adapter bindings/scope must
+still fail closed until actually established. Changed diagnostic metadata and
+partial-observation behavior need a new method and fresh source approval.

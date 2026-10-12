@@ -1,7 +1,7 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v2"
+METHOD = "playwright-filing-control-inventory-v3"
 PHASES = ("INITIAL", "FILING", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
@@ -76,17 +76,24 @@ INVENTORY = """({phase}) => {
     const labels = vocabulary.filter(label => sources.some(([, text]) => normalize(text) === normalize(label)));
     const associations = ['LABEL','ARIA','GROUP','TEXT'].filter(key =>
       sources.some(([source, text]) => source === key && !!normalize(text)));
-    let options = [];
-    if (widget === 'SELECT') options = [...node.options];
-    else if (widget === 'COMBOBOX') {
-      const candidates = new Set(node.querySelectorAll('[role=option]'));
-      for (const id of controlledIds) {
-        const container = document.getElementById(id);
-        if (container) for (const option of container.querySelectorAll('[role=option]')) candidates.add(option);
-      }
-      options = [...candidates];
+    let options = [], optionState = 'OBSERVED';
+    if (widget === 'SELECT') {
+      if (node.options.length > 2000) optionState = 'OVER_LIMIT';
+      else options = [...node.options];
     }
-    if (options.length > 2000) return {error: 'FILING_OPTION_LIMIT'};
+    else if (widget === 'COMBOBOX') {
+      const candidates = new Set();
+      const containers = [node, ...controlledIds.map(id => document.getElementById(id)).filter(Boolean)];
+      for (const container of containers) {
+        for (const option of container.querySelectorAll('[role=option]')) {
+          candidates.add(option);
+          if (candidates.size > 2000) break;
+        }
+        if (candidates.size > 2000) break;
+      }
+      if (candidates.size > 2000) optionState = 'OVER_LIMIT';
+      else options = [...candidates];
+    }
     const publicChoices = Object.fromEntries(Object.keys(choices).map(key => [key, 0]));
     const selectedPublicChoices = Object.fromEntries(Object.keys(choices).map(key => [key, 0]));
     const isDisabled = el => el.matches(':disabled') || !!el.closest('[aria-disabled=true]');
@@ -117,13 +124,16 @@ INVENTORY = """({phase}) => {
       && data.getAll(node.name).some(value => value === node.value);
     controls.push({ordinal, widget, labels, associations, hasPublicLabel: sources.some(([source, text]) =>
       source !== 'TEXT' && !!normalize(text)), visible: !!node.getClientRects().length,
-      enabled: !isDisabled(node), ownership, optionCount: options.length,
-      publicChoices, selectedPublicChoices, nativeSuccessful: !!nativeSuccessful});
+      enabled: !isDisabled(node), ownership, optionState,
+      optionCount: optionState === 'OVER_LIMIT' ? null : options.length,
+      publicChoices: optionState === 'OVER_LIMIT' ? null : publicChoices,
+      selectedPublicChoices: optionState === 'OVER_LIMIT' ? null : selectedPublicChoices,
+      nativeSuccessful: !!nativeSuccessful});
   }
   const mode = document.querySelector('#SearchBy-Control select');
-  const modeMatchesFiling = !!mode && !mode.matches(':disabled') && !!mode.getClientRects().length
+  const modeMatchesFiling = !!mode && mode.options.length <= 64 && !mode.matches(':disabled') && !!mode.getClientRects().length
     && [...mode.selectedOptions].some(option => !option.disabled && category(option.textContent).includes('FILING'));
-  return {method: 'playwright-filing-control-inventory-v2', phase, modeMatchesFiling,
+  return {method: 'playwright-filing-control-inventory-v3', phase, modeMatchesFiling,
     controls, omittedSensitiveControls};
 }"""
 
