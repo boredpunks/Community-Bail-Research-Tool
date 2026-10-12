@@ -1,8 +1,8 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v4"
-PHASES = ("INITIAL", "FILING", "FINAL")
+METHOD = "playwright-filing-control-inventory-v5"
+PHASES = ("INITIAL", "FILING", "ADVANCED", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
     "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
@@ -19,11 +19,15 @@ INVENTORY = """({phase}) => {
     'Court Types', 'Case Types', 'Search All Courts', 'All Courts',
     'Search All Cases', 'All Cases', 'Include Closed Cases',
     'Advanced Search', 'Enable Advanced Search', 'Use Advanced Search',
-    'Show Advanced Search', 'Limit Search', 'Restrict Search', 'Enable Filters'];
+    'Show Advanced Search', 'Limit Search', 'Restrict Search', 'Enable Filters',
+    'CP Court', 'CP County', 'MDJ Court', 'MDJ County', 'MDC Court', 'MDC County',
+    'Magisterial District Court', 'Magisterial District Courts', 'Court of Common Pleas',
+    'Common Pleas Court', 'Originating Court', 'Originating County', 'Court Name',
+    'Court Location', 'Docket Type', 'Docket Category', 'Case Status', 'Active Only'];
   const publicWords = ['all','court','courts','case','cases','criminal','search','system',
     'type','types','county','closed','include','exclude','magisterial','district','common','pleas','level','by',
     'advanced','enable','enabled','show','options','filters','filter','limit','limited','restrict','restricted',
-    'specific','within','only','use','criteria'];
+    'specific','within','only','use','criteria','cp','mdj','mdc','originating','location','docket','status','active'];
   const choices = {
     FILING: ['Date Filed', 'Filing Date', 'Date of Filing'],
     MDJ: ['Magisterial District Court', 'Magisterial District Courts', 'Magisterial District', 'MDJ'],
@@ -148,22 +152,59 @@ INVENTORY = """({phase}) => {
   const mode = document.querySelector('#SearchBy-Control select');
   const modeMatchesFiling = !!mode && mode.options.length <= 64 && !mode.matches(':disabled') && !!mode.getClientRects().length
     && [...mode.selectedOptions].some(option => !option.disabled && category(option.textContent).includes('FILING'));
-  return {method: 'playwright-filing-control-inventory-v4', phase, modeMatchesFiling,
-    controls, omittedSensitiveControls};
+  const advanced = controls.filter(row => row.widget === 'CHECKBOX' && row.labels.includes('Advanced Search'));
+  const advancedSearch = {candidates: advanced.length,
+    eligible: advanced.length === 1 && modeMatchesFiling && advanced[0].visible && advanced[0].enabled
+      && advanced[0].ownership === 'SEARCH' && advanced[0].hasPublicLabel,
+    checked: advanced.length === 1 ? nodes[advanced[0].ordinal].checked === true : null};
+  return {method: 'playwright-filing-control-inventory-v5', phase, modeMatchesFiling,
+    controls, omittedSensitiveControls, advancedSearch};
+}"""
+
+# Resolve an ephemeral ElementHandle from the same bounded, exact public-label
+# inventory, never from a retained ordinal/identity or generic word match.
+ADVANCED_NODE = """() => {
+  const state = (""" + INVENTORY + """)({phase: 'FILING'});
+  if (state.error || !state.modeMatchesFiling || !state.advancedSearch.eligible) return null;
+  const row = state.controls.find(row => row.widget === 'CHECKBOX' && row.labels.includes('Advanced Search'));
+  const nodes = document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
+    + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button],a,[role=link]');
+  return nodes[row.ordinal] || null;
 }"""
 
 
-async def observe(page, emit):
+async def observe(page, emit, can_continue=lambda: True):
     for phase in PHASES:
+        if not can_continue():
+            raise RuntimeError("FILING_UNEXPECTED_LOCAL_REQUEST")
         if phase == "FILING":
             choice = await page.evaluate(SELECT_MODE, {"labels": ["Date Filed", "Filing Date", "Date of Filing"]})
             if not isinstance(choice, dict) or "error" in choice or choice.get("value") is None:
                 raise RuntimeError("FILING_MODE_NOT_ESTABLISHED")
             await page.locator("#SearchBy-Control select").select_option(choice["value"])
+        if phase == "ADVANCED":
+            handle = await page.evaluate_handle(ADVANCED_NODE)
+            try:
+                checkbox = handle.as_element()
+                if checkbox is None:
+                    raise RuntimeError("FILING_ADVANCED_NOT_ESTABLISHED")
+                # Idempotent check, not a toggle; never force hidden/disabled nodes.
+                await checkbox.check(timeout=5_000)
+            except Exception as error:
+                raise RuntimeError("FILING_ADVANCED_NOT_ESTABLISHED") from error
+            finally:
+                await handle.dispose()
         await page.wait_for_timeout(100)
+        if not can_continue():
+            raise RuntimeError("FILING_UNEXPECTED_LOCAL_REQUEST")
         metadata = await page.evaluate(INVENTORY, {"phase": phase})
         if not isinstance(metadata, dict) or "error" in metadata:
             code = metadata.get("error") if isinstance(metadata, dict) else None
             raise RuntimeError(code if isinstance(code, str) and code in INVENTORY_ERRORS
                                else "FILING_CONTROL_INVALID")
+        if phase in ("ADVANCED", "FINAL") and not (
+                metadata.get("modeMatchesFiling") is True
+                and metadata.get("advancedSearch", {}).get("eligible") is True
+                and metadata.get("advancedSearch", {}).get("checked") is True):
+            raise RuntimeError("FILING_ADVANCED_NOT_ESTABLISHED")
         emit("filing_metadata", **metadata)

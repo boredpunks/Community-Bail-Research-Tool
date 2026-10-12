@@ -228,7 +228,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       if (finished && code === 0) {
         const counts = await jobSummary(current);
         const message = filingInspectionOnly
-          ? "Bounded public control inventory observed before/after filing mode only. No court/county/case/office selection, Search, date entry, remote POST or PDF. Court context and submission bindings remain unproven; collection remains disabled."
+          ? "Bounded public control inventory observed before/after filing mode and the unique source-labeled Advanced Search checkbox. No court/county/case/office selection, Search, date entry, remote POST or PDF. Court context and submission bindings remain unproven; collection remains disabled."
           : coverageOnly
           ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
           : inspectionOnly

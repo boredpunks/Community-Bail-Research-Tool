@@ -261,20 +261,40 @@ try {
   const inventoryControl = { ordinal: 0, widget: "RADIO", labels: ["Court Level"], associations: ["GROUP", "LABEL"],
     hasPublicLabel: true, visible: true, enabled: true, ownership: "NONE", optionState: "OBSERVED", optionCount: 0,
     labelWords: ["court", "level"], publicChoices, selectedPublicChoices: { ...publicChoices, MDJ: 0 }, nativeSuccessful: false };
-  const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FINAL",
-    modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl] };
+  const inventory = { kind: "filing_metadata", method: filingInspectionMethod, phase: "FILING",
+    modeMatchesFiling: true, omittedSensitiveControls: 0, controls: [inventoryControl],
+    advancedSearch: { candidates: 0, eligible: false, checked: null } };
   check(validFilingInventoryMetadata(inventory));
   check(validFilingMetadata(inventory));
   check(!validFilingInventoryMetadata(filingMetadata));
   const { optionState: _omitted, labelWords: _words, ...legacyControl } = inventoryControl;
   const { COMMON_PLEAS: _cp, ...legacyChoices } = publicChoices;
   for (const method of ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3"]) {
-    const legacyInventory = { ...inventory, method, controls: [{ ...legacyControl,
+    const { advancedSearch: _advanced, ...historical } = inventory;
+    const legacyInventory = { ...historical, method, controls: [{ ...legacyControl,
       ...(method.endsWith("v3") ? { optionState: "OBSERVED" } : {}),
       publicChoices: legacyChoices, selectedPublicChoices: { ...legacyChoices, MDJ: 0 } }] };
     check(validFilingMetadata(legacyInventory));
     check(!validFilingInventoryMetadata(legacyInventory));
   }
+  const { advancedSearch: _advancedV4, ...historicalV4 } = inventory;
+  const v4 = { ...historicalV4, method: "playwright-filing-control-inventory-v4", phase: "FINAL" };
+  check(validFilingMetadata(v4));
+  check(!validFilingInventoryMetadata(v4));
+  const advancedControl = { ...inventoryControl, ordinal: 1, widget: "CHECKBOX", ownership: "SEARCH",
+    labels: ["Advanced Search"], labelWords: ["search", "advanced"],
+    publicChoices: { ...publicChoices, MDJ: 0 }, selectedPublicChoices: { ...publicChoices, MDJ: 0 } };
+  const completedAdvanced = { ...inventory, phase: "ADVANCED", controls: [inventoryControl, advancedControl],
+    advancedSearch: { candidates: 1, eligible: true, checked: true } };
+  check(validFilingInventoryMetadata(completedAdvanced));
+  check(validFilingInventoryMetadata({ ...completedAdvanced, phase: "FINAL" }));
+  for (const change of [
+    { candidates: 0 }, { eligible: false }, { checked: false }, { checked: "true" }, { value: "private" },
+  ]) check(!validFilingInventoryMetadata({ ...completedAdvanced,
+    advancedSearch: { ...completedAdvanced.advancedSearch, ...change } }));
+  for (const change of [{ visible: false }, { enabled: false }, { ownership: "OTHER" }, { labels: ["Enable Advanced Search"] }])
+    check(!validFilingInventoryMetadata({ ...completedAdvanced, controls: [inventoryControl, { ...advancedControl, ...change }] }));
+  check(!validFilingInventoryMetadata({ ...inventory, phase: "FINAL" }));
   const overLimitControl = { ...inventoryControl, widget: "SELECT", optionState: "OVER_LIMIT",
     optionCount: null, publicChoices: null, selectedPublicChoices: null };
   check(validFilingInventoryMetadata({ ...inventory, controls: [overLimitControl] }));

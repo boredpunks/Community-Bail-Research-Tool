@@ -123,23 +123,40 @@ The user approved revised bounded read-only court-control inspections and said
 **Why:** The user asked to continue the needed diagnostics.
 
 **How to apply:** Continue needed read-only inspections within the approved
-three-GET, filing-mode-only, redacted-public-metadata scope, with fresh single-use
+three-GET, redacted-public-metadata scope, with fresh single-use
 permits and all existing pacing, quotas and mandatory stops. Do not ask again for
 identical scoped observation merely because its permit is new. This standing
 diagnostic approval does not authorize Search, PDFs, date entry, court/county/
 case/office activation, alternate methods or wider collection.
 
-The source's filing mode exposes a public **Advanced Search** checkbox. Merely
-selecting filing mode has not established active MDJ court filters.
+The user explicitly extended continued inspections to allow local **Advanced
+Search activation** after filing mode, with no other selections, Search, dates
+or PDFs.
+
+**Why:** The user selected “Allow Advanced Search activation.”
+
+**How to apply:** Use a fresh current-method permit, keep the same three-GET
+caps, pacing and stops, resolve the unique exact source-labeled native checkbox
+in the search form after filing mode is established, and check it idempotently.
+Never use a generic word match, retained ordinal or guessed selector. Keep all
+dependent transmissions blocked. This does not authorize court/county/case/
+office activation or submitted discovery.
+
+Filing mode followed by **Advanced Search** activates the source's **County**
+control, but does not establish MDJ context or submitted bindings.
 
 **Why:** Source-backed read-only inventories observed one search-form-owned,
 public-group-associated Advanced Search native checkbox changing from hidden/
-disabled to visible/enabled after filing selection, while the known court
-filters stayed inactive. No checkbox action or checked-state proof was captured.
+disabled to eligible after filing selection. Later approved source observations
+checked it and observed County active with an exact Allegheny choice, unselected.
+The court-labeled dropdown stayed disabled; the exact Docket Type dropdown had
+a Criminal choice but stayed hidden/disabled. Its dependency sequence and MDJ
+context remain unproven.
 
 **How to apply:** Recognize the exact source-listed Advanced Search label, not a
 guessed identity or generic word match. Its eligibility is not proof of its
-effect or native submission bindings. The standing filing-mode-only inspection
-approval does not authorize toggling it; obtain explicit approval for that
-additional local action, keep dependent traffic blocked, then observe the
-resulting source controls before inventing a court adapter.
+native submission bindings. Advanced Search activation is now approved within
+the scope above; keep dependent traffic blocked. County selection is a separate,
+not-yet-approved action. Do not treat the available Allegheny choice, an
+unclassified disabled court dropdown or hidden Criminal choice as MDJ coverage,
+an absence proof, a submitted binding or permission to choose Common Pleas.

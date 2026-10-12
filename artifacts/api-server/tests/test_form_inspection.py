@@ -95,6 +95,9 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
             groups += ''.join(f'<option value="{value}">{text}</option>' for value, text in options) + '</select>'
         groups += '<input type="date" name="fixtureFilingStart" min="1899-01-01" max="2026-10-12">'
         groups += '<input type="date" name="fixtureFilingEnd" min="1899-01-01" max="2026-10-12">'
+        groups += ('<label for="fixtureAdvancedFlag">Advanced Search</label>'
+                   '<div id="fixtureAdvancedFlag-Control"><input type="checkbox" id="fixtureAdvanced" '
+                   'name="fixtureAdvanced" value="PRIVATE_VALUE_SENTINEL"></div>')
         return fixture.replace('<button id="btnSearch">', groups + '<button id="btnSearch">')
 
     async def test_filing_source_labels_only_and_native_counts_redacted(self):
@@ -107,9 +110,10 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
         self.assertEqual(len(fetches), 3)
         metadata = [message for message in messages if message["kind"] == "filing_metadata"]
-        self.assertEqual([row["phase"] for row in metadata], ['INITIAL', 'FILING', 'FINAL'])
+        self.assertEqual([row["phase"] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
         final = metadata[-1]
         self.assertTrue(final['modeMatchesFiling'])
+        self.assertEqual(final['advancedSearch'], {'candidates': 1, 'eligible': True, 'checked': True})
         self.assertNotIn('scopeReady', final)
         self.assertNotIn('officeCodes', final)
         court = next(row for row in final['controls'] if 'Court Type' in row['labels'])
@@ -244,7 +248,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
         self.assertEqual(len(fetches), 3)
         metadata = [row for row in messages if row['kind'] == 'filing_metadata']
-        self.assertEqual([row['phase'] for row in metadata], ['INITIAL', 'FILING', 'FINAL'])
+        self.assertEqual([row['phase'] for row in metadata], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
         self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
         self.assertFalse(any(row['kind'] == 'barrier' for row in messages))
         for phase in metadata:
@@ -275,12 +279,16 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
           <a href="/PRIVATE_URL_SENTINEL">Court of Common Pleas</a>
           <label><input type="checkbox">Search All Courts</label>
           <label><input type="checkbox">PRIVATE_LABEL_SENTINEL cases by county</label>
-          <label><input type="checkbox">Advanced Search</label>
+          <label for="fixtureCp">CP Court</label><select id="fixtureCp" disabled><option>Choose</option></select>
+          <label for="fixtureMdj">MDJ County</label><select id="fixtureMdj" disabled><option>Choose</option></select>
           <button>PRIVATE_LABEL_SENTINEL</button>
         """
-        script = """document.addEventListener('click', () => {throw Error('Navigation prohibited');});
+        script = """document.addEventListener('click', event => {
+            if (event.target.id !== 'fixtureAdvanced') throw Error('Navigation prohibited');
+          });
           document.addEventListener('change', event => {
-            if (!event.target.closest('#SearchBy-Control')) throw Error('Other selection prohibited');
+            if (!event.target.closest('#SearchBy-Control') && event.target.id !== 'fixtureAdvanced')
+              throw Error('Other selection prohibited');
           });"""
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
         self.assertEqual(len(fetches), 3)
@@ -298,8 +306,73 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unknown['labels'], [])
         advanced = next(row for row in final['controls'] if 'Advanced Search' in row['labels'])
         self.assertEqual(advanced['labelWords'], ['search', 'advanced'])
-        self.assertFalse(advanced['nativeSuccessful'])
+        self.assertTrue(advanced['nativeSuccessful'])
+        self.assertTrue(final['advancedSearch']['checked'])
+        cp = next(row for row in final['controls'] if 'CP Court' in row['labels'])
+        self.assertEqual(cp['labelWords'], ['court', 'cp'])
+        self.assertFalse(cp['enabled'])
+        mdj = next(row for row in final['controls'] if 'MDJ County' in row['labels'])
+        self.assertEqual(mdj['labelWords'], ['county', 'mdj'])
+        self.assertFalse(mdj['enabled'])
         self.assertNotIn('SENTINEL', json.dumps(metadata))
+
+    async def test_advanced_search_reveals_controls_without_selecting_them(self):
+        fixture = self.filing_fixture().replace('id="fixtureCourt" name="fixtureCourt"',
+            'id="fixtureCourt" name="fixtureCourt" disabled style="display:none"')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureAdvanced' && event.target.checked) {
+            const court = document.getElementById('fixtureCourt');
+            court.disabled = false; court.style.display = '';
+          }
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        phases = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertEqual([row['phase'] for row in phases], ['INITIAL', 'FILING', 'ADVANCED', 'FINAL'])
+        court = lambda phase: next(row for row in phase['controls'] if 'Court Type' in row['labels'])
+        self.assertFalse(court(phases[1])['enabled'])
+        self.assertTrue(court(phases[2])['enabled'])
+        self.assertTrue(court(phases[2])['visible'])
+        self.assertEqual(court(phases[2])['selectedPublicChoices']['MDJ'], 0)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+
+    async def test_advanced_search_missing_ambiguous_hidden_or_wrong_form_never_activated(self):
+        base = self.filing_fixture()
+        for fixture in [
+            base.replace('Advanced Search</label>', 'Unrecognized public filter</label>'),
+            base + '<label><input type="checkbox">Advanced Search</label>',
+            base.replace('id="fixtureAdvanced" ', 'id="fixtureAdvanced" disabled '),
+            base.replace('id="fixtureAdvanced" ', 'id="fixtureAdvanced" style="display:none" '),
+            base.replace('id="fixtureAdvanced" ', 'id="fixtureAdvanced" form="missing" '),
+        ]:
+            with self.subTest(fixture=fixture[:30]):
+                messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+                self.assertEqual(len(fetches), 3)
+                self.assertTrue(any(row.get('code') == 'FILING_ADVANCED_NOT_ESTABLISHED' for row in messages))
+                self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+                self.assertFalse(any(row.get('phase') in ['ADVANCED', 'FINAL'] for row in messages))
+
+    async def test_advanced_search_dependent_request_aborted_and_no_later_phase(self):
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureAdvanced') fetch('/CaseSearch', {method:'POST', body:'PRIVATE_VALUE_SENTINEL'});
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(), script=script)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(all(method == 'GET' for method, _ in fetches))
+        self.assertTrue(any(row.get('code') == 'FILING_UNEXPECTED_LOCAL_REQUEST' for row in messages))
+        self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertFalse(any(row.get('phase') in ['ADVANCED', 'FINAL'] for row in messages))
+        self.assertNotIn('SENTINEL', json.dumps(messages))
+
+    async def test_advanced_search_already_checked_is_not_toggled(self):
+        fixture = self.filing_fixture().replace('id="fixtureAdvanced" ', 'id="fixtureAdvanced" checked ')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureAdvanced') throw Error('Repeated activation prohibited');
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertTrue(all(row['advancedSearch']['checked'] for row in messages if row['kind'] == 'filing_metadata'))
 
     async def test_coverage_inventory_without_search_or_pdf(self):
         # Hypothetical public filter options ONLY, not source support or cases.

@@ -17,6 +17,86 @@ not authorize Search, PDF, date/court/county/case/office activation, source-stop
 overrides, higher budgets, alternate clients or wider collection. No identical
 inspection is repeated without a new evidence need.
 
+### Approved Advanced Search activation — October 12, 2026
+
+The user selected **“Allow Advanced Search activation.”** Continued bounded
+inspections may now select filing mode, check the unique exact source-labeled
+Advanced Search native checkbox owned by the search form, then observe resulting
+public controls. This does not authorize any other selections, Search, dates,
+remote POST, PDFs, wider collection or budget/stop changes.
+
+Current method: `playwright-filing-control-inventory-v5`. Ordered phases are
+`INITIAL`, `FILING`, `ADVANCED`, `FINAL`. A closed `advancedSearch` object records
+candidate count, eligibility and checked state; the parent independently checks
+candidate/eligibility consistency and requires an eligible checked checkbox in
+the final two phases. The action resolves an ephemeral ElementHandle from a
+fresh bounded exact-label inventory, not a stored ordinal or guessed identity.
+It never forces hidden, disabled, ambiguous or other-form widgets. An already
+checked checkbox is not toggled. Missing eligibility or failed activation stops
+with `FILING_ADVANCED_NOT_ESTABLISHED`. Any dependent request is aborted locally
+and stops further phase actions; no such transmission is granted.
+
+The unchanged partial-option policy, closed vocabulary, redaction, widget,
+form-element and reference limits still apply. Historical v1/v2/v3/v4 reports
+remain readable, but the worker only accepts a fresh current-method permit.
+210 offline safety checks and all 21 network-blocked worker tests passed;
+activation fixtures are hypothetical public controls, never court records or
+source coverage proof. The source observations below now establish local
+activation and its limited effect, not MDJ coverage or submitted bindings.
+
+#### Completed source activation and label check
+
+| Permit (consumed) | Job | State | Run UTC | GETs | Minimum completion-to-start pause | Maximum request duration |
+| --- | --- | --- | --- | --- | --- | --- |
+| `952b2a0a-96db-49b8-ae91-e7e87c01bc5a` | `d3618dea-80d9-494d-8572-216c6fdfe415` | INSPECTED | 21:06:54–21:09:06 | 3 | 60.954 s | 912 ms |
+| `f359714c-5d1f-4d25-9e3f-203e7a93e172` | `b29d3eac-7322-474c-b38d-750bd57fea64` | INSPECTED | 21:13:11–21:15:23 | 3 | 62.213 s | 903 ms |
+
+Each completed exactly the three bootstrap GETs, all HTTP 200/OK. No Search,
+dates, court/county/case/office selections, transmitted POST, PDFs or records.
+All four phases were parent-validated with 36 retained controls. Advanced Search
+changed from hidden/disabled/unchecked, to eligible/unchecked after filing mode,
+to eligible/checked after the authorized local check. Its native-successful flag
+then became true; that flag is not submitted model-binding proof.
+
+The first run established that activation made the exact public **County**
+control visible/enabled with 68 in-bounds options, one exact **Allegheny** choice,
+and no Allegheny selection. An otherwise unclassified court-labeled dropdown
+became visible but remained disabled and had zero current options. Judicial
+District, the Criminal-choice dropdown, Case Category and Court Office stayed
+hidden/disabled. One oversized unknown-type dropdown and an unclassified
+“only”-word checkbox also became active; neither was selected or inspected
+beyond the existing permitted metadata.
+
+A focused public-label recognition revision then added CP Court, CP County,
+MDJ Court, MDJ County, MDC Court, MDC County, Magisterial District Court(s),
+Court of Common Pleas, Common Pleas Court, Originating Court/County, Court Name,
+Court Location, Docket Type, Docket Category, Case Status and Active Only.
+The fixed public-word vocabulary added cp, mdj, mdc, originating, location,
+docket, status and active. No arbitrary text, private name/identifier, link URL
+or new action was retained or performed. Typecheck and the targeted bounded
+label/redaction fixture passed. This is a vocabulary revision of the same v5
+metadata/action contract, not a court-selection adapter.
+
+The second source run established the Criminal-choice widget's exact public
+label as **Docket Type** (8 options, hidden/disabled) and another hidden/disabled
+widget as **Case Status**. County remained active with the exact Allegheny
+choice unselected. The disabled court dropdown's exact label remains
+unrecognized; no CP/MDJ context or MDJ choice was established. Do not infer its
+purpose or whether County activation will populate it merely from generic words.
+
+The next meaningful action to test would be local selection of the unique
+source-labeled County control's exact Allegheny choice, then observation only.
+That is **not yet approved**. It must not imply an MDJ court selection, substitute
+Common Pleas, click Search, enter dates or select another filter. Within the
+unchanged diagnostic cap, any dependent request must still be aborted locally
+and stop the attempt rather than transmitted or retried.
+
+Both permits are consumed; no unused permit or active source request remains.
+The API was restored. Source state still has `SOURCE_VALIDATION_BARRIER`, no
+pause, active request, access proof, collection approval or latency warning.
+All three discovery/PDF/extraction routes and the overall engine remain
+**blocked, not complete**.
+
 ### Completed partial inventory (v3) — October 12, 2026
 
 Permit `2b50054e-31d3-4c46-81ed-4438f81d9a5d` is `INSPECTED`, consumed.
@@ -98,10 +178,10 @@ associated by the public DOM control group and owned by the search form:
   established. Do not claim Advanced Search enables those filters until that
   local action and resulting source state are separately observed.
 
-The next meaningful diagnostic would select filing mode and locally check only
+At that point, the next meaningful diagnostic was to select filing mode and locally check only
 this unique, source-labeled `Advanced Search` checkbox, then inventory the
 resulting controls. This exceeds the existing **filing-mode-only** action scope
-and requires explicit action-scope approval. It would still have three bootstrap
+and required explicit action-scope approval, now recorded above. It still has three bootstrap
 GETs only, no Search/dates/court/county/case/office selection or PDFs, and must
 abort any dependent request locally. Do not repeat the completed inventories
 without a new evidence need.

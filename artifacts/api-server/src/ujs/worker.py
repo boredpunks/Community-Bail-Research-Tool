@@ -217,7 +217,7 @@ async def main():
                 if filing_inspection_only:
                     inspection_local = True
                     from filing_inventory import observe
-                    await observe(page, emit)
+                    await observe(page, emit, lambda: inspection_error is None)
                     await asyncio.sleep(0.1)
                     if inspection_error:
                         raise RuntimeError("FILING_UNEXPECTED_LOCAL_REQUEST")
@@ -349,7 +349,7 @@ async def main():
                 "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_CONTROL_AMBIGUOUS",
                 "FILING_WIDGET_LIMIT", "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
                 "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT",
-                "FILING_MODE_NOT_ESTABLISHED", "FILING_UNEXPECTED_LOCAL_REQUEST",
+                "FILING_MODE_NOT_ESTABLISHED", "FILING_ADVANCED_NOT_ESTABLISHED", "FILING_UNEXPECTED_LOCAL_REQUEST",
                 "COVERAGE_FORM_MISSING", "COVERAGE_CONTROL_INVALID",
                 "COVERAGE_CONTROL_AMBIGUOUS", "COVERAGE_UNEXPECTED_LOCAL_REQUEST",
                 "INSPECTION_METADATA_INVALID", "INSPECTION_BODY_UNSUPPORTED",
