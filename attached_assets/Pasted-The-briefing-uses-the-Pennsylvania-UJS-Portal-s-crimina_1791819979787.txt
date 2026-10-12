@@ -1,0 +1,131 @@
+The briefing uses the **Pennsylvania UJS Portal’s criminal-case search by filing date**, covering Magisterial District Court dockets—not a separate database. The choice should therefore be between **filing-date discovery** and **calendar-event discovery**.
+
+Use this prompt:
+
+---
+
+## Complete the Community Bail Research search engine
+
+Finish the existing app’s live search engine. The required outcome is a working, source-backed discovery-and-extraction workflow—not another scaffold, a selector connected to disabled adapters, or manual record entry presented as automated search.
+
+Use the attached *Reading Public Bail Records — Volunteer Briefing* as a workflow reference. Its method searches public Pennsylvania UJS criminal-case filings by filing date, retrieves docket PDFs, and extracts bail information. Its appendix is not independently verified evidence and must not be imported automatically.
+
+If you are in Plan mode, prepare one implementation-task draft covering this request. Do not implement until assigned in Build mode. This prompt authorizes planning and implementation preparation, **not unscoped court requests**.
+
+### 1. Give the user an explicit discovery-method choice
+
+At the beginning of the search form, offer:
+
+1. **Criminal filings — briefing method**  
+   Discover criminal dockets through UJS filing-date searches, beginning with the Magisterial District Court coverage described in the briefing.
+
+2. **Calendar events — Preliminary Arraignments**  
+   Discover docket-linked records for that exact event type.
+
+3. **Calendar events — Bail Hearing**  
+   Discover docket-linked records for that exact event type.
+
+These are different discovery methods within the public UJS Portal. Explain the differences in plain language.
+
+The user—not the engine—chooses the method. Persist that choice with the job and display it in progress, results, and saved provenance. **Never silently substitute another event, court level, date range, or discovery method when the selected one fails.**
+
+Determine each method’s actual supported court offices, court levels, date restrictions, result structure, and pagination. Do not assume the briefing’s historical filing-date support establishes historical calendar-event support. Do not claim that an event is available for a court merely because it is named in this prompt.
+
+### 2. Provide a complete search form
+
+Let users choose:
+
+- Discovery method.
+- Supported court level and court offices.
+- Filing-date range for filing searches, or event-date range for calendar searches.
+- Maximum monetary **TOTAL_BAIL** amount, using an inclusive “at or below” comparison.
+- Desired number of distinct matching dockets.
+- An optional exclusion for entries explicitly shown as posted.
+- Separate processing and total-request budgets within protected operator limits.
+
+Explain that matching targets are not processing caps: finding 100 qualifying dockets may require reading more than 100 PDFs. Unknown amounts must not count as zero, and an unknown posted state must not be treated as posted or as proof of custody.
+
+Keep criteria fixed throughout a job. Larger dates or budgets require a separate decision, not automatic expansion.
+
+### 3. Connect every choice to real retrieval and extraction
+
+Build method-specific discovery adapters feeding one shared pipeline:
+
+**Validated source results → real docket identifiers and links → identity-checked docket PDFs → bail extraction → provisional results → explicitly saved candidates → human review.**
+
+Reuse the existing database, job scheduler, checkpoints, extraction, candidate-saving, review, and grouped-docket chronology wherever appropriate.
+
+For filing searches, preserve the source’s result ordering. For calendar searches, retain event type and event date. Deduplicate docket downloads within the approved job while preserving relevant discovery provenance and every extracted bail entry.
+
+A returned search form or HTTP 200 is not proof of successful search. Distinguish:
+
+- Validated populated results.
+- A demonstrated, supported empty-result state.
+- Unvalidated responses.
+- Access denial, challenges, throttling, timeouts, and parsing failures.
+
+Do not invent empty-state markers or accept illustrative docket numbers from source help text as discovered cases.
+
+### 4. Show useful, inspectable results
+
+Display:
+
+- Docket number and source link.
+- Court level and office.
+- Filing date and/or calendar event date, clearly distinguished.
+- Bail action, order date, category, financial basis, amount, and source wording.
+- Posted-entry state with uncertainty explained.
+- Extraction outcome and review status.
+- Discovery method, retrieval timestamps, and minimal supporting excerpts.
+
+Keep missing bail sections, unreadable documents, unknown amounts, and nonmonetary conditions explicit. Preserve chronology without automatically declaring an entry “latest” or “operative.”
+
+Support local filters, selection, saving, and grouped candidate views. Saving creates source-backed observations awaiting review; it does not establish custody, release eligibility, or a recommendation.
+
+Collect no new names, birth dates, addresses, or unrelated personal information for this discovery workflow. Delete temporary docket PDFs after processing, including failure paths.
+
+### 5. Preserve durable collection safeguards
+
+All discovery methods must share the existing source-wide scheduler and accounting:
+
+- One court request in flight.
+- At least the current 60-second response-completion spacing, including adaptive slowdown.
+- Existing rolling hourly/daily and per-job limits.
+- Accounting for every transmitted page, required asset, submission, PDF, failed attempt, and uncertain transmission.
+- Durable stops for denial, throttling, challenges, redirects, timeouts, malformed responses, and validation barriers.
+- No automatic retries, client switching, access workarounds, or cap increases.
+
+Do not adopt the briefing’s suggested 30-second pace as a verified safe rate or override the current protections.
+
+Pause, cancel, reload, and permitted resume must preserve checkpoints and avoid duplicate work. Unsaved stopped-search results expire after 24 hours; expired jobs cannot resume. Saved observations and historical counts remain retained.
+
+Saved-record searches must never trigger court collection.
+
+### 6. Resolve the current access barrier honestly
+
+Inspect the existing pilot reports before changing retrieval behavior. The latest recorded calendar attempt submitted Search but obtained no validated results or PDF. Its cause remains unresolved.
+
+Do not clear that barrier merely to enable the UI. A method change invalidates earlier method-specific proof.
+
+Complete offline development and diagnostics first. Before each live verification stage, obtain explicit approval for the selected method, court/event scope, exact dates, document cap, total-request budget, and stop rules. Consumed permits and unused request slots cannot be reused.
+
+Verify **each of the three discovery choices with its actual integrated discovery and PDF clients**. Success in one method does not prove another. Begin with a separately approved small verification; advance only after valid evidence and fresh approval. Do not start the eventual 100-distinct-match search without its own authorization.
+
+### 7. Definition of completion
+
+Call the search engine complete only when:
+
+- All three choices have functional UI and backend behavior.
+- Every advertised choice has demonstrated real discovery, docket retrieval, and accurate extraction within an approved scope.
+- A signed-in user can start an approved bounded job, inspect genuine results, apply local filters, save selected observations, and review them without manual transcription.
+- Counts distinguish discovered, processed, matching, failed, saved, and unprocessed dockets.
+- Refresh, cancellation, checkpoint recovery, deduplication, expiry, and retained history work.
+- Offline checks and type/build checks pass.
+- Desktop and mobile views and the protected search/save/review journey have been verified without exposing credentials.
+- No synthetic docket or case records have been created in tests, demos, fixtures, screenshots, or seeds.
+
+Preserve the existing landing page, shared-password access, saved candidates, and review work.
+
+If source access or an unsupported portal feature prevents completion, report **“blocked, not complete”**, identify the demonstrated barrier and missing evidence, and propose one narrowly scoped next action. Do not describe a mock, manual substitute, or unverified adapter as the completed engine.
+
+---
