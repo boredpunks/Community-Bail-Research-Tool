@@ -1,6 +1,23 @@
 """Pure request/response checks shared by collection and assessment."""
 import re
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, parse_qsl
+
+
+CALENDAR_ASSETS = ("/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css")
+
+
+def allowed_asset_query(query):
+    """Only the known bundle's bounded cache-version hash, never arbitrary keys."""
+    if not query:
+        return True
+    if len(query) > 256:
+        return False
+    try:
+        pairs = parse_qsl(query, keep_blank_values=True, strict_parsing=True)
+        return (len(pairs) == 1 and pairs[0][0] == "v"
+                and re.fullmatch(r"[A-Za-z0-9_-]{16,128}", pairs[0][1]) is not None)
+    except ValueError:
+        return False
 
 
 def allowed(url, method):
@@ -12,8 +29,8 @@ def allowed(url, method):
             return False
         if parsed.path == "/CaseSearch":
             return method in ("GET", "POST") and not parsed.query
-        if parsed.path in ("/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"):
-            return method == "GET" and not parsed.query
+        if parsed.path in CALENDAR_ASSETS:
+            return method == "GET" and allowed_asset_query(parsed.query)
         if parsed.path == "/Report/CpDocketSheet":
             query = parse_qs(parsed.query, keep_blank_values=True)
             docket = query.get("docketNumber", [])

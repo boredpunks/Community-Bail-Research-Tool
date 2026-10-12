@@ -1,0 +1,140 @@
+TASK: Diagnose and repair the existing Allegheny Common Pleas
+calendar adapter without initiating new court traffic.
+
+CURRENT EVIDENCE
+- Supported scope only: CP-05-02-Crim, Bail Hearing.
+- Fixed failed-job window: 2026-10-06 through 2026-10-12.
+- Failure: RETURNED_FORM; no validated calendar results table.
+- Two requests completed; zero dockets discovered or processed.
+- Exact-client verification has not passed.
+- Broader collection is not approved.
+- Source-wide SOURCE_VALIDATION_BARRIER remains active.
+
+Do not describe this as an empty calendar.
+Do not claim a PDF failure, rate-limit cause, or successful access
+unless the saved evidence demonstrates it.
+
+1. AUDIT THE FAILED RUN OFFLINE
+
+Locate existing:
+- Browser action trace.
+- Pre-submit and post-submit screenshots or DOM snapshots.
+- Request ledger, including blocked requests.
+- Console errors and page errors.
+- Requested URLs, methods, response status, redirect chain,
+  content types, and request/response timing.
+- Actual selected field labels and values.
+- Search submission details, with session secrets redacted.
+
+If an artifact was not captured, say "not captured."
+Do not reconstruct missing evidence as though it were observed.
+Do not replay network traffic while inspecting artifacts.
+
+Report the last verified successful step and first unverified step.
+
+2. VERIFY THE CORRECT PUBLIC WORKFLOW
+
+Identify the public calendar entry point actually used by this app.
+Do not substitute PACFile, secure calendar access, case search,
+another court, another event, or an undocumented endpoint.
+
+Check the configured CP-05-02-Crim identifier against the actual
+court option observed in the saved page. Treat the identifier as
+configuration to verify, not as proof that the correct option was
+selected.
+
+Inspect dependent fields and page validation:
+- Court selection.
+- Bail Hearing event selection.
+- Start/end dates and expected date format.
+- Any other genuinely required controls.
+
+Do not invent required fields or endpoint behavior.
+
+3. REPAIR STATE DETECTION
+
+Replace the generic RETURNED_FORM result with diagnostic states:
+- FORM_READY
+- SUBMISSION_NOT_OBSERVED
+- FORM_VALIDATION_ERROR
+- RESULTS_VALIDATED
+- EMPTY_RESULTS_VALIDATED
+- ACCESS_DENIED
+- UNEXPECTED_RESPONSE
+- RESULTS_NOT_VALIDATED
+
+A form may remain visible above successful results.
+Its presence alone must not indicate failure.
+
+RESULTS_VALIDATED requires demonstrated table structure and
+parseable calendar rows associated with the submitted search.
+
+EMPTY_RESULTS_VALIDATED requires an explicit source empty-result
+state associated with the submitted search. A missing table,
+loading screen, timeout, or form alone is not an empty result.
+
+Unknown layouts remain unvalidated.
+
+4. CHECK REQUEST BLOCKING AND PACING
+
+Audit the existing required-asset allowlist.
+Determine whether the failed run blocked a dependency needed for
+form initialization, option population, submission, or rendering.
+
+Do not simply allow every asset or remove request accounting.
+Any live allowlist change requires a new bounded request plan.
+
+Account for browser-triggered requests as well as application calls.
+Confirm whether normal browser startup fans out requests in a way
+that conflicts with concurrency 1 and response-finish-based pacing.
+
+Do not silently exempt required assets from the request ledger,
+pacing rules, or approval budget.
+
+5. ADD OFFLINE REGRESSION TESTS
+
+Using retained artifacts where available, test:
+- Successful results with the search form still present.
+- Explicit empty results.
+- Validation errors.
+- Delayed dependent-control population.
+- Missing required script.
+- Access-denial/interstitial page.
+- Changed table layout.
+- Duplicate calendar rows for the same docket.
+- Missing or malformed docket links.
+
+Label synthetic fixtures as synthetic.
+Offline tests do not prove live access.
+
+6. PREPARE, BUT DO NOT EXECUTE, A VERIFICATION PLAN
+
+Keep the source-wide pause active.
+
+Prepare one fixed, explicitly approved verification using:
+- The exact deployed browser calendar client.
+- The exact deployed public HTTP PDF client.
+- CP-05-02-Crim and Bail Hearing only.
+- Fixed dates within the supported window.
+- One calendar-discovered, identity-checked PDF.
+- Complete calendar, asset, redirect, and PDF request accounting.
+- Existing concurrency, pacing, zero automatic retries, and quotas.
+
+Document a conservative request ceiling and stop conditions.
+If the workflow cannot fit the approved budget, stop and report it.
+
+Do not proceed to 3 PDFs, 10 PDFs, collection, or the 100-match
+sample after passing the single-document verification.
+
+7. DELIVER
+
+Provide:
+A. Evidence-backed cause, or a precise unresolved diagnosis.
+B. Code changes and offline test results.
+C. Missing artifacts.
+D. Proposed live-verification request inventory and budget.
+E. Explicit pass/fail criteria.
+F. Confirmation that source collection remains paused.
+
+Do not claim success based only on HTTP 200, synthetic fixtures,
+or retrieval of an unrelated known PDF.

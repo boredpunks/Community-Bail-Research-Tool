@@ -14,6 +14,6 @@ try {
   });
   const check = spawnSync("node", [out], { stdio: "inherit" });
   if (check.status) process.exitCode = check.status;
-  const python = spawnSync("python", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_protocol.py"], { stdio: "inherit" });
+  const python = spawnSync("python", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"], { stdio: "inherit" });
   if (python.status) process.exitCode = python.status;
 } finally { await rm(dir, { recursive: true, force: true }); }

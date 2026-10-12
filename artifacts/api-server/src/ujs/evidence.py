@@ -17,6 +17,15 @@ def iso_date(text):
         return None
 
 
+def validate_event_date(text, criteria):
+    calendar_date = iso_date(text.split()[0]) if text else None
+    if calendar_date is None:
+        raise ValueError("UNSUPPORTED_EVENT_DATE_LAYOUT")
+    if not criteria["startDate"] <= calendar_date <= criteria["endDate"]:
+        raise ValueError("CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW")
+    return calendar_date
+
+
 class CalendarResults(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -52,7 +61,7 @@ class CalendarResults(HTMLParser):
         if tag == "tr" and self.in_row:
             if self.cells and getattr(self, "is_header", False):
                 self.headers = [cell.strip() for cell in self.cells]
-            elif self.link:
+            elif self.cells:
                 self.rows.append((self.cells, self.link))
             self.in_row = False
         if tag == "table":
@@ -60,7 +69,7 @@ class CalendarResults(HTMLParser):
 
     def validated(self, criteria):
         if not self.table_found:
-            raise ValueError("RETURNED_FORM: no validated calendar results table")
+            raise ValueError("RESULTS_NOT_VALIDATED")
         expected = {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
                     9: "County", 10: "Court Office", 14: "Event Type"}
         if any(len(self.headers) <= i or not self.headers[i].startswith(label)
@@ -68,6 +77,8 @@ class CalendarResults(HTMLParser):
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
         result, seen = [], set()
         for cells, link in self.rows:
+            if not link:
+                raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
             if len(cells) < 18:
                 raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
             docket = cells[2].strip()
@@ -78,16 +89,11 @@ class CalendarResults(HTMLParser):
                     or cells[10].strip() != criteria["courtOffice"]
                     or cells[14].strip() != criteria["eventType"]):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
-            if docket in seen:
-                # Retain first court-list occurrence; never rank/reorder dockets.
-                continue
             event_date = cells[16].strip()
-            if event_date:
-                calendar_date = iso_date(event_date.split()[0])
-                if calendar_date is None:
-                    raise ValueError("UNSUPPORTED_EVENT_DATE_LAYOUT")
-                if not criteria["startDate"] <= calendar_date <= criteria["endDate"]:
-                    raise ValueError("CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW")
+            validate_event_date(event_date, criteria)
+            if docket in seen:
+                # Validate even repeated rows before first-seen deduplication.
+                continue
             seen.add(docket)
             result.append({
                 "docketNumber": docket, "position": len(result),
@@ -96,6 +102,17 @@ class CalendarResults(HTMLParser):
                 "filingDate": iso_date(cells[6].strip()),
             })
         return result
+
+
+def calendar_result_state(validated_table, parsed_rows, explicit_empty_state):
+    """A bare form/table with no parsed row is never treated as an empty search."""
+    if not validated_table:
+        return "RESULTS_NOT_VALIDATED"
+    if parsed_rows:
+        return "RESULTS_VALIDATED"
+    if explicit_empty_state:
+        return "EMPTY_RESULTS_VALIDATED"
+    return "RESULTS_NOT_VALIDATED"
 
 
 def extract_bail(body, docket):

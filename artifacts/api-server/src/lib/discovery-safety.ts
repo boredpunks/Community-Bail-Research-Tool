@@ -1,6 +1,6 @@
 // This identifies the actual clients, not just the source domain. Changing
 // either retrieval method invalidates prior proof and requires fresh approval.
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v1";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v8";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 
 type SourceState = {
@@ -85,13 +85,38 @@ export function allowedSourceRequest(raw: unknown, method: unknown) {
     const url = new URL(raw);
     if (url.origin !== "https://ujsportal.pacourts.us" || url.username || url.password || url.hash) return false;
     if (url.pathname === "/CaseSearch") return !url.search;
-    if (["/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"].includes(url.pathname)) return method === "GET" && !url.search;
+    if (["/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"].includes(url.pathname)) {
+      if (method !== "GET") return false;
+      if (!url.search) return true;
+      const entries = [...url.searchParams.entries()];
+      const version = entries[0]?.[1] ?? "";
+      return url.search.length <= 257 && !url.search.includes("&") && entries.length === 1 && entries[0]![0] === "v"
+        && version.length >= 16 && version.length <= 128 && !/[^A-Za-z0-9_-]/.test(version);
+    }
     if (url.pathname !== "/Report/CpDocketSheet" || method !== "GET") return false;
     return url.searchParams.getAll("docketNumber").length === 1
       && /^CP-02-CR-\d{7}-\d{4}$/.test(url.searchParams.get("docketNumber") ?? "")
       && url.searchParams.getAll("dnh").length <= 1
       && [...url.searchParams.keys()].every((key) => ["docketNumber", "dnh"].includes(key));
   } catch { return false; }
+}
+
+export function validCalendarDiagnostics(message: Record<string, unknown>) {
+  return ["READY", "RESULT"].includes(String(message.phase))
+    && ["blockedScripts", "blockedStylesheets", "blockedRequests", "pageErrors", "consoleErrors", "optionalConsoleErrors"].every(
+      (key) => Number.isSafeInteger(message[key]) && Number(message[key]) >= 0 && Number(message[key]) <= 10_000)
+    && typeof message.scriptLoaded === "boolean" && typeof message.stylesheetLoaded === "boolean";
+}
+
+export function validCalendarFormDiagnostic(message: Record<string, unknown>) {
+  const reasons = message.code === "CALENDAR_CONTROL_STATE_MISMATCH"
+    ? ["MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
+      "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH"]
+    : message.code === "CALENDAR_SUBMITTED_VALUES_MISMATCH"
+    ? ["SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH"] : [];
+  return ["CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH"].includes(String(message.code))
+    && ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
+    && reasons.includes(String(message.reason));
 }
 
 export function collectionBlock(source: SourceState | undefined, now = new Date()): string | null {

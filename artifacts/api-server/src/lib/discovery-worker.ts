@@ -5,11 +5,12 @@ import { fileURLToPath } from "node:url";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
-import { allowedSourceRequest } from "./discovery-safety";
+import { allowedSourceRequest, validCalendarDiagnostics, validCalendarFormDiagnostic } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
 import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
+import { formInspectionMethod, validInspectionMetadata } from "./form-inspection";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -45,6 +46,8 @@ const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.p
 
 export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
+  const [permit] = permitId ? await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, permitId)) : [];
+  const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
   const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
@@ -67,10 +70,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     child.once("exit", resolve);
   });
   let finished = false;
+  let inspectionPhase: "NONE" | "BEFORE" | "LOCAL_POST" = "NONE";
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
-    criteria: job.criteria, calendarComplete: job.calendarComplete,
+    criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: job.criteria.recordCap - processed,
   }) + "\n");
@@ -79,10 +83,49 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     for await (const line of lines) {
       if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
+      if (finished) throw new Error("Worker message after completion");
+      if (inspectionOnly && !["request", "response", "inspection_metadata", "inspection_abort",
+        "inspection_finished", "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
+        throw new Error("Inspection cannot emit collection results");
       if (message.kind === "request") {
+        if (inspectionOnly && inspectionPhase !== "NONE") throw new Error("Inspection transmission after bootstrap");
         child.stdin.write(JSON.stringify(await grant(job, message.path, message.method, permitId, message.url)) + "\n");
       } else if (message.kind === "response") {
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
+      } else if (message.kind === "inspection_metadata") {
+        if (!inspectionOnly || !validInspectionMetadata(message)
+          || message.phase !== (inspectionPhase === "NONE" ? "BEFORE" : inspectionPhase === "BEFORE" ? "LOCAL_POST" : null))
+          throw new Error("Invalid inspection metadata");
+        inspectionPhase = message.phase as "BEFORE" | "LOCAL_POST";
+        await discoveryEvent(job, "INSPECTION_METADATA", JSON.stringify(message));
+      } else if (message.kind === "inspection_abort") {
+        if (!inspectionOnly || !Number.isSafeInteger(message.count) || Number(message.count) < 1
+          || Number(message.count) > 32 || Object.keys(message).some(key => !["kind", "count"].includes(key)))
+          throw new Error("Invalid inspection abort diagnostic");
+        await discoveryEvent(job, "INSPECTION_ABORT", `Expected local POST-abort console errors: ${message.count}. No POST transmitted.`);
+      } else if (message.kind === "inspection_finished") {
+        if (!inspectionOnly || inspectionPhase !== "LOCAL_POST" || Object.keys(message).length !== 1)
+          throw new Error("Incomplete inspection");
+        finished = true;
+      } else if (message.kind === "calendar_state") {
+        if (inspectionOnly && ["FORM_READY", "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"].includes(String(message.state)))
+          throw new Error("Inspection cannot claim submitted results");
+        const states = ["FORM_READY", "SUBMISSION_NOT_OBSERVED", "FORM_VALIDATION_ERROR",
+          "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED", "ACCESS_DENIED", "UNEXPECTED_RESPONSE",
+          "RESULTS_NOT_VALIDATED"];
+        if (!states.includes(String(message.state)) || typeof message.formVisible !== "boolean") {
+          throw new Error("Invalid calendar state evidence");
+        }
+        await discoveryEvent(job, "CALENDAR_STATE",
+          `${String(message.state)}; search form visible=${message.formVisible}. No form values, row identifiers, or response content retained.`);
+      } else if (message.kind === "calendar_form_diagnostic") {
+        if (!validCalendarFormDiagnostic(message)) throw new Error("Invalid public form diagnostic");
+        await discoveryEvent(job, "CALENDAR_FORM_DIAGNOSTIC",
+          `${message.code}: ${message.control} / ${message.reason}. Fixed labels only; no field values, hidden tokens or source text retained.`);
+      } else if (message.kind === "calendar_diagnostics") {
+        if (!validCalendarDiagnostics(message)) throw new Error("Invalid calendar diagnostics");
+        await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
+          `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar") {
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null }[];
         if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string" || !Number.isFinite(Date.parse(message.retrievedAt))) throw new Error("Invalid calendar checkpoint");
@@ -153,7 +196,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     if (current?.status === "RUNNING") {
       if (finished && code === 0) {
         const counts = await jobSummary(current);
-        const message = counts.targetReached
+        const message = inspectionOnly
+          ? "Public filter metadata inspected; native POST intercepted locally. Zero PDFs or remote POSTs. Not an empty search or access proof; source pause unchanged."
+          : counts.targetReached
           ? `Matching target reached (${counts.matching}/${current.criteria.matchTarget}). Remaining discovered dockets were not downloaded.`
           : counts.unprocessed > 0
           ? "Explicit record cap reached. Partial docket processing; unprocessed rows remain visible."

@@ -26,3 +26,9 @@ Prioritize anticipating rate-limit failures through a shared scheduler, persiste
 **Why:** The user clarified that they want practical anticipatory measures, not a guarantee, then explicitly endorsed the proposed safeguards and requested a game plan.
 
 **How to apply:** Treat initial pacing and quota values as proposed safeguards, not established court limits. Implementation approval does not authorize live verification requests or the larger research sample.
+
+For the UJS calendar pilot, vary response-completion pauses within a bounded 60–90-second range; the shared scheduler's higher adaptive delay always wins. Variation spreads request timing but does not bypass automation detection or authorize access.
+
+**Why:** The user asked about varied intervals after an integrated request returned an unvalidated form. The failure was not a rate-limit response, so timing variation must not be represented as its cause or remedy.
+
+**How to apply:** Keep one request in flight, keep the 60-second protected floor and rolling quotas, and stop on denial, challenge, throttle, validation, uncertainty, timeout, or latency barriers. Do not automatically retry.

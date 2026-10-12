@@ -14,3 +14,18 @@ Do not assume Calendar Events can reproduce historical filing-date windows.
 **Why:** On October 6, 2026, the public form marked calendar start dates as future-only with that day's minimum. The briefing's historical filing-date selection is not interchangeable with upcoming calendar-event discovery.
 
 **How to apply:** Recheck the live date restrictions before enabling discovery. Explain unsupported historical dates rather than silently substituting upcoming dates or filing-date searches.
+
+The product searches for source-backed PDFs for community members whose current
+incarceration is already known outside the court document. A past court document
+may show the original docket. A future scheduled-hearing document is useful only
+if its PDF already shows both the docket number and bail information.
+
+**Why:** The user clarified that the research must support both historical
+documents and potentially useful upcoming-hearing documents, without assuming
+either date range contains a bail amount.
+
+**How to apply:** Require both identifiers in the same retrieved source PDF;
+never infer current custody from a docket, hearing, or bail amount. The current
+pilot accepts only today/future dates and stops if the source form's minimum
+excludes a requested date. Do not bypass that check; verify historical access
+offline and obtain the exact scope and fresh approval before any source request.

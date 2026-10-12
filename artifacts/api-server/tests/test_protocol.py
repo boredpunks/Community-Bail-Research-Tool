@@ -28,3 +28,18 @@ class ResponseTests(unittest.TestCase):
         self.assertFalse(allowed("https://ujsportal.pacourts.us/CaseSearch?unexpected=1", "POST"))
         self.assertFalse(allowed("https://ujsportal.pacourts.us/resource/js/sitemain.min.js?v=unapproved", "GET"))
         self.assertFalse(allowed("https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=not-a-docket", "GET"))
+
+    def test_bounded_bundle_versions(self):
+        version = "offlineVersionHash_1234567890"
+        for path in ("/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"):
+            url = "https://ujsportal.pacourts.us" + path
+            self.assertTrue(allowed(url, "GET"))
+            self.assertTrue(allowed(url + "?v=" + version, "GET"))
+            for query in ("v=", "v=short", "v=" + "a" * 129,
+                          "v=" + version + "&", "v=" + version + "&unexpected=1",
+                          "v=" + version + "&v=" + version, "v=" + version + "%0A",
+                          "other=" + version, "v=../../unapproved"):
+                self.assertFalse(allowed(url + "?" + query, "GET"), query)
+            self.assertFalse(allowed(url + "?v=" + version, "POST"))
+            self.assertFalse(allowed(url + "?v=" + version + "#fragment", "GET"))
+        self.assertFalse(allowed("https://ujsportal.pacourts.us/resource/js/other.js?v=" + version, "GET"))

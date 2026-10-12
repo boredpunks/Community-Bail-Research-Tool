@@ -4,9 +4,11 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
-import { allowedSourceRequest, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults } from "../src/lib/discovery-retention";
+
+import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
@@ -34,6 +36,14 @@ async function reset(verify = true) {
 }
 
 try {
+  const formDiagnostic = { code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "COURT_OFFICE", reason: "DISABLED" };
+  check(validCalendarFormDiagnostic(formDiagnostic));
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, control: "raw-field-value" }));
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, reason: "raw console message" }));
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, reason: "SUBMITTED_COUNT_MISMATCH" }));
+  check(validCalendarFormDiagnostic({ code: "CALENDAR_SUBMITTED_VALUES_MISMATCH", control: "START_DATE", reason: "SUBMITTED_COUNT_MISMATCH" }));
+  for (const reason of ["BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH"])
+    check(validCalendarFormDiagnostic({ ...formDiagnostic, reason }));
   // A disposable schema cloned WITHOUT source data. Separate pool connections
   // exercise real PostgreSQL row locking and the one-in-flight unique index.
   await pool.query(`CREATE SCHEMA ${namespace}`);
@@ -49,6 +59,25 @@ try {
   check(!allowedSourceRequest("https://example.invalid/CaseSearch", "GET"));
   check(!allowedSourceRequest(`${requestUrl}?unexpected=1`, "GET"));
   check(!allowedSourceRequest("https://ujsportal.pacourts.us/resource/js/sitemain.min.js?unexpected=1", "GET"));
+  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
+    verifiedMethod: "playwright-calendar+urllib-pdf-v1" }) === "ACCESS_UNVERIFIED");
+  const version = "offlineVersionHash_1234567890";
+  for (const asset of ["/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"]) {
+    const url = `https://ujsportal.pacourts.us${asset}`;
+    check(allowedSourceRequest(url, "GET"));
+    check(allowedSourceRequest(`${url}?v=${version}`, "GET"));
+    for (const query of ["v=", "v=short", `v=${"a".repeat(129)}`, `v=${version}&`,
+      `v=${version}&unexpected=1`, `v=${version}&v=${version}`, `v=${version}%0A`,
+      `other=${version}`, "v=../../unapproved"]) check(!allowedSourceRequest(`${url}?${query}`, "GET"));
+    check(!allowedSourceRequest(`${url}?v=${version}`, "POST"));
+    check(!allowedSourceRequest(`${url}?v=${version}#fragment`, "GET"));
+  }
+  check(!allowedSourceRequest(`https://ujsportal.pacourts.us/resource/js/other.js?v=${version}`, "GET"));
+  const diagnostic = { phase: "READY", blockedScripts: 0, blockedStylesheets: 0, blockedRequests: 0, pageErrors: 0, consoleErrors: 0, optionalConsoleErrors: 0, scriptLoaded: true, stylesheetLoaded: true };
+  check(validCalendarDiagnostics(diagnostic));
+  check(!validCalendarDiagnostics({ ...diagnostic, pageErrors: -1 }));
+  check(!validCalendarDiagnostics({ ...diagnostic, phase: "unknown" }));
+  check(!validCalendarDiagnostics({ ...diagnostic, scriptLoaded: "true" }));
   check(!allowedSourceRequest("https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=not-a-docket", "GET"));
   const instant = new Date(now0);
   check(rollingUsage([new Date(now0 - 3_600_000)], instant, 1, 120).hourlyUsed === 0);
@@ -170,6 +199,43 @@ try {
   check(expiredState!.resultCounts?.discovered === 0);
   check((await store.select().from(schema.discoveryItemsTable)).length === 0);
   check((await store.select().from(schema.bailRecordsTable)).length === 0);
+  const inspectionMetadata = { kind: "inspection_metadata", phase: "BEFORE", controls:
+    ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].map(control => ({
+      control, uiPresent: true, uiNamed: false, uiEnabled: true, uiSameForm: true, uiMatches: true,
+      types: { hidden: 0, text: 1, date: 0, number: 0, select: 0, other: 0 },
+      sameFormNamed: 1, outsideContainerNamed: 0, nativeMatches: 1, nativePostedMatches: 0, knownKeyPostedMatches: 0,
+    })) };
+  check(validInspectionMetadata(inspectionMetadata));
+  check(!validInspectionMetadata({ ...inspectionMetadata, html: "forbidden" }));
+  check(!validInspectionMetadata({ ...inspectionMetadata, controls: [...inspectionMetadata.controls, inspectionMetadata.controls[0]] }));
+  for (const bad of [
+    { ...inspectionMetadata.controls[0], value: "forbidden" },
+    { ...inspectionMetadata.controls[0], control: "unexpected" },
+    { ...inspectionMetadata.controls[0], nativePostedMatches: 1 },
+    { ...inspectionMetadata.controls[0], sameFormNamed: 33 },
+    { ...inspectionMetadata.controls[0], types: { ...inspectionMetadata.controls[0]!.types, cookie: 1 } },
+  ]) check(!validInspectionMetadata({ ...inspectionMetadata, controls: [bad, ...inspectionMetadata.controls.slice(1)] }));
+  check(inspectionRequestAllowed("/CaseSearch", "GET"));
+  check(!inspectionRequestAllowed("/CaseSearch", "POST"));
+  check(!inspectionRequestAllowed("/Report/CpDocketSheet", "GET"));
+  for (const [path, method, url] of [
+    ["/CaseSearch", "GET", requestUrl],
+    ["/CaseSearch", "POST", requestUrl],
+  ]) {
+    await reset(false);
+    await store.update(sources).set({ blockedReason: "SOURCE_VALIDATION_BARRIER" }).where(eq(sources.id, "UJS"));
+    const inspectCriteria = { ...criteria, requestCap: 3 };
+    const [inspectionPermit] = await store.insert(pilots).values({
+      stage: "INSPECT", expectedMethod: formInspectionMethod, criteria: inspectCriteria,
+      state: "ATTEMPTED", approvedAt: instant, expiresAt: new Date(now0 + 3_600_000),
+    }).returning();
+    const inspectionJob = await createJob({ criteria: inspectCriteria, assessmentId: inspectionPermit!.id });
+    await store.update(pilots).set({ jobId: inspectionJob.id }).where(eq(pilots.id, inspectionPermit!.id));
+    const result = await reserveSourceRequest(inspectionJob, path, method, inspectionPermit!.id, url, () => false, context);
+    check(result.allow === (method === "GET" && path === "/CaseSearch"));
+    const [sourceState] = await store.select().from(sources);
+    check(sourceState!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !sourceState!.accessVerifiedAt && !sourceState!.collectionApprovedAt);
+  }
   console.log(`PASS: ${checks} offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.`);
 } finally {
   await isolatedPool.end();

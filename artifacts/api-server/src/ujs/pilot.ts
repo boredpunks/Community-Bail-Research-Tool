@@ -9,8 +9,12 @@ import { actualDate, discoveryPolicy, easternToday } from "../lib/discovery";
 import { collectionBlock, integratedSourceMethod } from "../lib/discovery-safety";
 import { runJob } from "../lib/discovery-worker";
 import { WORKSPACE_OWNER_ID } from "../middlewares/researchAuth";
+import { formInspectionMethod } from "../lib/form-inspection";
 
-const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10 } as const;
+// INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
+// child prohibit every document request and every transmitted POST.
+const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1 } as const;
+const currentMethod = (stage: string) => stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
 const args = process.argv.slice(2);
 const command = args.shift();
 const value = (key: string) => args.includes(`--${key}`) ? args[args.indexOf(`--${key}`) + 1] : undefined;
@@ -22,14 +26,18 @@ async function main() {
     const startDate = value("start"), endDate = value("end"), requestCap = Number(value("requests"));
     if (!stageCaps[stage] || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
-      || !Number.isInteger(requestCap) || requestCap < 8 || requestCap > 500) throw new Error("Specify --stage SINGLE/SMALL/MODEST, --start/--end today-or-future (up to 7 days), and explicit --requests (8–500).");
+      || !Number.isInteger(requestCap) || requestCap < (stage === "INSPECT" ? 3 : 8)
+      || requestCap > (stage === "INSPECT" ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days.");
     const [row] = await db.insert(discoveryAssessmentsTable).values({
-      stage, expectedMethod: integratedSourceMethod,
+      stage, expectedMethod: currentMethod(stage),
       criteria: { courtOffice: "CP-05-02-Crim", eventType: "Bail Hearing", startDate, endDate,
         recordCap: stageCaps[stage], requestCap, matchTarget: stageCaps[stage],
         matchFilters: { monetaryUpperBoundCents: null, excludeShownPosted: false, inclusiveMaximum: true } },
     }).returning();
-    console.log(JSON.stringify({ id: row!.id, state: "PREPARED", criteria: row!.criteria, notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged." }));
+    console.log(JSON.stringify({ id: row!.id, stage, state: "PREPARED", criteria: row!.criteria,
+      documentCap: stage === "INSPECT" ? 0 : row!.criteria.recordCap,
+      remotePostCap: stage === "INSPECT" ? 0 : null,
+      notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. INSPECT criteria recordCap is a storage placeholder, not permission to fetch a document." }));
     return;
   }
   const id = value("id");
@@ -37,7 +45,9 @@ async function main() {
   if (command === "report") {
     const [row] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
     if (!row) throw new Error("Pilot not found.");
-    console.log(JSON.stringify(row));
+    console.log(JSON.stringify({ ...row, ...(row.stage === "INSPECT" ? {
+      documentCap: 0, remotePostCap: 0, notice: "Operator-only diagnostic; criteria recordCap is a storage placeholder. No document or transmitted POST permitted.",
+    } : {}) }));
     return;
   }
   if (!flag("user-approved")) throw new Error("Separate explicit user approval is required; no operation performed.");
@@ -45,9 +55,10 @@ async function main() {
     await db.transaction(async (tx) => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [row] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
-      if (!row || row.state !== "PREPARED" || row.expectedMethod !== integratedSourceMethod) throw new Error("Only an unused prepared current-method pilot can be approved.");
+      if (!row || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage)
+        || row.stage === "INSPECT" && row.criteria.requestCap !== 3) throw new Error("Only an unused prepared current-method pilot can be approved.");
       if (row.criteria.startDate < easternToday() || row.criteria.recordCap > discoveryPolicy.maxRecordCap || row.criteria.requestCap > discoveryPolicy.maxRequestCap) throw new Error("Scope is stale or exceeds protected limits. Obtain separate operator-budget authorization; limits will not increase automatically.");
-      if (row.stage !== "SINGLE") {
+      if (row.stage !== "SINGLE" && row.stage !== "INSPECT") {
         const priorStage = row.stage === "SMALL" ? "SINGLE" : "SMALL";
         const [prior] = await tx.select().from(discoveryAssessmentsTable).where(and(
           eq(discoveryAssessmentsTable.stage, priorStage), eq(discoveryAssessmentsTable.state, "VERIFIED"),
@@ -87,7 +98,8 @@ async function main() {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [pilot] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
       if (!pilot || pilot.state !== "APPROVED" || !pilot.expiresAt || pilot.expiresAt <= new Date()
-        || pilot.expectedMethod !== integratedSourceMethod || pilot.criteria.startDate < easternToday()
+         || !Object.hasOwn(stageCaps, pilot.stage) || pilot.expectedMethod !== currentMethod(pilot.stage)
+         || pilot.stage === "INSPECT" && pilot.criteria.requestCap !== 3 || pilot.criteria.startDate < easternToday()
         || pilot.criteria.recordCap > discoveryPolicy.maxRecordCap || pilot.criteria.requestCap > discoveryPolicy.maxRequestCap
         || !source || source.activeRequestId || source.pausedUntil && source.pausedUntil > new Date()
         || source.blockedReason?.startsWith("UNCERTAIN") || source.blockedReason === "RESTART_IN_FLIGHT") throw new Error("Pilot approval/scope expired or source cooldown/uncertainty remains. No request sent.");
@@ -111,23 +123,31 @@ async function main() {
       const ordered = [...requests].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
       const timingValid = ordered.every((request, index) => !index || !!ordered[index - 1]!.completedAt
         && request.startedAt.getTime() >= ordered[index - 1]!.completedAt!.getTime() + discoveryPolicy.spacingMs);
-      const verified = current?.status === "COMPLETED" && current.calendarComplete
+       const [assessment] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
+       const inspection = assessment?.stage === "INSPECT";
+       const inspected = inspection && current?.status === "COMPLETED" && items.length === 0
+         && !current.calendarComplete && requests.length === 3 && failures === 0 && timingValid
+         && requests.every(request => request.method === "GET" && request.durationMs !== null && request.durationMs < 20_000)
+         && !source?.activeRequestId && !source?.latencyWarning;
+       const verified = !inspection && current?.status === "COMPLETED" && current.calendarComplete
         && validDocuments === job.criteria.recordCap && failures === 0 && requests.length > 0 && timingValid
         && requests.every((request) => request.durationMs !== null && request.durationMs < 20_000)
         && !source?.activeRequestId && !source?.latencyWarning;
       const completedAt = new Date();
-      const report = { requests: requests.length, validDocuments, failures,
-        reason: verified ? "Both integrated clients passed within fixed scope and timing; not approval for broader collection."
+       const state = inspected ? "INSPECTED" : verified ? "VERIFIED" : "FAILED";
+       const report = { requests: requests.length, validDocuments, failures,
+         reason: inspected ? "Public metadata inspected; native POST intercepted locally, never transmitted. Not calendar/PDF access proof. Existing source pause and access proof unchanged; no collection enablement."
+           : verified ? "Both integrated clients passed within fixed scope and timing; not approval for broader collection."
           : "Pilot did not pass all document, timing, accounting, completion, and latency checks. No automatic retry or collection enablement." };
       await db.transaction(async (tx) => {
         await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
-        await tx.update(discoveryAssessmentsTable).set({ state: verified ? "VERIFIED" : "FAILED", completedAt, report }).where(eq(discoveryAssessmentsTable.id, id));
+         await tx.update(discoveryAssessmentsTable).set({ state, completedAt, report }).where(eq(discoveryAssessmentsTable.id, id));
         if (verified) await tx.update(discoverySourceTable).set({
           accessVerifiedAt: completedAt, verifiedMethod: integratedSourceMethod, collectionApprovedAt: null,
           blockedReason: null, pausedUntil: null,
         }).where(eq(discoverySourceTable.id, "UJS"));
       });
-      console.log(JSON.stringify({ id, jobId, state: verified ? "VERIFIED" : "FAILED", report, collectionApproved: false }));
+       console.log(JSON.stringify({ id, jobId, state, report, collectionApproved: false }));
     }
   } finally {
     if (acquired) await lease.query("SELECT pg_advisory_unlock(74651283)");

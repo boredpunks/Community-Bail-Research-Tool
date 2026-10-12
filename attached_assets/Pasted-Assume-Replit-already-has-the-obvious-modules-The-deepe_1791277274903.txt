@@ -1,0 +1,707 @@
+Assume Replit already has the obvious modules. The deeper task is to eliminate the hidden failure modes that make an implementation *look* correct while silently missing submissions, issuing uncounted requests, parsing the wrong table, or matching the wrong bail entry.
+
+The strongest design is an **evidence-carrying state machine**: every stage must return both a value and proof that the value came from the intended source state.
+
+## 1. Make submission transactional
+
+The current failure may not be “the form came back.” The real problem could be that a dependent control reset, the selected option never stuck, a hidden field became stale, or submission produced no observable transition.
+
+### Build it this way
+
+1. Read the available court options from the live DOM.
+2. Select the court using its observed option value.
+3. Wait for the event control to repopulate.
+4. Confirm that `Bail Hearing` now exists.
+5. Select it and read the selected value back.
+6. Enter the dates.
+7. Blur or tab out of each date field so any change handlers execute.
+8. Read all four controls back after the page has settled.
+9. Create a normalized `submittedQuery` from those read-back values.
+10. Reject the operation if `submittedQuery` differs from the job query.
+11. Submit using the visible control a user would use.
+12. Capture evidence that submission happened.
+
+Playwright’s locator actions already wait for controls to be visible and enabled, while `selectOption()` waits for the specified option and emits the relevant input and change events. Do not use `force: true` to conceal a disabled or obstructed control.[1][2]
+
+### Submission evidence
+
+Require at least one of these:
+
+- A matching browser request began after the submit action.
+- The document URL changed.
+- A form-generation token changed.
+- A known results container appeared.
+- A known validation container appeared.
+- A postback-specific DOM region changed.
+
+Do not use “the click method returned” as proof.
+
+### Hidden problem to anticipate
+
+Selecting the court may replace the entire event `<select>` element. If Replit stores an element handle before selecting the court, it may subsequently interact with a detached control.
+
+**Solution:** Store locator definitions, not element handles. Resolve each locator again after every action that can rerender the form.
+
+***
+
+## 2. Wait for an outcome
+
+`networkidle` is not a reliable definition of search completion. A page can maintain background requests, finish without navigating, update only part of the DOM, or return a form and results together.
+
+### Use an outcome race
+
+After submission, wait for the first valid terminal signal:
+
+```ts
+await Promise.race([
+  waitForValidatedResults(page),
+  waitForExplicitEmptyState(page),
+  waitForFormValidationError(page),
+  waitForAccessDenial(page),
+  waitForUnexpectedDocument(page),
+  waitForDeadline()
+]);
+```
+
+A terminal signal must remain stable for a short settling interval. This prevents the engine from classifying a transient skeleton table, loading message, or briefly displayed validation container.
+
+### Use classifier precedence
+
+Evaluate states in this order:
+
+1. `ACCESS_DENIED`
+2. `FORM_VALIDATION_ERROR`
+3. `RESULTS_VALIDATED`
+4. `EMPTY_RESULTS_VALIDATED`
+5. `SUBMISSION_NOT_OBSERVED`
+6. `RESULTS_NOT_VALIDATED`
+
+Access denial goes first because an access page might contain generic words such as “search” or “no results.” Validated results precede empty results because some pages retain an old or hidden empty-state element in the DOM.
+
+### Bind results to the query
+
+A structurally valid table is not enough. Require evidence that the page represents the submitted search through one or more of:
+
+- Echoed court
+- Echoed event
+- Echoed dates
+- Submission-response identity
+- Results-container generation after the recorded submission
+
+Otherwise, a stale table from a previous job could be accepted.
+
+***
+
+## 3. Resolve request serialization
+
+The current contract creates a subtle engineering problem: a normal browser may request the document, scripts, styles, fonts, and other assets concurrently, while the application promises concurrency one and a delay measured from the preceding response’s completion.
+
+### Put every transmission behind one scheduler
+
+Use browser request routing to intercept all requests before transmission. Playwright routing stalls matching requests until the handler explicitly continues, fulfills, or aborts them.[3]
+
+```ts
+await context.route("**/*", async route => {
+  const request = route.request();
+
+  if (!assetPolicy.isRequired(request)) {
+    return route.abort("blockedbyclient");
+  }
+
+  const reservation = await scheduler.reserve(request);
+
+  if (!reservation.approved) {
+    return route.abort("blockedbyclient");
+  }
+
+  await scheduler.waitUntilAllowed(reservation);
+  await route.continue();
+});
+```
+
+The scheduler must be global to the source, not local to one page or worker.
+
+### Release only after completion
+
+The transmission slot remains occupied until the request:
+
+- Finishes successfully
+- Fails
+- Times out with uncertain transmission
+
+Then persist:
+
+```text
+next_allowed_at =
+    response_finished_at + configured_interval
+```
+
+Do not calculate the next time from request start. A slow response would otherwise overlap the next transmission.
+
+### Anticipate browser-generated traffic
+
+Intercept and classify:
+
+- Main documents
+- JavaScript
+- Stylesheets
+- Fonts
+- Images
+- Favicons
+- Prefetches
+- Redirects
+- PDF requests
+- Requests initiated by service workers
+
+Block service workers and speculative requests unless they are demonstrated requirements. Otherwise, traffic can bypass the accounting model.
+
+### Detect an impossible contract
+
+Some pages require multiple assets to load in parallel or expect dependencies before a timeout. If serializing all required assets prevents the calendar from initializing, the engine must return:
+
+```text
+BROWSER_REQUEST_MODEL_INCOMPATIBLE
+```
+
+It must not silently abandon concurrency one or pretend the form is broken.
+
+***
+
+## 4. Validate tables semantically
+
+A selector such as `table.results` is too weak. It can match empty shells, hidden desktop/mobile duplicates, unrelated tables, or a changed layout with the same class.
+
+### Use a table contract
+
+A results table is valid only when all required invariants hold:
+
+```ts
+interface CalendarTableContract {
+  requiredHeaders: HeaderRule[];
+  minimumDataRows: number;
+  docketColumn: ColumnRule;
+  eventColumn: ColumnRule;
+  dateColumn: ColumnRule;
+  linkRule: LinkRule;
+}
+```
+
+Validate:
+
+- One visible candidate table
+- Required headers exactly or through approved aliases
+- At least one non-template row
+- Parseable docket number
+- Parseable date
+- Expected event text
+- Usable docket or document link
+- No loading or placeholder state
+
+### Do not deduplicate too early
+
+The same docket may appear more than once because it has multiple calendar rows. Preserve raw event rows first:
+
+```ts
+CalendarEventCandidate {
+  docketNumber,
+  eventType,
+  eventDate,
+  courtroom,
+  sourceRow,
+  documentLink
+}
+```
+
+Then create one processing candidate per docket while retaining all contributing calendar events. If Replit deduplicates immediately, it may discard the row containing the usable link or correct hearing date.
+
+### Handle hidden duplicate tables
+
+Responsive sites sometimes render separate mobile and desktop tables. Filter candidates by visibility, meaningful row count, and structural validity before choosing one.
+
+If two visible tables independently satisfy the contract but disagree, return `MULTIPLE_RESULTS_TABLES` instead of selecting the first.
+
+***
+
+## 5. Treat document links as opaque
+
+Do not rebuild, simplify, normalize, or guess PDF URLs. Query parameters may contain document identifiers, temporary values, or routing information.
+
+### Retrieval sequence
+
+1. Preserve the extracted link exactly.
+2. Resolve only relative-versus-absolute addressing.
+3. Send one request through the shared scheduler.
+4. Record every redirect as a separate request.
+5. Validate final status and response body.
+6. Hash the complete bytes.
+7. Pass the bytes—not the URL—to the PDF parser.
+
+### Avoid hidden PDF requests
+
+PDF.js can load documents in chunks by default. If Replit gives PDF.js a URL, PDF.js may generate additional range or streaming requests that bypass the expected “one PDF request” model.[4]
+
+Instead:
+
+```ts
+const bytes = await controlledPdfDownload(url);
+
+const task = pdfjs.getDocument({
+  data: new Uint8Array(bytes),
+  disableRange: true,
+  disableStream: true,
+  disableAutoFetch: true
+});
+```
+
+This ensures parsing operates on the already-accounted-for response.
+
+### Validate more than MIME type
+
+Accept a document only if:
+
+- The response status is successful.
+- The body begins with a valid PDF signature.
+- The body is not merely an HTML page mislabeled as PDF.
+- PDF.js can open the file.
+- At least one page exists.
+- The file is not truncated.
+- The document is not encrypted beyond the parser’s ability to read it.
+
+An `application/pdf` header alone is insufficient.
+
+***
+
+## 6. Verify primary identity
+
+Searching the entire PDF for the expected docket number is vulnerable to false matches. A document can mention another docket in related-case text, captions, notes, or attachments.
+
+### Anchor identity to the header
+
+The identity adapter should define:
+
+- Expected page
+- Expected docket-header label
+- Expected region around that label
+- Supported docket pattern
+- Normalization rules
+
+Require the expected docket number to appear in the demonstrated primary header region, not merely somewhere in the PDF.
+
+```ts
+function verifyPrimaryIdentity(document, expected) {
+  const firstPage = document.pages[0];
+  const headerRegion = crop(firstPage, layout.docketHeaderBounds);
+  const identified = parseDocketHeader(headerRegion);
+
+  if (identified.length !== 1) {
+    return "PRIMARY_IDENTITY_AMBIGUOUS";
+  }
+
+  return normalize(identified[0]) === normalize(expected)
+    ? "IDENTITY_VERIFIED"
+    : "IDENTITY_MISMATCH";
+}
+```
+
+### Preserve meaningful components
+
+Parse docket identity into components rather than stripping every non-alphanumeric character:
+
+```ts
+{
+  courtLevel,
+  judicialDistrict,
+  caseType,
+  sequenceNumber,
+  year
+}
+```
+
+Compare every required component. Overaggressive normalization can make two malformed identifiers appear equal.
+
+### Handle multi-document packets
+
+If the first page establishes the expected docket but later pages contain other docket sheets, do not treat the entire file as one supported document. Either isolate the page range belonging to the verified docket or return `MULTI_DOCKET_PACKET_UNSUPPORTED`.
+
+***
+
+## 7. Reconstruct PDF tables robustly
+
+PDF text is not necessarily stored in reading order. PDF.js exposes each text item’s string, transformation matrix, width, height, direction, and line-ending indication. Use those coordinates rather than concatenating extracted strings.[5]
+
+### Normalize coordinates first
+
+Before grouping rows:
+
+1. Apply the page viewport transformation.
+2. Normalize page rotation.
+3. Convert coordinates into one consistent top-to-bottom system.
+4. Scale relative to page width and height.
+5. Sort by normalized page, vertical baseline, then horizontal position.
+
+### Reconstruct rows in stages
+
+```text
+text items
+→ normalized positioned tokens
+→ baseline clusters
+→ column assignments
+→ logical rows
+→ bail entries
+```
+
+Use adaptive baseline tolerance based on median text height, rather than one hardcoded pixel value. Fixed tolerances often fail when the same layout is rendered at a different scale.
+
+### Anticipate split tokens
+
+A monetary amount may arrive as:
+
+```text
+"$"
+"5"
+","
+"000"
+"."
+"00"
+```
+
+Join adjacent tokens only when:
+
+- They occupy the same logical row.
+- Their horizontal gap is below the adapter threshold.
+- The resulting token satisfies the strict money grammar.
+- They remain inside the amount column.
+
+Do not globally concatenate text.
+
+### Handle wrapped rows
+
+If a description wraps onto a second visual line:
+
+- Start a logical row when the key column is populated.
+- Attach continuation lines only when their key columns are empty.
+- Stop at the next populated key column.
+- Reject a continuation that crosses into another table section.
+
+### Define section boundaries
+
+Start at the demonstrated `Bail Set` heading and stop at:
+
+- The next recognized section heading
+- The adapter’s demonstrated table terminator
+- The end of the supported page range
+
+A keyword located elsewhere in the docket must not start bail extraction.
+
+PDF.js normalizes whitespace in `getTextContent()`, so layout matching should not depend on unusual whitespace characters.[6]
+
+***
+
+## 8. Require layout invariants
+
+Do not choose whichever adapter achieves the highest fuzzy score. A bad “best match” is still a bad match.
+
+### Each adapter should require
+
+- Correct section heading
+- Correct required columns
+- Correct column ordering
+- Parseable row structure
+- Supported bail category vocabulary
+- Supported amount basis
+- No unresolved deposit field
+- No conflicting table boundaries
+
+```ts
+const result = adapter.inspect(document);
+
+if (!result.allRequiredInvariantsPass) {
+  return {
+    status: "UNSUPPORTED_LAYOUT",
+    failedInvariants: result.failedInvariants
+  };
+}
+```
+
+### Save field-level evidence
+
+Each extracted value should retain the source spans that produced it:
+
+```ts
+ExtractedField<number> {
+  value: 500000,
+  page: 3,
+  boundingBoxes: [...],
+  sourceTokens: ["$", "5,000.00"],
+  adapterVersion: "cp-bail-v1"
+}
+```
+
+This makes parser errors reproducible. Without field-level evidence, Replit will know that a value is wrong but not which row-construction decision caused it.
+
+### Test false-positive resistance
+
+The parser must not produce `TOTAL_BAIL` when:
+
+- A fee elsewhere in the document contains a dollar amount.
+- A percentage deposit appears near a monetary amount.
+- The table has an unfamiliar extra column.
+- A total is split across conflicting rows.
+- The bail category is missing.
+- A previous and later entry disagree without supported selection semantics.
+
+The earlier parser specifically needed to distinguish monetary bail from fees, unsecured bail, nonmonetary bail, and zero-dollar entries.[7]
+
+***
+
+## 9. Define matching precisely
+
+The phrase “docket has bail below the maximum” becomes ambiguous when a docket contains multiple bail observations.
+
+### Use observation-based matching
+
+For the current stated behavior, a docket matches when it contains at least one supported observation satisfying:
+
+```text
+category = MONETARY
+basis = TOTAL_BAIL
+amount is known in whole cents
+amount <= maximum for new jobs
+```
+
+Store the specific observation that caused the match:
+
+```ts
+MatchEvidence {
+  docketNumber,
+  bailEntryId,
+  amountCents,
+  entryDate,
+  comparisonMode,
+  maximumCents
+}
+```
+
+Do not reduce multiple observations to a synthetic minimum and display that minimum as “the bail.” Return the qualifying observation or observations, while counting the docket once.
+
+### Version the comparator
+
+```ts
+function amountMatches(amount, maximum, mode) {
+  return mode === "LTE_V2"
+    ? amount <= maximum
+    : amount < maximum;
+}
+```
+
+Persist `comparisonMode` inside the job. Never derive it from the current application version when resuming an older job.
+
+### Keep posted filtering independent
+
+Only the explicit state `SHOWN_POSTED` should trigger exclusion. `UNKNOWN`, missing section, extraction failure, and absence of demonstrated posted evidence must remain distinct.
+
+***
+
+## 10. Make the worker crash-safe
+
+Concurrency one does not prevent duplicate requests. A worker can transmit a request, receive the response, crash before saving completion, restart, and send the same request again.
+
+### Use an append-only request ledger
+
+Before transmission, atomically create:
+
+```ts
+RequestAttempt {
+  id,
+  jobId,
+  purpose,
+  targetFingerprint,
+  state: "RESERVED",
+  reservedAt,
+  startedAt: null,
+  completedAt: null
+}
+```
+
+Transitions:
+
+```text
+RESERVED
+→ TRANSMITTING
+→ COMPLETED
+
+RESERVED
+→ CANCELLED_BEFORE_TRANSMISSION
+
+TRANSMITTING
+→ FAILED_CONFIRMED
+
+TRANSMITTING
+→ OUTCOME_UNCERTAIN
+```
+
+On restart, never automatically replay `TRANSMITTING` or `OUTCOME_UNCERTAIN`. Require the worker to stop with the preserved partial results.
+
+### Use compare-and-swap transitions
+
+A candidate can advance only from its expected current state:
+
+```sql
+UPDATE candidates
+SET state = 'PDF_RETRIEVED'
+WHERE id = ?
+  AND state = 'PDF_REQUESTED';
+```
+
+If zero rows change, another worker or a previous execution already advanced it. Do not repeat the network operation.
+
+### Calculate counts from records
+
+Do not maintain progress solely through increment statements such as `processed_count += 1`. Crashes and duplicate handlers can corrupt them.
+
+Calculate or reconcile:
+
+- Discovered from candidate records
+- Processed from terminal candidate states
+- Matching from unique match records
+- Failed from classified failure states
+- Unprocessed from nonterminal candidates
+
+Add database uniqueness constraints for:
+
+```text
+(job_id, normalized_docket_number)
+(job_id, normalized_docket_number, matched_bail_entry_id)
+(request_attempt_id)
+```
+
+***
+
+## 11. Make pagination provable
+
+A “next” button is not proof that a new page loaded. It may be disabled, rerender the same rows, wrap around, or require hidden form state.
+
+### Fingerprint each page
+
+Create a fingerprint from:
+
+- Normalized docket numbers in order
+- Visible page number, if available
+- Next-control state
+- Relevant hidden pagination state
+
+After activating “next,” require the fingerprint to change.
+
+```ts
+if (newFingerprint === previousFingerprint) {
+  return "PAGINATION_DID_NOT_ADVANCE";
+}
+
+if (seenFingerprints.has(newFingerprint)) {
+  return "PAGINATION_CYCLE_DETECTED";
+}
+```
+
+### Deduplicate across pages
+
+Maintain both:
+
+- Seen event-row keys
+- Seen docket keys
+
+This prevents repeated pages from creating duplicate PDF requests while still preserving multiple distinct Bail Hearing rows for the same docket.
+
+### Stop honestly
+
+Pagination is complete only when the demonstrated terminal condition appears, such as a disabled or absent next control after a validated page. Anything else remains `PAGINATION_INCOMPLETE`.
+
+***
+
+## 12. Build a replay laboratory
+
+The fastest way to improve this tool is not repeated live probing. It is reproducing the complete browser-to-result pipeline from saved artifacts without network access.
+
+### Save a replay bundle
+
+For each approved diagnostic run, retain:
+
+```text
+query.json
+browser-actions.json
+network-ledger.json
+post-submit.html
+post-submit-screenshot.png
+calendar-response-metadata.json
+calendar-candidates.json
+document.pdf
+expected-result.json
+```
+
+The replay runner feeds those artifacts through the same production validators and parsers.
+
+### Add mutation tests
+
+Take a known fixture and change exactly one property:
+
+- Rename one required calendar header.
+- Remove the docket link.
+- Duplicate a calendar row.
+- Split the dollar amount into additional PDF tokens.
+- Move a fee into a nearby column.
+- Add a second conflicting total.
+- Change the expected docket number by one digit.
+- Replace the PDF with HTML.
+- Repeat the same pagination fingerprint.
+- Change the maximum by one cent.
+
+Every mutation should either preserve the correct result or produce a specific failure state.
+
+### Add invariant tests
+
+The following must always hold:
+
+```text
+matching <= processed <= discovered
+failed + matched + nonmatched + unsupported = processed
+each docket contributes at most one match count
+no PDF request exists without a validated candidate
+no extraction exists without verified identity
+no result exists without an extracted qualifying observation
+```
+
+Fail the job immediately if an invariant is violated.
+
+## Immediate repair sequence
+
+For the currently paused implementation, Replit should work in this order:
+
+1. Inspect whether the court selection caused the event control to be replaced or reset.
+2. Determine whether a submission request was actually observed.
+3. Compare the pre-submit and post-submit DOM fingerprints.
+4. Check whether request blocking prevented a required script from populating or submitting the form.
+5. Replace `RETURNED_FORM` with the ordered outcome classifier.
+6. Route every browser transmission through the global scheduler.
+7. Build a replay fixture from the failed page.
+8. Make the fixture produce one precise diagnostic state.
+9. Add mutations for form-plus-results, explicit empty results, and access denial.
+10. Only then perform the next bounded search.
+
+The crucial upgrade is not another selector or another retry. It is making every stage answer three questions: **What state did I observe? What evidence proves it? What exact state transition is permitted next?**
+
+Sources
+[1] Auto-waiting https://playwright.dev/docs/actionability
+[2] Page https://playwright.dev/docs/api/class-page
+[3] Page | Playwright Java https://playwright.dev/java/docs/api/class-page
+[4] JSDoc: Source: api.js https://mozilla.github.io/pdf.js/api/draft/api.js.html
+[5] JSDoc: Module: pdfjsLib https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib.html
+[6] JSDoc: Class: PDFPageProxy https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFPageProxy.html
+[7] Wow great work. Refine the process so that we can run a test of 200 dockets next https://www.perplexity.ai/search/a13dc7d5-c9df-4e23-837e-5f4010743b1c
+[8] Case Search - UJS Portal https://ujsportal.pacourts.us/casesearch
+[9] Case Information - UJS Portal https://ujsportal.pacourts.us/Home/CaseInformation
+[10] PDF.js - Home https://mozilla.github.io/pdf.js/
+[11] PDF.js - Getting Started https://mozilla.github.io/pdf.js/getting_started/
+[12] Frame https://playwright.dev/docs/api/class-frame
+[13] Actions https://playwright.dev/docs/input
+[14] Frame | Playwright Java https://playwright.dev/java/docs/api/class-frame
+[15] Pennsylvania Courts of Common Pleas https://www.pacourts.us/courts/courts-of-common-pleas
+[16] Actions | Playwright Python https://playwright.dev/python/docs/input

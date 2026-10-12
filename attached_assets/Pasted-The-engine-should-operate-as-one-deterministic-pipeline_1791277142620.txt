@@ -1,0 +1,791 @@
+The engine should operate as one deterministic pipeline:
+
+`validate query → submit calendar form → classify response → extract docket rows → retrieve PDFs → verify identity → extract bail → apply filters → return results`
+
+Keep discovery, extraction, interpretation, and filtering separate, as established in the functional scaffold.[1]
+
+## 1. Submit calendar search
+
+Use a real browser client such as Playwright because the calendar form may depend on JavaScript, dynamically populated controls, cookies, and browser state.
+
+### Implementation
+
+1. Open the configured public calendar URL.
+2. Wait for the court, event, and date controls to become usable.
+3. Select the court by its verified option value.
+4. Wait for any dependent event list to finish updating.
+5. Select `Bail Hearing`.
+6. Fill the start and end dates in the format expected by the page.
+7. Read all values back from the controls.
+8. Reject the submission if the read-back values do not match the query.
+9. Click the actual submit control.
+10. Wait for navigation, a response, or a meaningful DOM change.
+
+```ts
+async function submitCalendarSearch(page, query, selectors) {
+  await page.goto(selectors.calendarUrl, {
+    waitUntil: "domcontentloaded"
+  });
+
+  await page.locator(selectors.court).waitFor({ state: "visible" });
+  await page.selectOption(selectors.court, query.courtOptionValue);
+
+  await waitForOption(
+    page,
+    selectors.event,
+    query.eventOptionValue
+  );
+
+  await page.selectOption(
+    selectors.event,
+    query.eventOptionValue
+  );
+
+  await page.fill(selectors.startDate, formatCourtDate(query.startDate));
+  await page.fill(selectors.endDate, formatCourtDate(query.endDate));
+
+  const selected = await readCalendarControls(page, selectors);
+
+  if (!sameSearch(selected, query)) {
+    throw new SearchError("FORM_VALUES_DID_NOT_STICK");
+  }
+
+  const before = await pageFingerprint(page);
+
+  await page.locator(selectors.submit).click();
+
+  await waitForCalendarChange(page, before);
+
+  return captureCalendarPage(page);
+}
+```
+
+Replit must derive `selectors` and option values from the observed page. It should not invent field names or assume that visible labels equal submitted values.
+
+***
+
+## 2. Classify the response
+
+Run a deterministic classifier against the post-submission DOM. Test the strongest and most specific conditions first.
+
+### Classification order
+
+1. Access-denial signature
+2. Form-validation error
+3. Validated results table
+4. Explicit empty-result message
+5. Submission not observed
+6. Unvalidated response
+
+```ts
+function classifyCalendarPage(snapshot, signatures) {
+  if (matchesAccessDenial(snapshot, signatures.accessDenied)) {
+    return { status: "ACCESS_DENIED" };
+  }
+
+  const formErrors = findFormErrors(snapshot, signatures.formErrors);
+
+  if (formErrors.length > 0) {
+    return {
+      status: "FORM_VALIDATION_ERROR",
+      errors: formErrors
+    };
+  }
+
+  const table = findResultsTable(snapshot, signatures.resultsTable);
+
+  if (table && validateTableStructure(table)) {
+    return {
+      status: "RESULTS_VALIDATED",
+      table
+    };
+  }
+
+  if (matchesExplicitEmptyState(snapshot, signatures.emptyResult)) {
+    return { status: "EMPTY_RESULTS_VALIDATED" };
+  }
+
+  if (!snapshot.submissionObserved) {
+    return { status: "SUBMISSION_NOT_OBSERVED" };
+  }
+
+  return { status: "RESULTS_NOT_VALIDATED" };
+}
+```
+
+A search form remaining on the page means nothing by itself. The engine must look below or beside the form for validated results, validation messages, or an explicit empty state.
+
+***
+
+## 3. Extract docket candidates
+
+Only parse rows after the page reaches `RESULTS_VALIDATED`.
+
+### Candidate model
+
+```ts
+interface CalendarCandidate {
+  docketNumber: string;
+  normalizedDocketNumber: string;
+  court: string;
+  eventType: string;
+  eventDate: string;
+  documentUrl: string;
+  sourceRowIndex: number;
+}
+```
+
+### Extraction process
+
+1. Map table headers to column indexes by normalized header text.
+2. Validate required columns before reading any rows.
+3. Read each data row.
+4. Extract the docket number, event, date, court, and link.
+5. Resolve relative links against the calendar response URL.
+6. Reject rows missing a valid docket number or document link.
+7. Require the event to normalize to `Bail Hearing`.
+8. Normalize the docket number.
+9. Deduplicate by normalized docket number.
+10. Preserve the first occurrence and original result order.
+
+```ts
+function extractCandidates(table, baseUrl) {
+  const columns = mapCalendarColumns(table.headers);
+
+  requireColumns(columns, [
+    "docketNumber",
+    "eventType",
+    "eventDate",
+    "documentLink"
+  ]);
+
+  const unique = new Map<string, CalendarCandidate>();
+
+  for (const [index, row] of table.rows.entries()) {
+    const candidate = parseCalendarRow(row, columns, baseUrl);
+
+    if (!candidate) continue;
+    if (normalizeEvent(candidate.eventType) !== "BAIL_HEARING") continue;
+    if (!isValidDocumentUrl(candidate.documentUrl)) continue;
+
+    const key = normalizeDocketNumber(candidate.docketNumber);
+
+    if (!unique.has(key)) {
+      unique.set(key, {
+        ...candidate,
+        normalizedDocketNumber: key,
+        sourceRowIndex: index
+      });
+    }
+  }
+
+  return [...unique.values()];
+}
+```
+
+Do not select columns by fixed numeric position unless the demonstrated layout proves the positions are stable.
+
+***
+
+## 4. Retrieve the PDF
+
+The PDF worker receives only links extracted from validated calendar results.
+
+### Retrieval process
+
+1. Wait until the request scheduler permits the next transmission.
+2. Request the calendar-discovered URL.
+3. Follow the permitted redirect chain.
+4. Record the final URL and response.
+5. Require a successful HTTP status.
+6. Check the declared content type.
+7. Check that the body starts with the PDF signature `%PDF-`.
+8. Reject HTML, empty responses, and malformed documents.
+9. Pass the bytes and candidate identity to the identity validator.
+
+```ts
+async function retrievePdf(candidate, httpClient, scheduler) {
+  await scheduler.acquire();
+
+  const response = await httpClient.get(candidate.documentUrl, {
+    redirect: "follow",
+    responseType: "arraybuffer"
+  });
+
+  await scheduler.recordCompletion(response);
+
+  if (response.status < 200 || response.status >= 300) {
+    return failure(candidate, "PDF_HTTP_ERROR", response.status);
+  }
+
+  const bytes = Buffer.from(response.data);
+  const contentType = response.headers["content-type"] ?? "";
+
+  if (!bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+    return failure(candidate, "RESPONSE_NOT_PDF", contentType);
+  }
+
+  if (!pdfCanBeOpened(bytes)) {
+    return failure(candidate, "MALFORMED_PDF");
+  }
+
+  return {
+    status: "PDF_RETRIEVED",
+    candidate,
+    bytes,
+    finalUrl: response.finalUrl
+  };
+}
+```
+
+The PDF signature check is important because an access page can return HTML with a successful status.
+
+***
+
+## 5. Verify docket identity
+
+Extract text from the PDF before attempting bail extraction.
+
+### Identity process
+
+1. Use a PDF text extractor such as PDF.js or an equivalent library.
+2. Inspect the demonstrated docket-identification region.
+3. Find strings matching the supported docket-number pattern.
+4. Normalize each discovered number.
+5. Compare it with the normalized calendar docket number.
+6. Continue only if there is one clear match.
+
+```ts
+function verifyPdfIdentity(pdfText, candidate, docketPattern) {
+  const found = extractDocketNumbers(pdfText, docketPattern)
+    .map(normalizeDocketNumber);
+
+  const unique = [...new Set(found)];
+  const expected = candidate.normalizedDocketNumber;
+
+  if (unique.includes(expected)) {
+    return {
+      status: "IDENTITY_VERIFIED",
+      docketNumber: expected
+    };
+  }
+
+  if (unique.length === 0) {
+    return {
+      status: "IDENTITY_UNREADABLE"
+    };
+  }
+
+  return {
+    status: "IDENTITY_MISMATCH",
+    expected,
+    found: unique
+  };
+}
+```
+
+Do not use a party name as the primary match. The normalized docket number should join the calendar row to the PDF.
+
+***
+
+## 6. Extract bail entries
+
+Use a layout adapter for each demonstrated PDF layout. Do not run broad keyword matching across the entire document.
+
+### Layout identification
+
+Create a signature from:
+
+- Required section heading
+- Required column headings
+- Relative ordering of headings
+- Minimum expected fields
+- Text-bearing versus scanned document
+
+```ts
+function identifyBailLayout(document) {
+  for (const adapter of registeredBailAdapters) {
+    if (adapter.matches(document)) {
+      return adapter;
+    }
+  }
+
+  return null;
+}
+```
+
+### Table reconstruction
+
+PDFs often store words by coordinates rather than as real HTML-style tables. Reconstruct rows using each text span’s page, vertical position, and horizontal position:
+
+1. Extract text spans with \(x\) and \(y\) coordinates.
+2. Find the demonstrated bail-section heading.
+3. Limit extraction to that section.
+4. Group spans with similar vertical coordinates into rows.
+5. Assign spans to columns using demonstrated horizontal boundaries.
+6. Normalize whitespace without changing substantive text.
+7. Parse each reconstructed row.
+
+```ts
+function reconstructRows(spans, layout) {
+  const section = cropToSection(spans, layout.sectionBounds);
+  const visualRows = groupByVerticalPosition(
+    section,
+    layout.rowTolerance
+  );
+
+  return visualRows.map(row =>
+    assignSpansToColumns(row, layout.columns)
+  );
+}
+```
+
+### Entry model
+
+```ts
+interface BailEntry {
+  category:
+    | "MONETARY"
+    | "NONMONETARY"
+    | "UNSECURED"
+    | "NOMINAL"
+    | "UNKNOWN";
+
+  basis:
+    | "TOTAL_BAIL"
+    | "DEPOSIT"
+    | "OTHER"
+    | "UNKNOWN";
+
+  amountCents: number | null;
+  entryType: string | null;
+  entryDate: string | null;
+  postedState: "SHOWN_POSTED" | "NOT_SHOWN" | "UNKNOWN";
+  sourceText: string;
+}
+```
+
+### Bail parsing
+
+```ts
+function extractBailEntries(document) {
+  const adapter = identifyBailLayout(document);
+
+  if (!adapter) {
+    return { status: "UNSUPPORTED_LAYOUT", entries: [] };
+  }
+
+  const rows = adapter.reconstructRows(document.textSpans);
+  const entries = [];
+
+  for (const row of rows) {
+    const parsed = adapter.parseRow(row);
+
+    if (parsed.status === "AMBIGUOUS") {
+      return {
+        status: "AMBIGUOUS_BAIL_SECTION",
+        entries: []
+      };
+    }
+
+    if (parsed.basis === "DEPOSIT") {
+      return {
+        status: "UNSUPPORTED_DEPOSIT_LAYOUT",
+        entries: []
+      };
+    }
+
+    entries.push(parsed.entry);
+  }
+
+  return {
+    status: "BAIL_EXTRACTED",
+    entries
+  };
+}
+```
+
+The earlier parser separated monetary bail from fees, fines, unsecured bail, nonmonetary bail, and zero-dollar entries; that same separation must remain in the automated extractor.[2]
+
+***
+
+## 7. Produce `TOTAL_BAIL`
+
+Do not calculate a total by adding every currency value appearing in the document. Use only a row explicitly identified by the supported adapter as the total bail amount.
+
+### Amount parsing
+
+Convert currency directly into integer cents:
+
+```ts
+function parseMoneyToCents(raw: string): number | null {
+  const normalized = raw
+    .replace(/\$/g, "")
+    .replace(/,/g, "")
+    .trim();
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const [dollars, fraction = ""] = normalized.split(".");
+  const cents = fraction.padEnd(2, "0");
+
+  return Number(dollars) * 100 + Number(cents);
+}
+```
+
+### Total selection
+
+```ts
+function determineTotalBail(entries: BailEntry[]) {
+  const totals = entries.filter(entry =>
+    entry.category === "MONETARY" &&
+    entry.basis === "TOTAL_BAIL" &&
+    Number.isInteger(entry.amountCents)
+  );
+
+  const distinctAmounts = [
+    ...new Set(totals.map(entry => entry.amountCents))
+  ];
+
+  if (distinctAmounts.length === 0) {
+    return {
+      status: "TOTAL_BAIL_UNAVAILABLE",
+      totalBailCents: null
+    };
+  }
+
+  if (distinctAmounts.length > 1) {
+    return {
+      status: "TOTAL_BAIL_AMBIGUOUS",
+      totalBailCents: null
+    };
+  }
+
+  return {
+    status: "TOTAL_BAIL_SUPPORTED",
+    totalBailCents: distinctAmounts[0]
+  };
+}
+```
+
+If multiple bail events produce different totals and the adapter cannot unambiguously select the relevant event, return ambiguity rather than choosing the newest-looking number.
+
+***
+
+## 8. Apply the filters
+
+Perform filtering after extraction and use integer cents for monetary comparison.
+
+```ts
+function matchesQuery(record, query) {
+  if (record.eventType !== "BAIL_HEARING") return false;
+
+  if (!dateWithinInclusiveRange(
+    record.eventDate,
+    query.startDate,
+    query.endDate
+  )) {
+    return false;
+  }
+
+  if (query.maximumBailCents !== null) {
+    if (record.totalBailStatus !== "TOTAL_BAIL_SUPPORTED") {
+      return false;
+    }
+
+    if (record.totalBailCents > query.maximumBailCents) {
+      return false;
+    }
+  }
+
+  if (
+    query.excludeShownPosted &&
+    record.postedState === "SHOWN_POSTED"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+```
+
+For new jobs, equality passes:
+
+```text
+total bail <= maximum bail
+```
+
+For legacy jobs that retain strict comparison:
+
+```text
+total bail < maximum bail
+```
+
+Store the comparison mode in the job when it is created so its behavior cannot change while it runs.
+
+***
+
+## 9. Process available candidates
+
+Use one background worker with a stable queue.
+
+### Candidate state machine
+
+```text
+DISCOVERED
+    ↓
+PDF_RETRIEVED
+    ↓
+IDENTITY_VERIFIED
+    ↓
+BAIL_EXTRACTED
+    ↓
+MATCHED or NOT_MATCHED
+```
+
+Possible exits:
+
+```text
+RETRIEVAL_FAILED
+IDENTITY_MISMATCH
+IDENTITY_UNREADABLE
+UNSUPPORTED_LAYOUT
+AMBIGUOUS_BAIL_SECTION
+UNSUPPORTED_DEPOSIT_LAYOUT
+```
+
+### Worker loop
+
+```ts
+async function processCandidates(job, candidates) {
+  for (const candidate of candidates) {
+    if (job.matchCount >= job.targetMatches) {
+      return finish(job, "TARGET_REACHED");
+    }
+
+    if (job.processedCount >= job.recordCap) {
+      return finish(job, "RECORD_CAP_REACHED");
+    }
+
+    if (!job.requestBudget.canSpend(1)) {
+      return finish(job, "REQUEST_CAP_REACHED");
+    }
+
+    const pdf = await retrievePdf(
+      candidate,
+      job.httpClient,
+      job.scheduler
+    );
+
+    if (pdf.status !== "PDF_RETRIEVED") {
+      await saveCandidateFailure(job, candidate, pdf.status);
+      continue;
+    }
+
+    const document = await parsePdf(pdf.bytes);
+    const identity = verifyPdfIdentity(
+      document.text,
+      candidate,
+      job.docketPattern
+    );
+
+    if (identity.status !== "IDENTITY_VERIFIED") {
+      await saveCandidateFailure(job, candidate, identity.status);
+      continue;
+    }
+
+    const extraction = extractBailEntries(document);
+
+    if (extraction.status !== "BAIL_EXTRACTED") {
+      await saveCandidateFailure(
+        job,
+        candidate,
+        extraction.status
+      );
+      continue;
+    }
+
+    const total = determineTotalBail(extraction.entries);
+    const record = buildSearchRecord(
+      candidate,
+      extraction,
+      total
+    );
+
+    await saveProcessedRecord(job, record);
+
+    if (matchesQuery(record, job.query)) {
+      await saveMatch(job, record);
+    }
+  }
+
+  return finish(job, "VALIDATED_ROWS_EXHAUSTED");
+}
+```
+
+A nonmatch is not a failure. The worker continues until it reaches the match target or runs out of validated candidates or processing capacity.
+
+### Pagination
+
+After processing the current page:
+
+1. Look for the demonstrated enabled “next” control.
+2. Capture the current page fingerprint.
+3. Activate “next.”
+4. Wait for the fingerprint to change.
+5. Classify the new page.
+6. Extract and deduplicate new candidates.
+7. Stop if the page repeats, the next control is absent, or validation fails.
+
+```ts
+while (calendarPage.hasValidatedNextPage) {
+  const previous = calendarPage.fingerprint;
+  calendarPage = await goToNextCalendarPage();
+
+  if (calendarPage.fingerprint === previous) {
+    return finish(job, "PAGINATION_CYCLE_DETECTED");
+  }
+
+  const state = classifyCalendarPage(calendarPage);
+
+  if (state.status !== "RESULTS_VALIDATED") {
+    return finish(job, "PAGINATION_NOT_VALIDATED");
+  }
+
+  enqueueNewCandidates(
+    extractCandidates(state.table),
+    seenDocketNumbers
+  );
+}
+```
+
+Until this behavior is demonstrated, the engine should process only the validated first page and return `PAGINATION_INCOMPLETE`.
+
+***
+
+## 10. Return search results
+
+Store each job, candidate, and result so the browser can refresh without losing completed work.
+
+### Minimal records
+
+```ts
+interface SearchJob {
+  id: string;
+  query: SearchQuery;
+  status: string;
+  discoveredCount: number;
+  processedCount: number;
+  matchingCount: number;
+  failedCount: number;
+  unprocessedCount: number;
+}
+
+interface SearchResult {
+  jobId: string;
+  docketNumber: string;
+  court: string;
+  eventType: string;
+  eventDate: string;
+  bailCategory: string;
+  totalBailCents: number | null;
+  totalBailStatus: string;
+  postedState: string;
+  documentUrl: string;
+  processingStatus: string;
+}
+```
+
+### API behavior
+
+```text
+POST /api/search-jobs
+GET  /api/search-jobs/:jobId
+GET  /api/search-jobs/:jobId/results
+POST /api/search-jobs/:jobId/pause
+POST /api/search-jobs/:jobId/resume
+```
+
+The search page should poll the job endpoint while it is running:
+
+```ts
+async function pollJob(jobId) {
+  while (true) {
+    const job = await api.get(`/api/search-jobs/${jobId}`);
+    renderProgress(job);
+
+    if (isTerminalStatus(job.status)) break;
+
+    await sleep(3000);
+  }
+
+  const results = await api.get(
+    `/api/search-jobs/${jobId}/results`
+  );
+
+  renderResults(results);
+}
+```
+
+The results table should display:
+
+```text
+Docket | Hearing date | Bail category | Total bail | Posted state | Status | Source
+```
+
+The completion message must come from the actual terminal state:
+
+```ts
+const completionMessages = {
+  TARGET_REACHED: "Requested number of matches found.",
+  EMPTY_RESULTS_VALIDATED: "The calendar returned an explicit empty result.",
+  VALIDATED_ROWS_EXHAUSTED: "All validated calendar rows were processed.",
+  PAGINATION_INCOMPLETE: "First-page results processed; additional pages may exist.",
+  REQUEST_CAP_REACHED: "The search stopped at its request cap.",
+  RESULTS_NOT_VALIDATED: "The calendar response could not be validated."
+};
+```
+
+## Complete control flow
+
+```ts
+async function runSearch(job) {
+  validateSupportedQuery(job.query);
+
+  const calendarSnapshot = await submitCalendarSearch(
+    job.browserPage,
+    job.query,
+    job.calendarAdapter
+  );
+
+  const calendarState = classifyCalendarPage(
+    calendarSnapshot,
+    job.calendarAdapter.signatures
+  );
+
+  if (calendarState.status === "EMPTY_RESULTS_VALIDATED") {
+    return finish(job, "EMPTY_RESULTS_VALIDATED");
+  }
+
+  if (calendarState.status !== "RESULTS_VALIDATED") {
+    return finish(job, calendarState.status);
+  }
+
+  const candidates = extractCandidates(
+    calendarState.table,
+    calendarSnapshot.finalUrl
+  );
+
+  await saveCandidates(job, candidates);
+
+  return processCandidates(job, candidates);
+}
+```
+
+That is how the engine works mechanically: **the browser obtains a validated calendar response; the calendar parser produces docket candidates; the PDF client retrieves each document; the identity validator confirms the docket; the layout adapter extracts bail; the filter selects matches; and the API returns the accumulated results.**
+
+Sources
+[1] Now generate the pure functional Scaffolding that this search engine will operate from. https://www.perplexity.ai/search/f41467f8-45b7-44e1-a269-84c01daea922
+[2] Sure, you may do that so that we can help community volunteers understand the financial needs of other community members https://www.perplexity.ai/search/a6c5d3f7-36a1-4e39-985a-f50392d6bf4a

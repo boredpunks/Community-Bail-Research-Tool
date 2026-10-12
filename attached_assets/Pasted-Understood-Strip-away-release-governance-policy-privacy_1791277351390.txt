@@ -1,0 +1,256 @@
+Understood. Strip away release governance, policy, privacy, accessibility, custody verification, funding decisions, and other concerns not required to make the search engine function. The task is only: **submit the supported calendar search, find docket PDFs, extract bail data, apply the filters, and return results.**
+
+## 1. Submit the search
+
+**Victory:** The engine successfully submits the intended calendar query.
+
+**Required work:**
+
+1. Open the correct public calendar page.
+2. Wait until the form and dependent controls finish loading.
+3. Select `CP-05-02-Crim`.
+4. Select `Bail Hearing`.
+5. Enter the requested start and end dates.
+6. Verify the visible labels and underlying selected values.
+7. Submit the form.
+8. Confirm that submission occurred rather than assuming a button click succeeded.
+9. Save the resulting page state for the next stage.
+
+**Pass condition:** The submitted values match the search request and the engine observes a post-submission response.
+
+***
+
+## 2. Recognize the response
+
+**Victory:** The engine correctly understands what the calendar returned.
+
+**Required work:**
+
+1. Detect a valid results table by its demonstrated headers and row structure.
+2. Detect the calendar’s explicit no-results state.
+3. Detect form-validation errors.
+4. Detect access-denial or unexpected-response pages.
+5. Allow the search form to remain visible above valid results.
+6. Treat loading, missing, and unfamiliar layouts as unvalidated.
+7. Replace `RETURNED_FORM` with a precise result:
+   - `RESULTS_VALIDATED`
+   - `EMPTY_RESULTS_VALIDATED`
+   - `FORM_VALIDATION_ERROR`
+   - `SUBMISSION_NOT_OBSERVED`
+   - `ACCESS_DENIED`
+   - `RESULTS_NOT_VALIDATED`
+
+**Pass condition:** Every known fixture receives the correct state, and an unfamiliar page never becomes an empty or successful search.
+
+***
+
+## 3. Extract calendar rows
+
+**Victory:** The engine converts valid calendar rows into docket candidates.
+
+**Required work:**
+
+1. Identify each result row.
+2. Extract the docket number.
+3. Extract the event date.
+4. Extract the event type.
+5. Extract the court identifier.
+6. Extract the docket-detail or PDF link.
+7. Reject rows missing a valid docket identity or usable link.
+8. Deduplicate repeated rows by docket number.
+9. Preserve the original calendar order.
+10. Stop at the job’s fixed candidate cap.
+
+**Pass condition:** Fixture rows produce the expected docket numbers and links without duplicates or unrelated events.
+
+***
+
+## 4. Retrieve each PDF
+
+**Victory:** The engine downloads the docket PDF associated with each discovered row.
+
+**Required work:**
+
+1. Pass only calendar-discovered links to the PDF client.
+2. Resolve permitted redirects.
+3. Verify a successful response.
+4. Verify the returned content is a PDF rather than HTML or an access page.
+5. Reject empty, truncated, or malformed documents.
+6. Associate the response with its calendar candidate.
+7. Record retrieval failure without losing the candidate.
+8. Do not retry automatically.
+
+**Pass condition:** A valid PDF reaches the identity validator; HTML, malformed files, and failed responses do not reach the bail parser.
+
+***
+
+## 5. Verify docket identity
+
+**Victory:** The engine confirms that each PDF belongs to the discovered docket.
+
+**Required work:**
+
+1. Extract the docket number from the PDF.
+2. Normalize spacing, punctuation, and capitalization.
+3. Compare it with the calendar docket number.
+4. Require an exact normalized match.
+5. Reject PDFs with a different docket number.
+6. Reject PDFs whose identity cannot be read confidently.
+7. Prevent rejected documents from reaching extraction.
+
+**Pass condition:** Matching documents proceed; mismatched and unreadable documents stop.
+
+***
+
+## 6. Extract bail entries
+
+**Victory:** The engine reads demonstrated bail layouts correctly.
+
+**Required work:**
+
+1. Locate the demonstrated bail section.
+2. Identify each bail entry belonging to that section.
+3. Extract:
+   - Bail category
+   - Bail amount
+   - Amount basis
+   - Entry type
+   - Entry date, when available
+   - Whether a posted entry is shown
+4. Parse monetary values into whole cents.
+5. Keep nonmonetary, unsecured, nominal, missing, and unknown entries as separate categories.
+6. Accept only demonstrated table layouts.
+7. Mark unfamiliar or ambiguous layouts as `UNSUPPORTED_LAYOUT`.
+8. Reject deposit-bearing rows unless their interpretation has been separately implemented and tested.
+
+**Pass condition:** Known fixtures produce exact expected fields, while ambiguous or unfamiliar layouts fail closed.
+
+The earlier parser work established the importance of separating monetary bail from fees, unsecured bail, nonmonetary bail, and zero-dollar entries.[1]
+
+***
+
+## 7. Determine total bail
+
+**Victory:** The engine produces a filterable `TOTAL_BAIL` only when the document supports it.
+
+**Required work:**
+
+1. Identify entries explicitly representing total bail.
+2. Use only entries classified as monetary.
+3. Require a valid whole-cent amount.
+4. Do not substitute zero for missing or nonmonetary values.
+5. Do not combine unrelated amounts.
+6. Do not use fees, fines, percentages, or deposits as total bail.
+7. Mark conflicting totals as ambiguous.
+8. Store the amount in cents for reliable comparison.
+
+**Pass condition:** The engine creates `TOTAL_BAIL` only from supported monetary total-bail entries.
+
+***
+
+## 8. Apply search filters
+
+**Victory:** The engine returns only records matching the user’s fixed query.
+
+**Required work:**
+
+1. Require the calendar event to be `Bail Hearing`.
+2. Require the event date to fall inside the requested inclusive range.
+3. If a maximum bail amount is supplied, include records where:
+   - `TOTAL_BAIL` is monetary and known.
+   - `TOTAL_BAIL` is less than or equal to the maximum.
+4. Exclude unknown, missing, nominal, unsecured, and nonmonetary amounts from the monetary comparison.
+5. Apply any fixed posted-entry filter independently.
+6. Count each docket once.
+7. Stop when the requested number of matching dockets is reached.
+8. Preserve the original filters for the entire job.
+
+**Pass condition:** Boundary tests verify exact equality, one cent above, one cent below, unknown amounts, duplicates, and inclusive dates.
+
+***
+
+## 9. Traverse available work
+
+**Victory:** The engine processes enough calendar candidates to reach the requested match target or exhaust validated results.
+
+**Required work:**
+
+1. Process validated calendar rows in stable order.
+2. Track each candidate as:
+   - Discovered
+   - Retrieved
+   - Identity checked
+   - Extracted
+   - Matched
+   - Rejected
+   - Failed
+3. Continue past nonmatching PDFs.
+4. Stop when:
+   - The match target is reached.
+   - All discovered rows are processed.
+   - The record cap is reached.
+   - The request cap is reached.
+   - The source response becomes unvalidated.
+5. Do not claim calendar exhaustion while remote pagination remains untraversed.
+6. Either implement demonstrated pagination or label the search incomplete.
+
+**Pass condition:** A target of ten matches does not stop after ten PDFs if some PDFs do not match, and the final status accurately distinguishes target reached from available work exhausted.
+
+***
+
+## 10. Return usable results
+
+**Victory:** The user receives a clear result set backed by the processed dockets.
+
+**Required work:**
+
+1. Return one row per docket.
+2. Include:
+   - Docket number
+   - Court
+   - Bail Hearing date
+   - Bail category
+   - `TOTAL_BAIL`, when supported
+   - Whether a posted entry was shown
+   - Source link
+   - Processing status
+3. Sort results deterministically.
+4. Display matching records separately from failed or unsupported candidates.
+5. Show:
+   - Number discovered
+   - Number processed
+   - Number matching
+   - Number failed
+   - Number remaining
+6. Distinguish:
+   - Target reached
+   - Validated empty search
+   - Results exhausted
+   - Incomplete pagination
+   - Request cap reached
+   - Source response unvalidated
+7. Preserve completed results if the job stops early.
+8. Ensure “zero matches” cannot be confused with “search failed.”
+
+**Pass condition:** Given known calendar and PDF fixtures, the output contains exactly the expected dockets, amounts, statuses, counts, and source links.
+
+## Build order
+
+1. Repair calendar submission.
+2. Implement response-state detection.
+3. Parse and deduplicate calendar rows.
+4. Implement PDF retrieval.
+5. Verify docket identity.
+6. Parse demonstrated bail layouts.
+7. Calculate supported `TOTAL_BAIL`.
+8. Apply fixed search filters.
+9. Implement candidate processing and stop conditions.
+10. Render results and completion status.
+11. Run the full workflow against offline fixtures.
+12. Run one bounded live search using the exact deployed clients.
+13. Fix the first failing stage and repeat only after the fix is validated offline.
+
+The functional definition of done is: **a supported query enters the search form, produces validated calendar rows, retrieves identity-matched docket PDFs, extracts supported total-bail values, applies the requested filters, and returns the matching dockets without mistaking a failed search for zero results.**
+
+Sources
+[1] Sure, you may do that so that we can help community volunteers understand the financial needs of other community members https://www.perplexity.ai/search/a6c5d3f7-36a1-4e39-985a-f50392d6bf4a
