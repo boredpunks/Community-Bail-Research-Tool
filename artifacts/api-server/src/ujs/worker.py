@@ -107,6 +107,7 @@ async def main():
                     raise SourceFailure("NETWORK_ERROR", attempted=True) from error
 
         inspection_only = config.get("inspectionOnly") is True
+        coverage_only = config.get("coverageOnly") is True
         inspection_local = False
         inspection_armed = False
         inspection_before = None
@@ -120,10 +121,10 @@ async def main():
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
             nonlocal inspection_error
             request = route.request
-            if inspection_only and inspection_local and request.resource_type not in ("image", "font", "media"):
+            if (inspection_only or coverage_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
                 try:
-                    if (inspection_armed and not inspection_done.is_set()
+                    if (not coverage_only and inspection_armed and not inspection_done.is_set()
                             and request.url == "https://ujsportal.pacourts.us/CaseSearch"
                             and request.method == "POST"):
                         from form_inspection import local_post_metadata
@@ -212,6 +213,19 @@ async def main():
             if not config["calendarComplete"]:
                 await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=600_000)
                 calendar_preflight("READY")
+                if coverage_only:
+                    # Bootstrap is complete. No subsequent transmission is allowed.
+                    inspection_local = True
+                    from coverage_inspection import observe
+                    await observe(page, emit)
+                    await asyncio.sleep(0.1)
+                    if inspection_error:
+                        raise RuntimeError("COVERAGE_UNEXPECTED_LOCAL_REQUEST")
+                    await context.close()
+                    await browser.close()
+                    calendar_preflight("RESULT")
+                    emit("coverage_finished")
+                    return
                 if inspection_only:
                     inspection_local = True  # No further transmissions, including dependent-control fetches.
                 await page.locator("#SearchBy-Control select").select_option("CalendarEvent")
@@ -319,6 +333,8 @@ async def main():
                 emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=False)
             safe_code = str(error) if isinstance(error, (RuntimeError, ValueError)) else type(error).__name__
             emit("barrier", code=safe_code if safe_code in {
+                "COVERAGE_FORM_MISSING", "COVERAGE_CONTROL_INVALID",
+                "COVERAGE_CONTROL_AMBIGUOUS", "COVERAGE_UNEXPECTED_LOCAL_REQUEST",
                 "INSPECTION_METADATA_INVALID", "INSPECTION_BODY_UNSUPPORTED",
                 "INSPECTION_UNEXPECTED_LOCAL_REQUEST", "INSPECTION_PUBLIC_STATE_MISMATCH",
                 "SOURCE_FORM_VALIDATION", "RESULTS_NOT_VALIDATED",

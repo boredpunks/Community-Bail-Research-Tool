@@ -34,9 +34,9 @@ def public_fixture():
 
 
 class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
-    async def run_fixture(self, script="/* public fixture */"):
+    async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None):
         messages, fetches = [], []
-        html = public_fixture()
+        html = fixture if fixture is not None else public_fixture()
         original_fulfill = Route.fulfill
 
         class Response:
@@ -66,7 +66,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                                               headers=response.headers, body=response.content)
             return await original_fulfill(route, **kwargs)
 
-        config = {"criteria": CRITERIA, "inspectionOnly": True, "calendarComplete": False,
+        config = {"criteria": CRITERIA, "inspectionOnly": not coverage, "coverageOnly": coverage, "calendarComplete": False,
                   "pendingItems": [], "remainingRecords": 1}
         lines = [json.dumps(config)]
         for index in range(3):
@@ -79,6 +79,47 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(worker, "download", side_effect=AssertionError("PDFs prohibited")):
             await worker.main()
         return messages, fetches
+
+    async def test_coverage_inventory_without_search_or_pdf(self):
+        # Hypothetical public filter options ONLY, not source support or cases.
+        fixture = public_fixture().replace('value="CalendarEvent">SEARCH_MODE',
+            'value="CalendarEvent">Calendar Event').replace(
+            '</select><input type="text" name="SearchBy"',
+            '<option value="fixture_only_filing">Date Filed</option></select><input type="text" name="SearchBy"')
+        fixture = fixture.replace('>EVENT_TYPE</option>', '>Bail Hearing</option><option>Preliminary Arraignment</option>')
+        fixture += '<input type="date" form="absent" name="birth" value="2000-01-01">'
+        messages, fetches = await self.run_fixture(coverage=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(all(method == "GET" for method, _ in fetches))
+        metadata = [message for message in messages if message["kind"] == "coverage_metadata"]
+        self.assertEqual([message["phase"] for message in metadata], ["INITIAL", "CALENDAR", "FILING"])
+        self.assertTrue(all(message["modeAvailable"] for message in metadata))
+        self.assertTrue(metadata[1]["bailHearingPresent"])
+        self.assertTrue(metadata[1]["preliminarySingularPresent"])
+        self.assertFalse(metadata[1]["preliminaryPluralPresent"])
+        self.assertTrue(any(message["kind"] == "coverage_finished" for message in messages))
+        self.assertFalse(any(message["kind"] in {"docket", "calendar", "inspection_metadata", "finished", "barrier"} for message in messages))
+        retained = json.dumps(metadata)
+        for forbidden in ["REDACTION_SENTINEL", "__RequestVerificationToken", "fixture_only_filing", "2026-10-13", "birth"]:
+            self.assertNotIn(forbidden, retained)
+
+    async def test_coverage_dependent_fetch_stops_without_transmission(self):
+        fixture = public_fixture().replace('value="CalendarEvent">SEARCH_MODE', 'value="CalendarEvent">Calendar Event')
+        messages, fetches = await self.run_fixture(
+            script="document.addEventListener('change', () => fetch('/CaseSearch'));",
+            coverage=True, fixture=fixture)
+        self.assertEqual(len(fetches), 3)
+        self.assertFalse(any(message["kind"] == "coverage_finished" for message in messages))
+        self.assertTrue(any(message["kind"] == "barrier" for message in messages))
+
+    async def test_unknown_coverage_labels_not_claimed_or_retained(self):
+        messages, fetches = await self.run_fixture(coverage=True)
+        self.assertEqual(len(fetches), 3)
+        metadata = [message for message in messages if message["kind"] == "coverage_metadata"]
+        self.assertEqual([message["modeAvailable"] for message in metadata], [True, False, False])
+        self.assertEqual(metadata[2]["dates"], [])
+        self.assertEqual(metadata[2]["officeCodes"], [])
+        self.assertNotIn("SEARCH_MODE", json.dumps(metadata))
 
     async def test_actual_worker_intercepts_post_and_retains_only_metadata(self):
         messages, fetches = await self.run_fixture()

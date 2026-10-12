@@ -9,6 +9,7 @@ import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests }
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 
 import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
+import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
 
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
@@ -223,15 +224,31 @@ try {
   check(inspectionRequestAllowed("/CaseSearch", "GET"));
   check(!inspectionRequestAllowed("/CaseSearch", "POST"));
   check(!inspectionRequestAllowed("/Report/CpDocketSheet", "GET"));
-  for (const [path, method, url] of [
+  const coverageMetadata = { kind: "coverage_metadata", phase: "INITIAL",
+    modeAvailable: true, calendarChoicePresent: false, filingChoicePresent: false,
+    bailHearingPresent: false, preliminarySingularPresent: false, preliminaryPluralPresent: false,
+    districtMatchesScope: true, officeCodes: ["CP-05-02-Crim"], dates: [], unretainedModeOptions: 0 };
+  check(validCoverageMetadata(coverageMetadata));
+  for (const bad of [
+    { ...coverageMetadata, html: "forbidden" }, { ...coverageMetadata, phase: "UNVERIFIED" },
+    { ...coverageMetadata, officeCodes: ["CP-04-02-Crim"] },
+    { ...coverageMetadata, officeCodes: ["CP-05-02-Crim", "CP-05-02-Crim"] },
+    { ...coverageMetadata, officeCodes: ["raw-source-value"] },
+    { ...coverageMetadata, calendarChoicePresent: 1 },
+    { ...coverageMetadata, unretainedModeOptions: 65 },
+    { ...coverageMetadata, dates: [{ purpose: "FILING", minimum: "2026-02-30", maximum: null, visible: true, enabled: true }] },
+    { ...coverageMetadata, dates: [{ purpose: "FILING", minimum: null, maximum: null, visible: true, enabled: true, value: "forbidden" }] },
+  ]) check(!validCoverageMetadata(bad));
+  for (const stage of ["INSPECT", "COVERAGE"]) for (const [path, method, url] of [
     ["/CaseSearch", "GET", requestUrl],
     ["/CaseSearch", "POST", requestUrl],
+    ["/Report/CpDocketSheet", "GET", "https://ujsportal.pacourts.us/Report/CpDocketSheet"],
   ]) {
     await reset(false);
     await store.update(sources).set({ blockedReason: "SOURCE_VALIDATION_BARRIER" }).where(eq(sources.id, "UJS"));
     const inspectCriteria = { ...criteria, requestCap: 3 };
     const [inspectionPermit] = await store.insert(pilots).values({
-      stage: "INSPECT", expectedMethod: formInspectionMethod, criteria: inspectCriteria,
+      stage, expectedMethod: stage === "COVERAGE" ? coverageInspectionMethod : formInspectionMethod, criteria: inspectCriteria,
       state: "ATTEMPTED", approvedAt: instant, expiresAt: new Date(now0 + 3_600_000),
     }).returning();
     const inspectionJob = await createJob({ criteria: inspectCriteria, assessmentId: inspectionPermit!.id });

@@ -11,6 +11,7 @@ import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
 import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
 import { formInspectionMethod, validInspectionMetadata } from "./form-inspection";
+import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from "./coverage-inspection";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -48,6 +49,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
   const [permit] = permitId ? await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, permitId)) : [];
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
+  const coverageOnly = permit?.stage === "COVERAGE" && permit.expectedMethod === coverageInspectionMethod;
+  const diagnosticOnly = inspectionOnly || coverageOnly;
   const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
@@ -71,10 +74,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   });
   let finished = false;
   let inspectionPhase: "NONE" | "BEFORE" | "LOCAL_POST" = "NONE";
+  let coveragePhase = 0;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
-    criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly,
+    criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: job.criteria.recordCap - processed,
   }) + "\n");
@@ -87,11 +91,23 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       if (inspectionOnly && !["request", "response", "inspection_metadata", "inspection_abort",
         "inspection_finished", "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
         throw new Error("Inspection cannot emit collection results");
+      if (coverageOnly && !["request", "response", "coverage_metadata", "coverage_finished",
+        "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
+        throw new Error("Coverage inspection cannot emit collection results");
       if (message.kind === "request") {
-        if (inspectionOnly && inspectionPhase !== "NONE") throw new Error("Inspection transmission after bootstrap");
+        if (diagnosticOnly && (inspectionPhase !== "NONE" || coveragePhase > 0)) throw new Error("Inspection transmission after bootstrap");
         child.stdin.write(JSON.stringify(await grant(job, message.path, message.method, permitId, message.url)) + "\n");
       } else if (message.kind === "response") {
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
+      } else if (message.kind === "coverage_metadata") {
+        if (!coverageOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
+          throw new Error("Invalid coverage metadata");
+        coveragePhase++;
+        await discoveryEvent(job, "COVERAGE_METADATA", JSON.stringify(message));
+      } else if (message.kind === "coverage_finished") {
+        if (!coverageOnly || coveragePhase !== coveragePhases.length || Object.keys(message).length !== 1)
+          throw new Error("Incomplete coverage inspection");
+        finished = true;
       } else if (message.kind === "inspection_metadata") {
         if (!inspectionOnly || !validInspectionMetadata(message)
           || message.phase !== (inspectionPhase === "NONE" ? "BEFORE" : inspectionPhase === "BEFORE" ? "LOCAL_POST" : null))
@@ -108,7 +124,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           throw new Error("Incomplete inspection");
         finished = true;
       } else if (message.kind === "calendar_state") {
-        if (inspectionOnly && ["FORM_READY", "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"].includes(String(message.state)))
+        if (diagnosticOnly && ["FORM_READY", "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"].includes(String(message.state)))
           throw new Error("Inspection cannot claim submitted results");
         const states = ["FORM_READY", "SUBMISSION_NOT_OBSERVED", "FORM_VALIDATION_ERROR",
           "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED", "ACCESS_DENIED", "UNEXPECTED_RESPONSE",
@@ -196,7 +212,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     if (current?.status === "RUNNING") {
       if (finished && code === 0) {
         const counts = await jobSummary(current);
-        const message = inspectionOnly
+        const message = coverageOnly
+          ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
+          : inspectionOnly
           ? "Public filter metadata inspected; native POST intercepted locally. Zero PDFs or remote POSTs. Not an empty search or access proof; source pause unchanged."
           : counts.targetReached
           ? `Matching target reached (${counts.matching}/${current.criteria.matchTarget}). Remaining discovered dockets were not downloaded.`

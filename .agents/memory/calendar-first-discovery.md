@@ -1,9 +1,20 @@
 ---
 name: Calendar-first bail discovery
-description: User's explanation of citation-only cases and preferred calendar-event discovery.
+description: User-selected filing/calendar methods and interpretation of missing bail sections.
 ---
 
-Use Calendar Events for Preliminary Arraignments or Bail Hearings as the targeted discovery path, rather than broad filing-date searches.
+Let the user choose criminal filing-date discovery (the briefing method),
+Calendar Events for Preliminary Arraignments, or Calendar Events for Bail
+Hearing. Never silently switch methods, events, courts or dates after a failure.
+
+**Why:** The user explicitly requested all three choices in the search engine.
+Calendar-first targeting was an earlier preference, not permission to exclude
+filing-date discovery or override the user's selection.
+
+**How to apply:** Preserve the chosen method with jobs, progress, results and
+saved provenance. Verify court/date coverage for each method independently.
+
+Calendar-event discovery can target later bail proceedings instead of broad filings.
 
 **Why:** The user explained: “The ones that don't have a bail section are because the defendant just got a citation without getting arrested. Sometimes they end up getting arraigned or having a bail hearing later in the case, sometimes their cases get settled first.”
 
