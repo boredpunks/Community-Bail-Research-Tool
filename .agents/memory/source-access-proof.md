@@ -86,3 +86,18 @@ established filing-mode change; do not click or select unknown court controls.
 Keep unknown text and private identities redacted, historical diagnostics
 readable, and require fresh method-specific approval for any later source
 observation. Broader observation never relaxes native submitted-binding checks.
+
+Inventory-limit failures need distinct closed guard reasons even before any
+inventory metadata can be retained.
+
+**Why:** A separately approved source observation completed its allowed GETs
+but stopped before the first inventory snapshot with a generic invalid-control
+code. Network success and local fixture success could not identify which
+inventory guard rejected the real page.
+
+**How to apply:** Keep existing bounds and redaction intact; distinguish widget,
+form-element, option and ARIA/group-reference limit categories without retaining
+raw text or private identities. Do not retrospectively assign a category to
+the generic historical failure, raise limits or reuse its consumed approval.
+Generic calendar exception-path status/visibility markers are not source-DOM
+observations or proof that a filing diagnostic attempted Search.

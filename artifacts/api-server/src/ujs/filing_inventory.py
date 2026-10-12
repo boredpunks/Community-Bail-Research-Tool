@@ -3,6 +3,11 @@ from coverage_inspection import SELECT_MODE
 
 METHOD = "playwright-filing-control-inventory-v2"
 PHASES = ("INITIAL", "FILING", "FINAL")
+INVENTORY_ERRORS = frozenset({
+    "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
+    "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
+    "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT",
+})
 
 # Exact public vocabulary only. Unknown text, identifiers and values never emit.
 INVENTORY = """({phase}) => {
@@ -23,7 +28,8 @@ INVENTORY = """({phase}) => {
     choices[key].some(label => normalize(label) === normalize(text)));
   const nodes = [...document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
     + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button]')];
-  if (nodes.length > 128 || form.elements.length > 512) return {error: 'FILING_CONTROL_INVALID'};
+  if (nodes.length > 128) return {error: 'FILING_WIDGET_LIMIT'};
+  if (form.elements.length > 512) return {error: 'FILING_FORM_ELEMENT_LIMIT'};
   const data = new FormData(form);
   const controls = [];
   let omittedSensitiveControls = 0;
@@ -38,7 +44,7 @@ INVENTORY = """({phase}) => {
     if (aria) sources.push(['ARIA', aria]);
     const labelledBy = (node.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
     const controlledIds = (node.getAttribute('aria-controls') || '').split(/\\s+/).filter(Boolean);
-    if (labelledBy.length > 8 || controlledIds.length > 8) return {error: 'FILING_CONTROL_INVALID'};
+    if (labelledBy.length > 8 || controlledIds.length > 8) return {error: 'FILING_ARIA_REFERENCE_LIMIT'};
     for (const id of labelledBy) {
       const label = document.getElementById(id);
       if (label) sources.push(['ARIA', label.textContent]);
@@ -50,7 +56,7 @@ INVENTORY = """({phase}) => {
       if (legend) sources.push(['GROUP', legend.textContent]);
       if (group.getAttribute('aria-label')) sources.push(['GROUP', group.getAttribute('aria-label')]);
       const groupIds = (group.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
-      if (groupIds.length > 8) return {error: 'FILING_CONTROL_INVALID'};
+      if (groupIds.length > 8) return {error: 'FILING_GROUP_REFERENCE_LIMIT'};
       for (const id of groupIds) {
         const label = document.getElementById(id);
         if (label) sources.push(['GROUP', label.textContent]);
@@ -80,7 +86,7 @@ INVENTORY = """({phase}) => {
       }
       options = [...candidates];
     }
-    if (options.length > 2000) return {error: 'FILING_CONTROL_INVALID'};
+    if (options.length > 2000) return {error: 'FILING_OPTION_LIMIT'};
     const publicChoices = Object.fromEntries(Object.keys(choices).map(key => [key, 0]));
     const selectedPublicChoices = Object.fromEntries(Object.keys(choices).map(key => [key, 0]));
     const isDisabled = el => el.matches(':disabled') || !!el.closest('[aria-disabled=true]');
@@ -132,6 +138,7 @@ async def observe(page, emit):
         await page.wait_for_timeout(100)
         metadata = await page.evaluate(INVENTORY, {"phase": phase})
         if not isinstance(metadata, dict) or "error" in metadata:
-            raise RuntimeError("FILING_FORM_MISSING" if isinstance(metadata, dict)
-                               and metadata.get("error") == "FILING_FORM_MISSING" else "FILING_CONTROL_INVALID")
+            code = metadata.get("error") if isinstance(metadata, dict) else None
+            raise RuntimeError(code if isinstance(code, str) and code in INVENTORY_ERRORS
+                               else "FILING_CONTROL_INVALID")
         emit("filing_metadata", **metadata)

@@ -8,12 +8,59 @@ only; execution was authorized by the later filing-inspection approval form.
 Both this permit and the earlier coverage permit are consumed. Neither
 authorizes another request.
 
+## Latest approved live result — October 12, 2026
+
+The separately approved **one** v2 inventory attempt has now run and stopped.
+Permit `9a2d8ad0-26fc-45c2-918d-337f4cdcbd84` is `FAILED`, consumed.
+Job: `e404354f-525b-4ccf-ab57-635ddafca70c`.
+Approval: 19:09:17 UTC; run: 19:09:25–19:12:41 UTC.
+
+| GET | HTTP status | Duration | Since prior response completion |
+| --- | --- | --- | --- |
+| `/CaseSearch` | 200 | 3273 ms | — |
+| `/resource/css/sitemain.min.css` | 200 | 585 ms | 76.896 seconds |
+| `/resource/js/sitemain.min.js` | 200 | 221 ms | 81.843 seconds |
+
+All three requests completed `OK`; zero failed network requests, POSTs, PDFs or
+case records. No retry or expanded scope. The diagnostic stopped before retaining
+its first inventory phase with `FILING_CONTROL_INVALID`. Consequently the actual
+court widget and MDJ scope remain unestablished. This is an inventory-validation
+failure, **not** evidence of source denial, unsupported filing coverage or an
+empty search. The retained generic code does not identify which guard failed.
+
+The exception path's `SUBMISSION_NOT_OBSERVED` / `formVisible=false` event does
+not mean Search was attempted or the form was observed hidden: the filing path
+never clicks Search, and that exception-path boolean is not a DOM observation.
+No raw source page, private value, console text or unvalidated inventory was
+retained for retrospective diagnosis.
+
+Post-run source state has `SOURCE_VALIDATION_BARRIER`; no active request, latency
+warning, access verification or collection approval. The barrier has not been
+cleared. The managed API was restored and started cleanly.
+
+### Offline correction after the failed attempt
+
+The inventory's existing limit checks now report fixed public guard categories:
+widget limit, native-form element limit, option limit, ARIA-reference limit or
+group-reference limit. No bound was increased; labels, values and identifiers
+are still redacted. This improves future failure reporting only—it does not
+identify the historical failing guard or establish source support.
+
+Four targeted network-blocked tests passed (including subcases for each guard,
+success/redaction and dependent-request abortion). No second court attempt,
+new permit, source-state reset or Search/PDF assessment was made.
+
+Another source observation requires a fresh separately approved single-use
+scope. All three discovery/PDF/extraction routes and the earlier post-Search
+failure remain unresolved. The overall engine is **blocked, not complete**.
+
 ## Current offline revision — October 12, 2026
 
-The user approved **offline preparation only**. The current `FILING_INSPECT`
-method is `playwright-filing-control-inventory-v2`. It has not been approved
-for live execution or run against the portal. No new permit or job was created,
-no court request was made, and collection remains disabled.
+The original preparation approval covered **offline preparation only**.
+The current `FILING_INSPECT` method is `playwright-filing-control-inventory-v2`.
+At preparation time no permit/job was created or court request made. The later
+separately approved, failed live result is recorded above; it supplies no access
+proof or permission to retry. Collection remains disabled.
 
 The revision replaces the v1 select-only, search-form-owned recognizer with
 a bounded observational inventory:

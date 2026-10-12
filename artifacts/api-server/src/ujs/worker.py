@@ -347,6 +347,8 @@ async def main():
             safe_code = str(error) if isinstance(error, (RuntimeError, ValueError)) else type(error).__name__
             emit("barrier", code=safe_code if safe_code in {
                 "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_CONTROL_AMBIGUOUS",
+                "FILING_WIDGET_LIMIT", "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
+                "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT",
                 "FILING_MODE_NOT_ESTABLISHED", "FILING_UNEXPECTED_LOCAL_REQUEST",
                 "COVERAGE_FORM_MISSING", "COVERAGE_CONTROL_INVALID",
                 "COVERAGE_CONTROL_AMBIGUOUS", "COVERAGE_UNEXPECTED_LOCAL_REQUEST",

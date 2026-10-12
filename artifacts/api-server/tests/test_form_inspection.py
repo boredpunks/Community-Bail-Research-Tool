@@ -211,8 +211,30 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         fixture = self.filing_fixture() + '<select><option>Choose</option></select>' * 129
         messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
         self.assertEqual(len(fetches), 3)
-        self.assertTrue(any(row.get('code') == 'FILING_CONTROL_INVALID' for row in messages))
+        self.assertTrue(any(row.get('code') == 'FILING_WIDGET_LIMIT' for row in messages))
         self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
+
+    async def test_filing_inventory_guard_reasons_are_closed_and_redacted(self):
+        refs = ' '.join(f'PRIVATE_REFERENCE_SENTINEL_{index}' for index in range(9))
+        for code, fixture in [
+            ('FILING_FORM_ELEMENT_LIMIT', self.filing_fixture().replace(
+                '<button id="btnSearch">', '<input type="hidden" value="PRIVATE_VALUE_SENTINEL">' * 513
+                + '<button id="btnSearch">')),
+            ('FILING_OPTION_LIMIT', self.filing_fixture()
+                + '<select>' + '<option>PRIVATE_LABEL_SENTINEL</option>' * 2001 + '</select>'),
+            ('FILING_ARIA_REFERENCE_LIMIT', self.filing_fixture()
+                + f'<input role="combobox" aria-labelledby="{refs}">'),
+            ('FILING_GROUP_REFERENCE_LIMIT', self.filing_fixture()
+                + f'<fieldset aria-labelledby="{refs}"><label><input type="radio">MDJ</label></fieldset>'),
+        ]:
+            with self.subTest(code=code):
+                messages, fetches = await self.run_fixture(filing=True, fixture=fixture)
+                self.assertEqual(len(fetches), 3)
+                self.assertTrue(all(method == 'GET' for method, _ in fetches))
+                self.assertEqual([row['code'] for row in messages if row['kind'] == 'barrier'], [code])
+                self.assertFalse(any(row['kind'] in ['filing_metadata', 'filing_finished', 'docket', 'calendar']
+                                     for row in messages))
+                self.assertNotIn('SENTINEL', json.dumps(messages))
 
     async def test_filing_dependent_request_is_aborted_not_transmitted(self):
         messages, fetches = await self.run_fixture(filing=True, fixture=self.filing_fixture(),
