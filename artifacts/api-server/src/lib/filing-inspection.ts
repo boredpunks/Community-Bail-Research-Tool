@@ -1,6 +1,6 @@
 /** Closed, redacted source-form observations; never submitted search proof. */
-export const filingInspectionMethod = "playwright-filing-control-inventory-v3";
-const legacyInventoryMethod = "playwright-filing-control-inventory-v2";
+export const filingInspectionMethod = "playwright-filing-control-inventory-v4";
+const legacyInventoryMethods = ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3"];
 export const filingPhases = ["INITIAL", "FILING", "FINAL"] as const;
 const legacyFilingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
 export const filingRoles = ["SEARCH_MODE", "COURT_TYPE", "COUNTY", "CASE_TYPE", "COURT_OFFICE"] as const;
@@ -11,7 +11,7 @@ const realDate = (value: unknown) => value === null || typeof value === "string"
   && new Date(value).toISOString().slice(0, 10) === value;
 export function validFilingMetadata(message: Record<string, unknown>) {
   // Keep consumed v1 reports readable without accepting v1 in the current worker.
-  if (message.method === filingInspectionMethod || message.method === legacyInventoryMethod)
+  if (message.method === filingInspectionMethod || legacyInventoryMethods.includes(String(message.method)))
     return validFilingInventoryMetadata(message, true);
   if (!exactKeys(message, ["kind", "phase", "controls", "scopeReady", "modeMatchesFiling", "officeCodes", "dates", "unclassifiedSelects"])
     || message.kind !== "filing_metadata" || !legacyFilingPhases.includes(message.phase as typeof legacyFilingPhases[number])
@@ -48,15 +48,23 @@ export function validFilingMetadata(message: Record<string, unknown>) {
 
 export const filingPublicLabels = ["Search By", "Court", "Courts", "Court Type", "Court Level",
   "Court System", "Court Selection", "Court Category", "Court of Record",
-  "Judicial District", "County", "Case Type", "Case Category", "Court Office"] as const;
-const choiceKeys = ["FILING", "MDJ", "ALLEGHENY", "CRIMINAL"];
+  "Judicial District", "County", "Case Type", "Case Category", "Court Office",
+  "Court Types", "Case Types", "Search All Courts", "All Courts", "Search All Cases", "All Cases", "Include Closed Cases",
+  "Advanced Search", "Enable Advanced Search", "Use Advanced Search", "Show Advanced Search", "Limit Search",
+  "Restrict Search", "Enable Filters"] as const;
+export const filingPublicWords = ["all", "court", "courts", "case", "cases", "criminal", "search", "system",
+  "type", "types", "county", "closed", "include", "exclude", "magisterial", "district", "common", "pleas", "level", "by",
+  "advanced", "enable", "enabled", "show", "options", "filters", "filter", "limit", "limited", "restrict", "restricted",
+  "specific", "within", "only", "use", "criteria"] as const;
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const subset = (value: unknown, vocabulary: readonly string[]) => Array.isArray(value)
   && value.length <= vocabulary.length && value.every(key => typeof key === "string" && vocabulary.includes(key))
   && new Set(value).size === value.length;
 export function validFilingInventoryMetadata(message: Record<string, unknown>, allowHistorical = false) {
-  const legacy = allowHistorical && message.method === legacyInventoryMethod;
+  const legacy = allowHistorical && legacyInventoryMethods.includes(String(message.method));
+  const legacyV2 = legacy && message.method === legacyInventoryMethods[0];
+  const choiceKeys = ["FILING", "MDJ", "ALLEGHENY", "CRIMINAL", ...(legacy ? [] : ["COMMON_PLEAS"])];
   if (!exactKeys(message, ["kind", "method", "phase", "modeMatchesFiling", "controls", "omittedSensitiveControls"])
     || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod && !legacy
     || !filingPhases.includes(message.phase as typeof filingPhases[number])
@@ -67,16 +75,17 @@ export function validFilingInventoryMetadata(message: Record<string, unknown>, a
   for (const row of message.controls) {
     if (!object(row) || !exactKeys(row, ["ordinal", "widget", "labels", "associations", "hasPublicLabel",
       "visible", "enabled", "ownership", "optionCount", "publicChoices", "selectedPublicChoices", "nativeSuccessful",
-      ...(legacy ? [] : ["optionState"])])
+      ...(legacyV2 ? [] : ["optionState"]), ...(legacy ? [] : ["labelWords"])])
       || !count(row.ordinal, 127) || Number(row.ordinal) <= priorOrdinal
-      || typeof row.widget !== "string" || !["SELECT", "RADIO", "CHECKBOX", "COMBOBOX", "TAB", "MENUITEMRADIO", "BUTTON"].includes(row.widget)
+      || typeof row.widget !== "string" || !["SELECT", "RADIO", "CHECKBOX", "COMBOBOX", "TAB", "MENUITEMRADIO", "BUTTON", ...(legacy ? [] : ["LINK"])].includes(row.widget)
       || !subset(row.labels, filingPublicLabels) || !subset(row.associations, ["LABEL", "ARIA", "GROUP", "TEXT"])
+      || !legacy && !subset(row.labelWords, filingPublicWords)
       || typeof row.ownership !== "string" || !["SEARCH", "OTHER", "NONE"].includes(row.ownership)
       || !["hasPublicLabel", "visible", "enabled", "nativeSuccessful"].every(key => typeof row[key] === "boolean")
       || row.nativeSuccessful && (row.ownership !== "SEARCH" || !row.enabled
         || !["SELECT", "RADIO", "CHECKBOX"].includes(String(row.widget)))) return false;
-    if (!legacy && (typeof row.optionState !== "string" || !["OBSERVED", "OVER_LIMIT"].includes(row.optionState))) return false;
-    if (!legacy && row.optionState === "OVER_LIMIT") {
+    if (!legacyV2 && (typeof row.optionState !== "string" || !["OBSERVED", "OVER_LIMIT"].includes(row.optionState))) return false;
+    if (!legacyV2 && row.optionState === "OVER_LIMIT") {
       if (!["SELECT", "COMBOBOX"].includes(row.widget) || row.optionCount !== null
         || row.publicChoices !== null || row.selectedPublicChoices !== null) return false;
       priorOrdinal = Number(row.ordinal);

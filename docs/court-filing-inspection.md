@@ -8,6 +8,111 @@ only; execution was authorized by the later filing-inspection approval form.
 Both this permit and the earlier coverage permit are consumed. Neither
 authorizes another request.
 
+## Continuing bounded read-only diagnostics
+
+When approving the revised inventory, the user added **“as many as it takes.”**
+This authorizes continued needed read-only diagnostic inspections within the
+same request/action limits, using a fresh single-use permit each time. It does
+not authorize Search, PDF, date/court/county/case/office activation, source-stop
+overrides, higher budgets, alternate clients or wider collection. No identical
+inspection is repeated without a new evidence need.
+
+### Completed partial inventory (v3) — October 12, 2026
+
+Permit `2b50054e-31d3-4c46-81ed-4438f81d9a5d` is `INSPECTED`, consumed.
+Job: `aca10038-e05e-47d3-9cbf-393c7b6a3910`.
+Approval: 19:31:28 UTC; run: 19:31:37–19:34:13 UTC.
+Three successful bootstrap GETs; no failed requests, Search, POST, dates, PDF or
+records. All `INITIAL`, `FILING` and `FINAL` inventories passed parent validation.
+
+Each phase retained 29 controls. Filing was selected in the latter two phases.
+The known County, Judicial District, Case Category and Court Office widgets
+remained hidden/disabled. A source-listed Criminal choice occurred in a hidden,
+disabled dropdown with an unrecognized label. One oversized hidden/disabled
+dropdown remained explicitly unknown. No retained public MDJ choice was observed
+in the in-bounds options. This does not establish unsupported MDJ coverage.
+
+One otherwise unclassified checkbox became visible/enabled after filing-mode
+selection. Its label and purpose were not established by the closed vocabulary;
+it was not toggled. Navigation links were outside the v3 candidate set. These
+are further observation gaps, not a confirmed activation sequence or permission
+to interact. Native widget flags still establish no submitted model bindings.
+The API was restored; collection and access verification remain disabled.
+
+### Completed link/label inventory (v4)
+
+Method: `playwright-filing-control-inventory-v4`. This read-only revision adds
+native/ARIA links (observation only) and exact generic public filter labels
+including Court Types, Case Types, Search All Courts, All Courts, Search All
+Cases, All Cases and Include Closed Cases. It also observes exact public
+Common Pleas choice labels solely as context; it never selects Common Pleas
+or substitutes the user's court/method.
+
+To expose recognition gaps without retaining arbitrary labels, the inventory
+retains only the presence of these fixed generic words: all, court, courts, case,
+cases, criminal, search, system, type, types, county, closed, include, exclude,
+magisterial, district, common, pleas, level, by. Word presence is not an exact
+public label, action instruction, control role or submitted binding proof.
+No link URL, identifier, private word or arbitrary text is retained. No link,
+tab, popup, checkbox or court filter is clicked; filing mode is the sole local
+selection. All request/resource caps, pacing, protected stops, unknown-option
+states and redaction limits remain unchanged.
+
+API typecheck, 196 safety checks and three targeted network-blocked worker tests
+passed. Historical v1/v2/v3 metadata remains readable; current execution requires
+the current method and a fresh permit. Search/PDF/extraction routes remain
+unverified, and the overall engine is **blocked, not complete**.
+
+Two v4 observations then completed under the user's continued bounded
+read-only diagnostic approval:
+
+| Permit (consumed) | Job | State | Run UTC | GETs | Minimum completion-to-start pause |
+| --- | --- | --- | --- | --- | --- |
+| `f19825b1-35d1-4f3f-a82e-7fe99116069c` | `b6b9fbe4-b414-41c1-8503-c29be5a4a5aa` | INSPECTED | 19:39:07–19:41:30 | 3 | 60.382 s |
+| `3d327b4b-4903-4a2b-b028-e7d6464a691e` | `be58ff25-777f-4d5b-af22-db66a61f784c` | INSPECTED | 19:43:55–19:46:31 | 3 | 62.522 s |
+
+Both used only the same three bootstrap paths, all GET/HTTP 200/OK; maximum
+request durations were 1071 ms and 1268 ms, respectively. No Search, POST, date,
+PDF, case record or control activation except filing mode. Each retained 36
+controls in all three ordered, parent-validated phases.
+
+The first observation still did not identify an MDJ control. It retained one
+newly visible checkbox with only the recognized generic word “search.” A
+focused recognition-vocabulary revision added the exact generic labels Advanced
+Search, Enable Advanced Search, Use Advanced Search, Show Advanced Search, Limit
+Search, Restrict Search and Enable Filters, plus the fixed words advanced,
+enable, enabled, show, options, filters, filter, limit, limited, restrict,
+restricted, specific, within, only, use and criteria. No raw label was retained
+or guessed action performed. Typecheck and the focused no-activation/redaction
+fixture passed after that vocabulary change.
+
+The final observation established **one public `Advanced Search` native checkbox**,
+associated by the public DOM control group and owned by the search form:
+
+- `INITIAL`: hidden and disabled.
+- `FILING` and `FINAL`: visible and enabled, after the source-listed filing mode
+  was selected.
+- The checkbox was **never toggled**. Its raw identity/value and checked state
+  were not retained; `nativeSuccessful=false` does not prove it was unchecked.
+- The known court filters remained hidden/disabled, and no MDJ choice was
+  established. Do not claim Advanced Search enables those filters until that
+  local action and resulting source state are separately observed.
+
+The next meaningful diagnostic would select filing mode and locally check only
+this unique, source-labeled `Advanced Search` checkbox, then inventory the
+resulting controls. This exceeds the existing **filing-mode-only** action scope
+and requires explicit action-scope approval. It would still have three bootstrap
+GETs only, no Search/dates/court/county/case/office selection or PDFs, and must
+abort any dependent request locally. Do not repeat the completed inventories
+without a new evidence need.
+
+Across these latest v3/v4 attempts, nine GETs completed successfully; the v3
+minimum pause was 66.735 seconds with maximum latency 1006 ms. The API was
+restored after each attempt. Source state still has `SOURCE_VALIDATION_BARRIER`,
+no active request, latency warning, access proof or collection approval.
+All three discovery/PDF/extraction routes remain unverified; the overall
+engine is **blocked, not complete**.
+
 ## Latest approved guard inspection — October 12, 2026
 
 The user separately approved one inspection to identify the failing guard.
@@ -33,9 +138,9 @@ cleanly. The existing `SOURCE_VALIDATION_BARRIER` remains; no active request,
 latency warning, access proof or collection approval. The inspection did not
 establish the actual court control, MDJ scope or submitted bindings.
 
-## Current offline oversized-option correction (v3)
+## Historical offline oversized-option correction (v3)
 
-Current method: `playwright-filing-control-inventory-v3`. This revision was
+Method: `playwright-filing-control-inventory-v3`. This revision was
 prepared and tested **offline only** after the consumed guard inspection.
 It has not been approved for live execution or run against the portal.
 

@@ -116,3 +116,30 @@ in-bounds controls separately. This is partial diagnostic evidence, never
 coverage, absence or submission proof. Required adapter bindings/scope must
 still fail closed until actually established. Changed diagnostic metadata and
 partial-observation behavior need a new method and fresh source approval.
+
+The user approved revised bounded read-only court-control inspections and said
+**“as many as it takes.”**
+
+**Why:** The user asked to continue the needed diagnostics.
+
+**How to apply:** Continue needed read-only inspections within the approved
+three-GET, filing-mode-only, redacted-public-metadata scope, with fresh single-use
+permits and all existing pacing, quotas and mandatory stops. Do not ask again for
+identical scoped observation merely because its permit is new. This standing
+diagnostic approval does not authorize Search, PDFs, date entry, court/county/
+case/office activation, alternate methods or wider collection.
+
+The source's filing mode exposes a public **Advanced Search** checkbox. Merely
+selecting filing mode has not established active MDJ court filters.
+
+**Why:** Source-backed read-only inventories observed one search-form-owned,
+public-group-associated Advanced Search native checkbox changing from hidden/
+disabled to visible/enabled after filing selection, while the known court
+filters stayed inactive. No checkbox action or checked-state proof was captured.
+
+**How to apply:** Recognize the exact source-listed Advanced Search label, not a
+guessed identity or generic word match. Its eligibility is not proof of its
+effect or native submission bindings. The standing filing-mode-only inspection
+approval does not authorize toggling it; obtain explicit approval for that
+additional local action, keep dependent traffic blocked, then observe the
+resulting source controls before inventing a court adapter.

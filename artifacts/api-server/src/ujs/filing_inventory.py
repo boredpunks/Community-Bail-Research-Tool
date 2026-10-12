@@ -1,7 +1,7 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v3"
+METHOD = "playwright-filing-control-inventory-v4"
 PHASES = ("INITIAL", "FILING", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
@@ -15,10 +15,19 @@ INVENTORY = """({phase}) => {
   if (!form) return {error: 'FILING_FORM_MISSING'};
   const vocabulary = ['Search By', 'Court', 'Courts', 'Court Type', 'Court Level',
     'Court System', 'Court Selection', 'Court Category', 'Court of Record',
-    'Judicial District', 'County', 'Case Type', 'Case Category', 'Court Office'];
+    'Judicial District', 'County', 'Case Type', 'Case Category', 'Court Office',
+    'Court Types', 'Case Types', 'Search All Courts', 'All Courts',
+    'Search All Cases', 'All Cases', 'Include Closed Cases',
+    'Advanced Search', 'Enable Advanced Search', 'Use Advanced Search',
+    'Show Advanced Search', 'Limit Search', 'Restrict Search', 'Enable Filters'];
+  const publicWords = ['all','court','courts','case','cases','criminal','search','system',
+    'type','types','county','closed','include','exclude','magisterial','district','common','pleas','level','by',
+    'advanced','enable','enabled','show','options','filters','filter','limit','limited','restrict','restricted',
+    'specific','within','only','use','criteria'];
   const choices = {
     FILING: ['Date Filed', 'Filing Date', 'Date of Filing'],
     MDJ: ['Magisterial District Court', 'Magisterial District Courts', 'Magisterial District', 'MDJ'],
+    COMMON_PLEAS: ['Common Pleas', 'Court of Common Pleas', 'Common Pleas Court', 'Common Pleas Courts'],
     ALLEGHENY: ['Allegheny'],
     CRIMINAL: ['Criminal']
   };
@@ -27,7 +36,7 @@ INVENTORY = """({phase}) => {
   const category = text => Object.keys(choices).filter(key =>
     choices[key].some(label => normalize(label) === normalize(text)));
   const nodes = [...document.querySelectorAll('select,input[type=radio],input[type=checkbox],'
-    + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button]')];
+    + '[role=combobox],[role=radio],[role=tab],[role=menuitemradio],button,[role=button],a,[role=link]')];
   if (nodes.length > 128) return {error: 'FILING_WIDGET_LIMIT'};
   if (form.elements.length > 512) return {error: 'FILING_FORM_ELEMENT_LIMIT'};
   const data = new FormData(form);
@@ -70,10 +79,15 @@ INVENTORY = """({phase}) => {
     }
     const tag = node.tagName.toLowerCase(), role = node.getAttribute('role');
     const widget = tag === 'select' ? 'SELECT'
+      : tag === 'a' || role === 'link' ? 'LINK'
       : ['combobox','radio','tab','menuitemradio'].includes(role) ? role.toUpperCase()
       : tag === 'input' ? node.type.toUpperCase() : 'BUTTON';
     if (widget !== 'SELECT' && widget !== 'COMBOBOX') sources.push(['TEXT', node.textContent]);
     const labels = vocabulary.filter(label => sources.some(([, text]) => normalize(text) === normalize(label)));
+    // Closed generic words expose vocabulary gaps without recording raw labels.
+    // Word presence is NOT an exact label, a control role or binding proof.
+    const words = new Set(sources.flatMap(([, text]) => normalize(text).match(/[a-z]+/g) || []));
+    const labelWords = publicWords.filter(word => words.has(word));
     const associations = ['LABEL','ARIA','GROUP','TEXT'].filter(key =>
       sources.some(([source, text]) => source === key && !!normalize(text)));
     let options = [], optionState = 'OBSERVED';
@@ -116,13 +130,14 @@ INVENTORY = """({phase}) => {
           || node.getAttribute('aria-pressed') === 'true');
       }
     }
-    if (widget === 'BUTTON' && !labels.length && !Object.values(publicChoices).some(Boolean)) continue;
+    if (['BUTTON','LINK'].includes(widget) && !labels.length
+      && !labelWords.length && !Object.values(publicChoices).some(Boolean)) continue;
     const ownership = node.form === form ? 'SEARCH' : node.form ? 'OTHER' : 'NONE';
     const nativeSuccessful = ownership === 'SEARCH' && !!node.name && !isDisabled(node)
       && ['SELECT','RADIO','CHECKBOX'].includes(widget)
       && (!['RADIO','CHECKBOX'].includes(widget) || node.checked)
       && data.getAll(node.name).some(value => value === node.value);
-    controls.push({ordinal, widget, labels, associations, hasPublicLabel: sources.some(([source, text]) =>
+    controls.push({ordinal, widget, labels, labelWords, associations, hasPublicLabel: sources.some(([source, text]) =>
       source !== 'TEXT' && !!normalize(text)), visible: !!node.getClientRects().length,
       enabled: !isDisabled(node), ownership, optionState,
       optionCount: optionState === 'OVER_LIMIT' ? null : options.length,
@@ -133,7 +148,7 @@ INVENTORY = """({phase}) => {
   const mode = document.querySelector('#SearchBy-Control select');
   const modeMatchesFiling = !!mode && mode.options.length <= 64 && !mode.matches(':disabled') && !!mode.getClientRects().length
     && [...mode.selectedOptions].some(option => !option.disabled && category(option.textContent).includes('FILING'));
-  return {method: 'playwright-filing-control-inventory-v3', phase, modeMatchesFiling,
+  return {method: 'playwright-filing-control-inventory-v4', phase, modeMatchesFiling,
     controls, omittedSensitiveControls};
 }"""
 

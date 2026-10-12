@@ -269,6 +269,38 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(row.get('code') == 'FILING_UNEXPECTED_LOCAL_REQUEST' for row in messages))
         self.assertFalse(any(row['kind'] == 'filing_finished' for row in messages))
 
+    async def test_filing_public_links_and_generic_words_are_observed_never_activated(self):
+        fixture = self.filing_fixture() + """
+          <a href="/CaseSearch?PRIVATE_VALUE_SENTINEL">Magisterial District Courts</a>
+          <a href="/PRIVATE_URL_SENTINEL">Court of Common Pleas</a>
+          <label><input type="checkbox">Search All Courts</label>
+          <label><input type="checkbox">PRIVATE_LABEL_SENTINEL cases by county</label>
+          <label><input type="checkbox">Advanced Search</label>
+          <button>PRIVATE_LABEL_SENTINEL</button>
+        """
+        script = """document.addEventListener('click', () => {throw Error('Navigation prohibited');});
+          document.addEventListener('change', event => {
+            if (!event.target.closest('#SearchBy-Control')) throw Error('Other selection prohibited');
+          });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        self.assertFalse(any(row['kind'] == 'barrier' for row in messages))
+        final = metadata[-1]
+        links = [row for row in final['controls'] if row['widget'] == 'LINK']
+        self.assertEqual(len(links), 2)
+        self.assertTrue(any(row['publicChoices']['MDJ'] == 1 for row in links))
+        self.assertTrue(any(row['publicChoices']['COMMON_PLEAS'] == 1 for row in links))
+        checkbox = next(row for row in final['controls'] if 'Search All Courts' in row['labels'])
+        self.assertEqual(checkbox['labelWords'], ['all', 'courts', 'search'])
+        unknown = next(row for row in final['controls'] if row['labelWords'] == ['cases', 'county', 'by'])
+        self.assertEqual(unknown['labels'], [])
+        advanced = next(row for row in final['controls'] if 'Advanced Search' in row['labels'])
+        self.assertEqual(advanced['labelWords'], ['search', 'advanced'])
+        self.assertFalse(advanced['nativeSuccessful'])
+        self.assertNotIn('SENTINEL', json.dumps(metadata))
+
     async def test_coverage_inventory_without_search_or_pdf(self):
         # Hypothetical public filter options ONLY, not source support or cases.
         fixture = public_fixture().replace('value="CalendarEvent">SEARCH_MODE',
