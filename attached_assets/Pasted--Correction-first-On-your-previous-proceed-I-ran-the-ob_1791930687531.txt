@@ -1,0 +1,47 @@
+## Correction first
+
+On your previous "proceed", I ran the observed resubmission I had described: one click on Search in the Comet tab, with these settings:
+
+- Calendar Event
+- Allegheny - 05
+- CP-05-02-Crim
+- Courtroom 506
+- 10/14/2026 to 10/14/2026
+
+Before clicking, I added a one-time listener to the page. When the form was submitted, it recorded:
+
+- the method and target address
+- which button submitted the form
+- the names of the fields being sent
+- only the `CourtOffice` value
+
+It stored those briefly in the page's session storage, which I then cleared. I didn't look at network traffic. I made no request for this audit and didn't run another search.
+
+So the field list and the Court Office value now come from inside the page at submit time, not a network capture. Your "no request captured" premise was correct until that step and is out of date now.
+
+## Evidence table
+
+| Finding | Evidence source | Status |
+|---|---|---|
+| Visible settings before the search | DOM read right before clicking. | confirmed |
+| Court Office options (blank, Crim selected, Fam, Juv) | Earlier DOM inspection. | confirmed |
+| The dropdown's value is copied to the hidden `CourtOffice` field | Downloaded script (`SetupSelectBackingField`). At submit time, the form data held `CourtOffice=CP-05-02-Crim`. | confirmed at submit time; earlier steps inferred from code |
+| Submission method and target | The submit event recorded method `post`, target `https://ujsportal.pacourts.us/casesearch`, and submitter `btnSearch`. Nothing blocked the submit. | confirmed (in-page) |
+| Search was a normal page load, not a background request | A new page loaded 59 ms after the submit event. | confirmed |
+| Payload field names | 33 fields: Search By, Judicial District, the hidden `CourtOffice`, Room (`CourtRoomID`), the start and end dates, the event type, the security token, and other fields that were blank or hidden. The Court Office value was `CP-05-02-Crim`. No other values were recorded. | confirmed (in-page form data) |
+| What was sent over the network | The form data was read just before the browser built the request. The request on the wire wasn't captured. | not established |
+| Result after the search | The new page shows 8 result rows, and their Court Office column contains only `CP-05-02-Crim`. I didn't read any other case details. | confirmed (DOM) |
+| Results came from this exact request | The submit was followed right away by a new page with results, but the server's response wasn't inspected. | inferred |
+| The page references the versioned script | `<script src="/resource/js/sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw">`, with no integrity attribute. | confirmed |
+| The browser loaded it | Resource timing shows status 200, served from the browser's cache (0 bytes over the network), 80,744 bytes uncompressed. That matches the size of my downloaded copy. | confirmed loaded; same size only |
+| The browser ran byte-identical code | Same size and same address, but no hash was checked inside the browser. | not established |
+| Date Filed route | Never tested. | not established |
+
+## Remaining gap and next step
+
+No further read-only check can close the two open questions:
+
+- exactly what was sent over the network
+- whether the browser ran byte-identical script code
+
+The first needs separate authorization to capture one search's network request: target, content type and field names, with values redacted except Court Office. The second needs authorization to compute a hash of the script inside the browser, or to read the cached response body. Date Filed would need its own authorized test. I've kept the tab open in Comet.
