@@ -1,0 +1,27 @@
+This page matches the state you described, and the DOM confirms it. The option your earlier capture missed is a blank placeholder. I inspected it with read-only DOM reads in Comet ([UJS Case Search](https://ujsportal.pacourts.us/casesearch)) and changed, opened, submitted and fetched nothing.
+
+This turned out to be the same tab I read last time. When I read it before, the district and Court Office fields were hidden and Court Office had no options; I didn't make the change. I couldn't access your other Case Search tab. Your snapshot and this tab agree.
+
+Evidence table
+Finding	Supporting evidence	Status
+Page shows Calendar Event / Allegheny - 05 / CP-05-02-Crim	All three are visible with those selections. Exactly one visible dropdown is titled Court Office.	confirmed
+Label link	A sibling div#CourtOffice-Label holds the text "Court Office:". The dropdown has no linked label element and no aria-label; its only name is title="Court Office".	confirmed
+Control details	Native single-choice dropdown with no id or name. It's enabled, not marked required, and inside form#case-search-form-id (POST). No inline event handlers.	confirmed
+Field container	div#CourtOffice-DivWrapper (visible) contains div#CourtOffice-Control, which holds a hidden text field input#CourtOffice-HiddenField with name="CourtOffice", plus the dropdown.	confirmed
+Option 0	Shows only whitespace, value "". Carries data-aopc-blankvalue="(blank)" and sort order 0. Not selected, not disabled.	confirmed as blank placeholder
+Option 1	CP-05-02-Crim, value CP-05-02-Crim. Selected, not disabled.	confirmed
+Option 2	CP-05-02-Fam, value CP-05-02-Fam. Not selected, not disabled.	confirmed
+Option 3	CP-05-02-Juv, value CP-05-02-Juv. Not selected, not disabled.	confirmed
+Complete list	Exactly 4 options and no option groups. None contain personal information.	confirmed
+Dependency on Judicial District	Markup on this control: data-aopc-filteredby=[{"JudicialDistrict":"Value"}] and data-aopc-displayif=[{"SearchBy":"CalendarEvent"}]. Each real option is tagged data-aopc-county="(Allegheny)" and data-aopc-judicialdistrict="(05)".	confirmed as markup; how the site's code uses it isn't verified
+"MDJSCourtOffice" console message	It refers to a different, hidden control (MDJSCourtOffice-DivWrapper), not this dropdown.	confirmed
+What a search would send	The CourtOffice hidden field now holds CP-05-02-Crim, matching the dropdown. The dropdown has no name, so it wouldn't be sent on its own. A standard form submit would therefore send CourtOffice=CP-05-02-Crim. However, the form has no action, so the site's own code (sitemain.min.js, not read) probably handles the submit, and the actual request is unverified.	likely, not established
+Search works / returns results	No search was run.	not established
+Remaining unknowns
+What a search actually sends: this can only be confirmed by reading sitemain.min.js (a new request) or by a submission you authorize and observe. Reading the script is the less invasive of the two.
+
+How the dependency behaves: whether changing the district re-filters this list is only shown by markup. Testing it would mean changing a field.
+
+Whether the search works: confirming it needs a search you authorize. Even then, it would only cover Calendar Event, not Date Filed.
+
+I kept this tab open in Comet, as you left it.

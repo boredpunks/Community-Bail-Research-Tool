@@ -1,0 +1,24 @@
+I made one GET request, without cookies or form data, for [sitemain.min.js](https://ujsportal.pacourts.us/resource/js/sitemain.min.js): status 200, 80,744 bytes. I only read the code and didn't run it. I made no other requests, and I didn't touch the page or send any search data.
+
+The code shows the dropdown has no name of its own. The site uses the hidden `CourtOffice` field as its form name and copies the dropdown's value into that field. The script doesn't establish which code path the actual Case Search submission takes.
+
+## Evidence table
+
+| Finding | Evidence in the script | Status |
+|---|---|---|
+| Controls are linked to their label, section and hidden field by id | `GetControlID` finds the nearest `[id$="-Control"]` ancestor and drops the suffix, giving `CourtOffice`. `GetControlsHiddenInput` then returns `CourtOffice-HiddenField`, and `GetControlsDivWrapper` returns `CourtOffice-DivWrapper`. | confirmed in code |
+| The hidden field mirrors the dropdown | `SetupSelectBackingField` applies to every `.field-content > select:not([multiple])`. It copies `select.value` into the hidden field once at setup and again on every `change`. | confirmed in code; that it ran on your page is inferred |
+| The form name for this dropdown is `CourtOffice` | For a single-choice dropdown, `GetControlName` returns the hidden field's `name`, not the dropdown's. | confirmed in code |
+| How the Judicial District dependency works | The filter reads `data-aopc-filteredBy`, takes the district's current value (skipped if that section is hidden), and keeps options whose `data-aopc-judicialdistrict` contains `"(" + value + ")"` or equals it. Options without that attribute, such as the blank one, always stay. | confirmed in code; I didn't check that the district's value is `05` |
+| When the dropdown disables itself | It is disabled when no options remain, or when only the blank option is left. That fits the empty, disabled state I saw two turns ago. | confirmed in code |
+| Meaning of "MDJSCourtOffice is skipping its filter process" | The script logs this when that control's section is hidden or it has no `filteredBy` attribute. It refers to the separate MDJS control, which is hidden for Calendar Event. | confirmed |
+| How a submission is sent | Generic code posts `new FormData(form)` to the clicked button's `formaction`. FormData would include the named hidden field and leave out the unnamed dropdown. I couldn't tell from this file whether Case Search's Search button uses that path. | not established |
+| The file matches what the page loaded | I fetched the URL without any version query string. The page may have loaded a different version. | not established |
+| What a search would send or return | Nothing here proves the actual request or its results. | not established |
+
+## Remaining gaps
+
+- **Which submit path Case Search uses:** the next least-invasive step is to read the Search button's markup (`formaction` and `data-aopc-*` attributes) without clicking it. That's outside the Court Office scope you set, so it needs your OK.
+- **What the request actually contains:** only an authorized search with request inspection can confirm it. That's a separate permission.
+
+The script copy is saved in the workspace at `ujs/sitemain.min.js`.

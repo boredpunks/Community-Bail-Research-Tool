@@ -1,0 +1,23 @@
+Static code points to Search doing an ordinary browser form submit: a POST to `/casesearch` that would include `CourtOffice=CP-05-02-Crim`. That comes from reading code, not from watching a submission, so it's still unproven.
+
+What I did: read the Search button's and form's markup, the page's version tag for `sitemain.min.js`, and the page's two inline scripts. All reads were in the same Case Search tab ([UJS Case Search](https://ujsportal.pacourts.us/casesearch)); I made no clicks or changes and sent no requests. I also searched the copy of the script I downloaded last turn. The Comet connection dropped once and I retried that one read. The tab is still open.
+
+## Evidence table
+
+| Finding | Evidence | Status |
+|---|---|---|
+| Search button markup | `<button id="btnSearch" value="Search">` inside `form#case-search-form-id`. It has no `type`, `name`, `formaction` or `data-aopc-*` attributes and is enabled. A button with no `type` acts as a submit button by default. | confirmed (DOM) |
+| Form markup | Only `id` and `method="post"`. There's no `action`, so a normal browser submit goes to the page's own address (`/casesearch`). | confirmed (DOM) |
+| Click handler on Search | An inline page script runs `document.getElementById('btnSearch').addEventListener('click',ShowAllErrorMess…`. In the downloaded script, `ShowAllErrorMessages` only runs validation and shows error messages; nothing in it cancels or reroutes the submit. | confirmed (static code) |
+| The `formaction` code path from last turn | That code is `ModalSubmit`, which only applies to buttons marked `data-aopc-modalsubmit`. Search doesn't have that mark, so it doesn't apply. | confirmed (static code) |
+| Other submit handling | The downloaded script never mentions `btnSearch` or `case-search` and adds no `submit` listener. Neither inline script mentions submit. | confirmed for these files only |
+| Where CP-05-02-Crim comes from | An inline script calls `SetControlValue(GetControlByID('CourtOffice-Control'),'CP-05-02-Crim')`, so the page itself sets this value on load. | confirmed (static code) |
+| Field likely sent | In a normal browser submit, the named, enabled hidden field `CourtOffice` would be sent and the unnamed dropdown would not. The other form fields and the security token would also go, but I didn't read them. | inferred, not established |
+| My downloaded copy matches the page's | The page loads `sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw`; I downloaded it without the `?v=…` version tag. | not established |
+| Listeners attached some other way | Plain page reads can't list attached event listeners. | not established |
+| What the request contains and what it returns | No search was run. | not established |
+
+## What's left
+
+- **Script version:** downloading the copy with the exact `?v=` tag would settle whether it differs. That's one more static GET, so I'll only do it if you say so.
+- **Actual request and results:** only a search you authorize separately, with the request observed, can confirm what's sent and returned. That would also only cover Calendar Event, not Date Filed.
