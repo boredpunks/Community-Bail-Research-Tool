@@ -1,0 +1,23 @@
+The POST was captured on the wire. The browser's own network record holds the request body for the new results page, and in it `CourtOffice=CP-05-02-Crim`. I clicked Search exactly once and made no retries or other requests.
+
+My first settings check found a mismatch, so I stopped without clicking. The cause was my check matching a second "Court Office" field, the results-table filter outside the search form, which showed "(Select All)". I repeated the check limited to the search form. All seven settings matched, so I made the one authorized submission.
+
+## Evidence table
+
+| Finding | Evidence | Status |
+|---|---|---|
+| Settings before submitting | Inside the search form: Calendar Event, Allegheny - 05, CP-05-02-Crim, Courtroom 506, 10/14/2026–10/14/2026, no event type. I changed no fields. | confirmed |
+| Actual request recorded | Network recording was on in Comet's tab. I clicked Search once, a new page loaded, and I pulled that page's request body from the network record. | confirmed (network capture) |
+| Method | A request that loads a page and carries a form body is a POST, and the form says `method="post"`. I didn't read the method field itself. | inferred (strongly supported) |
+| Target URL | The new page is `https://ujsportal.pacourts.us/casesearch`. I didn't read the request's URL field directly. | inferred (strongly supported) |
+| Content type | The body is in `key=value&…` form encoding, which matches `application/x-www-form-urlencoded`. I didn't read the Content-Type header. | not established (body format confirmed) |
+| Submitter | I clicked the one Search button (`btnSearch`). This capture didn't record a submitter field. | confirmed as the clicked control |
+| Submitted field names | 33 fields, in order: SearchBy, ParticipantSID, ParticipantSSN, County, JudicialDistrict, MDJSCourtOffice, DocketType, CaseCategory, CaseStatus, DriversLicenseState, PADriversLicenseNumber, ArrestingAgency, ORI, JudgeNameID, AppellateCourtName, AppellateDistrict, AppellateDocketType, AppellateCaseCategory, AppellateCaseType, AppellateAgency, AppellateTrialCourt, AppellateTrialCourtJudge, AppellateCaseStatus, ParticipantRole, ParcelState, ParcelCounty, ParcelMunicipality, CourtOffice, CourtRoomID, CalendarEventStartDate, CalendarEventEndDate, CalendarEventType, __RequestVerificationToken. The list matches the earlier in-page capture. | confirmed (network capture) |
+| `CourtOffice` value | `CP-05-02-Crim`, sent once. | confirmed (network capture) |
+| Response and case details | Not inspected. | not established |
+
+## How other values were handled
+
+The full request body passed through my capture script in memory, and the script kept only field names and the `CourtOffice` value. No other values were shown to me, displayed, or saved; that includes dates, filters, hidden fields and the security token. I turned network recording off afterward and left the tab open in Comet.
+
+What's still open: the exact method, URL and Content-Type headers weren't read directly, and whether the browser ran byte-identical script code is still unknown. The Date Filed route hasn't been tested.

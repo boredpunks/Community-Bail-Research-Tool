@@ -1,0 +1,37 @@
+Paste this into Replit along with my previous message. It gives the agent the verified facts so it doesn't spend time re-checking them, and it marks clearly what's still unverified so the agent doesn't guess at those parts.
+
+```text
+TASK: Implement the Calendar Event search for the Allegheny County Bail Research Tool, using the verified UJS request facts below. Don't re-investigate what's already verified. Build, test against fixtures, then stop for my approval before any live request.
+
+VERIFIED (from a single authorized, captured search on https://ujsportal.pacourts.us/casesearch)
+- Search = an ordinary browser form submission. It's a page navigation, not a background (AJAX/fetch) call. The form is form#case-search-form-id, method="post", with no action, so it posts to /casesearch.
+- Submit button: <button id="btnSearch" value="Search">. It has no name, so the button itself isn't sent.
+- The body is URL-encoded (key=value&...). There are 33 fields, in this order:
+  SearchBy, ParticipantSID, ParticipantSSN, County, JudicialDistrict, MDJSCourtOffice, DocketType, CaseCategory, CaseStatus, DriversLicenseState, PADriversLicenseNumber, ArrestingAgency, ORI, JudgeNameID, AppellateCourtName, AppellateDistrict, AppellateDocketType, AppellateCaseCategory, AppellateCaseType, AppellateAgency, AppellateTrialCourt, AppellateTrialCourtJudge, AppellateCaseStatus, ParticipantRole, ParcelState, ParcelCounty, ParcelMunicipality, CourtOffice, CourtRoomID, CalendarEventStartDate, CalendarEventEndDate, CalendarEventType, __RequestVerificationToken
+- CourtOffice was sent as "CP-05-02-Crim".
+- The visible Court Office <select> has no name. The value that gets sent comes from a hidden text input, input#CourtOffice-HiddenField name="CourtOffice", which site code (sitemain.min.js, SetupSelectBackingField) fills from the dropdown. The same pattern applies to every single-select: <Field>-Control holds a hidden <Field>-HiddenField that carries the name.
+- Court Office options for Allegheny - 05: blank (value ""), CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv. The values equal the labels, and each option has data-aopc-judicialdistrict="(05)". The filtering is client-side: options are kept where data-aopc-judicialdistrict contains "(" + district value + ")".
+- "MDJS Court Office" (MDJSCourtOffice) is a DIFFERENT control and isn't used for Calendar Event. Don't confuse the two.
+- The results table has its own "Court Office" filter outside the search form (id filter-caseSearchResultGrid.CourtOffice-Label). When reading the search form, scope every lookup to form#case-search-form-id.
+- The test settings that returned results: Calendar Event / Allegheny - 05 / CP-05-02-Crim / Courtroom 506 / 10/14/2026–10/14/2026 / no event type.
+
+NOT VERIFIED (don't guess. Read these from the served HTML, or leave them as open questions)
+- The value formats for SearchBy, JudicialDistrict, CourtRoomID, CalendarEventType and both dates. Take each one from the option value attributes or input values in the GET /casesearch HTML. Never hard-code a guessed value.
+- The Content-Type header and the exact request URL/method headers. They weren't read directly.
+- How the anti-forgery token and its session cookie relate. Assume the token must come from the same session's GET page, and send that session's cookies back.
+- The Date Filed route, MDJ offices, Preliminary Arraignment, and the calendar-to-PDF path. All untested and out of scope.
+
+BUILD
+1. A separate search-request module, isolated from the UI. Flow: GET /casesearch → parse form#case-search-form-id → serialize it the way a browser would (all 33 named fields in the same order, defaults as served) → override ONLY SearchBy, JudicialDistrict, CourtOffice, CourtRoomID, CalendarEventStartDate, CalendarEventEndDate, CalendarEventType → POST /casesearch as URL-encoded data.
+2. Validate before sending. Every required field name must exist in the parsed form. Every chosen value must match a real option value in the served HTML. CourtOffice must belong to the chosen district by its data-aopc-judicialdistrict tag. If anything is missing or doesn't match, refuse to send and show a clear error.
+3. Rate safety: one POST per explicit user action. No retry loops, no background or bulk runs. On HTTP 429 or any non-200 response, stop and show the status. (This portal has already returned 429 in an earlier test.)
+4. Results: parse only the results table. Pass through the Court Office column and a source timestamp. Don't store names, birth dates or IDs beyond what the user is viewing. Never log the token, cookies or the full request body.
+5. Tests: unit tests only, against saved HTML fixtures (a sanitized form page plus a sanitized results page with fake names). Assert the field order, the override behavior, that CourtOffice comes from the hidden field's name rather than the dropdown, that the MDJSCourtOffice and results-filter traps aren't picked up, and that the 429 response stops the flow. NO live network calls in tests.
+
+STOP RULES
+- Make zero requests to ujsportal.pacourts.us until I approve one specific live test with exact settings.
+- Report back: the files changed, the test results, the unresolved items from the NOT VERIFIED list, and the exact single request you'd send for the approved live test (field names only, plus the CourtOffice value).
+- Don't claim the search works end to end until that one approved live test succeeds.
+```
+
+To speed things up, it tells Replit to build the request by copying the live form instead of rebuilding it. That works around the value formats nobody has verified yet. It also makes the agent build against saved fixture pages first and wait for your approval before making one live request.
