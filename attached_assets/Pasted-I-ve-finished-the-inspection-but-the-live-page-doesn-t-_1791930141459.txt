@@ -1,0 +1,27 @@
+I've finished the inspection, but the live page doesn't match the state you described. Calendar Event is still selected. The Judicial District and Court Office fields are hidden, though, and the Court Office dropdown is disabled and has no options. So the earlier capture (CP-05-02-Crim selected, plus Fam, Juv and one unknown option) doesn't describe this page now. I couldn't check whether it describes the second Case Search tab: Comet marked that tab as not available to me, so I didn't touch it.
+
+## Evidence table
+
+What I did: read-only DOM reads of the Case Search page I already controlled in Comet ([UJS Case Search](https://ujsportal.pacourts.us/casesearch)). I didn't open, change, reload, submit or fetch anything.
+
+| Finding | Supporting evidence | Status |
+|---|---|---|
+| Search By shows Calendar Event | Selected option text is "Calendar Event". It is the only visible dropdown on the page. | confirmed |
+| District shows Allegheny - 05 | The Judicial District section has the CSS class `display-none` and its dropdown is disabled. I didn't read its value. | not established (not shown) |
+| Court Office shows CP-05-02-Crim | Its section (`CourtOffice-DivWrapper`) has the class `display-none`. The dropdown has 0 options and nothing selected. | contradicted on this page |
+| Label link | A sibling `div#CourtOffice-Label` with the text "Court Office:". The dropdown has no `for` link to a label, no `aria-label` and no `aria-labelledby`. Its only name comes from `title="Court Office"`. | confirmed |
+| Control details | Native single-choice dropdown with no id or name. It is disabled and not marked required. It belongs to `form#case-search-form-id` (method post, no action set). No inline event handlers. | confirmed |
+| Option list | Empty, so there is no blank option, no placeholder and no fourth option to report. | confirmed (this page only) |
+| Field container | `div#CourtOffice-Control` holds a hidden text field, `input#CourtOffice-HiddenField name="CourtOffice"`, in the same form. Its value is 13 characters long; I didn't read it. CP-05-02-Crim is also 13 characters, which fits but proves nothing. | confirmed (value unread) |
+| Dependency on Judicial District | The control itself carries `data-aopc-filteredby=[{"JudicialDistrict":"Value"}]` and `data-aopc-displayif=[{"SearchBy":"CalendarEvent"}]`. There's no County dependency. | confirmed as markup; behavior not verified |
+| "MDJSCourtOffice" console message | That message belongs to a different dropdown: `MDJSCourtOffice-DivWrapper`, titled "MDJS Court Office". It is filtered by County and Judicial District, isn't set to appear for Calendar Event, and is hidden. | confirmed it's a different control |
+| Hidden vs. its own display rule | The display rule says Court Office should appear for Calendar Event, yet it's hidden and disabled. This suggests the page isn't in the expected state. I can't say why without running site scripts. | not established |
+| What a search would send | No inline script mentions Court Office. The only site code file is `/resource/js/sitemain.min.js`, and reading it would mean a new request. The `name="CourtOffice"` hidden field is the likely place, but that's inferred, not shown. | not established |
+
+## Unknowns and next steps
+
+- **Which tab holds your state:** the Allegheny / CP-05-02-Crim setup may be in the other Case Search tab. Least-invasive step: share that tab with me and I'll repeat this same read-only inspection there.
+- **Fourth option and Court Office values:** these are only visible while the field is shown and filled in. Making that happen here would mean changing the district or Search By field, which needs your authorization.
+- **What gets sent and how the dependency works:** both need either reading `sitemain.min.js` (a request) or watching an actual submission. Either needs separate authorization.
+- **Tab cleanup:** I ended the browser session at the end. That may have closed the Case Search tab I was working in. Your other Case Search tab wasn't touched.
+- **Calendar Event and Date Filed:** nothing here shows that a search on either route works.
