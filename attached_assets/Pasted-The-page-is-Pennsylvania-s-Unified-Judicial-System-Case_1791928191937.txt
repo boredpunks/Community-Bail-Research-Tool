@@ -1,0 +1,940 @@
+The page is Pennsylvania’s Unified Judicial System Case Search portal. Your screenshots document several different states of the same search form—not separate search engines—and show the exact court-office option your research tool needs: **`CP-05-02-Crim`**, under `Search By: Calendar Event` and `Judicial District: Allegheny - 05`. The other visible court-office choices are `CP-05-02-Fam` and `CP-05-02-Juv`.[1]
+
+I used your screenshots and retrieved the public page’s text. I did not take control of your browser, change any fields, or submit a search. The browser-service connectors available here are disconnected; browser interaction would require connecting a suitable service through Settings → Connectors. The explanation below distinguishes what your pictures establish from what remains untested.
+
+## 1. What this page is—and what it is not
+
+This is an official public-facing court-record search page maintained by Pennsylvania’s Unified Judicial System. It lets users select a search method, supply that method’s criteria, and search for publicly available case information. The portal explicitly says that searching and reviewing these web docket sheets is a free public service.[2]
+
+The screenshots are all of the search-input stage. They do not show:
+
+- Search results.
+- An individual defendant or other case participant.
+- A specific case’s docket sheet.
+- A bail amount.
+- Whether bail was posted.
+- A custody or release determination.
+- A downloaded PDF.
+- A successful automated search.[1][3][4]
+
+That distinction matters for your Community Bail Research Tool: these images establish the form’s visible controls and option labels, not what a completed search returns or how reliably an automated browser can retrieve those results.
+
+## 2. Page layout: top to bottom
+
+### Official heading
+
+At the top is the blue Unified Judicial System of Pennsylvania Web Portal banner. It identifies the site as the court system’s portal rather than a private background-check or paid-records service. The public page text independently confirms who operates it.[2][3]
+
+### Navigation bar
+
+The visible navigation includes:
+
+- `Home`
+- `Case Information`
+- `Pay Online`
+- `Help & Support`
+
+These sit above the search interface. The screenshots do not show any of those menus opened, so they establish the labels but not each menu’s contents.[3]
+
+### Page title and appellate-search instruction
+
+The page is titled `Case Search`.
+
+Above the form is this instruction:
+
+> If you are searching for appellate court cases, you must choose the ‘Appellate’ or ‘Docket Number’ option.[3]
+
+This is an explicit restriction on which search modes to use for appellate cases. It does not say that every search mode covers every court.
+
+### Main search form
+
+The central control is `Search By`. Changing it changes the fields beneath it.
+
+Your images capture three selected modes:
+
+1. `Calendar Event`
+2. `Docket Number`
+3. `Organization`
+
+Another image shows the `Search By` dropdown expanded, revealing the broader menu.[3][4][5][6]
+
+### Additional information and footer
+
+Below the form, the page displays public-record warnings and explanatory notes. These concern delays, accuracy, record retention, background checks, and related Philadelphia docket numbers.
+
+The footer visible in the wider screenshot includes `Help Center`, `Privacy Policy`, and `Terms & Conditions`.[2][3]
+
+The browser tabs, Windows taskbar, monitor frame, and material on the desk are incidental to the photographs; they are not controls belonging to the court-search page.
+
+## 3. The complete visible “Search By” menu
+
+The expanded menu shows these nonblank choices, in this order:[3]
+
+| Option | What the screenshot establishes |
+|---|---|
+| Appellate | A dedicated search mode exists; the page’s instruction names it as an appropriate route for appellate cases. |
+| Attorney | A search mode labeled Attorney exists; its fields are not shown. |
+| Calendar Event | Its detailed form is shown in several screenshots. |
+| Citation Number | A citation-number search mode exists; its fields are not shown. |
+| Complaint Number | A complaint-number search mode exists; its fields are not shown. |
+| Date Filed | A filing-date search mode exists; its own form is not shown. |
+| Docket Number | Its basic form is shown. |
+| Incident Number | An incident-number search mode exists; its fields are not shown. |
+| Organization | Its detailed form is shown. |
+| OTN | A mode labeled OTN exists; no help text or expansion is shown. |
+| Parcel | A mode labeled Parcel exists; its fields are not shown. |
+| Participant Name | A participant-name search mode exists; its fields are not shown. |
+| SID | A mode labeled SID exists; no help text or expansion is shown. |
+
+There is also a blank entry above the named choices. The screenshots do not establish its underlying value or whether it acts as a placeholder.[3]
+
+The important structural point is that `Search By` is a form-mode selector. It is not the court-office selector, county selector, event-type selector, or docket-type selector.
+
+## 4. Calendar Event mode: every visible field
+
+When `Search By` is set to `Calendar Event`, the page shows these controls in this order:[5]
+
+| Field | Visible presentation | What can be established |
+|---|---|---|
+| Search By | Dropdown, red asterisk | Selected mode is Calendar Event. |
+| Judicial District | Dropdown, red asterisk | A district must be supplied according to the form’s required-field marking. |
+| Court Office | Dropdown | Separate from Judicial District and Room; no red asterisk is visible. |
+| Room | Dropdown | Contains courtroom and location labels in later images. |
+| Calendar Event Start Date | Date input, red asterisk | Shows `mm/dd/yyyy` and a calendar icon. |
+| Calendar Event End Date | Date input, red asterisk | Shows `mm/dd/yyyy` and a calendar icon. |
+| Calendar Event Type | Dropdown | Contains hearing/proceeding labels. |
+| Scheduled Events Only | Checkbox with question-mark help icon | Checked in the captured states. |
+| Search | Button | Present below the criteria. |
+| Clear | Button | Present beside Search. |
+
+The red asterisks mark required fields in the interface. Your screenshots do not include a submitted form or validation message, so they do not establish all server-side requirements, allowed date ranges, or error behavior.[5]
+
+### The empty district state
+
+In the screenshot with no Judicial District selected, Court Office and Room appear pale or grayed out compared with the active Search By control.[5]
+
+Later screenshots show a selected district and populated Court Office and Room menus. This supports a likely dependency between those controls, but the photographs alone do not prove the exact loading sequence or technical implementation.[1][7]
+
+### The date fields
+
+Both date fields have:
+
+- A `mm/dd/yyyy` placeholder.
+- A calendar icon.
+- A red required-field asterisk.
+
+Their labels refer specifically to calendar-event dates, not filing dates. Organization mode uses different labels—`Date Filed Start Date` and `Date Filed End Date`. That difference is visible and should not be collapsed in an automated form mapping.[5][6]
+
+No date is entered in the supplied Calendar Event pictures. Consequently, there is no demonstrated query interval, maximum interval, or example result set.
+
+## 5. Judicial District: names plus district numbers
+
+The expanded Judicial District menu shows these visible entries:[8]
+
+| Displayed district |
+|---|
+| Adams - 51 |
+| Allegheny - 05 |
+| Armstrong - 33 |
+| Beaver - 36 |
+| Bedford - 57 |
+| Berks - 23 |
+| Blair - 24 |
+| Bradford - 42 |
+| Bucks - 07 |
+| Butler - 50 |
+| Cambria - 47 |
+| Cameron/Elk - 59 |
+| Carbon - 56 |
+| Centre - 49 |
+| Chester - 15 |
+| Clarion - 18 |
+| Clearfield - 46 |
+| Clinton - 25 |
+| Columbia/Montour - 26 |
+
+The menu is scrollable, so this is a visible segment, not its complete inventory.[8]
+
+Three details matter:
+
+1. The label is `Judicial District`, not `County`.
+2. Its displayed entries include a numeric suffix.
+3. Some displayed districts combine names, such as `Cameron/Elk - 59` and `Columbia/Montour - 26`.[8]
+
+In the relevant selected state, the field displays:
+
+```text
+Allegheny - 05
+```
+
+That is different from the plain `Allegheny` label shown in Organization mode’s County menu.[8][9]
+
+## 6. Court Office: the exact answer needed by the research tool
+
+With the relevant Calendar Event form state visible, the fields read:[1]
+
+```text
+Search By: Calendar Event
+Judicial District: Allegheny - 05
+Court Office: CP-05-02-Crim
+```
+
+The open Court Office menu contains these three nonblank entries:
+
+```text
+CP-05-02-Crim
+CP-05-02-Fam
+CP-05-02-Juv
+```
+
+A blank area appears above them. `CP-05-02-Crim` is highlighted and also appears in the closed field above the expanded list.[1]
+
+### What this resolves
+
+It resolves the earlier request for:
+
+- The field label: `Court Office`
+- One exact displayed option: `CP-05-02-Crim`
+
+It also supplies the surrounding district and search-mode context.
+
+### What it does not resolve
+
+The photograph does not expose:
+
+- The HTML element’s ID.
+- Its `name` attribute.
+- The selected option’s underlying `value`.
+- Whether the visible string and underlying value are identical.
+- The network request that populates the menu.
+- Whether the same option is available in other districts.
+- What the `02` component means.
+
+Those are implementation details, not things that can be read from a photographed dropdown.
+
+### Correction to my earlier response
+
+My earlier response claimed a specific Replit-agent state: 49 options, failed office-code matching, and no submitted search or PDF retrieval. The retrieved Replit material did not substantiate those details. I should not have stated them as verified.
+
+Your new screenshots do substantiate the court-office label and exact options. They do not independently establish the agent’s internal behavior or which dropdown it previously inspected.
+
+## 7. Room: locations, not court-office codes
+
+The `Room` dropdown is a different control from `Court Office`.
+
+Its visible choices are courtroom numbers, room numbers, buildings, and hearing locations—not the three `CP-05-02-*` office labels.[1][7][10]
+
+That difference is important: a program looking for a court-office code in the Room dropdown could inspect many real options and still find no appropriate office code.
+
+### First visible room segment
+
+One photograph shows:[7]
+
+```text
+519 Courthouse
+Central Hearing Officer Courtroom
+Courtroom 306A
+Courtroom 310
+Courtroom 313
+Courtroom 316
+Courtroom 321
+Courtroom 324
+Courtroom 327
+Courtroom 504
+Courtroom 506
+Courtroom 510
+Courtroom 514
+Courtroom 516
+Courtroom 521
+Courtroom 525
+Courtroom 527
+Courtroom 530
+Courtroom 533
+```
+
+### Another visible room segment
+
+Another photograph shows:[10]
+
+```text
+Courtroom 704
+Courtroom 705
+Courtroom 706
+Courtroom 707
+Courtroom 712
+Courtroom 821-City County Building
+East Hearing Officer Courtroom
+Family Law Center
+Goldroom 410 Courthouse
+Jail Intake Room
+Municipal Court Building
+Municipal Court Building
+MVRO Hearing Officer Courtroom
+North Hearing Officer Courtroom
+Room 200
+Room 2013
+Room 2014
+Room 201A
+Room 2022
+Room 2031
+```
+
+`Municipal Court Building` appears twice consecutively. That is a visible duplicate label, not necessarily a duplicate underlying option value. The photograph cannot distinguish whether those two entries refer to different internal records.[10]
+
+### Room-number segments
+
+The remaining room photographs show overlapping portions of the list. Combined, their clearly readable labels include:[11][12][13][14]
+
+```text
+Room 2031
+Room 206
+Room 220
+Room 223
+Room 224
+Room 3009
+Room 301
+Room 3010
+Room 3018
+Room 3026
+Room 3030
+Room 320
+Room 323
+Room 324
+Room 330
+Room 331
+Room 334
+Room 335
+Room 337
+Room 4010
+Room 4012
+Room 4013
+Room 4026
+Room 4029
+Room 404
+Room 424
+Room 425
+Room 430
+Room 431
+Room 434
+Room 435
+Room 500
+Room 501
+Room 5024
+Room 5028
+Room 5032
+Room 5036
+Room 5039
+Room 504
+Room 5045
+Room 5049
+Room 505
+Room 5052
+Room 5053
+Room 5059
+Room 5059.1
+Room 506
+Room 5065
+Room 5069
+Room 507
+Room 5073
+Room 5077
+Room 5080
+Room 522
+Room 523
+Room 524
+Room 525
+Room 526
+Room 531
+Room 532
+Room 533
+Room 534
+Room 535
+Room 536
+South Hearing Officer Courtroom
+```
+
+These labels should be preserved literally in a transcription. For example, `Room 5059.1` is not interchangeable with `Room 5059`, and `Room 201A` is not `Room 2014`.[10][12]
+
+The screenshots do not cover every scroll position continuously. This is therefore a combined visible inventory, not a certified complete Room list.
+
+### Highlighted room entries
+
+Different photographs highlight entries such as:
+
+- `519 Courthouse`
+- `Courtroom 704`
+- `Room 501`
+- `Room 5053`
+
+Those highlights show the state of the open menu at the photographed moment. They do not prove that the user submitted separate searches for those rooms.[7][10][12][13]
+
+## 8. Calendar Event Type: a separate, extensive proceeding menu
+
+The `Calendar Event Type` dropdown contains labels for hearing and proceeding types. It is neither the Court Office menu nor the Room menu.[15][16]
+
+The screenshots cover the list in several overlapping scroll positions. Below is the combined transcription of clearly readable entries, grouped to make the long list manageable. These headings are explanatory groupings; they are not additional categories shown by the portal.
+
+### ACT-prefixed and early entries
+
+```text
+ACT - Comply Review Hearing
+ACT - Formal Arraignment
+ACT - FTA - Hearing
+ACT - Gagnon I - Violation Hearing
+ACT - Gagnon II - Violation
+ACT - Mental Health Court
+ACT - NEI Court
+ACT - Phoenix
+ACT - Phoenix/ARD Revocation
+ACT - Pre-Trial Conference
+ACT - Sentencing
+ACT - Status Hearing
+Act 33 Status Hearing
+Appeal
+ARD - Expungement
+ARD - Reserved Date
+ARD Hearing
+ARD Probation Violation Hearing
+ARD Status Hearing
+ARD Violation Hearing
+``` 
+
+
+Notice that similarly named entries are not always identical:
+
+- `ACT - Gagnon II - Violation` does not visibly include the final word `Hearing`.
+- `Act 33 Status Hearing` uses different capitalization from the `ACT - …` entries.
+- `ARD - Reserved Date` is distinct from `ARD Hearing`.[15][16]
+
+### Bail, competency, compliance, and related entries
+
+```text
+Bail Hearing
+Bail Revocation Hearing
+Competency Commitment Hearing
+Competency Hearing
+Competency Review Hearing
+Comply Review Hearing
+Comply with Sentence
+Concise Statement
+Contempt Hearing
+Convicted ARD Revocation Hearing
+DCR - Full Expungement
+DCR - Limited Access
+DCR - Partial Expungement
+Decertification Hearing
+```
+
+
+For the bail-research project, the directly relevant visible labels include `Bail Hearing` and `Bail Revocation Hearing`. Their presence establishes available event-type choices; it does not establish how many matching events exist or whether an event’s results include bail amounts or custody information.[16]
+
+### Domestic and drug-court entries
+
+```text
+Domestic Probation/Parole Violation Hearing
+Domestic Review Hearing
+Domestic Violence Hearing
+Domestic Violence Review Hearing
+Domestic Violence Trial
+Drug Court
+Drug Court Plea
+Drug Court Review Hearing
+Drug Court Violation Hearing
+DUI Court
+EDP
+```
+
+
+`EDP` appears as an abbreviation without an expanded definition in the screenshots. The same caution applies to other unexplained abbreviations: a visible label is not evidence of its precise local meaning.
+
+### General hearings, arraignment, trials, and mental-health entries
+
+```text
+Evidentiary Hearing
+Extradition Hearing
+Formal Arraignment
+Gagnon I - Violation Hearing
+Gagnon II - Violation Hearing
+Hearing
+ICC Hearing
+ICC Violation Hearing
+Interest of Justice Review Hearing
+Jury Selection
+Jury Trial
+MDJ - Acquittal
+Mental Health APPS Hearing
+Mental Health Court
+Mental Health Court Plea
+Mental Health Court Probation/Parole Violation Hrg
+Mental Health Court Review Hearing
+Motions Court
+Non-Jury Trial
+Notice of Appeal
+Opinion
+Pardon
+Payment Determination Hearing
+```
+
+
+Again, the exact labels matter. `Hearing`, `Evidentiary Hearing`, and `ICC Hearing` are separate choices. `Mental Health APPS Hearing` visibly uses `APPS`, and another entry visibly abbreviates `Hearing` to `Hrg`.[17][18]
+
+### PCRA, Phoenix, plea, and pretrial entries
+
+```text
+PCRA Hearing
+PDQ Court
+PennDot Appeal Hearing
+Phoenix - 2nd Listing
+Phoenix Docket Conference
+Phoenix/ARD Revocation Formal Arraignment
+Plea
+Post Sentence Motion Hearing
+Post Trial Motion
+Pre-Sentence Investigation
+Pre-Trial Conference
+Pre-Trial Screening
+Preliminary Arraignment
+Preliminary Hearing
+Pretrial Motion Hearing
+```
+
+
+The list distinguishes:
+
+- `Formal Arraignment`
+- `Preliminary Arraignment`
+- `Phoenix/ARD Revocation Formal Arraignment`
+- `ACT - Formal Arraignment`
+
+It also uses both `Pre-Trial` and `Pretrial` spellings in different entries. Those differences should be retained rather than normalized away in an exact menu transcription.[15][18][19]
+
+### Probation, review, sentencing, and sex-offense-court entries
+
+```text
+Probation Review Conference
+Probation Violation Administrative Action
+Probation/Parole Violation Hearing
+PTC/Formal Arraignment
+Restitution Review
+Return with Counsel Hearing
+Review Hearing
+Revocation Hearing
+Sentencing
+Sex Offender Court FA/PTC
+Sex Offender Court Review Hearing
+Sex Offense Court FA/PTC
+Sex Offense Court Review Hearing
+Sexually Violent Predator Hearing
+SOC Review Probation/Parole Violation Hearing
+Status Hearing
+```
+
+
+`Sex Offender Court …` and `Sex Offense Court …` both appear. They should not be silently merged just because their wording is similar.[20][21]
+
+### Summary and veterans-court entries
+
+```text
+Summary Appeal Hearing
+Summary Appeal Violation Hearing
+Summary Trial
+Summary Trial (PMCTD Date Certain)
+Technical ARD Revocation Hearing
+Veteran's Court APPS Hearing
+Veteran's Court Hearing
+Veteran's Court Plea
+Veteran's Court Probation/Parole Violation Hearing
+Veteran's Court Review Hearing
+Veteran's Court Sentencing
+Veterans 6 Month Status Hearing
+```
+
+
+The bottom of the photographed dropdown appears to contain further partially obscured content. I have not guessed at text that is not sufficiently readable, and I am not calling this a verified complete menu.
+
+## 9. “Scheduled Events Only”
+
+This checkbox is checked in the captured Calendar Event forms. A blue question-mark icon sits beside it.[1][5]
+
+The wording indicates a scheduling-related restriction, but the screenshots do not show the help text. Therefore, they do not settle:
+
+- Which event statuses count as “scheduled.”
+- Whether completed events are excluded.
+- Whether canceled or continued events are excluded.
+- Whether the interpretation changes for past date ranges.
+- Whether the checked state was a default or a prior user selection.
+
+For historical bail research, its precise behavior is consequential. It should be tested or read from the help text rather than assumed from the label alone.
+
+## 10. Docket Number mode
+
+In the Docket Number screenshot, the form changes substantially. It shows:[4]
+
+```text
+Search By: Docket Number
+Advanced Search: [unchecked]
+Docket Number: [empty input]
+Search
+Clear
+```
+
+The `Search By` and `Docket Number` labels carry red asterisks.
+
+A question-mark help icon appears beside the search-mode control, and another appears beside the docket-number input.[4]
+
+### What is absent in this captured state
+
+The basic Docket Number form does not display:
+
+- Judicial District.
+- Court Office.
+- Room.
+- Calendar Event Start Date.
+- Calendar Event End Date.
+- Calendar Event Type.
+- Scheduled Events Only.[4]
+
+This is a different search path. It is not simply the Calendar Event form with fewer values entered.
+
+### Advanced Search
+
+The checkbox is unchecked. There is no screenshot of what appears after checking it.
+
+Accordingly, the supplied material cannot establish the advanced docket-number fields, whether a docket number can be built from components, or whether partial identifiers are accepted.
+
+## 11. Organization mode
+
+Organization mode presents a different set of controls:[6][9][22]
+
+```text
+Search By: Organization
+Advanced Search: [unchecked]
+Date Filed Start Date
+Date Filed End Date
+County
+Docket Type
+Case Category
+Case Status
+Organization Name
+Search
+Clear
+```
+
+`Organization Name` carries a red asterisk.
+
+Beside the other filtering fields, the page repeats:
+
+```text
+(One or more of these fields is required)
+```
+
+That wording appears next to the filing dates, County, Docket Type, Case Category, and Case Status. The screenshot establishes this displayed requirement, but it does not show a validation attempt proving exactly how the requirement is enforced.[6][9][22]
+
+### Organization name is a search criterion—not the operator’s identity
+
+This form contains a required `Organization Name` field. That is different from having an organization run the search tool. The screenshot provides no indication that a research group’s own name belongs there unless that is the organization being searched.[9]
+
+### Filing dates versus event dates
+
+The Organization form says:
+
+```text
+Date Filed Start Date
+Date Filed End Date
+```
+
+The Calendar Event form says:
+
+```text
+Calendar Event Start Date
+Calendar Event End Date
+```
+
+Those are distinct field labels referring to different kinds of dates. A technical implementation should retain that distinction.[5][6]
+
+## 12. Organization mode’s County menu
+
+The visible County menu shows:[9]
+
+```text
+Adams
+Allegheny
+Armstrong
+Beaver
+Bedford
+Berks
+Blair
+Bradford
+Bucks
+Butler
+Cambria
+Cameron
+Carbon
+Centre
+Chester
+Clarion
+Clearfield
+Clinton
+Columbia
+```
+
+The list is scrollable, so these are only the photographed entries.
+
+Unlike Judicial District:
+
+- County entries have no visible district-number suffix.
+- The visible County list has `Cameron`, whereas Judicial District shows `Cameron/Elk - 59`.
+- The visible County list has `Columbia`, whereas Judicial District shows `Columbia/Montour - 26`.[8][9]
+
+These controls should not share a single assumed label map.
+
+## 13. Organization mode’s Docket Type menu
+
+The open Docket Type menu shows these choices:[6]
+
+```text
+Civil
+Criminal
+Landlord/Tenant
+Miscellaneous
+Non-Traffic
+Summary Appeal
+Traffic
+```
+
+A blank area appears above the named options.
+
+This is a case-type selector, not a Court Office selector. The visible choice `Criminal` is different from the Court Office label `CP-05-02-Crim`.[1][6]
+
+The screenshots do not show what happens to Case Category after choosing a Docket Type, so any dependency between those two controls remains unverified.
+
+## 14. Organization mode’s Case Category
+
+`Case Category` appears between Docket Type and Case Status.
+
+In the captured Organization views, it appears pale or grayed out, and no expanded menu is shown.[6][22]
+
+The available category labels therefore cannot be transcribed from these images. Nor can I establish whether selecting a Docket Type enables it.
+
+## 15. Organization mode’s Case Status menu
+
+The expanded Case Status dropdown shows:[22]
+
+```text
+Active
+Active/Adj. Delinquent
+Active/Adj. Dependent
+Active/Disposed
+Adjudicated
+Closed
+Inactive
+```
+
+These are exact displayed labels.
+
+The page images do not define them, and they should not be treated as custody classifications. Nothing in this captured menu labels a person as detained, released, unable to pay bail, or eligible for assistance.[22]
+
+## 16. Question-mark icons, blank options, and disabled-looking controls
+
+### Question-mark icons
+
+Blue question-mark icons appear beside selected controls, including Search By, Docket Number, and Scheduled Events Only. Their presence indicates help affordances, but the photographs do not show the help content.[4][5]
+
+A complete behavioral audit would need to inspect those help panels.
+
+### Blank options
+
+Several expanded menus show a blank entry or blank area above the named choices.
+
+The screenshots do not reveal whether those entries mean:
+
+- No filter.
+- Select an option.
+- All values.
+- An empty value rejected on submission.
+
+Those meanings cannot safely be assigned from appearance alone.
+
+### Disabled-looking fields
+
+Some controls appear grayed out before upstream selections are made. That visual state suggests they may be unavailable or awaiting another selection, but screenshots are not enough to determine the actual `disabled` attribute or loading behavior.[5][6]
+
+## 17. The page’s public-record warnings
+
+These warnings are part of the page, not incidental boilerplate. They constrain how research results should be interpreted.
+
+### Updates may be delayed
+
+The portal says recent court-office entries may not immediately appear on docket sheets. It also disclaims liability for inaccurate or delayed data, errors, and omissions.[2]
+
+For a research tool, a search timestamp is not proof that the underlying record was updated at that time.
+
+### This is not a criminal-history background check
+
+The page says docket-sheet information should not replace a criminal-history background check, which can only be provided by the Pennsylvania State Police. It also warns employers about potential civil liability for noncompliance with Pennsylvania’s Criminal History Record Information Act.[2]
+
+That warning concerns appropriate use of the information; it does not turn the search page into a comprehensive criminal-history source.
+
+### Public search is free
+
+The portal says it is not affiliated with fee-charging private public-record search systems and that its web-docket search is a free public service.[2]
+
+### Some records cease to be publicly accessible
+
+The Magisterial District Court note describes a protocol implemented April 1, 2012: when official paper case records have been or should have been destroyed under the applicable retention schedule, the public web docket sheet also becomes inaccessible.[2]
+
+Therefore, absence from the public portal is not, by itself, proof that no case ever existed.
+
+### Philadelphia can have related MC and CP dockets
+
+The page explains that a Philadelphia criminal matter may have both a Municipal Court docket number and a Court of Common Pleas docket number concerning the same incident or offenses.
+
+It directs users to the `cross court docket number` field on the first page of the docket sheet’s case-information section to identify related records.[2]
+
+For research counting, that creates a potential duplication issue: two docket numbers need not represent two unrelated incidents.
+
+### Historical coverage is not necessarily complete
+
+The page references a chart concerning cases migrated from county legacy systems into CPCMS and says not all cases were migrated.[2]
+
+A broad research dataset should therefore distinguish “records found through this portal” from “all historical cases.”
+
+## 18. What this establishes for your Community Bail Research Tool
+
+The screenshots supply a reliable visible-label map for the relevant Calendar Event form:
+
+```text
+Search mode:
+  Calendar Event
+
+Judicial District:
+  Allegheny - 05
+
+Court Office:
+  CP-05-02-Crim
+
+Other visible Court Office options:
+  CP-05-02-Fam
+  CP-05-02-Juv
+
+Separate downstream/location control:
+  Room
+
+Required-looking event-date controls:
+  Calendar Event Start Date
+  Calendar Event End Date
+
+Separate proceeding filter:
+  Calendar Event Type
+
+Visible bail-related event labels:
+  Bail Hearing
+  Bail Revocation Hearing
+
+Scheduling checkbox:
+  Scheduled Events Only
+```
+
+
+### The most important distinction
+
+These five menus serve different purposes:
+
+| Control | Example visible label |
+|---|---|
+| Judicial District | `Allegheny - 05` |
+| Court Office | `CP-05-02-Crim` |
+| Room | `Jail Intake Room` |
+| Calendar Event Type | `Bail Hearing` |
+| Docket Type, in Organization mode | `Criminal` |
+
+Confusing any two of them would produce an incorrect form mapping. The screenshots clearly separate them.[1][6][8][10][16]
+
+### What still needs a live test
+
+Before claiming the automation works, the following would need verification:
+
+1. The actual element corresponding to each visible label.
+2. The option values behind the displayed text.
+3. The state change after selecting `Calendar Event`.
+4. The state change after selecting `Allegheny - 05`.
+5. Whether Court Office updates asynchronously.
+6. Whether selecting `CP-05-02-Crim` changes Room or Event Type options.
+7. The allowed date interval and validation behavior.
+8. The precise meaning of Scheduled Events Only.
+9. Search-result layout, pagination, and limits.
+10. The route from a result to a docket sheet or PDF.
+11. How an empty result differs from a failed request.
+12. Whether retrieved records actually contain the bail information the project needs.
+
+These are remaining verification tasks, not completed actions.
+
+## 19. Paste-ready explanation for the Replit agent
+
+```text
+The screenshots establish the following visible UJS Case Search form state:
+
+Search By: Calendar Event
+Judicial District: Allegheny - 05
+Court Office: CP-05-02-Crim
+
+The field label is exactly “Court Office”.
+
+The Court Office dropdown visibly contains these nonblank options:
+- CP-05-02-Crim
+- CP-05-02-Fam
+- CP-05-02-Juv
+
+Do not confuse Court Office with:
+- Judicial District, whose labels include “Allegheny - 05”
+- Room, whose options are courtroom/room/building/location labels
+- Calendar Event Type, whose options include “Bail Hearing” and
+  “Bail Revocation Hearing”
+- Docket Type in Organization search, whose options include “Criminal”
+
+The Calendar Event form also contains:
+- Calendar Event Start Date
+- Calendar Event End Date
+- Calendar Event Type
+- Scheduled Events Only
+- Search
+- Clear
+
+The screenshots show red required-field asterisks beside Judicial District,
+Calendar Event Start Date, and Calendar Event End Date.
+Scheduled Events Only is checked in the captured states.
+
+These are visible labels, not verified HTML option values.
+Inspect the live DOM to identify the correct elements and underlying values.
+Verify dependent dropdown updates before selecting downstream fields.
+
+No supplied screenshot demonstrates a submitted search, search results,
+a docket-sheet download, or a successful PDF retrieval.
+```
+
+This handoff is grounded in the photographed form rather than an assumed office-code pattern.[1][5][6][8][16]
+
+Sources
+[1] IMG_3950-10.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/c920e1f2-04bf-4b1a-a659-893019e9ab72/IMG_3950-10.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=775e38ea8b9d31a2f06015951e77c404dbaea9bbdb22fdd33f6a7eb9386a062c
+[2] Case Search https://ujsportal.pacourts.us/casesearch
+[3] IMG_3943-3.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/30c09088-7290-4b42-bf93-43fba6257ea4/IMG_3943-3.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=140a3d6a5fbdaf57290752f798673f8263da9f0338f37c4b452ac156c8b1a737
+[4] IMG_3945-5.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/de488760-bdc0-49e5-899a-9e74409378be/IMG_3945-5.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=0c34d66b055b45fab480dc35896eb255dc1a54b2736453db008302bb4af07653
+[5] IMG_3944-4.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/2a57bd19-47d0-400b-bb91-67ffa7e19297/IMG_3944-4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=882122cab75835d399835c08d24922a7cdb32729bfa58c8813e6ab029fe39c6c
+[6] IMG_3946-6.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/ee467972-af43-471b-8547-d2dbf9e36aef/IMG_3946-6.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=fd39cca1595ccb0dbf5239b2731c8535a6107d0c70c7870ef2744f8202bfcc90
+[7] IMG_3951-11.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/afb32a0b-ed99-4d05-a93d-d15e0df420cf/IMG_3951-11.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=32d83889e5b73ab120dfb5d2518439ef0b2b487144084adfab461e30f787861a
+[8] IMG_3949-9.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/b9b476f0-a2be-4e96-bca6-af77d7d7cf1d/IMG_3949-9.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=5861c76b2e7bec387095e068346a90b9cba3adc5fc963eb736745abce43f3a6f
+[9] IMG_3947-7.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/64853672-a381-4c78-aa96-18addc129bca/IMG_3947-7.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=cbeabe4488f50153fb401e0a28cae9fd63ce8f75a63c3e7453ab147ebc5006e0
+[10] IMG_3952-12.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/8be96ba9-cfd1-4f7b-9276-f8f9abc84c59/IMG_3952-12.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=6ecce9de1fdbe0d0309527c6d15b25103e7c79b816f7971a07914bcbbbfc8348
+[11] IMG_3953-13.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/6548d9ed-b963-4757-88ab-c5b04d85b91b/IMG_3953-13.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=385707fb0b0176c213b6705fc766549013605f9128ffeb9a37d0150a11da1901
+[12] IMG_3955-15.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/ba3ded61-735c-42f2-af0a-9adf87362db3/IMG_3955-15.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=1c262900bf7333a64733107f4c6146e0a0d3bde734c4409d4e6bb1938bc2cea8
+[13] IMG_3954-14.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/00cb1d02-123a-42c7-ae37-bd37523f9c11/IMG_3954-14.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=b192f812b45844cecc868bc250e11c4115b59a54191386cdb89d970c45c4907e
+[14] IMG_3956-16.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/79addab6-ecdb-4298-bfba-6a443e35b144/IMG_3956-16.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=dc5bd2fa3feb1535d67eddc45b23362b0c86fd78dae89f1e2a65b57ff40c18da
+[15] IMG_3957-17.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/19d0e042-de15-471f-a6a2-0132e6738b6c/IMG_3957-17.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=a241e3fe56dd0227fe3cfc1b2d5369710fb5d95686fbb4248bd9a83ea3508a90
+[16] IMG_3958-18.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/5cb5272f-28b6-46e5-b80f-bf9e1042c37e/IMG_3958-18.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=66ee71c0c046f9c073c0eaebd4137f4a80e1fd812beb72190030b355e2d0b6e4
+[17] IMG_3961.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/4c926b64-56c3-4562-a5e7-ae9927dc3dbd/IMG_3961.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=c3a416a41508e60767ddec4f2a5c53f4e3a745deb163ca2bdda8830e37c3339b
+[18] IMG_3960-20.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/f5598890-770c-4988-9cf4-4eaee50a7289/IMG_3960-20.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=ae10f77ecb323e9aca019e77e65774f6fd00e5c493088e3e289e5fbdd8f784e0
+[19] IMG_3962-2.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/d44fdf60-af80-45bb-845f-f500699b605f/IMG_3962-2.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=63adbbc7687699e578000ec1ccbc94ca024a207749514df7e19e8b41200a9cb4
+[20] IMG_3963-3.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/e70a840b-d727-4ee8-854b-70354cc28509/IMG_3963-3.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=9bd080657ca63233b3d2057c8126f78c62a33fa54a3d5cb2d921e3e74d3cefff
+[21] IMG_3964-2.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/940f15c0-f070-4484-a765-c859a16076e7/IMG_3964-2.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=abe5414fb69614c8b565c8785280b258525d8bf9a66afc5e7fd5aaeea3ee8967
+[22] IMG_3948-8.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/78754110-8885-49b5-922a-6871786a39fd/IMG_3948-8.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=4c2996571c11cdbc7c6aa6dc63ced785454b28bd28af97a17183f8532bc9d2cc
+[23] IMG_3959-19.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/9fdf9612-96e0-46a1-b606-2db0abdfcc26/IMG_3959-19.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEUIRKL6ZM%2F20261013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261013T214740Z&X-Amz-Expires=1399&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQCJqOKRQ%2FE%2FOTxDNtLMSN3GZNP%2FIPgKN09%2B9w1wEsLB3QIhAOgVGOI0NEvXfC80%2B1SpGaX3ijnPrTUdVufM8ZACjPwAKokFCKb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igz9V7BLJt4rUisQj2gq3QRA6zKaIw1kHhgq%2B9M63%2FF3fuL5ixT1b9rVey74CrTZx7T96aYAy0mym5AO1cdAY1khAk0%2BZowZo2%2BJLyv4e55oTJbnD1cUE5tboEUHHP%2FU3urQAMl2K8b4Qb0aRNtGXoxdvpch4BtqjYJfVuzc11sjT%2B0JdOC%2FQeJa7kx8jwrUmSmawO3BkKaQLBS0aGweKvGqWODHZdSC9H1XsROXt4uofNqQ0QXnDXZRaKT3D6B%2Bm6L201WVKp6Ks9CWml6nocfNgOKphm6dN9%2FLAEhmY7O45hXNyTU8A0BAY43AP7RrRPyOc%2BPM%2FaU7EtDMG0%2B%2FTpsepWzKpyr0jcfalWIkztO269PNduy2t%2Bps%2Fw3KUEXc2ed5oicECJ7q0waAi3BjtH1krZLHxJEmXSs3UQIx%2BKVeAhZJrXQrHpt44LCoEvnp8B%2Br%2FBH4zPW01k25BAHmhFNXcJT7jD9s63D%2BeRQFbwTZZ2CGhb%2BFeiNrQ2zIyYsSS9ofsxA9eJcz%2B%2B1O9ve7iKSsj2%2Fr0JEo%2FtA%2BkwDQXLJpWzlVxvYgOhq3LwcG4BdEYKjTZlsVjshh82JE%2BYsIASplUWr9%2FJwCTpchafjR0n5AzTm0VR2oV3bJ9AVN2ro69D%2FExb4HMM2VLs3UhIfFTkOnsL7PVDNgGnfa7hNzl6bEOSZgQ1HGJtm4wnor%2F3MV2TZ4xxfDrkfwSRDjMEvKFsHc3%2FRqs5Tu4QFAi0zOwjNO1XIlapdvrwZn9Y6aT7UBctxY7EqLB1QxJ00ZfI01TxGDx8CLeUkDzaWfZjnpnC1CJ76GIRfETjpp2Pc4VTCgvbrWBjqXAZayeWKbxnxHpP4nIC%2Fp8Kp917EnS6yZ82J1TgZa%2BUHeEcC7M%2BFYOJU6NTtWVD5yfZOg6VyF2%2BFmUHg8cz%2FqDgPTQeNKa9oRgVoqkzGuhPHRj%2FGyGOaeeEVMNiLuQNeIZmjPZtEwvoSczmOa4Y66n7%2FwpyHZvZCuDPaZRjDovK4yIqvv7irp24uauGE%2FlCwCEFLWolK3eNg%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=aca6526762a65cb9854a27eafb30fc609501c0070341d419ca70c29e7e6f8284

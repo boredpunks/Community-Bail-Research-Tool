@@ -1,0 +1,589 @@
+Opening Inspector on your computer does not expose its contents to me. I checked the available connectors: none currently provides connected access to your browser or DevTools. To enable browser interaction, connect a suitable browser service through Settings → Connectors; that still needs to support the relevant browser session.
+
+I did retrieve the public page again, but that retrieval exposes its informational text—not the live form’s DOM, option values, event handlers, or network requests. I cannot honestly claim to have inspected those elements or resolved the remaining behavioral questions.
+
+The fastest next step is a **read-only** capture from the Inspector you already opened. Below is a script to capture the actual controls without changing fields or submitting searches, followed by a consolidated handoff for the Replit agent. Our confirmed target remains `Calendar Event` → `Allegheny - 05` → `CP-05-02-Crim`.[1]
+
+## 1. Capture the actual elements from your open page
+
+With the page showing the Calendar Event form and Allegheny selected:
+
+1. Open DevTools’ Console tab.
+2. Review the script below.
+3. Run it.
+4. Copy the JSON it prints and paste it here or directly into Replit.
+
+If your browser blocks pasting into the console, do not disable its protection blindly. You can instead use Elements to copy the relevant form’s outer HTML.
+
+This script only reads the page. It does not select options, click buttons, send requests, read cookies, or collect browser storage. It deliberately excludes input values and link destinations because those can contain case details or session-related information. Dropdown options and selected dropdown values are included.
+
+```javascript
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim();
+
+  const visible = el => {
+    const style = getComputedStyle(el);
+    return el.getClientRects().length > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden";
+  };
+
+  const labelFor = el => {
+    const explicit = Array.from(el.labels ?? [])
+      .map(label => clean(label.textContent))
+      .filter(Boolean);
+
+    const labelledBy = clean(el.getAttribute("aria-labelledby"))
+      .split(" ")
+      .filter(Boolean)
+      .map(id => clean(document.getElementById(id)?.textContent))
+      .filter(Boolean);
+
+    return [...new Set([
+      ...explicit,
+      ...labelledBy,
+      clean(el.getAttribute("aria-label"))
+    ].filter(Boolean))];
+  };
+
+  const controls = Array.from(document.querySelectorAll(
+    "select, input, textarea, button, [role='combobox']"
+  )).filter(el =>
+    visible(el) && el.getAttribute("type") !== "hidden"
+  ).map((el, index) => {
+    const tag = el.tagName.toLowerCase();
+
+    const result = {
+      index,
+      tag,
+      type: el.getAttribute("type"),
+      id: el.id || null,
+      name: el.getAttribute("name"),
+      role: el.getAttribute("role"),
+      labels: labelFor(el),
+      disabled: Boolean(el.disabled),
+      required: Boolean(el.required),
+      ariaDisabled: el.getAttribute("aria-disabled"),
+      ariaRequired: el.getAttribute("aria-required"),
+      ariaControls: el.getAttribute("aria-controls"),
+      placeholder: el.getAttribute("placeholder"),
+      min: el.getAttribute("min"),
+      max: el.getAttribute("max"),
+      pattern: el.getAttribute("pattern"),
+      formId: el.form?.id || null
+    };
+
+    if (tag === "select") {
+      result.selectedIndex = el.selectedIndex;
+      result.selectedValue = el.value;
+      result.options = Array.from(el.options).map(option => ({
+        text: clean(option.textContent),
+        value: option.value,
+        selected: option.selected,
+        disabled: option.disabled
+      }));
+    }
+
+    if (["checkbox", "radio"].includes(el.type)) {
+      result.checked = el.checked;
+    }
+
+    if (
+      tag === "button" ||
+      (tag === "input" && ["submit", "button", "reset"].includes(el.type))
+    ) {
+      result.buttonText = clean(
+        tag === "button" ? el.textContent : el.value
+      );
+    }
+
+    return result;
+  });
+
+  const payload = {
+    capturedAt: new Date().toISOString(),
+    page: location.origin + location.pathname,
+    title: document.title,
+    frames: Array.from(document.querySelectorAll("iframe")).map(frame => ({
+      id: frame.id || null,
+      name: frame.name || null,
+      title: frame.title || null
+    })),
+    controls
+  };
+
+  const json = JSON.stringify(payload, null, 2);
+  console.log(json);
+  return json;
+})();
+```
+
+I have not executed this script against the portal. It is a capture aid, not a tested portal integration. It inspects the current document; controls inside frames or shadow roots may require separate inspection. Custom widgets may also need an additional capture while expanded.
+
+### Capture these states separately
+
+For the most useful comparison, run the same script after each manually established state:
+
+| Capture | Page state |
+|---|---|
+| A | Calendar Event selected; Judicial District blank |
+| B | Calendar Event; `Allegheny - 05` selected |
+| C | Calendar Event; Allegheny; `CP-05-02-Crim` selected |
+| D | Docket Number; Advanced Search unchecked |
+| E | Docket Number; Advanced Search checked |
+| F | Organization; Advanced Search unchecked |
+| G | Organization; Advanced Search checked |
+
+For this project, B and C are the priority. The screenshots already establish the visible district and court-office labels; these captures would establish whether their underlying option values differ.[1][2]
+
+Do not enter a participant’s name, organization name, or docket number merely to capture the form.
+
+## 2. Consolidated handoff for the Replit agent
+
+The following is ready to paste into Replit. It combines confirmed observations, limitations, implementation requirements, and the remaining investigation—not invented DOM selectors or undocumented endpoints.
+
+***
+
+### UJS Case Search integration: evidence, target configuration, and verification requirements
+
+#### Objective
+
+Investigate and implement a reliable public-record research workflow using Pennsylvania’s UJS Case Search page:
+
+```text
+https://ujsportal.pacourts.us/casesearch
+```
+
+The immediate configuration documented by the screenshots is:
+
+```text
+Search By: Calendar Event
+Judicial District: Allegheny - 05
+Court Office: CP-05-02-Crim
+```
+
+These are confirmed visible labels. Their HTML IDs, names, and underlying option values remain unverified.[1]
+
+Do not report successful search automation, result extraction, or PDF retrieval until each has actually been tested.
+
+#### Evidence available
+
+The evidence consists of:
+
+1. Photographs of the public search form in multiple states.
+2. Expanded dropdown photographs.
+3. Retrieved public informational text from the portal.
+4. Any subsequent user-provided DOM captures, which must be evaluated separately from the photographs.
+
+The photographs do not show a completed search, results table, pagination, docket detail page, or downloaded PDF.
+
+An earlier assistant claim that the Replit agent found 49 options and failed specific code-matching attempts was not substantiated. Treat that claim as withdrawn, not as a debugging fact.
+
+#### A. Search modes
+
+The expanded Search By menu visibly contains:
+
+```text
+Appellate
+Attorney
+Calendar Event
+Citation Number
+Complaint Number
+Date Filed
+Docket Number
+Incident Number
+Organization
+OTN
+Parcel
+Participant Name
+SID
+```
+
+There is a blank entry above the named choices. Its meaning and value remain unverified.[3]
+
+The page explicitly instructs users searching for appellate cases to choose Appellate or Docket Number. Do not assume every search mode covers appellate cases.[3]
+
+Changing Search By changes the form. Do not map fields by their position across modes.
+
+#### B. Calendar Event form
+
+Visible controls, in order:
+
+```text
+Search By
+Judicial District
+Court Office
+Room
+Calendar Event Start Date
+Calendar Event End Date
+Calendar Event Type
+Scheduled Events Only
+Search
+Clear
+```
+
+Red asterisks are visible beside:
+
+```text
+Search By
+Judicial District
+Calendar Event Start Date
+Calendar Event End Date
+```
+
+Court Office, Room, and Calendar Event Type do not visibly carry those asterisks. Actual validation requirements still need testing. Both dates display `mm/dd/yyyy` placeholders and calendar icons.[4]
+
+Scheduled Events Only is checked in the photographed states. This establishes its captured state, not its default or exact semantics.[1][4]
+
+When Judicial District is blank, Court Office and Room appear grayed out. Later photographs show populated menus. This suggests dependent controls but does not establish the precise loading mechanism.[1][4][5]
+
+#### C. Judicial District
+
+The target visible label is:
+
+```text
+Allegheny - 05
+```
+
+Visible menu examples include:
+
+```text
+Adams - 51
+Allegheny - 05
+Armstrong - 33
+Beaver - 36
+Bedford - 57
+Berks - 23
+Blair - 24
+Bradford - 42
+Bucks - 07
+Butler - 50
+Cambria - 47
+Cameron/Elk - 59
+Carbon - 56
+Centre - 49
+Chester - 15
+Clarion - 18
+Clearfield - 46
+Clinton - 25
+Columbia/Montour - 26
+```
+
+This is a partial photographed list, not the complete district inventory. Judicial District is distinct from the plain County selector used in Organization mode.[2][6]
+
+#### D. Court Office: critical mapping
+
+With Calendar Event and Allegheny selected, the Court Office menu visibly contains these nonblank labels:
+
+```text
+CP-05-02-Crim
+CP-05-02-Fam
+CP-05-02-Juv
+```
+
+The target label is exactly:
+
+```text
+CP-05-02-Crim
+```
+
+The field label is exactly:
+
+```text
+Court Office
+```
+
+Do not infer the option value from the displayed text. Inspect the actual option’s value. Do not assume what the `02` component means.[1]
+
+#### E. Room: do not mistake it for Court Office
+
+Room contains location labels such as:
+
+```text
+519 Courthouse
+Central Hearing Officer Courtroom
+Courtroom 306A
+Courtroom 821-City County Building
+East Hearing Officer Courtroom
+Family Law Center
+Goldroom 410 Courthouse
+Jail Intake Room
+Municipal Court Building
+MVRO Hearing Officer Courtroom
+North Hearing Officer Courtroom
+Room 201A
+Room 5059.1
+South Hearing Officer Courtroom
+```
+
+The menu also contains many numeric courtroom and room labels. The photographs cover overlapping portions, not a verified complete inventory.[5][7][8][9][10][11]
+
+`Municipal Court Building` appears twice consecutively in one photograph. Do not deduplicate options solely by label: inspect their values first.[7]
+
+Do not select Jail Intake Room merely because the project concerns bail. The photographs do not establish that it is the appropriate location filter.
+
+#### F. Calendar Event Type
+
+The visible menu includes:
+
+```text
+Bail Hearing
+Bail Revocation Hearing
+Preliminary Arraignment
+Preliminary Hearing
+Formal Arraignment
+PTC/Formal Arraignment
+Plea
+Pre-Trial Conference
+Pretrial Motion Hearing
+Review Hearing
+Status Hearing
+Sentencing
+```
+
+It also includes numerous ACT, ARD, competency, domestic-violence, drug-court, mental-health, probation/parole, Phoenix, summary, and veterans-court labels.[12][13][14][15][16][17]
+
+Preserve exact text rather than silently normalizing distinct entries. Examples:
+
+```text
+Pre-Trial Conference
+Pretrial Motion Hearing
+
+Sex Offender Court FA/PTC
+Sex Offense Court FA/PTC
+
+ACT - Gagnon II - Violation
+Gagnon II - Violation Hearing
+```
+
+Those are visibly different choices.[12][15][16]
+
+The existence of Bail Hearing and Bail Revocation Hearing does not prove that filtering on them finds every case with bail information, or that matching results disclose bail amounts or custody status.[13]
+
+#### G. Docket Number mode
+
+The photographed basic form shows:
+
+```text
+Search By: Docket Number
+Advanced Search: unchecked
+Docket Number: empty input
+Search
+Clear
+```
+
+Search By and Docket Number carry red asterisks. The screenshot does not show the advanced form, accepted formats, partial-match behavior, or validation messages.[18]
+
+#### H. Organization mode
+
+Visible fields:
+
+```text
+Search By: Organization
+Advanced Search
+Date Filed Start Date
+Date Filed End Date
+County
+Docket Type
+Case Category
+Case Status
+Organization Name
+Search
+Clear
+```
+
+Organization Name has a red asterisk. The form repeats “One or more of these fields is required” beside the additional filtering fields. Exact enforcement is untested.[6][19][20]
+
+Organization Name is a criterion identifying the organization being searched, not the organization operating the research tool.
+
+Visible Docket Type labels:
+
+```text
+Civil
+Criminal
+Landlord/Tenant
+Miscellaneous
+Non-Traffic
+Summary Appeal
+Traffic
+```
+
+Do not confuse `Criminal` in Docket Type with `CP-05-02-Crim` in Court Office.[1][19]
+
+Visible Case Status labels:
+
+```text
+Active
+Active/Adj. Delinquent
+Active/Adj. Dependent
+Active/Disposed
+Adjudicated
+Closed
+Inactive
+```
+
+These are case-status labels, not demonstrated custody or bail-payment classifications.[20]
+
+Case Category appears grayed out in the captured states. Its menu and dependencies remain unknown.
+
+#### I. Required live investigation
+
+Resolve these questions using the rendered page and actual DOM:
+
+1. Is each dropdown a native select or a custom widget?
+2. What are its ID, name, accessible label, and role?
+3. What are each option’s visible text and underlying value?
+4. Which controls are actually disabled before a district is selected?
+5. Does selecting a district reset Court Office, Room, or Event Type?
+6. Does selecting Court Office change the available Room or Event Type options?
+7. What conditions identify completion of dependent loading?
+8. What do blank options mean?
+9. What does Scheduled Events Only’s help text say?
+10. What fields appear when Advanced Search is enabled?
+11. What date formats and intervals does validation accept?
+12. What result limits, pagination, and empty-state messages exist?
+13. How are docket sheets opened or downloaded?
+14. What happens on timeout, rejected input, or portal errors?
+
+Record answers with observed evidence. If a question cannot be resolved, leave it explicitly unresolved.
+
+#### J. Automation design requirements
+
+These are implementation requirements, not claims about the portal’s current internals.
+
+- Locate controls through verified labels or DOM identifiers.
+- Avoid ordinal selectors such as “the fourth select.”
+- Avoid choosing a dropdown because its option count resembles an expected count.
+- Use exact displayed labels to identify the target initially, then verify the actual option value.
+- Reacquire controls after form-mode changes or rerenders.
+- Wait for observable readiness: enabled state, target option availability, and stable option contents.
+- Do not use fixed delays as the only readiness check.
+- After each selection, verify the displayed label and selected value.
+- Stop with a diagnostic if the intended control or option is absent.
+- Do not substitute a similar office, district, room, or hearing type.
+- Do not treat a failed request as an empty result.
+- Do not bypass authentication, CAPTCHAs, access controls, or rate restrictions.
+
+If native selects are confirmed, a possible Playwright pattern is:
+
+```javascript
+// Example only: validate the live accessible label first.
+const office = page.getByLabel("Court Office", { exact: true });
+
+await office.selectOption({ label: "CP-05-02-Crim" });
+
+const selectedText = await office.locator("option:checked").textContent();
+
+if (selectedText?.trim() !== "CP-05-02-Crim") {
+  throw new Error("Court Office selection verification failed");
+}
+```
+
+This is not a tested portal selector. If the live control lacks that accessible label or is not a native select, use the verified structure instead.
+
+#### K. Controlled test sequence
+
+Do not begin with bulk collection.
+
+1. Capture the initial form.
+2. Select Calendar Event and verify the correct form appears.
+3. Select Allegheny - 05.
+4. Wait for and inspect Court Office options.
+5. Select CP-05-02-Crim.
+6. Verify the selection and inspect downstream controls.
+7. Obtain the intended date range and filtering scope from the project configuration.
+8. Submit one permitted, narrowly scoped test.
+9. Record the exact query, timestamp, result count, warnings, and pagination state.
+10. Open one result and verify its relationship to the search.
+11. Retrieve one docket sheet only if the normal interface permits it.
+12. Confirm that the retrieved artifact is actually a docket sheet—not an error page or login page.
+13. Inspect which bail-related fields are actually present before designing extraction.
+14. Report what passed, what failed, and what remains untested.
+
+Do not silently choose between “all calendar events,” “bail hearings only,” “scheduled only,” and historical events. Those choices materially change the research population.
+
+#### L. Network investigation
+
+If DOM inspection does not resolve the loading behavior:
+
+- Use DevTools Network with Preserve log.
+- Start with a cleared log.
+- Change one non-sensitive field at a time.
+- Correlate each observed request with that exact interaction.
+- Inspect the request method, response status, and returned structure.
+- Establish whether data arrives through fetch/XHR, document navigation, or another mechanism.
+- Do not invent API routes from naming conventions.
+- Do not assume an observed internal route is a supported public API.
+- Do not copy cookies, authorization headers, session tokens, or participant information into prompts.
+- Do not upload a raw HAR without reviewing and sanitizing it.
+
+A connected browser running in a separate session may differ from the user’s existing tab. Record which session produced each observation.
+
+#### M. Research-data limitations
+
+The portal warns that recent court-office entries may not immediately appear and disclaims accuracy and completeness. Retrieval time is not the same as the record’s last-update time.[21]
+
+The portal says docket information is not a substitute for a Pennsylvania State Police criminal-history background check.[21]
+
+Public docket accessibility can end when records are disposed of under applicable retention rules. Absence from this public search is not proof that a case never existed.[21]
+
+Philadelphia matters can have related MC and CP docket numbers concerning the same incident or offenses. The portal points to the cross court docket number field for identifying related records. Do not count every docket number as an unrelated incident.[21]
+
+Historical migration was incomplete. Describe datasets as records retrieved from the portal under stated criteria—not automatically as all cases in the jurisdiction.[21]
+
+Do not infer current incarceration, unpaid bail, release eligibility, or assistance eligibility solely from an event label or case status.
+
+#### N. Deliverables expected from the agent
+
+Produce:
+
+1. A verified control map containing labels, selectors, types, and option values.
+2. A documented state-transition map for dependent fields.
+3. Exact findings from help text and validation.
+4. One tested search workflow with evidence.
+5. A verified description of results and pagination.
+6. A tested docket-sheet retrieval path, if available.
+7. A bail-field inventory based on actual retrieved records.
+8. Failure handling and recovery behavior.
+9. Explicit limitations and unresolved questions.
+10. Tests distinguishing:
+   - No matching records.
+   - Invalid criteria.
+   - Loading failure.
+   - Access restriction.
+   - Download failure.
+   - Parsing failure.
+
+Never describe an intended implementation as completed or verified.
+
+***
+
+## 3. What is still needed from your Inspector
+
+The key missing evidence is not another photograph of the closed search form. It is the actual control metadata—especially the Court Office element and its option values.
+
+Paste the JSON capture from state C: Calendar Event, Allegheny - 05, and CP-05-02-Crim selected. That will let us replace the remaining selector and option-value assumptions with inspected evidence.
+
+Sources
+[1] IMG_3950-10.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/c920e1f2-04bf-4b1a-a659-893019e9ab72/IMG_3950-10.jpg
+[2] IMG_3949-9.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/b9b476f0-a2be-4e96-bca6-af77d7d7cf1d/IMG_3949-9.jpg
+[3] IMG_3943-3.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/30c09088-7290-4b42-bf93-43fba6257ea4/IMG_3943-3.jpg
+[4] IMG_3944-4.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/2a57bd19-47d0-400b-bb91-67ffa7e19297/IMG_3944-4.jpg
+[5] IMG_3951-11.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/afb32a0b-ed99-4d05-a93d-d15e0df420cf/IMG_3951-11.jpg
+[6] IMG_3947-7.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/64853672-a381-4c78-aa96-18addc129bca/IMG_3947-7.jpg
+[7] IMG_3952-12.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/8be96ba9-cfd1-4f7b-9276-f8f9abc84c59/IMG_3952-12.jpg
+[8] IMG_3953-13.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/6548d9ed-b963-4757-88ab-c5b04d85b91b/IMG_3953-13.jpg
+[9] IMG_3955-15.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/ba3ded61-735c-42f2-af0a-9adf87362db3/IMG_3955-15.jpg
+[10] IMG_3954-14.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/00cb1d02-123a-42c7-ae37-bd37523f9c11/IMG_3954-14.jpg
+[11] IMG_3956-16.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/79addab6-ecdb-4298-bfba-6a443e35b144/IMG_3956-16.jpg
+[12] IMG_3957-17.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/19d0e042-de15-471f-a6a2-0132e6738b6c/IMG_3957-17.jpg
+[13] IMG_3958-18.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/5cb5272f-28b6-46e5-b80f-bf9e1042c37e/IMG_3958-18.jpg
+[14] IMG_3959-19.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/9fdf9612-96e0-46a1-b606-2db0abdfcc26/IMG_3959-19.jpg
+[15] IMG_3960-20.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/f5598890-770c-4988-9cf4-4eaee50a7289/IMG_3960-20.jpg
+[16] IMG_3963-3.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/e70a840b-d727-4ee8-854b-70354cc28509/IMG_3963-3.jpg
+[17] IMG_3964-2.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/940f15c0-f070-4484-a765-c859a16076e7/IMG_3964-2.jpg
+[18] IMG_3945-5.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/de488760-bdc0-49e5-899a-9e74409378be/IMG_3945-5.jpg
+[19] IMG_3946-6.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/ee467972-af43-471b-8547-d2dbf9e36aef/IMG_3946-6.jpg
+[20] IMG_3948-8.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/157740339/78754110-8885-49b5-922a-6871786a39fd/IMG_3948-8.jpg
+[21] Case Search https://ujsportal.pacourts.us/casesearch
