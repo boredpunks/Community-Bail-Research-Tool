@@ -1,0 +1,870 @@
+ Finding Items: data-aopc-displayIf
+    Items Found that control another attribute: 3
+ Change Event Added:  - UpdateDependentDisplayControls
+ Change Event Added:  - UpdateDependentDisplayControls
+ Change Event Added:  - UpdateDependentDisplayControls
+ Finding Items: data-aopc-requiredIf
+    Items Found that control another attribute: 18
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Change Event Added:  - UpdateDependentRequiredControls
+ Finding Items: data-aopc-filteredBy
+    Items Found that control another attribute: 6
+ Change Event Added:  - UpdateFilteredControls
+ Change Event Added:  - UpdateFilteredControls
+ Change Event Added:  - UpdateFilteredControls
+ Change Event Added:  - UpdateFilteredControls
+ Change Event Added:  - UpdateFilteredControls
+ Change Event Added:  - UpdateFilteredControls
+ Finding Items: data-aopc-setAttribute
+    Items Found that control another attribute: 1
+ Change Event Added:  - UpdateSetAttribute
+ Finding Items: data-aopc-require-one-of
+    Items Found that control another attribute: 1
+ Change Event Added:  - UpdateRequireOneOf
+ Event Running Because Of: SearchBy data-aopc-displayIf
+ Event Running Because Of: AdvanceSearch data-aopc-displayIf
+ Event Running Because Of: County and data-aopc-requiredIf
+ Event Running Because Of: County data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ParcelMunicipality is skipping its filter process
+ Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    JudgeNameID is skipping its filter process
+    CourtOffice is skipping its filter process
+ Event Running Because Of: CourtOffice data-aopc-filteredBy
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    CalendarEventType is skipping its filter process
+    CourtRoomID is skipping its filter process
+    CalendarEventType is skipping its filter process
+ Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+ Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+ Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+ Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+ Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+ Event Running Because Of: FiledStartDate and data-aopc-requiredIf
+ Event Running Because Of: FiledEndDate and data-aopc-requiredIf
+ Event Running Because Of: County and data-aopc-requiredIf
+ Event Running Because Of: County data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ParcelMunicipality is skipping its filter process
+ Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    JudgeNameID is skipping its filter process
+    CourtOffice is skipping its filter process
+ Event Running Because Of: CourtOffice data-aopc-filteredBy
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    CalendarEventType is skipping its filter process
+    CourtRoomID is skipping its filter process
+    CalendarEventType is skipping its filter process
+ Event Running Because Of: DocketType and data-aopc-requiredIf
+ Event Running Because Of: DocketType data-aopc-filteredBy
+    CaseCategory is skipping its filter process
+ Event Running Because Of: CaseCategory and data-aopc-requiredIf
+ Event Running Because Of: CaseCategory and data-aopc-requiredIf
+ Event Running Because Of: CaseStatus and data-aopc-requiredIf
+ Event Running Because Of: DriversLicenseState data-aopc-displayIf
+ Event Running Because Of: DriversLicenseState and data-aopc-requiredIf
+ Event Running Because Of: PABarNumber and data-aopc-requiredIf
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+ Event Running Because Of: ORI and data-aopc-requiredIf
+ Event Running Because Of: MPOETCID and data-aopc-requiredIf
+ Event Running Because Of: OfficerLastName and data-aopc-requiredIf
+ Event Running Because Of: AppellateCourtName data-aopc-filteredBy
+    AppellateDistrict is skipping its filter process
+    AppellateDocketType is skipping its filter process
+ Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+    AppellateCaseCategory is skipping its filter process
+    AppellateCaseCategory is skipping its filter process
+    AppellateCaseType is skipping its filter process
+ Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+    AppellateCaseCategory is skipping its filter process
+ Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+ Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+ Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+ Event Running Because Of: CourtOffice data-aopc-filteredBy
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    CalendarEventType is skipping its filter process
+ Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+ Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+ Event Running Because Of: SearchBy and data-aopc-requiredIf
+ Event Running Because Of: SearchBy and data-aopc-setAttribute
+ Event Running Because Of: SearchBy and data-aopc-require-one-of
+ Event Running Because Of: AdvanceSearch data-aopc-displayIf
+ Event Running Because Of: County and data-aopc-requiredIf
+ Event Running Because Of: County data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ParcelMunicipality is skipping its filter process
+ Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+    MDJSCourtOffice is skipping its filter process
+    ArrestingAgency is skipping its filter process
+ Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    JudgeNameID is skipping its filter process
+    CourtOffice is skipping its filter process
+ Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DriversLicenseState data-aopc-displayIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DriversLicenseState and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ParcelMunicipality is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseCategory and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseStatus and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DocketType and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseCategory and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: FiledStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: FiledEndDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ORI and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: OfficerLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: MPOETCID and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: PABarNumber and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudgeNameID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateCourtName data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateDistrict is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateDocketType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AdvanceSearch data-aopc-displayIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ParcelMunicipality is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudgeNameID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Type "allow pasting" below and press Enter to allow pasting.
+allow pasting
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim()
+      .replace(/[:*]+\s*$/, "").trim();
+
+  const labelsFor = element => {
+    const labelledBy = (element.getAttribute("aria-labelledby") || "")
+      .split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)?.textContent || "");
+
+    return [
+      ...Array.from(element.labels || []).map(label => label.textContent || ""),
+      element.getAttribute("aria-label") || "",
+      ...labelledBy
+    ].map(clean).filter(Boolean);
+  };
+
+  const visibleSelects = Array.from(document.querySelectorAll("select"))
+    .filter(element => element.getClientRects().length > 0)
+    .filter(element => labelsFor(element).includes("Court Office"));
+
+  const result = { matchingCourtOfficeSelects: visibleSelects.length };
+
+  if (visibleSelects.length === 1) {
+    const select = visibleSelects[0];
+    const allowedLabels = new Set([
+      "CP-05-02-Crim",
+      "CP-05-02-Fam",
+      "CP-05-02-Juv"
+    ]);
+
+    const options = [];
+    let omittedOptionCount = 0;
+
+    for (const option of select.options) {
+      const displayedLabel = clean(option.label || option.textContent);
+      if (allowedLabels.has(displayedLabel)) {
+        options.push({
+          displayedLabel,
+          value: option.value,
+          selected: option.selected,
+          disabled: option.disabled
+        });
+      } else {
+        omittedOptionCount++;
+      }
+    }
+
+    result.control = {
+      tag: select.tagName.toLowerCase(),
+      id: select.id || null,
+      name: select.getAttribute("name"),
+      disabled: select.disabled,
+      labels: labelsFor(select),
+      options,
+      omittedOptionCount
+    };
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+})();
+VM7398:60 {
+  "matchingCourtOfficeSelects": 0
+}
+{matchingCourtOfficeSelects: 0}
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: SearchBy data-aopc-displayIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AdvanceSearch data-aopc-displayIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ParcelMunicipality is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudicialDistrict is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudgeNameID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767142 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: FiledStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: FiledEndDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: County data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ParcelMunicipality is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+    JudgeNameID is skipping its filter process
+    CourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767146 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767147 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudicialDistrict is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudgeNameID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767148 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767149 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DocketType and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseCategory and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseCategory and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CaseStatus and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DriversLicenseState data-aopc-displayIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: DriversLicenseState and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: PABarNumber and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ORI and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: MPOETCID and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: OfficerLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateCourtName data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateDistrict is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateDocketType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseType is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateDocketType data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    AppellateCaseCategory is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellatePartyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyLastName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: AppellateAttorneyFirstName and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767164 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767165 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767166 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767166 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventStartDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CalendarEventEndDate and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928767168 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    all parents are emtpy, no options should be visible
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: SearchBy and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: SearchBy and data-aopc-setAttribute
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: SearchBy and data-aopc-require-one-of
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+handleMouseUp_ @ (unknown)
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim()
+      .replace(/[:*]+\s*$/, "").trim();
+
+  const labelsFor = element => {
+    const labelledBy = (element.getAttribute("aria-labelledby") || "")
+      .split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)?.textContent || "");
+
+    return [
+      ...Array.from(element.labels || []).map(label => label.textContent || ""),
+      element.getAttribute("aria-label") || "",
+      ...labelledBy
+    ].map(clean).filter(Boolean);
+  };
+
+  const visibleSelects = Array.from(document.querySelectorAll("select"))
+    .filter(element => element.getClientRects().length > 0)
+    .filter(element => labelsFor(element).includes("Court Office"));
+
+  const result = { matchingCourtOfficeSelects: visibleSelects.length };
+
+  if (visibleSelects.length === 1) {
+    const select = visibleSelects[0];
+    const allowedLabels = new Set([
+      "CP-05-02-Crim",
+      "CP-05-02-Fam",
+      "CP-05-02-Juv"
+    ]);
+
+    const options = [];
+    let omittedOptionCount = 0;
+
+    for (const option of select.options) {
+      const displayedLabel = clean(option.label || option.textContent);
+      if (allowedLabels.has(displayedLabel)) {
+        options.push({
+          displayedLabel,
+          value: option.value,
+          selected: option.selected,
+          disabled: option.disabled
+        });
+      } else {
+        omittedOptionCount++;
+      }
+    }
+
+    result.control = {
+      tag: select.tagName.toLowerCase(),
+      id: select.id || null,
+      name: select.getAttribute("name"),
+      disabled: select.disabled,
+      labels: labelsFor(select),
+      options,
+      omittedOptionCount
+    };
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+})();
+VM7408:60 {
+  "matchingCourtOfficeSelects": 0
+}
+{matchingCourtOfficeSelects: 0}matchingCourtOfficeSelects: 0[[Prototype]]: Object
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1305)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1305)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: JudicialDistrict data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    MDJSCourtOffice is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    JudgeNameID is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtOffice is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928791296 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928791298 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CourtRoomID is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928791324 'starting up filtering'
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928791330 'starting up filtering'
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1305)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+handleMouseUp_ @ (unknown)
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1305)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim()
+      .replace(/[:*]+\s*$/, "").trim();
+
+  const labelsFor = element => {
+    const labelledBy = (element.getAttribute("aria-labelledby") || "")
+      .split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)?.textContent || "");
+
+    return [
+      ...Array.from(element.labels || []).map(label => label.textContent || ""),
+      element.getAttribute("aria-label") || "",
+      ...labelledBy
+    ].map(clean).filter(Boolean);
+  };
+
+  const visibleSelects = Array.from(document.querySelectorAll("select"))
+    .filter(element => element.getClientRects().length > 0)
+    .filter(element => labelsFor(element).includes("Court Office"));
+
+  const result = { matchingCourtOfficeSelects: visibleSelects.length };
+
+  if (visibleSelects.length === 1) {
+    const select = visibleSelects[0];
+    const allowedLabels = new Set([
+      "CP-05-02-Crim",
+      "CP-05-02-Fam",
+      "CP-05-02-Juv"
+    ]);
+
+    const options = [];
+    let omittedOptionCount = 0;
+
+    for (const option of select.options) {
+      const displayedLabel = clean(option.label || option.textContent);
+      if (allowedLabels.has(displayedLabel)) {
+        options.push({
+          displayedLabel,
+          value: option.value,
+          selected: option.selected,
+          disabled: option.disabled
+        });
+      } else {
+        omittedOptionCount++;
+      }
+    }
+
+    result.control = {
+      tag: select.tagName.toLowerCase(),
+      id: select.id || null,
+      name: select.getAttribute("name"),
+      disabled: select.disabled,
+      labels: labelsFor(select),
+      options,
+      omittedOptionCount
+    };
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+})();
+VM7431:60 {
+  "matchingCourtOfficeSelects": 0
+}
+{matchingCourtOfficeSelects: 0}
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: CourtOffice data-aopc-filteredBy
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    ArrestingAgency is skipping its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 Event Running Because Of: ArrestingAgency and data-aopc-requiredIf
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1    CalendarEventType is running its filter process
+sitemain.min.js?v=deDTDc3_kJg6a0TbfF7C-RNh5Jw:1 1791928800351 'starting up filtering'
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+handleMouseUp_ @ (unknown)
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim()
+      .replace(/[:*]+\s*$/, "").trim();
+
+  const labelsFor = element => {
+    const labelledBy = (element.getAttribute("aria-labelledby") || "")
+      .split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)?.textContent || "");
+
+    return [
+      ...Array.from(element.labels || []).map(label => label.textContent || ""),
+      element.getAttribute("aria-label") || "",
+      ...labelledBy
+    ].map(clean).filter(Boolean);
+  };
+
+  const visibleSelects = Array.from(document.querySelectorAll("select"))
+    .filter(element => element.getClientRects().length > 0)
+    .filter(element => labelsFor(element).includes("Court Office"));
+
+  const result = { matchingCourtOfficeSelects: visibleSelects.length };
+
+  if (visibleSelects.length === 1) {
+    const select = visibleSelects[0];
+    const allowedLabels = new Set([
+      "CP-05-02-Crim",
+      "CP-05-02-Fam",
+      "CP-05-02-Juv"
+    ]);
+
+    const options = [];
+    let omittedOptionCount = 0;
+
+    for (const option of select.options) {
+      const displayedLabel = clean(option.label || option.textContent);
+      if (allowedLabels.has(displayedLabel)) {
+        options.push({
+          displayedLabel,
+          value: option.value,
+          selected: option.selected,
+          disabled: option.disabled
+        });
+      } else {
+        omittedOptionCount++;
+      }
+    }
+
+    result.control = {
+      tag: select.tagName.toLowerCase(),
+      id: select.id || null,
+      name: select.getAttribute("name"),
+      disabled: select.disabled,
+      labels: labelsFor(select),
+      options,
+      omittedOptionCount
+    };
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+})();
+VM7441:60 {
+  "matchingCourtOfficeSelects": 0
+}
+{matchingCourtOfficeSelects: 0}
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+content.js:11 Uncaught Error: Extension context invalidated.
+    at a (content.js:11:1155)
+    at content.js:11:1041
+a @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+i @ content.js:11
+(anonymous) @ content.js:11
+setTimeout
+s @ content.js:11
+(() => {
+  const clean = value =>
+    String(value ?? "").replace(/\s+/g, " ").trim()
+      .replace(/[:*]+\s*$/, "").trim();
+
+  const labels = Array.from(document.querySelectorAll(".field-label"))
+    .filter(element =>
+      element.getClientRects().length > 0 &&
+      clean(element.innerText || element.textContent) === "Court Office"
+    );
+
+  const result = { courtOfficeLabelMatches: labels.length };
+
+  if (labels.length === 1) {
+    const field = labels[0].closest(".field-div");
+    const selects = field
+      ? Array.from(field.querySelectorAll("select"))
+          .filter(element => element.getClientRects().length > 0)
+      : [];
+
+    result.targetSelectMatches = selects.length;
+
+    if (selects.length === 1) {
+      const select = selects[0];
+      const allowedLabels = new Set([
+        "CP-05-02-Crim",
+        "CP-05-02-Fam",
+        "CP-05-02-Juv"
+      ]);
+
+      const options = [];
+      let omittedOptionCount = 0;
+
+      for (const option of select.options) {
+        const displayedLabel = clean(option.label || option.textContent);
+
+        if (allowedLabels.has(displayedLabel)) {
+          options.push({
+            displayedLabel,
+            value: option.value,
+            selected: option.selected,
+            disabled: option.disabled
+          });
+        } else {
+          omittedOptionCount++;
+        }
+      }
+
+      result.control = {
+        tag: select.tagName.toLowerCase(),
+        type: select.type,
+        id: select.id || null,
+        name: select.getAttribute("name"),
+        disabled: select.disabled,
+        options,
+        omittedOptionCount
+      };
+    }
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+})();
+VM8628:61 {
+  "courtOfficeLabelMatches": 1,
+  "targetSelectMatches": 1,
+  "control": {
+    "tag": "select",
+    "type": "select-one",
+    "id": null,
+    "name": null,
+    "disabled": false,
+    "options": [
+      {
+        "displayedLabel": "CP-05-02-Crim",
+        "value": "CP-05-02-Crim",
+        "selected": true,
+        "disabled": false
+      },
+      {
+        "displayedLabel": "CP-05-02-Fam",
+        "value": "CP-05-02-Fam",
+        "selected": false,
+        "disabled": false
+      },
+      {
+        "displayedLabel": "CP-05-02-Juv",
+        "value": "CP-05-02-Juv",
+        "selected": false,
+        "disabled": false
+      }
+    ],
+    "omittedOptionCount": 1
+  }
+}
+{courtOfficeLabelMatches: 1, targetSelectMatches: 1, control: {…}}control: {tag: 'select', type: 'select-one', id: null, name: null, disabled: false, …}courtOfficeLabelMatches: 1targetSelectMatches: 1[[Prototype]]: Object
