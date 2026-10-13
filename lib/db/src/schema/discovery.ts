@@ -4,7 +4,9 @@ import { sql } from "drizzle-orm";
 
 export interface DiscoveryCriteriaData {
   courtOffice: "CP-05-02-Crim";
-  eventType: "Bail Hearing";
+  courtRoom?: string;
+  eventType: "Bail Hearing" | "ANY";
+  calendarPreviewOnly?: boolean;
   startDate: string;
   endDate: string;
   recordCap: number;
@@ -31,6 +33,7 @@ export interface DiscoveryProvenanceData {
   calendarRetrievedAt: string;
   courtOffice: string;
   eventType: string;
+  courtRoom?: string | null;
   eventDate: string | null;
   filingDate: string | null;
   extractionOutcome: "UNPROCESSED" | "EXTRACTED" | "MISSING_BAIL_SECTION" | "UNREADABLE" | "UNSUPPORTED_LAYOUT" | "IDENTITY_MISMATCH" | "RETRIEVAL_FAILED";

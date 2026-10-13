@@ -5,6 +5,7 @@ import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, 
 import {
   ControlDiscoveryJobBody, ControlDiscoveryJobParams, ControlDiscoveryJobResponse,
   CreateDiscoveryJobBody, CreateDiscoveryJobResponse, GetDiscoveryJobParams,
+  CreateCalendarPreviewBody, CreateCalendarPreviewResponse,
   GetDiscoveryJobResponse, GetDiscoveryPolicyResponse, ListDiscoveryJobsResponse,
   SaveDiscoveryObservationBody, SaveDiscoveryObservationParams, SaveDiscoveryObservationResponse,
   SaveDiscoveryCandidatesBody, SaveDiscoveryCandidatesParams, SaveDiscoveryCandidatesResponse,
@@ -68,6 +69,9 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
     || (Date.parse(endDate) - Date.parse(startDate)) / 86_400_000 > 6) {
     res.status(400).json({ error: "Use supported court/event choices and a real today-or-future calendar window of at most seven days. Historical dates are not substituted." }); return;
   }
+  if (body.data.calendarPreviewOnly || body.data.eventType !== "Bail Hearing" || body.data.courtRoom) {
+    res.status(400).json({ error: "Calendar-only previews use the dedicated one-search endpoint; regular discovery remains limited to the supported Bail Hearing scope." }); return;
+  }
   if (body.data.recordCap > discoveryPolicy.maxRecordCap || body.data.requestCap > discoveryPolicy.maxRequestCap) {
     res.status(400).json({ error: "Your explicit budget exceeds protected operator limits." }); return;
   }
@@ -96,6 +100,58 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
   await discoveryEvent(result, "QUEUED", `Target: ${result.criteria.matchTarget} matching dockets with fixed local filters. Safety budget: ${result.criteria.requestCap} total requests; ${result.criteria.recordCap} processed documents. One request at a time; at least ${discoveryPolicy.spacingMs / 1000}s after the previous response completes; no automatic retries.`);
   const payload = await jobSummary(result);
   CreateDiscoveryJobResponse.parse(payload);
+  res.status(201).json(payload);
+});
+
+router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
+  const body = CreateCalendarPreviewBody.safeParse(req.body);
+  const eventDate = req.body?.eventDate;
+  if (!body.success || !actualDate(eventDate) || eventDate !== "2026-10-14" || eventDate < easternToday()) {
+    res.status(400).json({ error: "This preview is limited to the selected October 14, 2026 Allegheny court-office and courtroom search. No other date will be substituted." });
+    return;
+  }
+
+  const availability = await discoverySourceStatus();
+  if (!availability.collectionEnabled) {
+    res.status(409).json({ error: `Source-wide stop: ${availability.blockedReason}. No collection authorized.` });
+    return;
+  }
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+  const requestCap = Math.min(8, discoveryPolicy.maxRequestCap);
+  const criteria = {
+    courtOffice: body.data.courtOffice,
+    courtRoom: body.data.courtRoom,
+    eventType: "ANY" as const,
+    calendarPreviewOnly: true,
+    startDate: eventDate,
+    endDate: eventDate,
+    recordCap: 1,
+    requestCap,
+  };
+  const result = await db.transaction(async (tx) => {
+    const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
+    if (await sourceAdmissionBlock(tx, source)) return null;
+    await tx.execute(`SELECT pg_advisory_xact_lock(hashtext('ujs-job-creation'))`);
+    const [active] = await tx.select().from(discoveryJobsTable).where(and(
+      inArray(discoveryJobsTable.ownerId, ownerIds),
+      inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"]),
+    ));
+    if (active) return null;
+    const [job] = await tx.insert(discoveryJobsTable).values({
+      ownerId,
+      criteria,
+      message: "One calendar-only preview queued. No docket PDFs, bail extraction, candidate saving or automatic second search.",
+    }).returning();
+    return job!;
+  });
+  if (!result) {
+    res.status(409).json({ error: "Collection is unavailable or another job is active. Refresh source status; no source request was sent." });
+    return;
+  }
+  await discoveryEvent(result, "QUEUED",
+    `One Calendar Event preview: ${criteria.courtOffice}, ${criteria.courtRoom}, ${eventDate}; no event-type filter. Request budget ${requestCap}; docket-document downloads disabled.`);
+  const payload = await jobSummary(result);
+  CreateCalendarPreviewResponse.parse(payload);
   res.status(201).json(payload);
 });
 
@@ -150,6 +206,7 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 };
     const action = body.data.action;
     if (action === "RESUME") {
+      if (job.criteria.calendarPreviewOnly) return { error: "A calendar preview is a single-use search and cannot be resumed. Start a new separately approved preview instead.", status: 409 };
       if (job.assessmentId) return { error: "Pilot permits are single-use and operator-only. They cannot be resumed from this endpoint.", status: 409 };
       const expired = expiredResumeConflict(job);
       if (expired) return expired;
@@ -182,6 +239,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promi
   const result = await db.transaction(async (tx) => {
     const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
     if (!job) return { error: "Job not found.", status: 404 };
+    if (job.criteria.calendarPreviewOnly) return { error: "Calendar-preview rows are not bail evidence and cannot be saved as observations.", status: 409 };
     if (job.resultsExpiredAt || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())) return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 };
     const [item] = await tx.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, job.id), inArray(discoveryItemsTable.ownerId, ownerIds)));
     if (!item) return { error: "Evidence not found.", status: 404 };
@@ -212,6 +270,9 @@ router.post("/discovery/jobs/:jobId/candidates", async (req, res): Promise<void>
       .where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)))
       .for("update");
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 as const };
+    if (job.criteria.calendarPreviewOnly) {
+      return { error: "Calendar-preview rows are not bail evidence and cannot be saved as candidates.", status: 409 as const };
+    }
     const deadline = resultsDeadline(job);
     if (job.resultsExpiredAt || (deadline && deadline <= new Date())) {
       return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 as const };

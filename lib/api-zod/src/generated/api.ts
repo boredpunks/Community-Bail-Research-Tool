@@ -78,6 +78,8 @@ export const GetDiscoveryPolicyResponse = zod.object({
 })
 
 
+export const listDiscoveryJobsResponseCriteriaCourtRoomMax = 80;
+
 export const listDiscoveryJobsResponseCriteriaRecordCapMax = 200;
 
 export const listDiscoveryJobsResponseCriteriaRequestCapMin = 8;
@@ -93,7 +95,9 @@ export const ListDiscoveryJobsResponseItem = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(listDiscoveryJobsResponseCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(listDiscoveryJobsResponseCriteriaRecordCapMax),
@@ -129,6 +133,8 @@ export const ListDiscoveryJobsResponseItem = zod.object({
 export const ListDiscoveryJobsResponse = zod.array(ListDiscoveryJobsResponseItem)
 
 
+export const createDiscoveryJobBodyCourtRoomMax = 80;
+
 export const createDiscoveryJobBodyRecordCapMax = 200;
 
 export const createDiscoveryJobBodyRequestCapMin = 8;
@@ -142,7 +148,9 @@ export const createDiscoveryJobBodyMatchFiltersMonetaryUpperBoundCentsMax = 2147
 
 export const CreateDiscoveryJobBody = zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(createDiscoveryJobBodyCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(createDiscoveryJobBodyRecordCapMax),
@@ -154,6 +162,8 @@ export const CreateDiscoveryJobBody = zod.object({
   "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
 }).optional()
 })
+
+export const createDiscoveryJobResponseCriteriaCourtRoomMax = 80;
 
 export const createDiscoveryJobResponseCriteriaRecordCapMax = 200;
 
@@ -170,7 +180,9 @@ export const CreateDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(createDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaRecordCapMax),
@@ -206,8 +218,73 @@ export const CreateDiscoveryJobResponse = zod.object({
 
 
 /**
+ * @summary Run one calendar-only preview without retrieving docket documents
+ */
+export const CreateCalendarPreviewBody = zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtRoom": zod.enum(['Courtroom 506']),
+  "eventDate": zod.enum(['2026-10-14'])
+})
+
+export const createCalendarPreviewResponseCriteriaCourtRoomMax = 80;
+
+export const createCalendarPreviewResponseCriteriaRecordCapMax = 200;
+
+export const createCalendarPreviewResponseCriteriaRequestCapMin = 8;
+export const createCalendarPreviewResponseCriteriaRequestCapMax = 500;
+
+export const createCalendarPreviewResponseCriteriaMatchTargetMax = 200;
+
+export const createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+
+
+export const CreateCalendarPreviewResponse = zod.object({
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtRoom": zod.string().max(createCalendarPreviewResponseCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(createCalendarPreviewResponseCriteriaRequestCapMin).max(createCalendarPreviewResponseCriteriaRequestCapMax),
+  "matchTarget": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
+  "excludeShownPosted": zod.boolean(),
+  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "resultsExpireAt": zod.coerce.date().nullable(),
+  "resultsExpiredAt": zod.coerce.date().nullable(),
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
+})
+
+
+/**
  * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
  */
+export const listDiscoveryAssessmentsResponseCriteriaCourtRoomMax = 80;
+
 export const listDiscoveryAssessmentsResponseCriteriaRecordCapMax = 200;
 
 export const listDiscoveryAssessmentsResponseCriteriaRequestCapMin = 8;
@@ -225,7 +302,9 @@ export const ListDiscoveryAssessmentsResponseItem = zod.object({
   "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED']),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(listDiscoveryAssessmentsResponseCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(listDiscoveryAssessmentsResponseCriteriaRecordCapMax),
@@ -256,6 +335,8 @@ export const GetDiscoveryJobParams = zod.object({
   "jobId": zod.coerce.string().uuid()
 })
 
+export const getDiscoveryJobResponseJobCriteriaCourtRoomMax = 80;
+
 export const getDiscoveryJobResponseJobCriteriaRecordCapMax = 200;
 
 export const getDiscoveryJobResponseJobCriteriaRequestCapMin = 8;
@@ -274,7 +355,9 @@ export const GetDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(getDiscoveryJobResponseJobCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(getDiscoveryJobResponseJobCriteriaRecordCapMax),
@@ -319,6 +402,7 @@ export const GetDiscoveryJobResponse = zod.object({
   "calendarUrl": zod.string().url(),
   "calendarRetrievedAt": zod.coerce.date(),
   "eventType": zod.string(),
+  "courtRoom": zod.string().nullish(),
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
@@ -357,6 +441,8 @@ export const ControlDiscoveryJobBody = zod.object({
   "action": zod.enum(['PAUSE', 'CANCEL', 'RESUME'])
 })
 
+export const controlDiscoveryJobResponseCriteriaCourtRoomMax = 80;
+
 export const controlDiscoveryJobResponseCriteriaRecordCapMax = 200;
 
 export const controlDiscoveryJobResponseCriteriaRequestCapMin = 8;
@@ -372,7 +458,9 @@ export const ControlDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "eventType": zod.enum(['Bail Hearing']),
+  "courtRoom": zod.string().max(controlDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
+  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
   "recordCap": zod.number().int().min(1).max(controlDiscoveryJobResponseCriteriaRecordCapMax),
@@ -463,6 +551,7 @@ export const SaveDiscoveryObservationResponse = zod.object({
   "calendarUrl": zod.string().url(),
   "calendarRetrievedAt": zod.coerce.date(),
   "eventType": zod.string(),
+  "courtRoom": zod.string().nullish(),
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
@@ -541,6 +630,7 @@ export const ListBailRecordsResponse = zod.object({
   "calendarUrl": zod.string().url(),
   "calendarRetrievedAt": zod.coerce.date(),
   "eventType": zod.string(),
+  "courtRoom": zod.string().nullish(),
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
@@ -627,6 +717,7 @@ export const CreateBailRecordResponse = zod.object({
   "calendarUrl": zod.string().url(),
   "calendarRetrievedAt": zod.coerce.date(),
   "eventType": zod.string(),
+  "courtRoom": zod.string().nullish(),
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
@@ -691,6 +782,7 @@ export const ReviewBailRecordResponse = zod.object({
   "calendarUrl": zod.string().url(),
   "calendarRetrievedAt": zod.coerce.date(),
   "eventType": zod.string(),
+  "courtRoom": zod.string().nullish(),
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),

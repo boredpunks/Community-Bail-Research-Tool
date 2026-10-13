@@ -31,6 +31,7 @@ export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof
 
 export const DiscoveryCriteriaEventType = {
   Bail_Hearing: 'Bail Hearing',
+  ANY: 'ANY',
 } as const;
 
 export interface DiscoveryMatchFilters {
@@ -48,7 +49,10 @@ export interface DiscoveryMatchFilters {
 
 export interface DiscoveryCriteria {
   courtOffice: DiscoveryCriteriaCourtOffice;
+  /** @maxLength 80 */
+  courtRoom?: string;
   eventType: DiscoveryCriteriaEventType;
+  calendarPreviewOnly?: boolean;
   startDate: string;
   endDate: string;
   /**
@@ -68,6 +72,33 @@ export interface DiscoveryCriteria {
      */
   matchTarget?: number;
   matchFilters?: DiscoveryMatchFilters;
+}
+
+export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
+
+
+export const CalendarPreviewInputCourtOffice = {
+  'CP-05-02-Crim': 'CP-05-02-Crim',
+} as const;
+
+export type CalendarPreviewInputCourtRoom = typeof CalendarPreviewInputCourtRoom[keyof typeof CalendarPreviewInputCourtRoom];
+
+
+export const CalendarPreviewInputCourtRoom = {
+  Courtroom_506: 'Courtroom 506',
+} as const;
+
+export type CalendarPreviewInputEventDate = typeof CalendarPreviewInputEventDate[keyof typeof CalendarPreviewInputEventDate];
+
+
+export const CalendarPreviewInputEventDate = {
+  '2026-10-14': '2026-10-14',
+} as const;
+
+export interface CalendarPreviewInput {
+  courtOffice: CalendarPreviewInputCourtOffice;
+  courtRoom: CalendarPreviewInputCourtRoom;
+  eventDate: CalendarPreviewInputEventDate;
 }
 
 export interface DiscoveryPolicy {
@@ -288,6 +319,8 @@ export interface DiscoveryProvenance {
   calendarUrl: string;
   calendarRetrievedAt: string;
   eventType: string;
+  /** @nullable */
+  courtRoom?: string | null;
   /** @nullable */
   eventDate: string | null;
   /** @nullable */

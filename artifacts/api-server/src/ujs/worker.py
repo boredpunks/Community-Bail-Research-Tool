@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright, TimeoutError as BrowserTimeou
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
 from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
-from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure
+from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 
 
 def emit(kind, **values):
@@ -32,6 +32,7 @@ class SourceFailure(RuntimeError):
 async def main():
     config = json.loads(sys.stdin.readline())
     criteria = config["criteria"]
+    calendar_preview_only = config.get("calendarPreviewOnly") is True
     lock = asyncio.Lock()
     stopped = False
     requests = 0
@@ -142,6 +143,7 @@ async def main():
                     await route.abort()
                 return
             if (not allowed(request.url, request.method)
+                    or calendar_preview_only and urlsplit(request.url).path == "/Report/CpDocketSheet"
                     or request.method == "POST" and not submission_armed
                     or request.resource_type not in ("document", "script", "stylesheet", "xhr", "fetch")):
                 blocked += 1
@@ -151,6 +153,13 @@ async def main():
                 if request.resource_type in ("image", "font", "media") and len(blocked_optional_urls) < 10_000:
                     blocked_optional_urls.add(request.url)  # Ephemeral; never emitted.
                 await route.abort()
+                return
+            if (request.method == "POST" and urlsplit(request.url).path == "/CaseSearch"
+                    and request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                    != "application/x-www-form-urlencoded"):
+                blocked += 1
+                blocked_requests += 1
+                await route.fulfill(status=400, content_type="text/plain", body="")
                 return
             try:
                 response, body, _ = await retrieve(
@@ -214,6 +223,7 @@ async def main():
             if not config["calendarComplete"]:
                 await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=600_000)
                 calendar_preflight("READY")
+                initial_form_shape = await calendar_form_field_shape(page)
                 if filing_inspection_only:
                     inspection_local = True
                     from filing_inventory import observe
@@ -241,10 +251,14 @@ async def main():
                     return
                 if inspection_only:
                     inspection_local = True  # No further transmissions, including dependent-control fetches.
-                await page.locator("#SearchBy-Control select").select_option("CalendarEvent")
-                await page.locator("#JudicialDistrict-Control select").select_option("05")
-                await page.locator("#CourtOffice-Control select").select_option(criteria["courtOffice"])
-                await page.locator("#CalendarEventType-Control select").select_option(criteria["eventType"])
+                preview_values = None
+                if calendar_preview_only:
+                    preview_values = await select_calendar_preview_controls(page, criteria)
+                else:
+                    await page.locator("#SearchBy-Control select").select_option("CalendarEvent")
+                    await page.locator("#JudicialDistrict-Control select").select_option("05")
+                    await page.locator("#CourtOffice-Control select").select_option(criteria["courtOffice"])
+                    await page.locator("#CalendarEventType-Control select").select_option(criteria["eventType"])
                 start = page.locator("input[name=CalendarEventStartDate]")
                 minimum = await start.get_attribute("min")
                 if minimum and criteria["startDate"] < minimum:
@@ -269,7 +283,9 @@ async def main():
                     calendar_preflight("RESULT")
                     emit("inspection_finished")
                     return
-                await validate_calendar_form(page, criteria)
+                if await calendar_form_field_shape(page) != initial_form_shape:
+                    raise RuntimeError("CALENDAR_FORM_STRUCTURE_CHANGED")
+                await validate_calendar_form(page, criteria, preview_values)
                 calendar_preflight("READY")
                 emit("calendar_state", state="FORM_READY", formVisible=await page.locator("#btnSearch").is_visible())
                 diagnostic_phase = "RESULT"
@@ -298,6 +314,9 @@ async def main():
                      paginationComplete=not parser.has_remote_pagination and len(items) < 500,
                      resultCapReached=len(items) >= 500,
                      blockedAssets=blocked)
+                if calendar_preview_only:
+                    emit("calendar_preview_finished")
+                    return
             for item in items[:config["remainingRecords"]]:
                 if stopped:
                     break
@@ -361,6 +380,7 @@ async def main():
                 "CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH",
                 "CALENDAR_FORM_MISSING", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_PREFLIGHT_FAILED",
+                "CALENDAR_FORM_STRUCTURE_CHANGED",
                 "SUBMISSION_NOT_OBSERVED", "UNEXPECTED_RESPONSE",
                 "CALENDAR_DOCUMENT_LINK_MISSING", "UNSUPPORTED_CALENDAR_LAYOUT",
                 "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT", "UNSUPPORTED_EVENT_DATE_LAYOUT",

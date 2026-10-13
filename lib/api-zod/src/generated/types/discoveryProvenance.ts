@@ -14,6 +14,8 @@ export interface DiscoveryProvenance {
   calendarRetrievedAt: Date;
   eventType: string;
   /** @nullable */
+  courtRoom?: string | null;
+  /** @nullable */
   eventDate: string | null;
   /** @nullable */
   filingDate: Date | null;

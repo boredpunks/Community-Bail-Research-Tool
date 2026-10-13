@@ -8,6 +8,7 @@ import {
   getGetDiscoveryPolicyQueryKey,
   useListDiscoveryJobs,
   useCreateDiscoveryJob,
+  useCreateCalendarPreview,
   useGetDiscoveryJob,
   useControlDiscoveryJob,
   useSaveDiscoveryObservation,
@@ -22,6 +23,7 @@ import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-rete
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
+const PREVIEW_DATE = '2026-10-14';
 
 function dayNum(d: string) { const [y, m, dd] = d.split('-').map(Number); return Date.UTC(y, m - 1, dd) / 86400000; }
 
@@ -145,6 +147,7 @@ export default function Discovery() {
     refetchInterval: (q) => q.state.data?.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING') ? POLL_MS : false,
   } });
   const create = useCreateDiscoveryJob();
+  const createCalendarPreview = useCreateCalendarPreview();
   const control = useControlDiscoveryJob();
   const save = useSaveDiscoveryObservation();
   const saveCandidates = useSaveDiscoveryCandidates();
@@ -155,6 +158,7 @@ export default function Discovery() {
   const [recCapE, setRecCap] = useState<string | undefined>();
   const [reqCapE, setReqCap] = useState<string | undefined>();
   const [formErr, setFormErr] = useState<string | null>(null);
+  const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [ctlMsg, setCtlMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<{ id: string; msg: string } | null>(null);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
@@ -186,6 +190,7 @@ export default function Discovery() {
     },
   });
   const job = report.data?.job;
+  const isCalendarPreview = job?.criteria.calendarPreviewOnly === true;
 
   const boundCents = parseDollarsToCents(bound);
   const filtering = filterOn && boundCents != null;
@@ -226,6 +231,36 @@ export default function Discovery() {
         onError: (er) => setFormErr(errMsg(er)),
       },
     );
+  }
+
+  function submitCalendarPreview(e: FormEvent) {
+    e.preventDefault();
+    setPreviewErr(null);
+    if (!pol) return;
+    if (!pol.collectionEnabled) {
+      setPreviewErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
+      return;
+    }
+    if (PREVIEW_DATE < pol.minimumDate) {
+      setPreviewErr(`The selected date ${PREVIEW_DATE} is before the supported minimum ${pol.minimumDate}. No date will be substituted.`);
+      return;
+    }
+    createCalendarPreview.mutate({
+      data: {
+        courtOffice: 'CP-05-02-Crim',
+        courtRoom: 'Courtroom 506',
+        eventDate: PREVIEW_DATE,
+      },
+    }, {
+      onSuccess: (j) => {
+        setJobId(j.id);
+        setSelectedCandidateIds([]);
+        setCandidateMsg(null);
+        setCtlMsg(null);
+        refreshJob(j.id);
+      },
+      onError: (er) => setPreviewErr(errMsg(er)),
+    });
   }
 
   function act(action: DiscoveryControlAction) {
@@ -314,6 +349,22 @@ export default function Discovery() {
         ) : null}
       </section>
 
+      <form onSubmit={submitCalendarPreview} className="panel mb-8" aria-label="Calendar-only preview" data-testid="form-calendar-preview">
+        <h2 className="mono text-xl font-bold mb-2">Calendar Event preview</h2>
+        <p className="hint mb-4">
+          One explicitly started search for Allegheny Common Pleas office CP-05-02-Crim, Courtroom 506, on one date, with no event-type filter.
+          This preview retains only validated calendar result rows. It does not request docket PDFs, extract bail evidence, or save candidates.
+          The shared source approval and request limiter still apply.
+        </p>
+        <p className="mono">Calendar date: {PREVIEW_DATE}</p>
+        {previewErr ? <p className="errbox mt-3" role="alert" data-testid="text-calendar-preview-error">{previewErr}</p> : null}
+        <button type="submit" className="btn btn-primary mt-4"
+          disabled={!pol?.collectionEnabled || createCalendarPreview.isPending}
+          data-testid="button-calendar-preview">
+          {createCalendarPreview.isPending ? 'Starting preview…' : 'Start one calendar-only preview'}
+        </button>
+      </form>
+
       <form onSubmit={submit} className="panel mb-8" aria-label="Start a discovery job" data-testid="form-job">
         <h2 className="mono text-xl font-bold mb-3">What are you looking for?</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -363,7 +414,7 @@ export default function Discovery() {
             {jobs.data!.map((j) => (
               <li key={j.id}>
                 <button type="button" className="btn w-full text-left" aria-pressed={j.id === selected} onClick={() => { setJobId(j.id); setSelectedCandidateIds([]); setCandidateMsg(null); }} data-testid={`button-job-${j.id}`}>
-                  <span className="mono font-semibold">{j.status}</span> &middot; {j.criteria.startDate} to {j.criteria.endDate} &middot; {j.processed}/{j.discovered} processed &middot; {j.matching}{j.criteria.matchTarget ? `/${j.criteria.matchTarget}` : ''} matching &middot; created {formatInstant(j.createdAt)}
+                  <span className="mono font-semibold">{j.status}</span> &middot; {j.criteria.calendarPreviewOnly ? 'calendar-only preview' : 'bail discovery'} &middot; {j.criteria.startDate} to {j.criteria.endDate} &middot; {j.criteria.calendarPreviewOnly ? `${j.discovered} calendar rows` : `${j.processed}/${j.discovered} processed · ${j.matching}${j.criteria.matchTarget ? `/${j.criteria.matchTarget}` : ''} matching`} &middot; created {formatInstant(j.createdAt)}
                 </button>
               </li>
             ))}
@@ -383,11 +434,11 @@ export default function Discovery() {
             <>
               <div className="panel mb-6" role="status" aria-live="polite">
                 <p className="mono font-bold text-lg" data-testid="text-job-status">{job.status}</p>
-                <p>{job.criteria.courtOffice}, {job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
+                <p>{job.criteria.courtOffice}{job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.calendarPreviewOnly || job.criteria.eventType === 'ANY' ? 'no event-type filter' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
                 {job.message ? <p className="mt-1" data-testid="text-job-message">{job.message}</p> : null}
-                <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
+                {!isCalendarPreview ? <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
                   ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
-                  : 'Legacy job: processing budget only; no matching target was selected. Its original criteria have not been changed.'}</p>
+                  : 'Legacy job: processing budget only; no matching target was selected. Its original criteria have not been changed.'}</p> : null}
                 {job.criteria.matchTarget && !job.targetReached && job.status === 'COMPLETED' ? <p className="hint text-warning" data-testid="text-target-shortfall">Target not reached: {job.matching} of {job.criteria.matchTarget}. Collection stopped within the original scope and safety limits.</p> : null}
                 {job.resultsExpiredAt ? <ExpiredResultsNotice resultsExpiredAt={job.resultsExpiredAt} items={items} /> : job.resultsExpireAt ? <p className="hint mt-2">Unsaved stopped-search results expire {formatInstant(job.resultsExpireAt)}. Save source-backed observations before then; saved candidates are retained.</p> : null}
                 {active ? <p className="hint mt-1">Working. This tab refreshes every {POLL_MS / 1000} seconds until the job stops; refreshing pauses if the tab is in the background.</p> : null}
@@ -396,29 +447,75 @@ export default function Discovery() {
                   {([
                     ['Requests made', `${job.requestsUsed} of ${job.criteria.requestCap} cap`],
                     ['Requests completed', job.completedRequests], ['Requests failed', job.failedRequests],
-                    ['Record cap', job.criteria.recordCap],
-                    ['Discovered', job.discovered], ['Processed', job.processed],
-                    ['Matching (fixed filters)', job.matching], ['Target', job.criteria.matchTarget ?? 'legacy job'],
-                    ['Failed', job.failed], ['Unprocessed', job.unprocessed],
+                    ...(isCalendarPreview
+                      ? [['Calendar rows', job.discovered] as const]
+                      : [
+                        ['Record cap', job.criteria.recordCap] as const,
+                        ['Discovered', job.discovered] as const, ['Processed', job.processed] as const,
+                        ['Matching (fixed filters)', job.matching] as const, ['Target', job.criteria.matchTarget ?? 'legacy job'] as const,
+                        ['Failed', job.failed] as const, ['Unprocessed', job.unprocessed] as const,
+                      ]),
                   ] as const).map(([l, v]) => (
                     <div key={l} className="border border-border rounded p-2"><dt className="mono text-sm">{l}</dt><dd className="mono text-lg font-bold">{v}</dd></div>
                   ))}
                 </dl>
-                <ul className="hint mt-3 list-disc pl-5">
+                {!isCalendarPreview ? <ul className="hint mt-3 list-disc pl-5">
                   <li>Calendar table: {job.calendarComplete ? 'a returned calendar table was validated. This does not prove every docket in the window was listed.' : 'not validated; the calendar may not have been read, so results can be missing.'}</li>
                   <li>Pagination: {job.paginationComplete ? 'complete for the pages read' : 'incomplete; more results may exist'}.</li>
                   <li>Source result cap: {job.resultCapReached ? 'reached; the source stopped returning results, so more dockets may exist' : 'not reached'}.</li>
                   <li>Local processing cap ({job.criteria.recordCap} records): {localCapReached ? `reached with ${job.unprocessed} discovered docket${job.unprocessed === 1 ? '' : 's'} left unprocessed` : 'not reached with unprocessed work remaining'}.</li>
-                </ul>
+                </ul> : <p className="hint mt-3">Preview results are calendar rows only. A validated table does not establish that every event or docket in the date window was listed. No docket PDF is fetched from this screen.</p>}
                 <div className="flex flex-wrap gap-2 mt-4">
                   {active ? <button type="button" className="btn" disabled={control.isPending} onClick={() => act('PAUSE')} data-testid="button-pause">Pause</button> : null}
-                  <ResumeControl job={job} pending={control.isPending} collectionEnabled={!!pol?.collectionEnabled} onResume={() => act('RESUME')} />
+                  {!isCalendarPreview ? <ResumeControl job={job} pending={control.isPending} collectionEnabled={!!pol?.collectionEnabled} onResume={() => act('RESUME')} /> : null}
                   {active || job.status === 'PAUSED' ? <button type="button" className="btn btn-danger" disabled={control.isPending} onClick={() => act('CANCEL')} data-testid="button-cancel">Cancel</button> : null}
                 </div>
-                <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p>
+                {!isCalendarPreview ? <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p> : <p className="hint mt-2">A preview cannot be resumed; interrupted or failed previews keep their partial history and require a new explicitly approved search.</p>}
                 {ctlMsg ? <p className="mt-2" role="status" data-testid="text-control-message">{ctlMsg}</p> : null}
               </div>
 
+              {isCalendarPreview ? (
+                <section className="panel mb-6" data-testid="section-calendar-preview-results">
+                  <h3 className="mono font-bold mb-2">Calendar rows only</h3>
+                  <p className="hint mb-3">These are source-linked rows retained from the validated calendar table. Dockets are shown as plain text here; this preview has no document links, bail extraction, or candidate-saving controls.</p>
+                  {items.length > 0 ? (
+                    <div className="overflow-x-auto" data-testid="calendar-preview-table-wrap">
+                      <table className="w-full text-left text-sm min-w-[44rem]" data-testid="calendar-preview-table">
+                        <caption className="text-left mono font-bold mb-2">{items.length} calendar row{items.length === 1 ? '' : 's'} in source order</caption>
+                        <thead className="mono"><tr className="border-b-2 border-border">
+                          <th scope="col" className="p-2">Pos.</th>
+                          <th scope="col" className="p-2">Docket</th>
+                          <th scope="col" className="p-2">Court office</th>
+                          <th scope="col" className="p-2">Courtroom filter</th>
+                          <th scope="col" className="p-2">Event type</th>
+                          <th scope="col" className="p-2">Event date</th>
+                          <th scope="col" className="p-2">Filing date</th>
+                        </tr></thead>
+                        <tbody>
+                          {items.map((item) => (
+                            <tr key={item.id} className="border-b border-border align-top" data-testid={`calendar-preview-row-${item.id}`}>
+                              <td className="p-2 mono">{item.position + 1}</td>
+                              <td className="p-2 mono font-semibold break-all">{item.docketNumber}</td>
+                              <td className="p-2">{item.provenance.courtOffice}</td>
+                              <td className="p-2">{item.provenance.courtRoom ?? 'Not recorded'}</td>
+                              <td className="p-2">{item.provenance.eventType}</td>
+                              <td className="p-2">{item.provenance.eventDate ?? 'Not recorded'}</td>
+                              <td className="p-2">{item.provenance.filingDate ?? 'Not recorded'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-calendar-preview">
+                      {active ? 'Preview is running; no calendar rows are available yet.' : !job.calendarComplete
+                        ? 'No validated calendar rows were retained. This is not proof that no events exist; the search may have stopped at a source or validation barrier.'
+                        : 'The validated results contained no rows. This preview does not classify an empty calendar unless the source provides a validated empty-state marker.'}
+                    </p>
+                  )}
+                </section>
+              ) : (
+                <>
               <div className="panel mb-6" data-testid="section-filter">
                 <h3 className="mono font-bold mb-2">Provisional local filters</h3>
                 <p className="hint mb-3">Computed in your browser. They are not reviewed operative ranges. These display filters are independent and never change the job’s fixed matching filters or target.</p>
@@ -489,6 +586,8 @@ export default function Discovery() {
                       selected={selectedCandidateIds.includes(it.id)} onSelect={toggleCandidate} />
                   ))}
                 </ul>
+              )}
+                </>
               )}
 
               {(report.data?.events.length ?? 0) > 0 ? (

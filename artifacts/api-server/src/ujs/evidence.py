@@ -70,6 +70,9 @@ class CalendarResults(HTMLParser):
     def validated(self, criteria):
         if not self.table_found:
             raise ValueError("RESULTS_NOT_VALIDATED")
+        event_type_filter = criteria.get("eventType")
+        if event_type_filter in ("", "ANY"):
+            event_type_filter = None
         expected = {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
                     9: "County", 10: "Court Office", 14: "Event Type"}
         if any(len(self.headers) <= i or not self.headers[i].startswith(label)
@@ -82,12 +85,14 @@ class CalendarResults(HTMLParser):
             if len(cells) < 18:
                 raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
             docket = cells[2].strip()
+            event_type = cells[14].strip()
             url = urlsplit(link)
             if (not DOCKET.fullmatch(docket) or url.path != "/Report/CpDocketSheet"
                     or url.netloc or parse_qs(url.query).get("docketNumber") != [docket]
                     or cells[9].strip() != "Allegheny"
                     or cells[10].strip() != criteria["courtOffice"]
-                    or cells[14].strip() != criteria["eventType"]):
+                    or not event_type
+                    or event_type_filter is not None and event_type != event_type_filter):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
             event_date = cells[16].strip()
             validate_event_date(event_date, criteria)
@@ -100,6 +105,7 @@ class CalendarResults(HTMLParser):
                 "sourceUrl": "https://ujsportal.pacourts.us" + link,
                 "eventDate": event_date or None,
                 "filingDate": iso_date(cells[6].strip()),
+                "eventType": event_type,
             })
         return result
 

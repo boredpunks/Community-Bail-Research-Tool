@@ -52,6 +52,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
   const coverageOnly = permit?.stage === "COVERAGE" && permit.expectedMethod === coverageInspectionMethod;
   const filingInspectionOnly = permit?.stage === "FILING_INSPECT" && permit.expectedMethod === filingInspectionMethod;
+  const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
+  if (calendarPreviewOnly && (job.assessmentId || inspectionOnly || coverageOnly || filingInspectionOnly
+      || job.calendarComplete || job.criteria.eventType !== "ANY" || !job.criteria.courtRoom)) {
+    throw new Error("Invalid calendar preview worker scope");
+  }
   const diagnosticOnly = inspectionOnly || coverageOnly || filingInspectionOnly;
   const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
@@ -82,8 +87,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
+    calendarPreviewOnly,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
-    remainingRecords: job.criteria.recordCap - processed,
+    remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
   try {
     const lines = createInterface({ input: child.stdout });
@@ -102,6 +108,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         throw new Error("Filing inspection cannot emit collection results");
       if (message.kind === "request") {
         if (diagnosticOnly && (inspectionPhase !== "NONE" || coveragePhase > 0 || filingPhase > 0)) throw new Error("Inspection transmission after bootstrap");
+        if (calendarPreviewOnly && message.method === "GET"
+            && typeof message.url === "string"
+            && new URL(message.url).pathname === "/Report/CpDocketSheet")
+          throw new Error("Calendar preview cannot retrieve docket documents");
         child.stdin.write(JSON.stringify(await grant(job, message.path, message.method, permitId, message.url)) + "\n");
       } else if (message.kind === "response") {
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
@@ -158,19 +168,25 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
           `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar") {
-        const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null }[];
+        if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
+        const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
         if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string" || !Number.isFinite(Date.parse(message.retrievedAt))) throw new Error("Invalid calendar checkpoint");
         await db.transaction(async (tx) => {
           for (const row of rows) {
             if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
               || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
               || !Number.isSafeInteger(row.position) || row.position < 0
-              || row.eventDate !== null && !actualDate(row.eventDate) || row.filingDate !== null && !actualDate(row.filingDate)) throw new Error("Calendar identity conflict");
+              || row.eventDate !== null && !actualDate(row.eventDate) || row.filingDate !== null && !actualDate(row.filingDate)
+              || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
+              || calendarPreviewOnly && row.eventDate !== job.criteria.startDate
+              || !calendarPreviewOnly && row.eventType !== job.criteria.eventType)
+              throw new Error("Calendar identity conflict");
             await tx.insert(discoveryItemsTable).values({
               jobId: job.id, ownerId: job.ownerId, ...row,
               provenance: {
                 calendarUrl: "https://ujsportal.pacourts.us/CaseSearch", calendarRetrievedAt: message.retrievedAt as string,
-                courtOffice: job.criteria.courtOffice, eventType: job.criteria.eventType,
+                courtOffice: job.criteria.courtOffice, eventType: row.eventType,
+                courtRoom: job.criteria.courtRoom ?? null,
                 eventDate: row.eventDate, filingDate: row.filingDate, extractionOutcome: "UNPROCESSED",
                 postedEntryState: "UNKNOWN", entries: [],
               },
@@ -182,7 +198,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           }).where(eq(discoveryJobsTable.id, job.id));
         });
         await discoveryEvent(job, "CALENDAR", `Validated ${rows.length} distinct result-linked dockets in source order. ${message.paginationComplete ? "All rows in this returned table inspected; no remote pagination detected." : "Pagination or source result cap limits coverage."} Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
+      } else if (message.kind === "calendar_preview_finished") {
+        if (!calendarPreviewOnly || !job.calendarComplete || Object.keys(message).length !== 1)
+          throw new Error("Invalid calendar preview completion");
+        finished = true;
       } else if (message.kind === "docket") {
+        if (calendarPreviewOnly) throw new Error("Calendar preview cannot emit document evidence");
         const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.docketNumber, String(message.docketNumber))));
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
@@ -233,6 +254,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
           : inspectionOnly
           ? "Public filter metadata inspected; native POST intercepted locally. Zero PDFs or remote POSTs. Not an empty search or access proof; source pause unchanged."
+          : current.criteria.calendarPreviewOnly
+          ? `Calendar-only preview complete: ${counts.discovered} source-linked row(s) retained. No docket PDFs were requested, no bail evidence was extracted, and this preview cannot be resumed or saved as a candidate.`
           : counts.targetReached
           ? `Matching target reached (${counts.matching}/${current.criteria.matchTarget}). Remaining discovered dockets were not downloaded.`
           : counts.unprocessed > 0

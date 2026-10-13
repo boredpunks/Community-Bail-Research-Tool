@@ -97,6 +97,25 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/calendar-previews:
+    post:
+      operationId: createCalendarPreview
+      tags: [bail-records]
+      summary: Run one calendar-only preview without retrieving docket documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
+      responses:
+        "201":
+          description: One explicitly initiated, paced Calendar Event preview was queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /discovery/assessments:
     get:
       operationId: listDiscoveryAssessments
@@ -352,7 +371,9 @@ components:
       type: object
       properties:
         courtOffice: { type: string, enum: [CP-05-02-Crim] }
-        eventType: { type: string, enum: [Bail Hearing] }
+        courtRoom: { type: string, maxLength: 80 }
+        eventType: { type: string, enum: [Bail Hearing, ANY] }
+        calendarPreviewOnly: { type: boolean }
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
         recordCap: { type: integer, minimum: 1, maximum: 200 }
@@ -360,6 +381,13 @@ components:
         matchTarget: { type: integer, minimum: 1, maximum: 200, description: "Requested distinct matching dockets. Absent only for legacy processing-cap jobs." }
         matchFilters: { $ref: "#/components/schemas/DiscoveryMatchFilters" }
       required: [courtOffice, eventType, startDate, endDate, recordCap, requestCap]
+    CalendarPreviewInput:
+      type: object
+      properties:
+        courtOffice: { type: string, enum: [CP-05-02-Crim] }
+        courtRoom: { type: string, enum: ["Courtroom 506"] }
+        eventDate: { type: string, format: date, enum: ["2026-10-14"] }
+      required: [courtOffice, courtRoom, eventDate]
     DiscoveryMatchFilters:
       type: object
       properties:
@@ -496,6 +524,7 @@ components:
         calendarUrl: { type: string, format: uri }
         calendarRetrievedAt: { type: string, format: date-time }
         eventType: { type: string }
+        courtRoom: { type: ["string", "null"] }
         eventDate: { type: ["string", "null"] }
         filingDate: { type: ["string", "null"], format: date }
         courtOffice: { type: string }

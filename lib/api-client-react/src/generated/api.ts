@@ -26,6 +26,7 @@ import type {
   BailRecordInput,
   BailRecordList,
   BailReviewInput,
+  CalendarPreviewInput,
   ConflictResponse,
   DiscoveryAssessment,
   DiscoveryCandidateResult,
@@ -536,6 +537,94 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCreateDiscoveryJobMutationOptions(options));
+    }
+
+export const getCreateCalendarPreviewUrl = () => {
+
+
+
+
+  return `/api/discovery/calendar-previews`
+}
+
+/**
+ * @summary Run one calendar-only preview without retrieving docket documents
+ */
+export const createCalendarPreview = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DiscoveryJob>(getCreateCalendarPreviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(calendarPreviewInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCalendarPreviewMutationKey = () => ['createCalendarPreview'] as const;
+
+export const getCreateCalendarPreviewMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext> => {
+
+const mutationKey = getCreateCalendarPreviewMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCalendarPreview>>, CreateCalendarPreviewMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCalendarPreview(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCalendarPreviewMutationResult = NonNullable<Awaited<ReturnType<typeof createCalendarPreview>>>
+    export type CreateCalendarPreviewMutationBody = BodyType<CalendarPreviewInput>
+    export type CreateCalendarPreviewMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type CreateCalendarPreviewMutationVariables = {data: BodyType<CalendarPreviewInput>}
+
+    /**
+ * @summary Run one calendar-only preview without retrieving docket documents
+ */
+export const useCreateCalendarPreview = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCalendarPreview>>,
+        TError,
+        CreateCalendarPreviewMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateCalendarPreviewMutationOptions(options));
     }
 
 export const getListDiscoveryAssessmentsUrl = () => {

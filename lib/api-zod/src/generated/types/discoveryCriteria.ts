@@ -11,7 +11,10 @@ import type { DiscoveryMatchFilters } from './discoveryMatchFilters';
 
 export interface DiscoveryCriteria {
   courtOffice: DiscoveryCriteriaCourtOffice;
+  /** @maxLength 80 */
+  courtRoom?: string;
   eventType: DiscoveryCriteriaEventType;
+  calendarPreviewOnly?: boolean;
   startDate: Date;
   endDate: Date;
   /**

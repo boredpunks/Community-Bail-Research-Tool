@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import calendar_protocol
-from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure
+from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 from source_protocol import CALENDAR_ASSETS
 from evidence import calendar_result_state
 from evidence import CalendarResults, validate_event_date
@@ -70,6 +70,14 @@ class CalendarStructureTests(unittest.TestCase):
         parser.feed(self.html)
         self.assertTrue(parser.table_found)
         self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(calendar_result_state(parser.table_found, [], False),
+                         "RESULTS_NOT_VALIDATED")
+
+    def test_any_event_type_keeps_filter_unrestricted(self):
+        parser = CalendarResults()
+        parser.feed(self.html)
+        criteria = {**self.criteria, "eventType": "ANY"}
+        self.assertEqual(parser.validated(criteria), [])
         self.assertEqual(calendar_result_state(parser.table_found, [], False),
                          "RESULTS_NOT_VALIDATED")
 
@@ -147,6 +155,65 @@ class PacingTests(unittest.TestCase):
 
 
 class FormTests(unittest.IsolatedAsyncioTestCase):
+    async def test_preview_resolves_exact_labels_and_preserves_form_field_order_offline(self):
+        # Local-only fixture. Values are intentionally fixture-specific; no
+        # court request, docket row, or source option value is used.
+        filler = "".join(
+            f'<input type="hidden" name="fixture-field-{index:02d}" value="unchanged">'
+            for index in range(1, 26)
+        )
+        markup = f"""
+        <form action="https://ujsportal.pacourts.us/CaseSearch" method="post">
+          <div id="SearchBy-Control"><select name="SearchBy">
+            <option value="fixture-mode">Calendar Event</option></select></div>
+          <div id="JudicialDistrict-Control"><select name="JudicialDistrict">
+            <option value="fixture-district">Allegheny - 05</option></select></div>
+          <div id="CourtOffice-Control"><select name="CourtOffice">
+            <option value="fixture-office">CP-05-02-Crim</option></select></div>
+          <select name="CourtRoomID"><option value="fixture-room">Courtroom 506</option></select>
+          <div id="CalendarEventType-Control"><select name="CalendarEventType">
+            <option value="" selected></option><option value="fixture-event">Bail Hearing</option></select></div>
+          <input type="date" name="CalendarEventStartDate" value="2026-10-14" required>
+          <input type="date" name="CalendarEventEndDate" value="2026-10-14" required>
+          {filler}
+          <input type="hidden" name="__RequestVerificationToken" value="fixture-only-token">
+          <button id="btnSearch" type="submit">Search</button>
+        </form>"""
+        criteria = {"courtOffice": "CP-05-02-Crim", "courtRoom": "Courtroom 506",
+                    "eventType": "ANY", "startDate": "2026-10-14", "endDate": "2026-10-14"}
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                executable_path=shutil.which("chromium"), headless=True,
+                args=["--disable-background-networking", "--disable-component-update",
+                      "--disable-sync", "--no-first-run", "--no-sandbox"])
+            context = await browser.new_context(service_workers="block")
+            outbound = []
+
+            async def block_every_request(route):
+                outbound.append(route.request.url)
+                await route.abort()
+
+            await context.route("**/*", block_every_request)
+            page = await context.new_page()
+            try:
+                await page.set_content(markup)
+                before = await calendar_form_field_shape(page)
+                values = await select_calendar_preview_controls(page, criteria)
+                await fill_calendar_dates(page, criteria)
+                after = await calendar_form_field_shape(page)
+                self.assertEqual(len(before), 33)
+                self.assertEqual(after, before)
+                self.assertEqual(values["eventType"], "")
+                self.assertEqual(await page.locator("#CalendarEventType-Control select").input_value(), "")
+                await validate_calendar_form(page, criteria, values)
+                await page.locator("form").evaluate("(form) => form.enctype = 'multipart/form-data'")
+                with self.assertRaisesRegex(RuntimeError, "^UNSUPPORTED_CALENDAR_FORM_TARGET$"):
+                    await validate_calendar_form(page, criteria, values)
+                self.assertEqual(outbound, [])
+            finally:
+                await context.close()
+                await browser.close()
+
     async def test_search_click_timeout_exceeds_default_and_intercepts_delayed_post(self):
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
