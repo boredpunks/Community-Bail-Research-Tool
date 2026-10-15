@@ -62,6 +62,7 @@ async function main() {
   if (command === "prepare") {
     const stage = String(value("stage") ?? "").toUpperCase() as keyof typeof stageCaps;
     const startDate = value("start"), endDate = value("end"), requestCap = Number(value("requests"));
+    if (stage === "INSPECT") throw new Error("FORM_INSPECTION_LIVE_DISABLED: offline safeguards require review before any live authorization.");
     if (!stageCaps[stage] || stage === "CALENDAR_ONLY" || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
       || !Number.isInteger(requestCap) || requestCap < (diagnostic(stage) ? 3 : 8)
@@ -108,7 +109,7 @@ async function main() {
     await db.transaction(async (tx) => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [row] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
-      if (!row || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage)
+      if (!row || row.stage === "INSPECT" || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage)
         || diagnostic(row.stage) && row.criteria.requestCap !== 3) throw new Error("Only an unused prepared current-method pilot can be approved.");
       if (row.criteria.startDate < easternToday() || row.criteria.recordCap > discoveryPolicy.maxRecordCap || row.criteria.requestCap > discoveryPolicy.maxRequestCap) throw new Error("Scope is stale or exceeds protected limits. Obtain separate operator-budget authorization; limits will not increase automatically.");
       if (row.stage === "CALENDAR_ONLY" && (!isCalendarPreviewCriteria(row.criteria)
@@ -161,7 +162,7 @@ async function main() {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [pilot] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
       if (!pilot || pilot.state !== "APPROVED" || !pilot.expiresAt || pilot.expiresAt <= new Date()
-         || !Object.hasOwn(stageCaps, pilot.stage) || pilot.expectedMethod !== currentMethod(pilot.stage)
+         || pilot.stage === "INSPECT" || !Object.hasOwn(stageCaps, pilot.stage) || pilot.expectedMethod !== currentMethod(pilot.stage)
          || diagnostic(pilot.stage) && pilot.criteria.requestCap !== 3 || pilot.criteria.startDate < easternToday()
         || pilot.criteria.recordCap > discoveryPolicy.maxRecordCap || pilot.criteria.requestCap > discoveryPolicy.maxRequestCap
         || !source || source.activeRequestId || source.pausedUntil && source.pausedUntil > new Date()
@@ -199,9 +200,11 @@ async function main() {
        const [assessment] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
        const inspection = diagnostic(assessment?.stage ?? "");
        const calendarOnly = assessment?.stage === "CALENDAR_ONLY";
+       const inspectRequestCountValid = assessment?.stage === "INSPECT"
+         ? requests.length >= 1 && requests.length <= 3 : requests.length === 3;
        const inspected = inspection && current?.status === "COMPLETED" && items.length === 0
-         && !current.calendarComplete && requests.length === 3 && failures === 0 && timingValid
-          && new Set(requests.map(request => request.path)).size === 3
+         && !current.calendarComplete && inspectRequestCountValid && failures === 0 && timingValid
+          && new Set(requests.map(request => request.path)).size === requests.length
          && requests.every(request => request.method === "GET" && request.durationMs !== null && request.durationMs < 20_000)
          && !source?.activeRequestId && !source?.latencyWarning;
        const calendarValidated = calendarOnly && isCalendarPreviewCriteria(assessment.criteria)
@@ -226,7 +229,7 @@ async function main() {
              ? "Bounded public widget inventory after filing mode, Advanced Search and local County = Allegheny, with redacted displayed public office codes only. No private option values or identities, other county, court/case/office selection, Search, dates, dependent transmission, remote POST, PDF or submitted binding proof. Numeric district codes alone do not establish MDJ context. Collection disabled; existing source state preserved."
            : assessment?.stage === "COVERAGE"
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."
-           : "Public metadata inspected; native POST intercepted locally, never transmitted. Not calendar/PDF access proof. Existing source pause and access proof unchanged; no collection enablement.")
+           : "Read-only public form metadata inspected without invoking submission. No Search click, POST, results, or PDFs. Not access proof. Existing source state unchanged; collection remains disabled.")
            : verified ? "Both integrated clients passed within fixed scope and timing; not approval for broader collection."
           : "Pilot did not pass all document, timing, accounting, completion, and latency checks. No automatic retry or collection enablement." };
       await db.transaction(async (tx) => {

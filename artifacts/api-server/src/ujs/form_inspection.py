@@ -1,8 +1,6 @@
 """Read-only, redacted public filter diagnostics. Never return HTML or values."""
-import re
 
 METHOD = "playwright-form-inspection-v1"
-SENSITIVE = re.compile(r"token|password|secret|session|cookie|captcha|verification|auth", re.I)
 CONTROLS = ("SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE")
 KEYS = ("SearchBy", "JudicialDistrict", "CourtOffice", "CalendarEventStartDate", "CalendarEventEndDate", "CalendarEventType")
 

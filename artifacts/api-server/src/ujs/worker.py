@@ -17,6 +17,7 @@ from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bai
 from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
+from inspection_safety import InspectionRequestGate, fetch_inspection_once
 
 
 def emit(kind, **values):
@@ -29,9 +30,16 @@ class SourceFailure(RuntimeError):
         self.attempted = attempted
 
 
-async def main():
-    config = json.loads(sys.stdin.readline())
+async def main(config=None):
+    config = config if config is not None else json.loads(sys.stdin.readline())
     criteria = config["criteria"]
+    inspection_only = config.get("inspectionOnly") is True
+    if inspection_only:
+        # This is a defense-in-depth stop for old, already-prepared permits.
+        # Live INSPECT is disabled until the offline gate receives review.
+        emit("barrier", code="FORM_INSPECTION_LIVE_DISABLED")
+        return
+    inspection_gate = InspectionRequestGate() if inspection_only else None
     calendar_preview_only = config.get("calendarPreviewOnly") is True
     lock = asyncio.Lock()
     stopped = False
@@ -60,17 +68,36 @@ async def main():
         async def retrieve(url, method, fetcher):
             nonlocal stopped, requests, calendar_time, last_completed_clock
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
+
+            async def read_protocol_line():
+                reader = asyncio.to_thread(sys.stdin.readline)
+                if not inspection_only:
+                    return await reader
+                remaining = inspection_gate.remaining_seconds()
+                if remaining <= 0:
+                    raise SourceFailure("INSPECTION_SESSION_DEADLINE")
+                return await asyncio.wait_for(reader, timeout=remaining)
+
             async with lock:
                 if stopped or not allowed(url, method):
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
                 clock = asyncio.get_running_loop()
-                await asyncio.sleep(response_pause(last_completed_clock, clock.time(),
-                                                   random.uniform(60, 90)))
+                pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
+                if inspection_only:
+                    remaining = inspection_gate.remaining_seconds()
+                    if remaining <= 0:
+                        raise SourceFailure("INSPECTION_SESSION_DEADLINE")
+                    await asyncio.wait_for(asyncio.sleep(pause), timeout=remaining)
+                else:
+                    await asyncio.sleep(pause)
                 emit("request", path=urlsplit(url).path, method=method, url=url)
-                permission = json.loads(await asyncio.to_thread(sys.stdin.readline))
+                permission = json.loads(await read_protocol_line())
                 if not permission.get("allow"):
                     stopped = True
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
+                if inspection_only and inspection_gate.remaining_seconds() <= 0:
+                    stopped = True
+                    raise SourceFailure("INSPECTION_SESSION_DEADLINE")
                 requests += 1
                 started = datetime.now(timezone.utc).isoformat()
                 if method == "POST" and urlsplit(url).path == "/CaseSearch":
@@ -84,7 +111,7 @@ async def main():
                         source_stop_state = outcome
                     emit("response", requestId=permission["requestId"], status=response.status,
                          outcome=outcome, retryAfter=response.headers.get("retry-after"))
-                    acknowledgement = json.loads(await asyncio.to_thread(sys.stdin.readline))
+                    acknowledgement = json.loads(await read_protocol_line())
                     last_completed_clock = clock.time()
                     if not acknowledgement.get("continue"):
                         stopped = True
@@ -107,17 +134,10 @@ async def main():
                         raise
                     raise SourceFailure("NETWORK_ERROR", attempted=True) from error
 
-        inspection_only = config.get("inspectionOnly") is True
         coverage_only = config.get("coverageOnly") is True
         filing_inspection_only = config.get("filingInspectionOnly") is True
         inspection_local = False
-        inspection_armed = False
-        inspection_before = None
-        inspection_bindings = None
-        inspection_done = asyncio.Event()
         inspection_error = None
-        inspection_aborted_urls = set()
-        inspection_abort_errors = 0
 
         async def handle_route(route):
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
@@ -125,22 +145,15 @@ async def main():
             request = route.request
             if (inspection_only or coverage_only or filing_inspection_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
-                try:
-                    if (inspection_only and inspection_armed and not inspection_done.is_set()
-                            and request.url == "https://ujsportal.pacourts.us/CaseSearch"
-                            and request.method == "POST"):
-                        from form_inspection import local_post_metadata
-                        metadata = local_post_metadata(inspection_before, inspection_bindings, criteria,
-                                                       request.post_data, request.headers.get("content-type", ""))
-                        inspection_aborted_urls.add(request.url)
-                        emit("inspection_metadata", **metadata)
-                    else:
-                        inspection_error = "INSPECTION_UNEXPECTED_LOCAL_REQUEST"
-                except Exception:
-                    inspection_error = "INSPECTION_BODY_UNSUPPORTED"
-                finally:
-                    inspection_done.set()
-                    await route.abort()
+                inspection_error = "INSPECTION_UNEXPECTED_LOCAL_REQUEST"
+                await route.abort()
+                return
+            if inspection_only and (
+                inspection_gate is None
+                or not await inspection_gate.reserve(request.url, request.method, request.resource_type)
+            ):
+                inspection_error = "INSPECTION_REQUEST_BLOCKED"
+                await route.abort()
                 return
             if (not allowed(request.url, request.method)
                     or calendar_preview_only and urlsplit(request.url).path == "/Report/CpDocketSheet"
@@ -164,8 +177,12 @@ async def main():
             try:
                 response, body, _ = await retrieve(
                     request.url, request.method,
-                    lambda: route.fetch(max_redirects=0, max_retries=0, timeout=45_000),
+                    lambda: fetch_inspection_once(route, inspection_gate)
+                    if inspection_only else
+                    route.fetch(max_redirects=0, max_retries=0, timeout=45_000),
                 )
+                if inspection_only and urlsplit(request.url).path == "/CaseSearch":
+                    inspection_gate.declare_document(request.url, body)
                 await route.fulfill(response=response)
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
@@ -174,6 +191,14 @@ async def main():
             except Exception:
                 await route.abort()
 
+        if inspection_only:
+            if not hasattr(context, "route_web_socket"):
+                raise RuntimeError("INSPECTION_WEBSOCKET_INTERCEPTION_UNAVAILABLE")
+
+            async def block_websocket(websocket):
+                await websocket.close()
+
+            await context.route_web_socket("**/*", block_websocket)
         await context.route("**/*", handle_route)
         page = await context.new_page()
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
@@ -184,13 +209,8 @@ async def main():
 
         def note_console(message):
             nonlocal console_errors, optional_console_errors
-            nonlocal inspection_abort_errors
             if message.type == "error":
                 if expected_optional_console_error(message.type, message.text,
-                                                   message.location.get("url"), inspection_aborted_urls):
-                    inspection_abort_errors += 1
-                    emit("inspection_abort", count=inspection_abort_errors)
-                elif expected_optional_console_error(message.type, message.text,
                                                    message.location.get("url"), blocked_optional_urls):
                     optional_console_errors += 1
                 else:
@@ -221,7 +241,12 @@ async def main():
         try:
             items = config["pendingItems"]
             if not config["calendarComplete"]:
-                await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=600_000)
+                goto_timeout = 600_000
+                if inspection_only:
+                    goto_timeout = min(goto_timeout, inspection_gate.remaining_timeout_ms())
+                    if goto_timeout <= 0:
+                        raise RuntimeError("INSPECTION_SESSION_DEADLINE")
+                await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=goto_timeout)
                 calendar_preflight("READY")
                 initial_form_shape = await calendar_form_field_shape(page)
                 if filing_inspection_only:
@@ -266,18 +291,16 @@ async def main():
                 await fill_calendar_dates(page, criteria)
                 if inspection_only:
                     from form_inspection import snapshot
-                    inspection_before, inspection_bindings = await snapshot(page, criteria)
+                    inspection_before = await snapshot(page, criteria)
                     if inspection_error or not all(row["uiMatches"] and row["uiEnabled"] and row["uiSameForm"]
                                                    for row in inspection_before["controls"]):
                         raise RuntimeError("INSPECTION_PUBLIC_STATE_MISMATCH")
                     emit("inspection_metadata", **inspection_before)
                     calendar_preflight("READY")
-                    inspection_armed = True
-                    await page.locator("#btnSearch").click(no_wait_after=True, timeout=5000)
-                    await asyncio.wait_for(inspection_done.wait(), timeout=5)
-                    await asyncio.sleep(0.1)
                     if inspection_error:
                         raise RuntimeError(inspection_error)
+                    if inspection_gate.remaining_seconds() <= 0:
+                        raise RuntimeError("INSPECTION_SESSION_DEADLINE")
                     await context.close()
                     await browser.close()
                     calendar_preflight("RESULT")
@@ -392,4 +415,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    _config = json.loads(sys.stdin.readline())
+    try:
+        if _config.get("inspectionOnly") is True:
+            asyncio.run(asyncio.wait_for(main(_config), timeout=600))
+        else:
+            asyncio.run(main(_config))
+    except asyncio.TimeoutError:
+        # A timed-out inspection is a failed, consumed one-use stage.
+        sys.exit(124)

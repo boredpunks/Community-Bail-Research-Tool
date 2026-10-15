@@ -19,6 +19,7 @@ ASSET_PATHS = frozenset({
 MAX_REQUESTS = 3
 MAX_SESSION_SECONDS = 10 * 60
 MAX_RESPONSE_BYTES = 4_000_000
+FETCH_TIMEOUT_MS = 45_000
 _VERSION = re.compile(r"v=([A-Za-z0-9_-]{16,128})\Z")
 
 
@@ -91,12 +92,18 @@ class InspectionRequestGate:
     def remaining_seconds(self) -> float:
         return max(0.0, self._deadline - self._clock())
 
+    def remaining_timeout_ms(self) -> int:
+        return max(0, int(self.remaining_seconds() * 1000))
+
     def declare_document(self, document_url: str, html: bytes) -> None:
         # Called only with the bounded response body of the permitted bootstrap GET.
         self._assets = declared_asset_urls(document_url, html)
 
     def _candidate_path(self, url: str, method: str, resource_type: str) -> str | None:
-        parsed = urlsplit(url)
+        try:
+            parsed = urlsplit(url)
+        except (TypeError, ValueError):
+            return None
         if (parsed.scheme != "https" or parsed.netloc != "ujsportal.pacourts.us"
                 or parsed.fragment or method != "GET"):
             return None
@@ -121,3 +128,11 @@ class InspectionRequestGate:
             self._reserved_paths.add(path)
             self._reserved_count += 1
             return True
+
+
+async def fetch_inspection_once(route, gate: InspectionRequestGate):
+    """A single bounded upstream fetch; redirect and retry handling are disabled."""
+    timeout_ms = min(FETCH_TIMEOUT_MS, gate.remaining_timeout_ms())
+    if timeout_ms <= 0:
+        raise TimeoutError("INSPECTION_SESSION_DEADLINE")
+    return await route.fetch(max_redirects=0, max_retries=0, timeout=timeout_ms)

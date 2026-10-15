@@ -98,73 +98,70 @@ If the user later requests work on the native-form binding itself, present its
 exact supported dates and request budget and obtain **separate approval for
 that inspection**, not another PDF attempt:
 
-- Method: `playwright-form-inspection-v1`.
-- Maximum **three GET requests total**, including the initial `/CaseSearch`
-  page and the two already-allowlisted script/style bundles. Their existing
-  bounded version-query policy remains unchanged.
-- **Zero transmitted POSTs, zero PDFs, zero docket/candidate records.**
-- Same persisted limiter, rolling ceilings, 60–90-second response-completion
-  pauses and longer adaptive waits as the integrated client.
-- Roughly three minutes for three requests; longer adaptive waits may apply.
-- Existing denial, challenge, redirect, throttle, timeout, uncertainty,
-  latency, asset, script, public-value and budget barriers remain fail-closed.
-  No retries, extra assets, date expansion or cap increases.
+## Offline safeguards after the October 15, 2026 approval
 
-The usual `approve --id UUID --user-approved`, `run --id UUID --user-approved`
-and `report --id UUID` commands apply. Build first, stop the managed API
-worker before a separately approved run, and restart it afterward. Permits
-expire after 24 hours and are consumed once. No public approval/run endpoint
-or automatic scheduler path is added.
+No live inspection was run while implementing these changes. The current
+`INSPECT` stage is deliberately disabled in the operator CLI, scheduler, and
+Python worker; no new authorization was created or consumed.
 
-## What is observed
+The inspection path no longer clicks Search or captures a locally aborted
+submission. It emits only the pre-submission public-form snapshot. The offline
+request gate reserves a path before fetch, permits at most one GET for each of
+`/CaseSearch`, `/resource/js/sitemain.min.js`, and
+`/resource/css/sitemain.min.css`, and caps the session at three reservations
+and ten minutes. Failed and timed-out fetches remain reserved. Script and
+stylesheet URLs must exactly match declarations in the bounded bootstrap HTML;
+an optional `v` query is accepted only as one bounded version hash and only
+when that exact URL was declared. Redirect following and retries are disabled,
+and each fetch is limited to 45 seconds.
 
-After the three bootstrap GETs, **all subsequent nonoptional browser requests
-are intercepted and aborted**. Optional resources remain intentionally aborted.
-Dependent-control network calls stop inspection rather than obtaining more
-requests. The inspector fills the six known public controls and checks their
-readback, native validity and exact POST target before Search.
+For a future reviewed implementation, Playwright's context route is installed
+before the first page navigation, applies to context pages/frames and their
+HTTP(S) requests, and is backed by the parent scheduler's persisted request
+budget and duplicate-path check. Service workers are blocked, browser background
+networking is disabled, and a context WebSocket route closes WebSocket
+connections before page creation. Non-allowlisted resource types and later
+page requests are aborted. Local tests exercise the request gate and fixed
+fetch options only; they are not proof that the live form works.
 
-The BEFORE observation counts named native control types in each known widget
-container and at its explicit public ID; it also distinguishes eligible fields
-outside the container. It checks same-form association and native FormData
-matches. It does not globally search for a coincidental matching value.
+**Remaining enforcement limitation:** these controls do not establish control
+over every Chromium, operating-system, DNS, preconnect, or platform-proxy
+side-channel. Nor do local fixtures prove the deployed browser/runtime has
+identical interception semantics. Therefore `INSPECT` must remain disabled
+until a separate review establishes whether those residual channels are
+acceptable and verifies the actual runtime's interception coverage. Any future
+live execution still requires fresh, explicit approval and a new one-use
+authorization.
 
-Search may produce one native POST. That POST is **captured locally and aborted
-before any transport call or scheduler reservation**. Only bounded,
-URL-encoded bodies are processed transiently. Candidate field names stay in
-child memory; token-like names, credential control types and unrelated field
-values are not examined for matches. The LOCAL_POST observation counts exact
-matches to the previously observed public native fields and, separately, to
-known public property suffixes. A suffix match is **not binding proof**.
-Unsupported body formats, missing submission or unexpected requests stop the
-inspection. The browser is closed before reporting completion.
+- Method identifier: `playwright-form-inspection-v1`. The operator `INSPECT`
+  stage is currently disabled; its old prepare/approve/run flow must not be
+  used. This is a safety hold, not live authorization.
+- A future reviewed path is limited to three GETs total (bootstrap page plus
+  only its declared script and stylesheet), one GET per path, zero POSTs,
+  zero PDFs, and zero docket/candidate records. Failed/uncertain transmissions
+  consume their persisted request slots.
+- The session shares the persisted source limiter and conservative pacing.
+  Fetches have no retries or redirect following, a 45-second timeout, and a
+  ten-minute total deadline. Date expansion and cap increases are not allowed.
 
-Retained evidence contains only six fixed public labels, booleans, bounded
-type/count metadata, fixed phases and classified error counts, plus the
-ordinary request/timing ledger. No HTML, screenshots, raw bodies, field names,
-observed filter values, cookies, tokens or raw console text are retained.
-Declared scope dates and criteria remain in the permit as required. The parent
-rejects unexpected fields, invalid counts, duplicate/out-of-order phases and
-collection-result messages.
+The read-only snapshot counts bounded control types and same-form/FormData
+matches for six fixed public controls. It does not inspect or retain field
+values, names, tokens, raw content, screenshots, or console text. The parent
+accepts only one `BEFORE` diagnostic phase and rejects additional phases or
+collection-result messages. No click, `submit()`, `requestSubmit()`, native
+POST capture, Search submission, result retrieval, or PDF retrieval is part of
+the inspection.
 
-`INSPECTED` means bounded observations completed with successful, paced,
-accounted GETs and no documents. It does **not** mean native binding is resolved,
-the server accepted a search, calendar results were validated, or PDF access
-works. Existing access proof and source pause are not cleared; collection
-approval remains unset. Failed/interrupted inspection permits are consumed,
-with no automatic retry.
+Historical `INSPECTED` reports refer to earlier, consumed executions. They are
+not proof that the current offline safeguards have worked against the live
+form, and do not enable source access or collection.
 
 ## Offline checks
 
-`pnpm --filter @workspace/api-server run test:safety` checks parent metadata
-validation and real PostgreSQL permit admission in a disposable schema.
-Network-blocked Playwright fixtures exercise the actual Python worker with
-fixture-only route responses, verify that only three GET fetch calls occur,
-intercept the native POST, reject dependent-control requests, and confirm
-redaction/body limits. Fixtures contain hypothetical **public form markup
-only**, not docket/case records and not source proof.
-
-Offline preparation checks passed: 124 safety checks, 19 Python tests, API
-typecheck/build, Python compilation and whitespace checks. The attempted
-inspection did not reach the form diagnostics; those offline checks are not
-source proof.
+`pnpm --filter @workspace/api-server run test:safety` exercises parent metadata
+validation, scheduler admission in a disposable schema, and Python request-gate
+fixtures. The local fixtures cover allowed/denied requests, duplicate and
+concurrent attempts, declared-version matching, redirects, retries, timeouts,
+uncertain persisted requests, the session deadline, submission prevention, and
+diagnostic-contract acceptance. They use no court traffic, case fixtures, or
+live form observations. These checks are not source proof.

@@ -9,7 +9,7 @@ import { allowedSourceRequest, calendarPreviewCriteria, calendarPreviewMethod, c
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 
-import { formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
+import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
 import { filingInspectionMethod, filingRoles, validFilingMetadata, validFilingInventoryMetadata } from "../src/lib/filing-inspection";
 
@@ -233,10 +233,11 @@ try {
     ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].map(control => ({
       control, uiPresent: true, uiNamed: false, uiEnabled: true, uiSameForm: true, uiMatches: true,
       types: { hidden: 0, text: 1, date: 0, number: 0, select: 0, other: 0 },
-      sameFormNamed: 1, outsideContainerNamed: 0, nativeMatches: 1, nativePostedMatches: 0, knownKeyPostedMatches: 0,
+      sameFormNamed: 1, outsideContainerNamed: 0, nativeMatches: 1,
     })) };
   check(validInspectionMetadata(inspectionMetadata));
   check(!validInspectionMetadata({ ...inspectionMetadata, html: "forbidden" }));
+  check(!validInspectionMetadata({ ...inspectionMetadata, phase: "LOCAL_POST" }));
   check(!validInspectionMetadata({ ...inspectionMetadata, controls: [...inspectionMetadata.controls, inspectionMetadata.controls[0]] }));
   for (const bad of [
     { ...inspectionMetadata.controls[0], value: "forbidden" },
@@ -245,6 +246,7 @@ try {
     { ...inspectionMetadata.controls[0], sameFormNamed: 33 },
     { ...inspectionMetadata.controls[0], types: { ...inspectionMetadata.controls[0]!.types, cookie: 1 } },
   ]) check(!validInspectionMetadata({ ...inspectionMetadata, controls: [bad, ...inspectionMetadata.controls.slice(1)] }));
+  check(formInspectionLiveEnabled === false);
   check(inspectionRequestAllowed("/CaseSearch", "GET"));
   check(!inspectionRequestAllowed("/CaseSearch", "POST"));
   check(!inspectionRequestAllowed("/Report/CpDocketSheet", "GET"));
@@ -397,7 +399,17 @@ try {
     const inspectionJob = await createJob({ criteria: inspectCriteria, assessmentId: inspectionPermit!.id });
     await store.update(pilots).set({ jobId: inspectionJob.id }).where(eq(pilots.id, inspectionPermit!.id));
     const result = await reserveSourceRequest(inspectionJob, path, method, inspectionPermit!.id, url, () => false, context);
-    check(result.allow === (method === "GET" && path === "/CaseSearch"));
+    check(result.allow === (stage !== "INSPECT" && method === "GET" && path === "/CaseSearch"));
+    check((await store.select().from(requests)).length === (result.allow ? 1 : 0));
+    if (result.allow) {
+      const [request] = await store.select().from(requests);
+      check(await response(inspectionJob, request!.id));
+      const duplicate = await reserveSourceRequest(
+        inspectionJob, path, method, inspectionPermit!.id, url, () => false, context,
+      );
+      check(!duplicate.allow);
+      check((await store.select().from(requests)).length === 1);
+    }
     const [sourceState] = await store.select().from(sources);
     check(sourceState!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !sourceState!.accessVerifiedAt && !sourceState!.collectionApprovedAt);
   }

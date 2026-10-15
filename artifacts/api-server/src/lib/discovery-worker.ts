@@ -88,7 +88,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     child.once("exit", resolve);
   });
   let finished = false;
-  let inspectionPhase: "NONE" | "BEFORE" | "LOCAL_POST" = "NONE";
+  let inspectionPhase: "NONE" | "BEFORE" = "NONE";
   let coveragePhase = 0;
   let filingPhase = 0;
   let stderrBytes = 0;
@@ -105,7 +105,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (finished) throw new Error("Worker message after completion");
-      if (inspectionOnly && !["request", "response", "inspection_metadata", "inspection_abort",
+      if (inspectionOnly && !["request", "response", "inspection_metadata",
         "inspection_finished", "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
         throw new Error("Inspection cannot emit collection results");
       if (coverageOnly && !["request", "response", "coverage_metadata", "coverage_finished",
@@ -143,17 +143,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         finished = true;
       } else if (message.kind === "inspection_metadata") {
         if (!inspectionOnly || !validInspectionMetadata(message)
-          || message.phase !== (inspectionPhase === "NONE" ? "BEFORE" : inspectionPhase === "BEFORE" ? "LOCAL_POST" : null))
+          || inspectionPhase !== "NONE" || message.phase !== "BEFORE")
           throw new Error("Invalid inspection metadata");
-        inspectionPhase = message.phase as "BEFORE" | "LOCAL_POST";
+        inspectionPhase = "BEFORE";
         await discoveryEvent(job, "INSPECTION_METADATA", JSON.stringify(message));
-      } else if (message.kind === "inspection_abort") {
-        if (!inspectionOnly || !Number.isSafeInteger(message.count) || Number(message.count) < 1
-          || Number(message.count) > 32 || Object.keys(message).some(key => !["kind", "count"].includes(key)))
-          throw new Error("Invalid inspection abort diagnostic");
-        await discoveryEvent(job, "INSPECTION_ABORT", `Expected local POST-abort console errors: ${message.count}. No POST transmitted.`);
       } else if (message.kind === "inspection_finished") {
-        if (!inspectionOnly || inspectionPhase !== "LOCAL_POST" || Object.keys(message).length !== 1)
+        if (!inspectionOnly || inspectionPhase !== "BEFORE" || Object.keys(message).length !== 1)
           throw new Error("Incomplete inspection");
         finished = true;
       } else if (message.kind === "calendar_state") {
@@ -261,7 +256,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           : coverageOnly
           ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
           : inspectionOnly
-          ? "Public filter metadata inspected; native POST intercepted locally. Zero PDFs or remote POSTs. Not an empty search or access proof; source pause unchanged."
+          ? "Public form metadata inspected without invoking form submission. No Search click, POST, results, or PDFs. Not an empty search or access proof; source pause unchanged."
           : current.criteria.calendarPreviewOnly
           ? `Calendar-only preview complete: ${counts.discovered} source-linked row(s) retained. No docket PDFs were requested, no bail evidence was extracted, and this preview cannot be resumed or saved as a candidate.`
           : counts.targetReached

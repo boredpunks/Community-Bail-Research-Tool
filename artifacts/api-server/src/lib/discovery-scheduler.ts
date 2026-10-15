@@ -8,7 +8,7 @@ import {
   isCalendarPreviewCriteria, paceEligibleAt, responseHealth, rollingUsage,
   throttleDeadline, validAccountingMessage,
 } from "./discovery-safety";
-import { formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
+import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
 import { coverageInspectionMethod } from "./coverage-inspection";
 import { filingInspectionMethod } from "./filing-inspection";
 
@@ -37,6 +37,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       if (current.resultsExpiredAt) return deny("RESULTS_EXPIRED");
       if (current.requestsUsed >= current.criteria.requestCap) return deny("JOB_REQUEST_LIMIT");
       let calendarOnlyPermit = false;
+      let diagnosticPermit = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         const expectedMethod = permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
@@ -57,15 +58,28 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
           return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
         }
         calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
+        diagnosticPermit = ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage);
         if (["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage) && (current.criteria.requestCap !== 3
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
           || !inspectionRequestAllowed(requestPath, method))) return deny("INSPECTION_REQUEST_NOT_PERMITTED");
+        if (permit.stage === "INSPECT" && !formInspectionLiveEnabled)
+          return deny("FORM_INSPECTION_LIVE_DISABLED");
         if (source.pausedUntil && source.pausedUntil > now) return deny("SOURCE_COOLDOWN");
         if (source.blockedReason?.startsWith("UNCERTAIN") || source.blockedReason === "RESTART_IN_FLIGHT") return deny("UNCERTAIN_SOURCE_STATE");
       } else {
         if (permitId) return deny("ASSESSMENT_NOT_APPROVED");
         const block = collectionBlock(source, now);
         if (block) return deny(block);
+      }
+      if (diagnosticPermit) {
+        const [priorPath] = await tx.select({ id: discoveryRequestsTable.id })
+          .from(discoveryRequestsTable)
+          .where(and(
+            eq(discoveryRequestsTable.jobId, current.id),
+            eq(discoveryRequestsTable.path, String(requestPath)),
+          ))
+          .limit(1);
+        if (priorPath) return deny("INSPECTION_PATH_ALREADY_ATTEMPTED");
       }
       const recent = await tx.select().from(discoveryRequestsTable).where(and(
         eq(discoveryRequestsTable.sourceId, sourceId), gt(discoveryRequestsTable.startedAt, new Date(now.getTime() - 86_400_000)),

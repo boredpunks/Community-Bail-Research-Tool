@@ -2,15 +2,21 @@
 import io
 import json
 import sys
+import asyncio
+import shutil
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import urlencode, urlsplit
-from playwright.async_api import Route
+from urllib.parse import urlsplit
+from playwright.async_api import Route, async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import worker
-from form_inspection import local_post_metadata, expected
+from form_inspection import expected
+from inspection_safety import (
+    CASE_SEARCH, FETCH_TIMEOUT_MS, InspectionRequestGate,
+    declared_asset_urls, fetch_inspection_once,
+)
 
 CRITERIA = {"courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
             "startDate": "2026-10-13", "endDate": "2026-10-17"}
@@ -547,41 +553,168 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_actual_worker_intercepts_post_and_retains_only_metadata(self):
         messages, fetches = await self.run_fixture()
-        self.assertEqual(len(fetches), 3)
-        self.assertTrue(all(method == "GET" for method, _ in fetches))
-        self.assertEqual({path for _, path in fetches},
-                         {"/CaseSearch", "/resource/css/sitemain.min.css", "/resource/js/sitemain.min.js"})
-        self.assertEqual(sum(message["kind"] == "request" for message in messages), 3)
-        snapshots = [message for message in messages if message["kind"] == "inspection_metadata"]
-        self.assertEqual([message["phase"] for message in snapshots], ["BEFORE", "LOCAL_POST"])
-        self.assertEqual([row["nativePostedMatches"] for row in snapshots[-1]["controls"]], [1] * 6)
-        self.assertEqual(snapshots[0]["controls"][0]["types"]["text"], 1)
-        self.assertEqual(snapshots[0]["controls"][0]["types"]["hidden"], 0)
-        self.assertTrue(any(message["kind"] == "inspection_finished" for message in messages))
-        self.assertFalse(any(message["kind"] in {"calendar", "docket", "finished", "barrier"} for message in messages))
-        retained = json.dumps(snapshots)
-        for forbidden in ["REDACTION_SENTINEL", "__RequestVerificationToken", "CP-05-02-Crim", "2026-10-13"]:
-            self.assertNotIn(forbidden, retained)
+        self.assertEqual(fetches, [])
+        self.assertEqual(messages, [{"kind": "barrier", "code": "FORM_INSPECTION_LIVE_DISABLED"}])
 
-    async def test_dependent_control_requests_are_aborted_not_fetched(self):
-        messages, fetches = await self.run_fixture(
-            "document.addEventListener('change', () => fetch('/CaseSearch'));")
-        self.assertEqual(len(fetches), 3)
-        self.assertFalse(any(message["kind"] == "inspection_finished" for message in messages))
-        self.assertTrue(any(message["kind"] == "barrier" for message in messages))
+class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.gate = InspectionRequestGate()
+        self.js = "https://ujsportal.pacourts.us/resource/js/sitemain.min.js?v=abcdefghijklmnop"
+        self.css = "https://ujsportal.pacourts.us/resource/css/sitemain.min.css?v=qrstuvwxyzABCDEF"
+        self.html = (f'<script src="{self.js}"></script>'
+                     f'<link rel="stylesheet" href="{self.css}">').encode()
 
-    def test_body_limits_and_known_key_observation_are_not_binding_proof(self):
-        before = {"controls": [{"control": item[0], "types": {}} for item in expected(CRITERIA)]}
-        bindings = [[] for _ in range(6)]
-        body = urlencode({item[3]: item[4] for item in expected(CRITERIA)})
-        result = local_post_metadata(before, bindings, CRITERIA,
-                                     body + "&__RequestVerificationToken=REDACTION_SENTINEL",
-                                     "application/x-www-form-urlencoded")
-        self.assertEqual([row["nativePostedMatches"] for row in result["controls"]], [0] * 6)
-        self.assertEqual([row["knownKeyPostedMatches"] for row in result["controls"]], [1] * 6)
-        self.assertNotIn("REDACTION_SENTINEL", json.dumps(result))
-        for bad_body, content_type in [("x" * 131073, "application/x-www-form-urlencoded"),
-                                      (body, "application/json"),
-                                      ("&".join(["a=x"] * 129), "application/x-www-form-urlencoded")]:
-            with self.assertRaisesRegex(RuntimeError, "^INSPECTION_BODY_UNSUPPORTED$"):
-                local_post_metadata(before, bindings, CRITERIA, bad_body, content_type)
+    async def bootstrap(self):
+        self.assertTrue(await self.gate.reserve(CASE_SEARCH, "GET", "document"))
+        self.gate.declare_document(CASE_SEARCH, self.html)
+
+    def test_only_exact_bounded_declared_assets_are_extracted(self):
+        declared = declared_asset_urls(CASE_SEARCH, self.html)
+        self.assertEqual(declared, frozenset({self.js, self.css}))
+        for html in (
+            b'<script src="https://evil.invalid/resource/js/sitemain.min.js?v=abcdefghijklmnop"></script>',
+            b'<script src="/resource/js/sitemain.min.js?v=short"></script>',
+            b'<script src="/resource/js/sitemain.min.js?v=abcdefghijklmnop&x=1"></script>',
+            b'<link rel="stylesheet" href="/resource/css/other.css">',
+            b'<script src="/resource/js/sitemain.min.js#fragment"></script>',
+        ):
+            self.assertFalse(declared_asset_urls(CASE_SEARCH, html))
+        self.assertFalse(declared_asset_urls(CASE_SEARCH + "?x=1", self.html))
+        self.assertFalse(declared_asset_urls(CASE_SEARCH, b"x" * 4_000_001))
+
+    async def test_allowlist_method_resource_type_and_version_exactness(self):
+        await self.bootstrap()
+        self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
+        self.assertTrue(await self.gate.reserve(self.css, "GET", "stylesheet"))
+        self.assertEqual(self.gate.reserved_count, 3)
+        for url, method, kind in (
+            (self.js, "GET", "script"), (self.css, "GET", "stylesheet"),
+            (CASE_SEARCH, "POST", "document"),
+            (CASE_SEARCH, "GET", "fetch"),
+            ("https://evil.invalid/CaseSearch", "GET", "document"),
+            (CASE_SEARCH + "?query=1", "GET", "document"),
+            (self.js.replace("abcdefghijklmnop", "ponmlkjihgfedcba"), "GET", "script"),
+            (self.css.replace("?v=qrstuvwxyzABCDEF", ""), "GET", "stylesheet"),
+            ("https://ujsportal.pacourts.us/other.js", "GET", "script"),
+        ):
+            self.assertFalse(await self.gate.reserve(url, method, kind))
+        self.assertEqual(self.gate.reserved_count, 3)
+
+    async def test_duplicate_concurrent_requests_reserve_one_transmission(self):
+        await self.bootstrap()
+        results = await asyncio.gather(*[
+            self.gate.reserve(self.js, "GET", "script") for _ in range(20)
+        ])
+        self.assertEqual(sum(results), 1)
+        self.assertEqual(self.gate.reserved_count, 2)
+        self.assertEqual(self.gate.reserved_paths, frozenset({"/CaseSearch", "/resource/js/sitemain.min.js"}))
+
+    async def test_failed_timeout_and_uncertain_attempts_still_consume_the_path(self):
+        await self.bootstrap()
+
+        class TimedOutRoute:
+            calls = []
+            async def fetch(self, **kwargs):
+                self.calls.append(kwargs)
+                raise TimeoutError("local fixture timeout")
+
+        self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
+        route = TimedOutRoute()
+        with self.assertRaises(TimeoutError):
+            await fetch_inspection_once(route, self.gate)
+        self.assertEqual(self.gate.reserved_count, 2)
+        self.assertFalse(await self.gate.reserve(self.js, "GET", "script"))
+        self.assertEqual(route.calls, [{
+            "max_redirects": 0, "max_retries": 0,
+            "timeout": FETCH_TIMEOUT_MS,
+        }])
+
+    async def test_redirect_target_is_denied_and_not_followed(self):
+        await self.bootstrap()
+
+        class RedirectRoute:
+            calls = 0
+            async def fetch(self, **kwargs):
+                self.calls += 1
+                self.assert_no_follow = kwargs == {
+                    "max_redirects": 0, "max_retries": 0,
+                    "timeout": FETCH_TIMEOUT_MS,
+                }
+                return {"status": 302, "location": "https://evil.invalid/next"}
+
+        self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
+        route = RedirectRoute()
+        response = await fetch_inspection_once(route, self.gate)
+        self.assertEqual(response["status"], 302)
+        self.assertTrue(route.assert_no_follow)
+        self.assertEqual(route.calls, 1)
+        self.assertFalse(await self.gate.reserve("https://evil.invalid/next", "GET", "document"))
+        self.assertEqual(route.calls, 1)
+
+    async def test_session_deadline_is_global_and_has_no_expired_fetch(self):
+        clock = [100.0]
+        gate = InspectionRequestGate(clock=lambda: clock[0])
+        self.assertTrue(await gate.reserve(CASE_SEARCH, "GET", "document"))
+        gate.declare_document(CASE_SEARCH, b"")
+
+        class Route:
+            calls = 0
+            async def fetch(self, **_kwargs):
+                self.calls += 1
+                return None
+
+        route = Route()
+        clock[0] += 601
+        self.assertFalse(await gate.reserve(
+            "https://ujsportal.pacourts.us/resource/js/sitemain.min.js",
+            "GET", "script",
+        ))
+        with self.assertRaisesRegex(TimeoutError, "INSPECTION_SESSION_DEADLINE"):
+            await fetch_inspection_once(route, gate)
+        self.assertEqual(route.calls, 0)
+
+    def test_submission_path_is_removed_and_inspector_is_hard_disabled(self):
+        worker_source = Path(worker.__file__).read_text()
+        inspect_source = (Path(__file__).resolve().parents[1] / "src/ujs/form_inspection.py").read_text()
+        self.assertNotIn("local_post_metadata", worker_source + inspect_source)
+        self.assertNotIn("inspection_armed", worker_source)
+        self.assertNotIn("requestSubmit", worker_source + inspect_source)
+        self.assertNotIn("locator(\"#btnSearch\").click", worker_source)
+
+    async def test_local_form_snapshot_never_invokes_click_or_submission(self):
+        from form_inspection import snapshot
+
+        html = public_fixture().replace(
+            '<link rel="stylesheet" href="/resource/css/sitemain.min.css">', ''
+        ).replace(
+            '<script src="/resource/js/sitemain.min.js"></script>', ''
+        )
+        html = html.replace(
+            '<form method="post" action="https://ujsportal.pacourts.us/CaseSearch">',
+            '<script>window.attempts={click:0,submit:0,requestSubmit:0};'
+            'document.addEventListener("click",()=>window.attempts.click++);'
+            'document.addEventListener("submit",()=>window.attempts.submit++);'
+            'HTMLFormElement.prototype.submit=function(){window.attempts.submit++};'
+            'HTMLFormElement.prototype.requestSubmit=function(){window.attempts.requestSubmit++};'
+            '</script><form method="post" action="https://ujsportal.pacourts.us/CaseSearch">',
+        )
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                executable_path=shutil.which("chromium"),
+                headless=True,
+                args=["--disable-background-networking", "--disable-component-update",
+                      "--disable-sync", "--no-first-run", "--no-sandbox"],
+            )
+            page = await browser.new_page()
+            requests = []
+            page.on("request", lambda request: requests.append(request.url))
+            await page.set_content(html, wait_until="load", timeout=5_000)
+            metadata = await snapshot(page, CRITERIA)
+            attempts = await page.evaluate("window.attempts")
+            await browser.close()
+        self.assertEqual(attempts, {"click": 0, "submit": 0, "requestSubmit": 0})
+        self.assertEqual(requests, [])
+        self.assertEqual(metadata["phase"], "BEFORE")
+        self.assertEqual(len(metadata["controls"]), 6)
+        self.assertTrue(all(row["uiMatches"] and row["uiEnabled"] and row["uiSameForm"]
+                            for row in metadata["controls"]))
