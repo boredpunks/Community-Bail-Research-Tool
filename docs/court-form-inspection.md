@@ -111,8 +111,13 @@ request gate reserves a path before fetch, permits at most one GET for each of
 `/resource/css/sitemain.min.css`, and caps the session at three reservations
 and ten minutes. Failed and timed-out fetches remain reserved. Script and
 stylesheet URLs must exactly match declarations in bootstrap HTML accepted by
-the asset parser's 4 MB limit. That parser limit is not an upstream body-size
-limit; see the browser-boundary review below.
+the asset parser's 4 MB limit. Every inspection response is also streamed
+through Chromium's response interception and capped at 4,000,000 bytes before
+the response is fulfilled or parsed. The body is read in chunks of at most
+64 KiB; exceeding the cap aborts the response and discards the accumulated
+chunks. The cap is enforced even when `Content-Length` is absent. A missing or
+invalid configured limit fails closed. This does not change the request gate,
+approvals, or live-disabled barrier.
 an optional `v` query is accepted only as one bounded version hash and only
 when that exact URL was declared. Redirect following and retries are disabled,
 and each fetch is limited to 45 seconds.
@@ -127,12 +132,13 @@ Playwright. Thus the context routes below are currently unreachable for live
 
 In the dormant browser path, the context HTTP route is installed before the
 first navigation. It reserves each accepted request through the fixed gate
-before `route.fetch`, which is configured without redirect following or retries
-and with a timeout. The request gate allows only the bootstrap document and
-exact script/stylesheet URLs declared by that document. The context blocks
-service workers, and the browser launch disables background networking,
-component updates, sync, and first-run behavior. The kernel boundary below is
-independent of Playwright routing and applies before the worker starts.
+before the browser continues it. Chromium's response interception streams the
+response through the documented byte ceiling before it can be fulfilled to the
+page. The request gate allows only the bootstrap document and exact
+script/stylesheet URLs declared by that document. The context blocks service
+workers, and the browser launch disables background networking, component
+updates, sync, and first-run behavior. The kernel boundary below is independent
+of Playwright routing and applies before the worker starts.
 
 - The inspection-only child is launched through `network_sandbox.py`. Before
   executing the worker, that wrapper closes inherited file descriptors above
@@ -177,10 +183,11 @@ local test is not evidence of deployed containment. Live `INSPECT` must remain
 disabled until the deployed egress boundary and any host-mediated proxy or
 resolver paths are independently verified.
 
-- `MAX_RESPONSE_BYTES` is checked by the HTML asset-declaration parser after
-  `response.body()` has read the complete response. It limits which HTML is
-  parsed, not bytes transferred or buffered. Do not describe it as a transport
-  response-size cap.
+- `MAX_RESPONSE_BYTES` is enforced while Chromium's response body is read from
+  the DevTools `IO` stream, before it is fulfilled to the page. The bounded
+  parser check remains as defense in depth. The streamed path rejects a missing
+  or invalid limit and aborts oversized responses without retaining their
+  accumulated chunks.
 
 **Conditions before reconsidering the disabled flag:** keep `INSPECT` disabled
 unless all of the following are completed and reviewed:
@@ -191,9 +198,10 @@ unless all of the following are completed and reviewed:
    service can relay requests, and repeat the local/canary bypass matrix under
    the actual worker launch path. If this cannot be proven, add a supported
    network namespace/host egress-deny layer or keep the stage disabled.
-3. Bound response bytes while receiving them, before buffering the complete
-   body, or explicitly accept and document a reviewed alternative. The current
-   parser check alone is not a response-size bound.
+3. Review the response-streaming implementation and confirm it remains active
+   in the deployed Chromium runtime. The offline fixture tests prove the
+   4,000,000-byte boundary and early rejection of larger chunked responses;
+   they do not establish deployed runtime behavior.
 4. Obtain a fresh independent enforcement review before changing the live flag.
    Even after that review, any live execution requires separate fresh explicit
    approval and a new one-use authorization; the review itself is not approval.
@@ -236,10 +244,13 @@ not establish what controls may be available to a separately configured
 deployment. No deployment network policy or egress-enforcement point has been
 verified.
 
-The current `route.fetch` path also cannot bound bytes while receiving them.
-The 4 MB check occurs only after the complete body is buffered. Playwright's
-route fetch API used here returns a complete response, so checking its headers
-or body afterward cannot prevent peak buffering.
+Playwright's `route.fetch` API returns a complete response, so inspection now
+continues the browser request and intercepts its response through Chromium's
+DevTools Fetch/IO streaming interface. The worker reads at most 64 KiB per
+stream read, stops when the 4,000,000-byte ceiling would be exceeded, and fails
+that request before fulfilling it to the page. Chunked fixture responses
+exercise both the exact boundary and the first over-limit byte. This local
+check does not establish deployed Chromium behavior.
 
 **Recommended minimum alternative (not provisioned):** run only the inspector
 in a dedicated isolated runner with default-deny network egress and a mandatory

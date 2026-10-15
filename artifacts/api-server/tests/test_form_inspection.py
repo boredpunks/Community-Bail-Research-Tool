@@ -17,8 +17,9 @@ import form_inspection
 from calendar_protocol import select_calendar_preview_controls
 from form_inspection import expected
 from inspection_safety import (
-    CASE_SEARCH, FETCH_TIMEOUT_MS, InspectionRequestGate,
-    declared_asset_urls, fetch_inspection_once,
+    CASE_SEARCH, MAX_RESPONSE_BYTES,
+    InspectionRequestGate, InspectionResponseStream, ResponseSizeLimitError,
+    declared_asset_urls, fetch_inspection_once, read_bounded_response,
 )
 
 CRITERIA = {"courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
@@ -659,44 +660,23 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_timeout_and_uncertain_attempts_still_consume_the_path(self):
         await self.bootstrap()
 
-        class TimedOutRoute:
-            calls = []
-            async def fetch(self, **kwargs):
-                self.calls.append(kwargs)
-                raise TimeoutError("local fixture timeout")
+        class Route:
+            calls = 0
+            async def continue_(self):
+                self.calls += 1
 
         self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
-        route = TimedOutRoute()
-        with self.assertRaises(TimeoutError):
+        route = Route()
+        with self.assertRaisesRegex(RuntimeError, "INSPECTION_RESPONSE_STREAM_REQUIRED"):
             await fetch_inspection_once(route, self.gate)
         self.assertEqual(self.gate.reserved_count, 2)
         self.assertFalse(await self.gate.reserve(self.js, "GET", "script"))
-        self.assertEqual(route.calls, [{
-            "max_redirects": 0, "max_retries": 0,
-            "timeout": FETCH_TIMEOUT_MS,
-        }])
+        self.assertEqual(route.calls, 0)
 
-    async def test_redirect_target_is_denied_and_not_followed(self):
+    async def test_redirect_target_is_denied_by_the_request_gate(self):
         await self.bootstrap()
-
-        class RedirectRoute:
-            calls = 0
-            async def fetch(self, **kwargs):
-                self.calls += 1
-                self.assert_no_follow = kwargs == {
-                    "max_redirects": 0, "max_retries": 0,
-                    "timeout": FETCH_TIMEOUT_MS,
-                }
-                return {"status": 302, "location": "https://evil.invalid/next"}
-
-        self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
-        route = RedirectRoute()
-        response = await fetch_inspection_once(route, self.gate)
-        self.assertEqual(response["status"], 302)
-        self.assertTrue(route.assert_no_follow)
-        self.assertEqual(route.calls, 1)
         self.assertFalse(await self.gate.reserve("https://evil.invalid/next", "GET", "document"))
-        self.assertEqual(route.calls, 1)
+        self.assertEqual(self.gate.reserved_count, 1)
 
     async def test_session_deadline_is_global_and_has_no_expired_fetch(self):
         clock = [100.0]
@@ -706,9 +686,8 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
 
         class Route:
             calls = 0
-            async def fetch(self, **_kwargs):
+            async def continue_(self):
                 self.calls += 1
-                return None
 
         route = Route()
         clock[0] += 601
@@ -727,6 +706,135 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("inspection_armed", worker_source)
         self.assertNotIn("requestSubmit", worker_source + inspect_source)
         self.assertNotIn("locator(\"#btnSearch\").click", worker_source)
+
+    async def test_missing_size_limit_fails_before_reading_any_chunk(self):
+        reads = []
+
+        async def read_chunk(_size):
+            reads.append(True)
+            return b"fixture"
+
+        with self.assertRaisesRegex(ValueError, "INSPECTION_RESPONSE_SIZE_LIMIT_REQUIRED"):
+            await read_bounded_response(read_chunk, max_bytes=None)
+        self.assertEqual(reads, [])
+
+    async def test_chunk_reader_accepts_exact_limit_and_stops_on_first_excess(self):
+        chunks = [b"1234", b"5678"]
+        exact_reads = []
+
+        async def read_exact(_size):
+            exact_reads.append(True)
+            return chunks.pop(0) if chunks else b""
+
+        self.assertEqual(await read_bounded_response(read_exact, max_bytes=8), b"12345678")
+
+        oversized_chunks = [b"1234", b"5678", b"9"]
+        oversized_reads = []
+
+        async def read_oversized(_size):
+            oversized_reads.append(True)
+            return oversized_chunks.pop(0) if oversized_chunks else b""
+
+        with self.assertRaises(ResponseSizeLimitError):
+            await read_bounded_response(read_oversized, max_bytes=8)
+        self.assertEqual(len(exact_reads), 3)
+        self.assertEqual(len(oversized_reads), 3)
+
+    async def _serve_chunked_fixture(self, payload):
+        async def handle(reader, writer):
+            try:
+                await reader.readuntil(b"\r\n\r\n")
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+                    b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                )
+                await writer.drain()
+                for offset in range(0, len(payload), 32_768):
+                    chunk = payload[offset:offset + 32_768]
+                    writer.write(f"{len(chunk):X}\r\n".encode("ascii") + chunk + b"\r\n")
+                    await writer.drain()
+                writer.write(b"0\r\n\r\n")
+                await writer.drain()
+            except (ConnectionError, asyncio.IncompleteReadError):
+                pass
+            finally:
+                writer.close()
+                await writer.wait_closed()
+
+        server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        return server, server.sockets[0].getsockname()[1]
+
+    async def test_local_chunked_fixture_at_limit_is_fulfilled(self):
+        server, port = await self._serve_chunked_fixture(b"x" * MAX_RESPONSE_BYTES)
+        async with server:
+            async with async_playwright() as playwright:
+                browser = await playwright.chromium.launch(
+                    executable_path=shutil.which("chromium"),
+                    headless=True,
+                    args=["--no-sandbox"],
+                )
+                try:
+                    context = await browser.new_context()
+                    page = await context.new_page()
+                    cdp = await context.new_cdp_session(page)
+                    stream = InspectionResponseStream(
+                        cdp, url_pattern=f"http://127.0.0.1:{port}/*",
+                    )
+                    await stream.start()
+
+                    async def fulfill(route):
+                        response = await stream.fetch(route, timeout_ms=15_000)
+                        self.assertEqual(len(await response.body()), MAX_RESPONSE_BYTES)
+                        await response.fulfill()
+                        await response.dispose()
+
+                    await context.route("**/*", fulfill)
+                    response = await page.goto(
+                        f"http://127.0.0.1:{port}/boundary",
+                        wait_until="commit",
+                        timeout=20_000,
+                    )
+                    self.assertEqual(response.status, 200)
+                finally:
+                    await browser.close()
+
+    async def test_local_chunked_fixture_over_limit_is_aborted(self):
+        server, port = await self._serve_chunked_fixture(b"x" * (MAX_RESPONSE_BYTES + 1))
+        async with server:
+            async with async_playwright() as playwright:
+                browser = await playwright.chromium.launch(
+                    executable_path=shutil.which("chromium"),
+                    headless=True,
+                    args=["--no-sandbox"],
+                )
+                try:
+                    context = await browser.new_context()
+                    page = await context.new_page()
+                    cdp = await context.new_cdp_session(page)
+                    stream = InspectionResponseStream(
+                        cdp, url_pattern=f"http://127.0.0.1:{port}/*",
+                    )
+                    await stream.start()
+                    failures = []
+
+                    async def reject_oversized(route):
+                        try:
+                            await stream.fetch(route, timeout_ms=15_000)
+                        except ResponseSizeLimitError as error:
+                            failures.append(str(error))
+                            return
+                        self.fail("Oversized local fixture response was retained")
+
+                    await context.route("**/*", reject_oversized)
+                    with self.assertRaises(Exception):
+                        await page.goto(
+                            f"http://127.0.0.1:{port}/oversized",
+                            wait_until="commit",
+                            timeout=20_000,
+                        )
+                    self.assertEqual(failures, ["INSPECTION_RESPONSE_TOO_LARGE"])
+                finally:
+                    await browser.close()
 
     async def test_local_form_snapshot_never_invokes_click_or_submission(self):
         from form_inspection import snapshot

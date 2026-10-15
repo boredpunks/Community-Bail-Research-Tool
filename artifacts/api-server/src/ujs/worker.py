@@ -17,7 +17,9 @@ from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bai
 from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
-from inspection_safety import InspectionRequestGate, fetch_inspection_once
+from inspection_safety import (
+    InspectionRequestGate, InspectionResponseStream, fetch_inspection_once,
+)
 from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
 
@@ -186,19 +188,27 @@ async def main(config=None):
             try:
                 response, body, _ = await retrieve(
                     request.url, request.method,
-                    lambda: fetch_inspection_once(route, inspection_gate)
+                        lambda: fetch_inspection_once(route, inspection_gate, inspection_stream)
                     if inspection_only else
                     route.fetch(max_redirects=0, max_retries=0, timeout=45_000),
                 )
                 if inspection_only and urlsplit(request.url).path == "/CaseSearch":
                     inspection_gate.declare_document(request.url, body)
-                await route.fulfill(response=response)
+                if inspection_only:
+                    await response.fulfill()
+                else:
+                    await route.fulfill(response=response)
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
                 await response.dispose()
                 del body
             except Exception:
-                await route.abort()
+                try:
+                    await route.abort()
+                except Exception:
+                    # An inspection response may already have been continued
+                    # and failed through CDP's response interception.
+                    pass
 
         if inspection_only:
             if not hasattr(context, "route_web_socket"):
@@ -210,6 +220,11 @@ async def main(config=None):
             await context.route_web_socket("**/*", block_websocket)
         await context.route("**/*", handle_route)
         page = await context.new_page()
+        inspection_stream = None
+        if inspection_only:
+            inspection_cdp = await context.new_cdp_session(page)
+            inspection_stream = InspectionResponseStream(inspection_cdp)
+            await inspection_stream.start()
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
 
         def note_page_error(_error):
