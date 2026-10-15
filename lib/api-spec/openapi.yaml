@@ -386,7 +386,7 @@ components:
       properties:
         courtOffice: { type: string, enum: [CP-05-02-Crim] }
         courtRoom: { type: string, enum: ["Courtroom 506"] }
-        eventDate: { type: string, format: date, enum: ["2026-10-14"] }
+        eventDate: { type: string, format: date, enum: ["2026-10-15"] }
       required: [courtOffice, courtRoom, eventDate]
     DiscoveryMatchFilters:
       type: object

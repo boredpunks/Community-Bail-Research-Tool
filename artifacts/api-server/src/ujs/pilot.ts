@@ -7,7 +7,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import { actualDate, discoveryPolicy, easternToday } from "../lib/discovery";
 import {
-  calendarPreviewCriteria, calendarPreviewMethod, calendarPreviewSourceAllowed,
+  calendarPreviewCriteria, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed,
   collectionBlock, integratedSourceMethod, isCalendarPreviewCriteria,
 } from "../lib/discovery-safety";
 import { runJob } from "../lib/discovery-worker";
@@ -30,23 +30,27 @@ const flag = (key: string) => args.includes(`--${key}`);
 
 async function main() {
   if (command === "prepare-calendar-only") {
-    const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    if (!source || !calendarPreviewSourceAllowed(source)) {
-      throw new Error("The one-use calendar gate can only be prepared while SOURCE_VALIDATION_BARRIER remains unchanged and no request is active.");
+    if (calendarPreviewCriteria.startDate < easternToday()) {
+      throw new Error("The fixed calendar-only date is past. Obtain a new exact scope; no date will be substituted.");
     }
-    const [activeJob] = await db.select().from(discoveryJobsTable)
-      .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
-    if (activeJob) throw new Error("Another discovery job is active; no permit was prepared.");
-    const [activePermit] = await db.select().from(discoveryAssessmentsTable)
-      .where(and(eq(discoveryAssessmentsTable.stage, "CALENDAR_ONLY"),
-        inArray(discoveryAssessmentsTable.state, ["PREPARED", "APPROVED", "ATTEMPTED"])))
-      .limit(1);
-    if (activePermit) throw new Error("A calendar-only permit is already prepared, approved, or attempted.");
-    const [row] = await db.insert(discoveryAssessmentsTable).values({
-      stage: "CALENDAR_ONLY",
-      expectedMethod: calendarPreviewMethod,
-      criteria: calendarPreviewCriteria,
-    }).returning();
+    const row = await db.transaction(async (tx) => {
+      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
+      if (!source || !calendarPreviewSourceAllowed(source)) {
+        throw new Error("The one-use calendar gate can only be prepared while SOURCE_VALIDATION_BARRIER remains unchanged and no request is active.");
+      }
+      const [activeJob] = await tx.select().from(discoveryJobsTable)
+        .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+      if (activeJob) throw new Error("Another discovery job is active; no permit was prepared.");
+      const priorPermits = await tx.select().from(discoveryAssessmentsTable)
+        .where(eq(discoveryAssessmentsTable.stage, "CALENDAR_ONLY"));
+      if (priorPermits.some((permit) => isCalendarPreviewCriteria(permit.criteria))) {
+        throw new Error("A permit already exists for this exact calendar scope. Reuse and retries are not permitted.");
+      }
+      const [created] = await tx.insert(discoveryAssessmentsTable).values({
+        stage: "CALENDAR_ONLY", expectedMethod: calendarPreviewMethod, criteria: calendarPreviewCriteria,
+      }).returning();
+      return created!;
+    });
     console.log(JSON.stringify({
       id: row!.id, stage: row!.stage, state: row!.state, criteria: row!.criteria,
       documentCap: 0, requestCap: calendarPreviewCriteria.requestCap,
@@ -117,14 +121,14 @@ async function main() {
             .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
           if (activeJob) throw new Error("Another discovery job is active; no permit was approved.");
         } else {
-        const priorStage = row.stage === "SMALL" ? "SINGLE" : "SMALL";
-        const [prior] = await tx.select().from(discoveryAssessmentsTable).where(and(
-          eq(discoveryAssessmentsTable.stage, priorStage), eq(discoveryAssessmentsTable.state, "VERIFIED"),
-          eq(discoveryAssessmentsTable.expectedMethod, integratedSourceMethod),
-        )).orderBy(desc(discoveryAssessmentsTable.completedAt)).limit(1);
-        if (!prior || !prior.completedAt || source?.accessVerifiedAt?.getTime() !== prior.completedAt.getTime()
-          || source.verifiedMethod !== integratedSourceMethod || source.blockedReason
-          || (row.stage === "MODEST" && prior.completedAt.getTime() + 3_600_000 > Date.now())) throw new Error("A fresh prior-stage proof with no intervening source stop is required; MODEST must be at least one hour later.");
+          const priorStage = row.stage === "SMALL" ? "SINGLE" : "SMALL";
+          const [prior] = await tx.select().from(discoveryAssessmentsTable).where(and(
+            eq(discoveryAssessmentsTable.stage, priorStage), eq(discoveryAssessmentsTable.state, "VERIFIED"),
+            eq(discoveryAssessmentsTable.expectedMethod, integratedSourceMethod),
+          )).orderBy(desc(discoveryAssessmentsTable.completedAt)).limit(1);
+          if (!prior || !prior.completedAt || source?.accessVerifiedAt?.getTime() !== prior.completedAt.getTime()
+            || source.verifiedMethod !== integratedSourceMethod || source.blockedReason
+            || (row.stage === "MODEST" && prior.completedAt.getTime() + 3_600_000 > Date.now())) throw new Error("A fresh prior-stage proof with no intervening source stop is required; MODEST must be at least one hour later.");
         }
       }
       await tx.update(discoveryAssessmentsTable).set({
@@ -146,7 +150,7 @@ async function main() {
     console.log(JSON.stringify({ notice: "Current method explicitly approved. No search started, dates expanded, or budgets raised." }));
     return;
   }
-  if (command !== "run") throw new Error("Use prepare, approve, run, report, or approve-collection.");
+  if (command !== "run") throw new Error("Use prepare, prepare-calendar-only, approve, run, report, or approve-collection.");
   const lease = await pool.connect();
   let acquired = false;
   let jobId: string | undefined;
@@ -162,9 +166,19 @@ async function main() {
         || pilot.criteria.recordCap > discoveryPolicy.maxRecordCap || pilot.criteria.requestCap > discoveryPolicy.maxRequestCap
         || !source || source.activeRequestId || source.pausedUntil && source.pausedUntil > new Date()
         || source.blockedReason?.startsWith("UNCERTAIN") || source.blockedReason === "RESTART_IN_FLIGHT") throw new Error("Pilot approval/scope expired or source cooldown/uncertainty remains. No request sent.");
+      if (pilot.stage === "CALENDAR_ONLY") {
+        if (!isCalendarPreviewCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)) {
+          throw new Error("Calendar-only permit must match the fixed scope and unchanged SOURCE_VALIDATION_BARRIER. No request sent.");
+        }
+        const [activeJob] = await tx.select().from(discoveryJobsTable)
+          .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+        if (activeJob) throw new Error("Another discovery job is active; no source request sent.");
+      }
       const [created] = await tx.insert(discoveryJobsTable).values({
         ownerId: WORKSPACE_OWNER_ID, criteria: pilot.criteria, assessmentId: pilot.id,
-        message: "Approved single-use pilot; broader collection remains disabled.",
+        message: pilot.stage === "CALENDAR_ONLY"
+          ? "One operator-approved Calendar Event preview queued. The global source barrier remains; PDFs and retries are disabled."
+          : "Approved single-use pilot; broader collection remains disabled.",
       }).returning();
       await tx.update(discoverySourceTable).set({ collectionApprovedAt: null }).where(eq(discoverySourceTable.id, "UJS"));
       await tx.update(discoveryAssessmentsTable).set({ state: "ATTEMPTED", startedAt: new Date(), jobId: created!.id }).where(eq(discoveryAssessmentsTable.id, id));
@@ -184,19 +198,31 @@ async function main() {
         && request.startedAt.getTime() >= ordered[index - 1]!.completedAt!.getTime() + discoveryPolicy.spacingMs);
        const [assessment] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
        const inspection = diagnostic(assessment?.stage ?? "");
+       const calendarOnly = assessment?.stage === "CALENDAR_ONLY";
        const inspected = inspection && current?.status === "COMPLETED" && items.length === 0
          && !current.calendarComplete && requests.length === 3 && failures === 0 && timingValid
           && new Set(requests.map(request => request.path)).size === 3
          && requests.every(request => request.method === "GET" && request.durationMs !== null && request.durationMs < 20_000)
          && !source?.activeRequestId && !source?.latencyWarning;
-       const verified = !inspection && current?.status === "COMPLETED" && current.calendarComplete
+       const calendarValidated = calendarOnly && isCalendarPreviewCriteria(assessment.criteria)
+         && current?.status === "COMPLETED" && current.calendarComplete
+         && requests.length > 0 && requests.length <= calendarPreviewCriteria.requestCap
+         && requests.filter((request) => request.path === "/CaseSearch" && request.method === "POST").length === 1
+         && requests.every((request) => request.outcome === "OK" && request.durationMs !== null
+           && request.durationMs < 20_000 && calendarPreviewRequestAllowed(request.path, request.method))
+         && items.every((item) => item.provenance.extractionOutcome === "UNPROCESSED")
+         && failures === 0 && timingValid && !!source && calendarPreviewSourceAllowed(source)
+         && !source.latencyWarning;
+       const verified = !inspection && !calendarOnly && current?.status === "COMPLETED" && current.calendarComplete
         && validDocuments === job.criteria.recordCap && failures === 0 && requests.length > 0 && timingValid
         && requests.every((request) => request.durationMs !== null && request.durationMs < 20_000)
         && !source?.activeRequestId && !source?.latencyWarning;
       const completedAt = new Date();
-       const state = inspected ? "INSPECTED" : verified ? "VERIFIED" : "FAILED";
+       const state = inspected ? "INSPECTED" : calendarValidated ? "CALENDAR_VALIDATED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
-         reason: inspected ? (assessment?.stage === "FILING_INSPECT"
+         reason: calendarValidated
+           ? `One approved Calendar Event search completed with ${items.length} validated calendar row(s). No PDFs, bail extraction, or collection approval. SOURCE_VALIDATION_BARRIER remains unchanged.`
+           : inspected ? (assessment?.stage === "FILING_INSPECT"
              ? "Bounded public widget inventory after filing mode, Advanced Search and local County = Allegheny, with redacted displayed public office codes only. No private option values or identities, other county, court/case/office selection, Search, dates, dependent transmission, remote POST, PDF or submitted binding proof. Numeric district codes alone do not establish MDJ context. Collection disabled; existing source state preserved."
            : assessment?.stage === "COVERAGE"
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."

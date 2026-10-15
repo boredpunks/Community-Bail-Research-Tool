@@ -92,7 +92,7 @@ export type CalendarPreviewInputEventDate = typeof CalendarPreviewInputEventDate
 
 
 export const CalendarPreviewInputEventDate = {
-  '2026-10-14': '2026-10-14',
+  '2026-10-15': '2026-10-15',
 } as const;
 
 export interface CalendarPreviewInput {

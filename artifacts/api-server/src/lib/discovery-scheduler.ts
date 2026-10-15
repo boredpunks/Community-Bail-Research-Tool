@@ -50,7 +50,9 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
           || JSON.stringify(permit.criteria) !== JSON.stringify(current.criteria)) return deny("ASSESSMENT_NOT_APPROVED");
         if (permit.stage === "CALENDAR_ONLY"
           && (!isCalendarPreviewCriteria(permit.criteria) || !isCalendarPreviewCriteria(current.criteria)
-            || !calendarPreviewSourceAllowed(source, now)
+            || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
+            // In-flight requests still use the shared wait/uncertainty checks below.
+            || !calendarPreviewSourceAllowed(source, now, true)
             || !calendarPreviewRequestAllowed(requestPath, method))) {
           return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
         }

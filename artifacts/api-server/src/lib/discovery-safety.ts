@@ -17,8 +17,8 @@ export const calendarPreviewCriteria = Object.freeze({
   courtRoom: "Courtroom 506",
   eventType: "ANY",
   calendarPreviewOnly: true,
-  startDate: "2026-10-14",
-  endDate: "2026-10-14",
+  startDate: "2026-10-15",
+  endDate: "2026-10-15",
   recordCap: 1,
   requestCap: 8,
 } as const);
@@ -40,9 +40,9 @@ export function calendarPreviewSourceAllowed(source: {
   verifiedMethod: string | null;
   collectionApprovedAt: Date | null;
   activeRequestId?: string | null;
-}, now = new Date()): boolean {
+}, now = new Date(), allowInFlightWait = false): boolean {
   return source.blockedReason === "SOURCE_VALIDATION_BARRIER"
-    && !source.activeRequestId
+    && (!source.activeRequestId || allowInFlightWait)
     && (!source.pausedUntil || source.pausedUntil <= now)
     && !source.accessVerifiedAt
     && !source.verifiedMethod

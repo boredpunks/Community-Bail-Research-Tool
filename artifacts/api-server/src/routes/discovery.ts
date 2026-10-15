@@ -106,8 +106,8 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
 router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
   const body = CreateCalendarPreviewBody.safeParse(req.body);
   const eventDate = req.body?.eventDate;
-  if (!body.success || !actualDate(eventDate) || eventDate !== "2026-10-14" || eventDate < easternToday()) {
-    res.status(400).json({ error: "This preview is limited to the selected October 14, 2026 Allegheny court-office and courtroom search. No other date will be substituted." });
+  if (!body.success || !actualDate(eventDate) || eventDate !== "2026-10-15" || eventDate < easternToday()) {
+    res.status(400).json({ error: "This preview is limited to the selected October 15, 2026 Allegheny court-office and courtroom search. No other date will be substituted." });
     return;
   }
 

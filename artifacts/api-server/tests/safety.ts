@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
-import { allowedSourceRequest, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, calendarPreviewCriteria, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 
@@ -378,6 +378,116 @@ try {
     const [sourceState] = await store.select().from(sources);
     check(sourceState!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !sourceState!.accessVerifiedAt && !sourceState!.collectionApprovedAt);
   }
+  // One-use operator gate: protocol metadata only, never source or case fixtures.
+  check(isCalendarPreviewCriteria({ ...calendarPreviewCriteria }));
+  check(calendarPreviewCriteria.startDate === "2026-10-15");
+  check(!calendarPreviewRequestAllowed("/Report/CpDocketSheet", "GET"));
+  check(!calendarPreviewRequestAllowed("/resource/js/sitemain.min.js", "POST"));
+  const previewSource = {
+    blockedReason: "SOURCE_VALIDATION_BARRIER", pausedUntil: null, activeRequestId: null,
+    accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null,
+  };
+  check(calendarPreviewSourceAllowed(previewSource, instant));
+  check(!calendarPreviewSourceAllowed({ ...previewSource, activeRequestId: randomUUID() }, instant));
+  check(!calendarPreviewSourceAllowed({ ...previewSource, blockedReason: null }, instant));
+  check(!isCalendarPreviewCriteria({ ...calendarPreviewCriteria, extra: true }));
+
+  const preparePreview = async (
+    changedCriteria: Partial<(typeof jobs.$inferSelect)["criteria"]> = {},
+    changedSource: Partial<typeof sources.$inferInsert> = {},
+    changedPermit: Partial<typeof pilots.$inferInsert> = {},
+  ) => {
+    await reset(false);
+    await store.update(sources).set({ ...previewSource, ...changedSource }).where(eq(sources.id, "UJS"));
+    const previewCriteria = { ...calendarPreviewCriteria, ...changedCriteria };
+    const [permit] = await store.insert(pilots).values({
+      stage: "CALENDAR_ONLY", expectedMethod: calendarPreviewMethod, criteria: previewCriteria,
+      state: "ATTEMPTED", approvedAt: instant, expiresAt: new Date(time + 7 * 86_400_000),
+      ...changedPermit,
+    }).returning();
+    const job = await createJob({ criteria: previewCriteria, assessmentId: permit!.id });
+    await store.update(pilots).set({ jobId: job.id }).where(eq(pilots.id, permit!.id));
+    return { job, permit: permit! };
+  };
+  const previewReserve = (job: typeof jobs.$inferSelect, permitId: string, method = "GET") =>
+    reserveSourceRequest(job, "/CaseSearch", method, permitId, requestUrl, () => false, context);
+
+  let preview = await preparePreview();
+  const pageGrant = await previewReserve(preview.job, preview.permit.id);
+  assert.ok(pageGrant.allow);
+  check(await response(preview.job, pageGrant.requestId));
+  const postGrant = await previewReserve(preview.job, preview.permit.id, "POST");
+  assert.ok(postGrant.allow);
+  check(await response(preview.job, postGrant.requestId));
+  check(!(await previewReserve(preview.job, preview.permit.id, "POST")).allow);
+  check((await store.select().from(requests)).length === 2);
+  const [preservedSource] = await store.select().from(sources);
+  check(preservedSource!.blockedReason === "SOURCE_VALIDATION_BARRIER"
+    && !preservedSource!.accessVerifiedAt && !preservedSource!.verifiedMethod
+    && !preservedSource!.collectionApprovedAt);
+
+  for (const changed of [
+    { startDate: "2026-10-14" }, { endDate: "2026-10-16" }, { courtRoom: "Courtroom 507" },
+    { courtRoom: undefined }, { eventType: "Bail Hearing" as const }, { calendarPreviewOnly: false },
+    { requestCap: 9 }, { recordCap: 2 }, { matchTarget: 1 },
+  ]) {
+    preview = await preparePreview(changed);
+    check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+    check((await store.select().from(requests)).length === 0);
+  }
+  for (const changed of [
+    { blockedReason: null }, { blockedReason: "ACCESS_DENIED" }, { blockedReason: "UNCERTAIN_SOURCE_STATE" },
+    { pausedUntil: new Date(now0 + 60_000) }, { accessVerifiedAt: instant },
+    { verifiedMethod: integratedSourceMethod }, { collectionApprovedAt: instant },
+  ]) {
+    preview = await preparePreview({}, changed);
+    check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+    check((await store.select().from(requests)).length === 0);
+  }
+  for (const changed of [
+    ...["PREPARED", "APPROVED", "FAILED", "CALENDAR_VALIDATED"].map(state => ({ state })),
+    { expectedMethod: integratedSourceMethod }, { approvedAt: null },
+    { expiresAt: new Date(now0 - 1) }, { stage: "SINGLE" },
+  ]) {
+    preview = await preparePreview({}, {}, changed);
+    check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+    check((await store.select().from(requests)).length === 0);
+  }
+  preview = await preparePreview();
+  await store.update(pilots).set({ expiresAt: new Date("2026-10-20T16:00:00Z") }).where(eq(pilots.id, preview.permit.id));
+  time = Date.parse("2026-10-16T16:00:00Z");
+  const stalePreview = await previewReserve(preview.job, preview.permit.id);
+  check(!stalePreview.allow && "reason" in stalePreview && stalePreview.reason === "CALENDAR_PREVIEW_SCOPE_INVALID");
+  check((await store.select().from(requests)).length === 0);
+  preview = await preparePreview();
+  await store.update(jobs).set({ requestsUsed: 8 }).where(eq(jobs.id, preview.job.id));
+  check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+  check((await store.select().from(requests)).length === 0);
+  preview = await preparePreview();
+  await store.update(jobs).set({ calendarComplete: true }).where(eq(jobs.id, preview.job.id));
+  check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+  check((await store.select().from(requests)).length === 0);
+  preview = await preparePreview();
+  const activeGrant = await previewReserve(preview.job, preview.permit.id);
+  assert.ok(activeGrant.allow);
+  let accounted = false;
+  const waitingGrant = await reserveSourceRequest(preview.job, "/CaseSearch", "POST",
+    preview.permit.id, requestUrl, () => false, {
+      ...context,
+      sleep: async (ms) => {
+        if (!accounted) {
+          check(await response(preview.job, activeGrant.requestId));
+          accounted = true;
+        }
+        time += ms;
+      },
+    });
+  check(waitingGrant.allow && accounted);
+  if (waitingGrant.allow) check(await response(preview.job, waitingGrant.requestId));
+  await reset(false);
+  await store.update(sources).set(previewSource).where(eq(sources.id, "UJS"));
+  check(!(await reserve(await createJob())).allow);
+  check((await store.select().from(requests)).length === 0);
   console.log(`PASS: ${checks} offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.`);
 } finally {
   await isolatedPool.end();

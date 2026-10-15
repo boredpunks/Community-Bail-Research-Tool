@@ -5,3 +5,4 @@
 - [Client-specific source proof](source-access-proof.md) — Prove calendar and PDF retrieval with the actual integrated clients; another client's success does not establish access.
 - [pnpm CLI arguments](pnpm-cli-arguments.md) — Pass script subcommands directly; an extra standalone separator is forwarded to the CLI in this workspace.
 - [Deferred pipeline options](deferred-pipeline-options.md) — Keep unused pipeline ideas ready for a later requested safeguard revision, without enabling them now.
+- [Calendar-only operator approval](calendar-only-operator-approval.md) — Building a one-use gate is not run approval; retain the global barrier and exclude PDFs.

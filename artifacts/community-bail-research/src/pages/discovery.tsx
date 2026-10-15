@@ -23,7 +23,7 @@ import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-rete
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
-const PREVIEW_DATE = '2026-10-14';
+const PREVIEW_DATE = '2026-10-15';
 
 function dayNum(d: string) { const [y, m, dd] = d.split('-').map(Number); return Date.UTC(y, m - 1, dd) / 86400000; }
 
@@ -354,7 +354,8 @@ export default function Discovery() {
         <p className="hint mb-4">
           One explicitly started search for Allegheny Common Pleas office CP-05-02-Crim, Courtroom 506, on one date, with no event-type filter.
           This preview retains only validated calendar result rows. It does not request docket PDFs, extract bail evidence, or save candidates.
-          The shared source approval and request limiter still apply.
+          The shared source approval and request limiter still apply. While the source barrier is active, this button stays disabled.
+          A separate one-use operator permit can authorize only the exact search shown here, without clearing the barrier or enabling PDFs.
         </p>
         <p className="mono">Calendar date: {PREVIEW_DATE}</p>
         {previewErr ? <p className="errbox mt-3" role="alert" data-testid="text-calendar-preview-error">{previewErr}</p> : null}

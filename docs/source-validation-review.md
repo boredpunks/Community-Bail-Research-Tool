@@ -1,7 +1,7 @@
 # Operator review: UJS source-validation barrier
 
 **Prepared:** October 14, 2026  
-**Status:** Review prepared; source traffic remains stopped.
+**Status:** Review prepared October 14; one-use operator gate built October 15. Source traffic remains stopped pending separate run approval.
 
 ## Requested search
 
@@ -10,11 +10,11 @@ The user approved exactly one Calendar Event search:
 - Allegheny - 05
 - Court office `CP-05-02-Crim`
 - Courtroom 506
-- October 14, 2026
+- October 15, 2026 (the user explicitly replaced the now-past October 14 date)
 - No event-type filter
 - No docket PDFs, second search, retry, or broader collection
 
-That approval does not override the existing source-wide validation barrier.
+The date selection and approval to build the gate are not approval to execute it. The source-wide validation barrier must remain in place.
 
 ## Current gate state
 
@@ -27,7 +27,7 @@ A read-only development-database check found:
 - `active_request_id`: unset
 - Last recorded source request: October 12, 2026
 
-The calendar-preview API checks this gate before creating a job, and the shared request scheduler checks it again before reserving any source transmission. The approved search therefore cannot proceed under the current state. No source request was sent, and no source-control value was changed.
+The ordinary calendar-preview API checks this gate before creating a job, and remains blocked. The dedicated operator-only permit described below can authorize only the exact calendar search without clearing the barrier. No source request was sent, and no source-control value was changed while building it. The database observations above are the October 14 read-only snapshot, not a new live-access assessment.
 
 ## Existing evidence and limits
 
@@ -44,9 +44,24 @@ The calendar-preview API checks this gate before creating a job, and the shared 
 ## Recommended operator decision
 
 1. Keep `SOURCE_VALIDATION_BARRIER` in place until an operator reviews its underlying validation history. Do not clear it with a direct database edit, infer access from a prior client, or reuse the one-search approval as a general collection grant.
-2. Decide whether a dedicated, operator-approved calendar-only verification path is needed to establish the current browser client's behavior without PDF retrieval or broader collection.
-3. If that review authorizes a specific source operation and the gate is properly resolved, confirm that the operation still matches the user's exact one-search scope. Stop on the first denial, challenge, unexpected response, or validation mismatch; do not retry or fetch PDFs.
+2. The user authorized building a dedicated calendar-only path. Obtain separate approval to execute the October 15 scope before preparing, approving, or running its permit.
+3. Use that one-use permit only while the source barrier is unchanged. Stop on the first denial, challenge, unexpected response, or validation mismatch; do not retry, fetch PDFs, substitute dates, or infer broader access.
+
+## One-use operator flow
+
+This is an operator CLI action, not a new shared-password web permission. The ordinary preview button remains disabled under the barrier. After separate explicit run approval:
+
+```sh
+pnpm --filter @workspace/api-server run pilot prepare-calendar-only
+pnpm --filter @workspace/api-server run pilot approve --id <prepared-id> --user-approved
+pnpm --filter @workspace/api-server run pilot run --id <prepared-id> --user-approved
+pnpm --filter @workspace/api-server run pilot report --id <prepared-id>
+```
+
+Preparation sends no source traffic. The fixed scope is Allegheny - 05, `CP-05-02-Crim`, Courtroom 506, October 15, 2026, no event-type filter, zero PDFs, and at most eight total transmitted requests including assets. Only one Search POST is allowed. Existing spacing, rolling limits, cooldown, accounting, and in-flight/uncertain-request protection still apply.
+
+The permit is consumed before the worker starts. The same scope cannot be prepared again, and an attempted job cannot be resumed. An expired date, altered scope, changed source barrier, active job, or missing approval fails closed. A successful calendar result does not set access verification, approve collection, or clear `SOURCE_VALIDATION_BARRIER`; it retains calendar rows only.
 
 ## Current disposition
 
-The offline preview is implemented and verified. The approved live search remains blocked. No source request, barrier override, or collection approval was performed.
+The offline preview and dedicated operator gate are implemented and checked offline. No live search, permit preparation, barrier override, or collection approval was performed. The live search remains unexecuted pending separate approval.

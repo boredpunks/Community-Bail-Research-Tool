@@ -223,7 +223,7 @@ export const CreateDiscoveryJobResponse = zod.object({
 export const CreateCalendarPreviewBody = zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim']),
   "courtRoom": zod.enum(['Courtroom 506']),
-  "eventDate": zod.enum(['2026-10-14'])
+  "eventDate": zod.enum(['2026-10-15'])
 })
 
 export const createCalendarPreviewResponseCriteriaCourtRoomMax = 80;
