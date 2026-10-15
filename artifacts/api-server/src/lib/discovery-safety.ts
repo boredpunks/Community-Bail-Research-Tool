@@ -1,6 +1,7 @@
 // This identifies the actual clients, not just the source domain. Changing
 // either retrieval method invalidates prior proof and requires fresh approval.
 export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v8";
+export const calendarPreviewMethod = "playwright-calendar-preview-v1";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 
 type SourceState = {
@@ -10,6 +11,49 @@ type SourceState = {
   verifiedMethod: string | null;
   collectionApprovedAt: Date | null;
 };
+
+export const calendarPreviewCriteria = Object.freeze({
+  courtOffice: "CP-05-02-Crim",
+  courtRoom: "Courtroom 506",
+  eventType: "ANY",
+  calendarPreviewOnly: true,
+  startDate: "2026-10-14",
+  endDate: "2026-10-14",
+  recordCap: 1,
+  requestCap: 8,
+} as const);
+
+export function isCalendarPreviewCriteria(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const actualKeys = Object.keys(candidate).sort();
+  const expectedKeys = Object.keys(calendarPreviewCriteria).sort();
+  return actualKeys.length === expectedKeys.length
+    && actualKeys.every((key, index) => key === expectedKeys[index]
+      && candidate[key] === calendarPreviewCriteria[key as keyof typeof calendarPreviewCriteria]);
+}
+
+export function calendarPreviewSourceAllowed(source: {
+  blockedReason: string | null;
+  pausedUntil: Date | null;
+  accessVerifiedAt: Date | null;
+  verifiedMethod: string | null;
+  collectionApprovedAt: Date | null;
+  activeRequestId?: string | null;
+}, now = new Date()): boolean {
+  return source.blockedReason === "SOURCE_VALIDATION_BARRIER"
+    && !source.activeRequestId
+    && (!source.pausedUntil || source.pausedUntil <= now)
+    && !source.accessVerifiedAt
+    && !source.verifiedMethod
+    && !source.collectionApprovedAt;
+}
+
+export function calendarPreviewRequestAllowed(path: unknown, method: unknown): boolean {
+  if (path === "/CaseSearch") return method === "GET" || method === "POST";
+  return method === "GET"
+    && (path === "/resource/js/sitemain.min.js" || path === "/resource/css/sitemain.min.css");
+}
 
 export const sourceOutcomes = [
   "OK", "RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "REDIRECT", "HTTP_ERROR",

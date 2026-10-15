@@ -3,10 +3,13 @@
  * Run requires a separately approved expiring permit and the worker lease.
  * Collection approval is an additional explicit action after all stages.
  */
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import { actualDate, discoveryPolicy, easternToday } from "../lib/discovery";
-import { collectionBlock, integratedSourceMethod } from "../lib/discovery-safety";
+import {
+  calendarPreviewCriteria, calendarPreviewMethod, calendarPreviewSourceAllowed,
+  collectionBlock, integratedSourceMethod, isCalendarPreviewCriteria,
+} from "../lib/discovery-safety";
 import { runJob } from "../lib/discovery-worker";
 import { WORKSPACE_OWNER_ID } from "../middlewares/researchAuth";
 import { formInspectionMethod } from "../lib/form-inspection";
@@ -15,22 +18,50 @@ import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspe
 
 // INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
 // child prohibit every document request and every transmitted POST.
-const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1 } as const;
+const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1, CALENDAR_ONLY: 1 } as const;
 const diagnostic = (stage: string) => ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(stage);
-const currentMethod = (stage: string) => stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageInspectionMethod : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
+const currentMethod = (stage: string) => stage === "CALENDAR_ONLY" ? calendarPreviewMethod
+  : stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageInspectionMethod
+  : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
 const args = process.argv.slice(2);
 const command = args.shift();
 const value = (key: string) => args.includes(`--${key}`) ? args[args.indexOf(`--${key}`) + 1] : undefined;
 const flag = (key: string) => args.includes(`--${key}`);
 
 async function main() {
+  if (command === "prepare-calendar-only") {
+    const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+    if (!source || !calendarPreviewSourceAllowed(source)) {
+      throw new Error("The one-use calendar gate can only be prepared while SOURCE_VALIDATION_BARRIER remains unchanged and no request is active.");
+    }
+    const [activeJob] = await db.select().from(discoveryJobsTable)
+      .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+    if (activeJob) throw new Error("Another discovery job is active; no permit was prepared.");
+    const [activePermit] = await db.select().from(discoveryAssessmentsTable)
+      .where(and(eq(discoveryAssessmentsTable.stage, "CALENDAR_ONLY"),
+        inArray(discoveryAssessmentsTable.state, ["PREPARED", "APPROVED", "ATTEMPTED"])))
+      .limit(1);
+    if (activePermit) throw new Error("A calendar-only permit is already prepared, approved, or attempted.");
+    const [row] = await db.insert(discoveryAssessmentsTable).values({
+      stage: "CALENDAR_ONLY",
+      expectedMethod: calendarPreviewMethod,
+      criteria: calendarPreviewCriteria,
+    }).returning();
+    console.log(JSON.stringify({
+      id: row!.id, stage: row!.stage, state: row!.state, criteria: row!.criteria,
+      documentCap: 0, requestCap: calendarPreviewCriteria.requestCap,
+      notice: "Prepared with no source traffic. A separate --user-approved operator action is required; this permit allows one exact Calendar Event search only, no PDFs, no retries, and does not clear or broaden the source barrier.",
+    }));
+    return;
+  }
+
   if (command === "prepare") {
     const stage = String(value("stage") ?? "").toUpperCase() as keyof typeof stageCaps;
     const startDate = value("start"), endDate = value("end"), requestCap = Number(value("requests"));
-    if (!stageCaps[stage] || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
+    if (!stageCaps[stage] || stage === "CALENDAR_ONLY" || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
       || !Number.isInteger(requestCap) || requestCap < (diagnostic(stage) ? 3 : 8)
-      || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE/FILING_INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days.");
+      || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE/FILING_INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days. Use prepare-calendar-only for the fixed one-use preview scope.");
     const [row] = await db.insert(discoveryAssessmentsTable).values({
       stage, expectedMethod: currentMethod(stage),
       criteria: { courtOffice: "CP-05-02-Crim", eventType: "Bail Hearing", startDate, endDate,
@@ -59,9 +90,13 @@ async function main() {
         coverageEvidence.push(metadata);
       }
     }
-    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" ? { coverageEvidence } : row.stage === "FILING_INSPECT" ? { filingEvidence: coverageEvidence } : {}), ...(diagnostic(row.stage) ? {
-      documentCap: 0, remotePostCap: 0, notice: "Operator-only diagnostic; criteria recordCap is a storage placeholder. No document or transmitted POST permitted.",
-    } : {}) }));
+    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" ? { coverageEvidence } : row.stage === "FILING_INSPECT" ? { filingEvidence: coverageEvidence } : {}),
+      ...(row.stage === "CALENDAR_ONLY" ? {
+        documentCap: 0, remotePostCap: 1,
+        notice: "One exact approved Calendar Event search only. No docket PDFs, no retry, no collection approval, and the source-wide barrier is preserved.",
+      } : diagnostic(row.stage) ? {
+        documentCap: 0, remotePostCap: 0, notice: "Operator-only diagnostic; criteria recordCap is a storage placeholder. No document or transmitted POST permitted.",
+      } : {}) }));
     return;
   }
   if (!flag("user-approved")) throw new Error("Separate explicit user approval is required; no operation performed.");
@@ -72,7 +107,16 @@ async function main() {
       if (!row || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage)
         || diagnostic(row.stage) && row.criteria.requestCap !== 3) throw new Error("Only an unused prepared current-method pilot can be approved.");
       if (row.criteria.startDate < easternToday() || row.criteria.recordCap > discoveryPolicy.maxRecordCap || row.criteria.requestCap > discoveryPolicy.maxRequestCap) throw new Error("Scope is stale or exceeds protected limits. Obtain separate operator-budget authorization; limits will not increase automatically.");
+      if (row.stage === "CALENDAR_ONLY" && (!isCalendarPreviewCriteria(row.criteria)
+        || !source || !calendarPreviewSourceAllowed(source))) {
+        throw new Error("Calendar-only approval requires the exact fixed preview scope and the unchanged SOURCE_VALIDATION_BARRIER. No source request or barrier override occurred.");
+      }
       if (row.stage !== "SINGLE" && !diagnostic(row.stage)) {
+        if (row.stage === "CALENDAR_ONLY") {
+          const [activeJob] = await tx.select().from(discoveryJobsTable)
+            .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+          if (activeJob) throw new Error("Another discovery job is active; no permit was approved.");
+        } else {
         const priorStage = row.stage === "SMALL" ? "SINGLE" : "SMALL";
         const [prior] = await tx.select().from(discoveryAssessmentsTable).where(and(
           eq(discoveryAssessmentsTable.stage, priorStage), eq(discoveryAssessmentsTable.state, "VERIFIED"),
@@ -81,6 +125,7 @@ async function main() {
         if (!prior || !prior.completedAt || source?.accessVerifiedAt?.getTime() !== prior.completedAt.getTime()
           || source.verifiedMethod !== integratedSourceMethod || source.blockedReason
           || (row.stage === "MODEST" && prior.completedAt.getTime() + 3_600_000 > Date.now())) throw new Error("A fresh prior-stage proof with no intervening source stop is required; MODEST must be at least one hour later.");
+        }
       }
       await tx.update(discoveryAssessmentsTable).set({
         state: "APPROVED", approvedAt: new Date(), expiresAt: new Date(Date.now() + 24 * 3_600_000),

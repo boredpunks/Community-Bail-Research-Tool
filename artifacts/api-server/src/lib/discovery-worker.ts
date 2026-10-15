@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
-import { allowedSourceRequest, validCalendarDiagnostics, validCalendarFormDiagnostic } from "./discovery-safety";
+import {
+  allowedSourceRequest, calendarPreviewMethod, isCalendarPreviewCriteria,
+  validCalendarDiagnostics, validCalendarFormDiagnostic,
+} from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
@@ -53,7 +56,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const coverageOnly = permit?.stage === "COVERAGE" && permit.expectedMethod === coverageInspectionMethod;
   const filingInspectionOnly = permit?.stage === "FILING_INSPECT" && permit.expectedMethod === filingInspectionMethod;
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
-  if (calendarPreviewOnly && (job.assessmentId || inspectionOnly || coverageOnly || filingInspectionOnly
+  const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
+  if (permit?.stage === "CALENDAR_ONLY"
+      && (!calendarOnlyPermit || !calendarPreviewOnly || !isCalendarPreviewCriteria(job.criteria))) {
+    throw new Error("Invalid calendar-only operator permit scope");
+  }
+  if (calendarPreviewOnly && ((job.assessmentId && !calendarOnlyPermit) || inspectionOnly || coverageOnly || filingInspectionOnly
       || job.calendarComplete || job.criteria.eventType !== "ANY" || !job.criteria.courtRoom)) {
     throw new Error("Invalid calendar preview worker scope");
   }

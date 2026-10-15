@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { db, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
-import { allowedSourceRequest, collectionBlock, integratedSourceMethod, paceEligibleAt, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage } from "./discovery-safety";
+import {
+  allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed,
+  calendarPreviewSourceAllowed, collectionBlock, integratedSourceMethod,
+  isCalendarPreviewCriteria, paceEligibleAt, responseHealth, rollingUsage,
+  throttleDeadline, validAccountingMessage,
+} from "./discovery-safety";
 import { formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
 import { coverageInspectionMethod } from "./coverage-inspection";
 import { filingInspectionMethod } from "./filing-inspection";
@@ -31,12 +36,25 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       if (!source) return deny("ACCESS_UNVERIFIED");
       if (current.resultsExpiredAt) return deny("RESULTS_EXPIRED");
       if (current.requestsUsed >= current.criteria.requestCap) return deny("JOB_REQUEST_LIMIT");
+      let calendarOnlyPermit = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
+        const expectedMethod = permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
+          : permit?.stage === "COVERAGE" ? coverageInspectionMethod
+          : permit?.stage === "INSPECT" ? formInspectionMethod
+          : permit?.stage === "CALENDAR_ONLY" ? calendarPreviewMethod
+          : integratedSourceMethod;
         if (permitId !== current.assessmentId || !permit || permit.state !== "ATTEMPTED"
-          || permit.jobId !== current.id || permit.expectedMethod !== (permit.stage === "FILING_INSPECT" ? filingInspectionMethod : permit.stage === "COVERAGE" ? coverageInspectionMethod : permit.stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod)
+          || permit.jobId !== current.id || permit.expectedMethod !== expectedMethod
           || !permit.approvedAt || !permit.expiresAt || permit.expiresAt <= now
           || JSON.stringify(permit.criteria) !== JSON.stringify(current.criteria)) return deny("ASSESSMENT_NOT_APPROVED");
+        if (permit.stage === "CALENDAR_ONLY"
+          && (!isCalendarPreviewCriteria(permit.criteria) || !isCalendarPreviewCriteria(current.criteria)
+            || !calendarPreviewSourceAllowed(source, now)
+            || !calendarPreviewRequestAllowed(requestPath, method))) {
+          return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
+        }
+        calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
         if (["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage) && (current.criteria.requestCap !== 3
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
           || !inspectionRequestAllowed(requestPath, method))) return deny("INSPECTION_REQUEST_NOT_PERMITTED");
@@ -72,7 +90,20 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         const [prior] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.resourceKey, resourceKey))).limit(1);
         if (prior) return deny("DOCUMENT_ALREADY_ATTEMPTED");
         itemId = item.id;
-      } else if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
+      } else {
+        if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
+        if (calendarOnlyPermit && requestPath === "/CaseSearch" && method === "POST") {
+          const [priorSearch] = await tx.select({ id: discoveryRequestsTable.id })
+            .from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              eq(discoveryRequestsTable.path, "/CaseSearch"),
+              eq(discoveryRequestsTable.method, "POST"),
+            ))
+            .limit(1);
+          if (priorSearch) return deny("CALENDAR_SEARCH_ALREADY_SUBMITTED");
+        }
+      }
       const [request] = await tx.insert(discoveryRequestsTable).values({
         jobId: current.id, ownerId: current.ownerId, sourceId, path: String(requestPath), method: String(method), resourceKey, itemId, startedAt: now,
       }).returning();
