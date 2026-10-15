@@ -207,6 +207,51 @@ try {
   check(retained!.requestsUsed === 1);
   check(!(await reserve(await createJob())).allow);
 
+  // A worker restart cannot replay a diagnostic GET or refund its request
+  // budget. Keep this isolated from the source and preserve all access gates.
+  await reset(false);
+  await store.update(sources).set({
+    blockedReason: "SOURCE_VALIDATION_BARRIER",
+    accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null,
+  }).where(eq(sources.id, "UJS"));
+  const diagnosticCriteria = { ...criteria, requestCap: 3 };
+  const [coveragePermit] = await store.insert(pilots).values({
+    stage: "COVERAGE", expectedMethod: coverageInspectionMethod, criteria: diagnosticCriteria,
+    state: "ATTEMPTED", approvedAt: instant, expiresAt: new Date(now0 + 3_600_000),
+  }).returning();
+  const diagnosticJob = await createJob({
+    criteria: diagnosticCriteria, assessmentId: coveragePermit!.id,
+  });
+  await store.update(pilots).set({ jobId: diagnosticJob.id }).where(eq(pilots.id, coveragePermit!.id));
+  const diagnosticGrant = await reserveSourceRequest(
+    diagnosticJob, "/CaseSearch", "GET", coveragePermit!.id, requestUrl, () => false, context,
+  );
+  assert.ok(diagnosticGrant.allow && diagnosticGrant.requestId);
+  const [sourceBeforeRestart] = await store.select().from(sources);
+  check(sourceBeforeRestart!.blockedReason === "SOURCE_VALIDATION_BARRIER"
+    && !sourceBeforeRestart!.accessVerifiedAt && !sourceBeforeRestart!.verifiedMethod
+    && !sourceBeforeRestart!.collectionApprovedAt);
+  await store.update(jobs).set({ status: "PAUSED" }).where(eq(jobs.id, diagnosticJob.id));
+  await recoverUncertainRequests(context);
+  const [uncertainDiagnostic] = await store.select().from(requests)
+    .where(eq(requests.id, diagnosticGrant.requestId));
+  const [recoveredDiagnosticJob] = await store.select().from(jobs)
+    .where(eq(jobs.id, diagnosticJob.id));
+  const [sourceAfterRestart] = await store.select().from(sources);
+  check(uncertainDiagnostic!.path === "/CaseSearch" && uncertainDiagnostic!.method === "GET"
+    && uncertainDiagnostic!.outcome === "UNCERTAIN_AFTER_RESTART");
+  check(recoveredDiagnosticJob!.requestsUsed === 1 && recoveredDiagnosticJob!.status === "PAUSED");
+  check(sourceAfterRestart!.blockedReason === "RESTART_IN_FLIGHT"
+    && !sourceAfterRestart!.accessVerifiedAt && !sourceAfterRestart!.verifiedMethod
+    && !sourceAfterRestart!.collectionApprovedAt);
+  const replay = await reserveSourceRequest(
+    diagnosticJob, "/CaseSearch", "GET", coveragePermit!.id, requestUrl, () => false, context,
+  );
+  check(!replay.allow);
+  check((await store.select().from(requests).where(eq(requests.jobId, diagnosticJob.id))).length === 1);
+  const [budgetAfterReplay] = await store.select().from(jobs).where(eq(jobs.id, diagnosticJob.id));
+  check(budgetAfterReplay!.requestsUsed === 1);
+
   await reset(false);
   const [permit] = await store.insert(pilots).values({ stage: "SINGLE", expectedMethod: integratedSourceMethod, criteria }).returning();
   const pilot = await createJob({ assessmentId: permit!.id });
