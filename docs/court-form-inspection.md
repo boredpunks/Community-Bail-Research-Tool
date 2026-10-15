@@ -110,28 +110,83 @@ request gate reserves a path before fetch, permits at most one GET for each of
 `/CaseSearch`, `/resource/js/sitemain.min.js`, and
 `/resource/css/sitemain.min.css`, and caps the session at three reservations
 and ten minutes. Failed and timed-out fetches remain reserved. Script and
-stylesheet URLs must exactly match declarations in the bounded bootstrap HTML;
+stylesheet URLs must exactly match declarations in bootstrap HTML accepted by
+the asset parser's 4 MB limit. That parser limit is not an upstream body-size
+limit; see the browser-boundary review below.
 an optional `v` query is accepted only as one bounded version hash and only
 when that exact URL was declared. Redirect following and retries are disabled,
 and each fetch is limited to 45 seconds.
 
-For a future reviewed implementation, Playwright's context route is installed
-before the first page navigation, applies to context pages/frames and their
-HTTP(S) requests, and is backed by the parent scheduler's persisted request
-budget and duplicate-path check. Service workers are blocked, browser background
-networking is disabled, and a context WebSocket route closes WebSocket
-connections before page creation. Non-allowlisted resource types and later
-page requests are aborted. Local tests exercise the request gate and fixed
-fetch options only; they are not proof that the live form works.
+### Browser and runtime boundary review
 
-**Remaining enforcement limitation:** these controls do not establish control
-over every Chromium, operating-system, DNS, preconnect, or platform-proxy
-side-channel. Nor do local fixtures prove the deployed browser/runtime has
-identical interception semantics. Therefore `INSPECT` must remain disabled
-until a separate review establishes whether those residual channels are
-acceptable and verifies the actual runtime's interception coverage. Any future
-live execution still requires fresh, explicit approval and a new one-use
-authorization.
+The live-disabled barrier remains in force. The TypeScript flag is `false`, the
+operator CLI refuses to prepare `INSPECT`, the scheduler denies it before
+reserving a source request, and the Python worker exits before starting
+Playwright. Thus the context routes below are currently unreachable for live
+`INSPECT`; their presence is not an enabled or source-tested boundary.
+
+In the dormant browser path, the context HTTP route is installed before the
+first navigation. It reserves each accepted request through the fixed gate
+before `route.fetch`, which is configured without redirect following or retries
+and with a timeout. The request gate allows only the bootstrap document and
+exact script/stylesheet URLs declared by that document. The context blocks
+service workers, and the browser launch disables background networking,
+component updates, sync, and first-run behavior. If the Playwright context does
+not expose `route_web_socket`, the worker fails closed; otherwise its
+context-wide WebSocket handler closes connections and is installed before page
+creation. These controls cover the relevant Playwright-routed HTTP requests and
+WebSocket connections, not all traffic originating from Chromium or its host.
+
+There are important limits to the available evidence and controls:
+
+- The repo does not pin or attest the Playwright package and Chromium executable
+  used by the deployed worker, nor establish that deployed runtime's API
+  versions or interception behavior. In this workspace only, Playwright 1.63.0
+  and Chromium 138.0.7204.100 were observed; this is not evidence about
+  deployment.
+- The launch flags are not an OS-level network policy. There is no explicit
+  browser proxy or worker egress-deny policy in this code. Chromium, its network
+  service, the host OS, DNS resolver, or platform proxy could have paths outside
+  the page request handler, including DNS activity, preconnect/speculation,
+  browser-originated ancillary traffic, or direct UDP/WebRTC. Disabling selected
+  background features does not prove those paths are closed.
+- Playwright routing and WebSocket interception do not prove that every browser
+  protocol or process-level connection is mediated. Service-worker blocking
+  removes that interception bypass class but is not a general network sandbox.
+- `MAX_RESPONSE_BYTES` is checked by the HTML asset-declaration parser after
+  `response.body()` has read the complete response. It limits which HTML is
+  parsed, not bytes transferred or buffered. Do not describe it as a transport
+  response-size cap.
+- Existing offline tests cover the request gate, fixed fetch options, and the
+  worker's disabled barrier. They do not exercise deployed browser packet
+  egress, DNS/proxy behavior, or every Chromium protocol. They neither establish
+  complete containment nor prove live source behavior.
+
+**Conditions before reconsidering the disabled flag:** keep `INSPECT` disabled
+unless all of the following are completed and reviewed:
+
+1. Identify and pin/attest the Playwright version, Chromium binary/version, and
+   runtime configuration actually used by the deployed worker. Verify the
+   required context HTTP and WebSocket interception APIs are available; any
+   mismatch must fail closed.
+2. Enforce default-deny egress outside Chromium for the worker's process or
+   isolated runtime. Prevent direct network access that bypasses the enforcement
+   point, explicitly constrain DNS and proxy use, and account for TCP, UDP, and
+   browser ancillary protocols. The enforcement must be strong enough to
+   prevent unapproved destinations and, if it cannot guarantee the intended
+   request method/path limits, the live flag must remain disabled.
+3. Prove the deployed boundary with controlled local or canary endpoints and
+   observation at the egress enforcement point. Cover ordinary HTTP, redirects,
+   WebSockets, service workers, frames/popups, DNS/preconnect/speculation,
+   proxy inheritance, and direct UDP/WebRTC attempts; demonstrate that denied
+   attempts do not leave the isolated worker. Do not use the court source for
+   these tests.
+4. Bound response bytes while receiving them, before buffering the complete
+   body, or explicitly accept and document a reviewed alternative. The current
+   parser check alone is not a response-size bound.
+5. Obtain a fresh independent enforcement review before changing the live flag.
+   Even after that review, any live execution requires separate fresh explicit
+   approval and a new one-use authorization; the review itself is not approval.
 
 - Method identifier: `playwright-form-inspection-v1`. The operator `INSPECT`
   stage is currently disabled; its old prepare/approve/run flow must not be
