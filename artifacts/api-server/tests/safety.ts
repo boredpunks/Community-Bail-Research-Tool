@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
@@ -40,6 +41,28 @@ async function reset(verify = true) {
 try {
   const formDiagnostic = { code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "COURT_OFFICE", reason: "DISABLED" };
   check(validCalendarFormDiagnostic(formDiagnostic));
+  // Read literal public labels from Python without executing the source client.
+  // A new worker label must fail here until the parent accepts the same contract.
+  const formProtocol = JSON.parse(execFileSync("python", ["-c", [
+    "import ast, json",
+    "tree = ast.parse(open('src/ujs/calendar_protocol.py').read())",
+    "names = {'PUBLIC_CONTROLS', 'CONTROL_REASONS', 'SUBMITTED_REASONS'}",
+    "values = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id in names}",
+    "print(json.dumps(values))",
+  ].join("\n")], { encoding: "utf8" })) as Record<string, string[]>;
+  for (const control of formProtocol.PUBLIC_CONTROLS!) {
+    for (const reason of formProtocol.CONTROL_REASONS!) {
+      check(validCalendarFormDiagnostic({
+        kind: "calendar_form_diagnostic", code: "CALENDAR_CONTROL_STATE_MISMATCH", control, reason,
+      }));
+    }
+    for (const reason of formProtocol.SUBMITTED_REASONS!)
+      check(validCalendarFormDiagnostic({
+        kind: "calendar_form_diagnostic", code: "CALENDAR_SUBMITTED_VALUES_MISMATCH", control, reason,
+      }));
+  }
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, control: "raw-field-value" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, reason: "raw console message" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, reason: "SUBMITTED_COUNT_MISMATCH" }));

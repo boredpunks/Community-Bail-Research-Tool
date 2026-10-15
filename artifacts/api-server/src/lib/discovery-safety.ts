@@ -155,11 +155,15 @@ export function validCalendarDiagnostics(message: Record<string, unknown>) {
 export function validCalendarFormDiagnostic(message: Record<string, unknown>) {
   const reasons = message.code === "CALENDAR_CONTROL_STATE_MISMATCH"
     ? ["MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
-      "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH"]
+      "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
+      "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
+      "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED"]
     : message.code === "CALENDAR_SUBMITTED_VALUES_MISMATCH"
     ? ["SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH"] : [];
-  return ["CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH"].includes(String(message.code))
-    && ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
+  return Object.keys(message).every((key) => ["kind", "code", "control", "reason"].includes(key))
+    && (message.kind === undefined || message.kind === "calendar_form_diagnostic")
+    && ["CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH"].includes(String(message.code))
+    && ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
     && reasons.includes(String(message.reason));
 }
 

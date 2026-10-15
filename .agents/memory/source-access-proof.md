@@ -39,6 +39,12 @@ Use fixed public control labels and reason categories for form validation failur
 
 **How to apply:** Keep private values and hidden tokens out of logs. Retain only bounded public labels and boolean/state reasons; do not reinterpret missing historical diagnostics as proof that a specific control caused the failure.
 
+Keep cross-language public diagnostic contracts in sync and test the actual wire-message envelope against the worker's literal labels.
+
+**Why:** A later authorized calendar-only attempt stopped before Search when the parent rejected a public diagnostic from the worker's newer control/reason set. The exact form failure was lost, so the protocol error did not establish which source control failed.
+
+**How to apply:** Add parity checks when either side introduces diagnostic labels. Correcting reporting offline does not validate the source form or authorize another live attempt.
+
 Distinguish public UI widgets from their native submitted model controls; do not assume every dropdown has its own submission name.
 
 **Why:** A live preflight identified unnamed public widgets. A later hidden-model/layout assumption also failed without identifying their actual native submission model. The source backing-field layout was not retained.
