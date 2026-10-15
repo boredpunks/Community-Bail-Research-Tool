@@ -81,7 +81,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     return;
   }
   const script = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "ujs", "worker.py");
-  const child = spawn("python", ["-u", script], { stdio: ["pipe", "pipe", "pipe"], detached: true });
+  const args = inspectionOnly
+    ? [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "ujs", "network_sandbox.py"), script]
+    : ["-u", script];
+  const child = spawn("python", args, { stdio: ["pipe", "pipe", "pipe"], detached: true });
   activeChild = child;
   const exit = new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);

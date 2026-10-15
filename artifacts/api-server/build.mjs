@@ -122,7 +122,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
-  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "form_inspection.py", "inspection_safety.py", "coverage_inspection.py", "filing_inventory.py"]) {
+  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "filing_inventory.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }
 }

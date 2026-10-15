@@ -131,60 +131,70 @@ before `route.fetch`, which is configured without redirect following or retries
 and with a timeout. The request gate allows only the bootstrap document and
 exact script/stylesheet URLs declared by that document. The context blocks
 service workers, and the browser launch disables background networking,
-component updates, sync, and first-run behavior. If the Playwright context does
-not expose `route_web_socket`, the worker fails closed; otherwise its
-context-wide WebSocket handler closes connections and is installed before page
-creation. These controls cover the relevant Playwright-routed HTTP requests and
-WebSocket connections, not all traffic originating from Chromium or its host.
+component updates, sync, and first-run behavior. The kernel boundary below is
+independent of Playwright routing and applies before the worker starts.
 
-There are important limits to the available evidence and controls:
+- The inspection-only child is launched through `network_sandbox.py`. Before
+  executing the worker, that wrapper closes inherited file descriptors above
+  standard input/output/error, removes inherited HTTP/HTTPS/ALL/FTP/WebSocket
+  proxy variables, verifies the exact runtime, and installs a Linux seccomp
+  filter with `PR_SET_NO_NEW_PRIVS`. The filter permits only `AF_UNIX` socket
+  creation for local browser/driver IPC; all other socket families are denied
+  with `EPERM`. It also denies `io_uring_setup`, so the filter cannot be bypassed
+  by creating sockets through io_uring. The kernel filter is inherited by the
+  worker, Playwright driver, Chromium, and their descendants. If Linux,
+  architecture support, `no_new_privs`, seccomp, or runtime checks are
+  unavailable, the wrapper exits before the worker starts.
+- Supported filter architectures are Linux x86_64 and aarch64. The verified
+  workspace runtime is Python 3.13.11, Playwright 1.63.0, Chromium
+  138.0.7204.100, and Node.js 24.13.0. The worker wrapper checks Python,
+  Playwright, and Chromium against the first three exact versions before
+  execution; a mismatch fails closed. Node.js is the parent process and its
+  version is recorded but is not an egress enforcement layer.
+- Chromium also receives `--no-proxy-server` and
+  `--host-resolver-rules=MAP * ~NOTFOUND`. The latter prevents Chromium from
+  resolving any hostname in this full-deny diagnostic mode. These are additional
+  restrictions, not substitutes for seccomp.
+- The sandbox test first confirms a controlled loopback HTTP canary works
+  outside the child, then runs Chromium under the actual wrapper. It attempts
+  HTTP including a redirect, WebSocket, iframe, preconnect, a hostname
+  resolution path, direct IPv4/IPv6 TCP, and a UDP DNS-canary datagram while
+  inherited proxy variables point at the canary. The attempts fail at the
+  kernel boundary (`EPERM` for direct sockets); proxy variables are absent in
+  the child; and the canary records no child HTTP or DNS traffic. The test uses
+  only local endpoints and no court traffic.
 
-- The repo does not pin or attest the Playwright package and Chromium executable
-  used by the deployed worker, nor establish that deployed runtime's API
-  versions or interception behavior. In this workspace only, Playwright 1.63.0
-  and Chromium 138.0.7204.100 were observed; this is not evidence about
-  deployment.
-- The launch flags are not an OS-level network policy. There is no explicit
-  browser proxy or worker egress-deny policy in this code. Chromium, its network
-  service, the host OS, DNS resolver, or platform proxy could have paths outside
-  the page request handler, including DNS activity, preconnect/speculation,
-  browser-originated ancillary traffic, or direct UDP/WebRTC. Disabling selected
-  background features does not prove those paths are closed.
-- Playwright routing and WebSocket interception do not prove that every browser
-  protocol or process-level connection is mediated. Service-worker blocking
-  removes that interception bypass class but is not a general network sandbox.
+This is a process-tree syscall boundary, not a separate network namespace or
+host firewall. The current container rejects `unshare --net` with
+`Operation not permitted`, so no network namespace guarantee is claimed.
+`AF_UNIX` remains available for Chromium IPC. The filter prevents the worker
+tree from creating IP sockets and the wrapper removes inherited proxy settings,
+but it cannot prevent an independently running host service reachable over a
+Unix socket from relaying a request on the worker's behalf. No such relay is
+configured by this code; its absence must be verified in the deployed runtime.
+This limitation, and the lack of deployed-host canary observation, mean the
+local test is not evidence of deployed containment. Live `INSPECT` must remain
+disabled until the deployed egress boundary and any host-mediated proxy or
+resolver paths are independently verified.
+
 - `MAX_RESPONSE_BYTES` is checked by the HTML asset-declaration parser after
   `response.body()` has read the complete response. It limits which HTML is
   parsed, not bytes transferred or buffered. Do not describe it as a transport
   response-size cap.
-- Existing offline tests cover the request gate, fixed fetch options, and the
-  worker's disabled barrier. They do not exercise deployed browser packet
-  egress, DNS/proxy behavior, or every Chromium protocol. They neither establish
-  complete containment nor prove live source behavior.
 
 **Conditions before reconsidering the disabled flag:** keep `INSPECT` disabled
 unless all of the following are completed and reviewed:
 
-1. Identify and pin/attest the Playwright version, Chromium binary/version, and
-   runtime configuration actually used by the deployed worker. Verify the
-   required context HTTP and WebSocket interception APIs are available; any
-   mismatch must fail closed.
-2. Enforce default-deny egress outside Chromium for the worker's process or
-   isolated runtime. Prevent direct network access that bypasses the enforcement
-   point, explicitly constrain DNS and proxy use, and account for TCP, UDP, and
-   browser ancillary protocols. The enforcement must be strong enough to
-   prevent unapproved destinations and, if it cannot guarantee the intended
-   request method/path limits, the live flag must remain disabled.
-3. Prove the deployed boundary with controlled local or canary endpoints and
-   observation at the egress enforcement point. Cover ordinary HTTP, redirects,
-   WebSockets, service workers, frames/popups, DNS/preconnect/speculation,
-   proxy inheritance, and direct UDP/WebRTC attempts; demonstrate that denied
-   attempts do not leave the isolated worker. Do not use the court source for
-   these tests.
-4. Bound response bytes while receiving them, before buffering the complete
+1. Attest the deployed Python, Playwright, Chromium, Linux architecture, and
+   seccomp behavior; any mismatch must fail closed.
+2. Demonstrate at the deployed enforcement point that no Unix-socket host
+   service can relay requests, and repeat the local/canary bypass matrix under
+   the actual worker launch path. If this cannot be proven, add a supported
+   network namespace/host egress-deny layer or keep the stage disabled.
+3. Bound response bytes while receiving them, before buffering the complete
    body, or explicitly accept and document a reviewed alternative. The current
    parser check alone is not a response-size bound.
-5. Obtain a fresh independent enforcement review before changing the live flag.
+4. Obtain a fresh independent enforcement review before changing the live flag.
    Even after that review, any live execution requires separate fresh explicit
    approval and a new one-use authorization; the review itself is not approval.
 
@@ -250,9 +260,11 @@ form, and do not enable source access or collection.
 ## Offline checks
 
 `pnpm --filter @workspace/api-server run test:safety` exercises parent metadata
-validation, scheduler admission in a disposable schema, and Python request-gate
-fixtures. The local fixtures cover allowed/denied requests, duplicate and
-concurrent attempts, declared-version matching, redirects, retries, timeouts,
-uncertain persisted requests, the session deadline, submission prevention, and
-diagnostic-contract acceptance. They use no court traffic, case fixtures, or
-live form observations. These checks are not source proof.
+validation, scheduler admission in a disposable schema, Python request-gate
+fixtures, and the seccomp/Chromium canary test. The local fixtures cover
+allowed/denied requests, duplicate and concurrent attempts, declared-version
+matching, redirects, retries, timeouts, uncertain persisted requests, the
+session deadline, submission prevention, fixed runtime versions, the
+worker-inherited network filter, proxy removal, and local TCP/UDP canaries. They
+use no court traffic, case fixtures, or live form observations. These checks
+verify this workspace only; they are not deployment/source proof.

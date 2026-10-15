@@ -18,6 +18,7 @@ from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 from inspection_safety import InspectionRequestGate, fetch_inspection_once
+from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
 
 def emit(kind, **values):
@@ -39,6 +40,12 @@ async def main(config=None):
         # Live INSPECT is disabled until the offline gate receives review.
         emit("barrier", code="FORM_INSPECTION_LIVE_DISABLED")
         return
+    if inspection_only:
+        # Keep these checks immediately behind the live-disabled barrier: if
+        # that barrier is ever reconsidered, the kernel boundary and exact
+        # tested runtime are mandatory before Playwright can start.
+        require_default_deny_active()
+        verify_inspection_runtime(shutil.which("chromium"))
     inspection_gate = InspectionRequestGate() if inspection_only else None
     calendar_preview_only = config.get("calendarPreviewOnly") is True
     lock = asyncio.Lock()
@@ -60,7 +67,9 @@ async def main(config=None):
         browser = await playwright.chromium.launch(
             executable_path=shutil.which("chromium"), headless=True,
             args=["--disable-background-networking", "--disable-component-update",
-                  "--disable-sync", "--no-first-run", "--no-sandbox"],
+                  "--disable-sync", "--no-first-run", "--no-sandbox",
+                  "--no-proxy-server",
+                  "--host-resolver-rules=MAP * ~NOTFOUND"],
         )
         context = await browser.new_context(service_workers="block", accept_downloads=False)
         context.set_default_timeout(60_000)
