@@ -279,6 +279,8 @@ async def main(config=None):
                 preview_values = None
                 if calendar_preview_only:
                     preview_values = await select_calendar_preview_controls(page, criteria)
+                elif inspection_only:
+                    await select_calendar_preview_controls(page, criteria)
                 else:
                     await page.locator("#SearchBy-Control select").select_option("CalendarEvent")
                     await page.locator("#JudicialDistrict-Control select").select_option("05")

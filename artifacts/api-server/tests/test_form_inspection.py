@@ -1,6 +1,7 @@
 """Network-blocked public-form fixtures. No court traffic or docket/case data."""
 import io
 import json
+import re
 import sys
 import asyncio
 import shutil
@@ -12,6 +13,8 @@ from playwright.async_api import Route, async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import worker
+import form_inspection
+from calendar_protocol import select_calendar_preview_controls
 from form_inspection import expected
 from inspection_safety import (
     CASE_SEARCH, FETCH_TIMEOUT_MS, InspectionRequestGate,
@@ -20,18 +23,29 @@ from inspection_safety import (
 
 CRITERIA = {"courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
             "startDate": "2026-10-13", "endDate": "2026-10-17"}
+INSPECTION_CRITERIA = {"courtOffice": "CP-05-02-Crim", "courtRoom": "Courtroom 506",
+                       "eventType": "ANY", "startDate": "2026-10-15", "endDate": "2026-10-15"}
 
 
 def public_fixture():
     # Explicitly hypothetical widget/native text layout, not source proof.
     groups = []
-    for label, selector, container, key, value in expected(CRITERIA):
-        if container:
-            groups.append(f'<div id="{container}"><select><option value="{value}">{label}</option></select>'
+    controls = [
+        ("SearchBy-Control", "SearchBy", "CalendarEvent", "SEARCH_MODE"),
+        ("JudicialDistrict-Control", "JudicialDistrict", "05", "JUDICIAL_DISTRICT"),
+        ("CourtOffice-Control", "CourtOffice", CRITERIA["courtOffice"], "COURT_OFFICE"),
+    ]
+    for container, key, value, label in controls:
+        groups.append(f'<div id="{container}"><select><option value="{value}">{label}</option></select>'
                           f'<input type="text" name="{key}" value="{value}" style="display:none">'
                           '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></div>')
-        else:
-            groups.append(f'<input type="date" name="{key}" value="{value}">')
+    groups.extend([
+        f'<input type="date" name="CalendarEventStartDate" value="{CRITERIA["startDate"]}">',
+        f'<input type="date" name="CalendarEventEndDate" value="{CRITERIA["endDate"]}">',
+        '<div id="CalendarEventType-Control"><select><option value="Bail Hearing">EVENT_TYPE</option></select>'
+        '<input type="text" name="CalendarEventType" value="Bail Hearing" style="display:none">'
+        '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></div>',
+    ])
     return ('<!-- hypothetical public form; no case data -->'
             '<link rel="stylesheet" href="/resource/css/sitemain.min.css">'
             '<script src="/resource/js/sitemain.min.js"></script>'
@@ -39,7 +53,40 @@ def public_fixture():
             + "".join(groups) + '<button id="btnSearch">Search</button></form>')
 
 
+def inspection_scope_fixture():
+    # Hypothetical no-case-data form for the saved one-day, no-filter scope.
+    groups = []
+    for label, _selector, container, key, value in expected(INSPECTION_CRITERIA):
+        if label == "COURT_ROOM":
+            groups.append('<select name="CourtRoomID"><option value="fixture-room-value">Courtroom 506</option></select>')
+        elif label == "EVENT_TYPE":
+            groups.append('<div id="CalendarEventType-Control"><select><option value="" selected></option>'
+                          '<option value="fixture-event">Bail Hearing</option></select>'
+                          '<input type="text" name="CalendarEventType" value="" style="display:none"></div>')
+        elif container:
+            public_label = {
+                "SEARCH_MODE": "Calendar Event",
+                "JUDICIAL_DISTRICT": "Allegheny - 05",
+                "COURT_OFFICE": value,
+            }[label]
+            groups.append(f'<div id="{container}"><select><option value="{value}">{public_label}</option></select>'
+                          f'<input type="text" name="{key}" value="{value}" style="display:none"></div>')
+        else:
+            groups.append(f'<input type="date" name="{key}" value="{value}">')
+    return ('<!-- hypothetical public form; no case data -->'
+            '<form method="post" action="https://ujsportal.pacourts.us/CaseSearch">'
+            + "".join(groups) + '<button id="btnSearch">Search</button></form>')
+
+
 class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
+    def test_python_and_parent_diagnostic_contracts_match(self):
+        parent_path = Path(__file__).resolve().parents[1] / "src" / "lib" / "form-inspection.ts"
+        parent = parent_path.read_text()
+        labels = re.search(r"const labels = \[(.*?)\];", parent, re.DOTALL)
+        self.assertIsNotNone(labels)
+        self.assertEqual(json.loads(f"[{labels.group(1)}]"), list(form_inspection.CONTROLS))
+        self.assertIn(f'formInspectionMethod = "{form_inspection.METHOD}"', parent)
+
     async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None, filing=False):
         messages, fetches = [], []
         html = fixture if fixture is not None else public_fixture()
@@ -684,11 +731,7 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_local_form_snapshot_never_invokes_click_or_submission(self):
         from form_inspection import snapshot
 
-        html = public_fixture().replace(
-            '<link rel="stylesheet" href="/resource/css/sitemain.min.css">', ''
-        ).replace(
-            '<script src="/resource/js/sitemain.min.js"></script>', ''
-        )
+        html = inspection_scope_fixture()
         html = html.replace(
             '<form method="post" action="https://ujsportal.pacourts.us/CaseSearch">',
             '<script>window.attempts={click:0,submit:0,requestSubmit:0};'
@@ -709,12 +752,22 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
             requests = []
             page.on("request", lambda request: requests.append(request.url))
             await page.set_content(html, wait_until="load", timeout=5_000)
-            metadata = await snapshot(page, CRITERIA)
+            await select_calendar_preview_controls(page, INSPECTION_CRITERIA)
+            metadata = await snapshot(page, INSPECTION_CRITERIA)
             attempts = await page.evaluate("window.attempts")
             await browser.close()
         self.assertEqual(attempts, {"click": 0, "submit": 0, "requestSubmit": 0})
         self.assertEqual(requests, [])
         self.assertEqual(metadata["phase"], "BEFORE")
-        self.assertEqual(len(metadata["controls"]), 6)
+        self.assertEqual([row["control"] for row in metadata["controls"]], [
+            "SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM",
+            "START_DATE", "END_DATE", "EVENT_TYPE",
+        ])
         self.assertTrue(all(row["uiMatches"] and row["uiEnabled"] and row["uiSameForm"]
                             for row in metadata["controls"]))
+        self.assertTrue(
+            all(row["nativeMatches"] == 1 for row in metadata["controls"]),
+            json.dumps(metadata["controls"]),
+        )
+        self.assertNotIn("fixture-room-value", json.dumps(metadata))
+        self.assertEqual(metadata["controls"][3]["types"]["select"], 1)

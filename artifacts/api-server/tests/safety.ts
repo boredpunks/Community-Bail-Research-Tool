@@ -275,7 +275,8 @@ try {
   });
   checks++;
   const inspectionMetadata = { kind: "inspection_metadata", phase: "BEFORE", controls:
-    ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"].map(control => ({
+    ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM",
+      "START_DATE", "END_DATE", "EVENT_TYPE"].map(control => ({
       control, uiPresent: true, uiNamed: false, uiEnabled: true, uiSameForm: true, uiMatches: true,
       types: { hidden: 0, text: 1, date: 0, number: 0, select: 0, other: 0 },
       sameFormNamed: 1, outsideContainerNamed: 0, nativeMatches: 1,
@@ -283,6 +284,7 @@ try {
   check(validInspectionMetadata(inspectionMetadata));
   check(!validInspectionMetadata({ ...inspectionMetadata, html: "forbidden" }));
   check(!validInspectionMetadata({ ...inspectionMetadata, phase: "LOCAL_POST" }));
+  check(!validInspectionMetadata({ ...inspectionMetadata, controls: inspectionMetadata.controls.slice(0, 6) }));
   check(!validInspectionMetadata({ ...inspectionMetadata, controls: [...inspectionMetadata.controls, inspectionMetadata.controls[0]] }));
   for (const bad of [
     { ...inspectionMetadata.controls[0], value: "forbidden" },

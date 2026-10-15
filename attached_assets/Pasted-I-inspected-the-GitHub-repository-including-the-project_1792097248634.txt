@@ -1,0 +1,353 @@
+I inspected the GitHub repository, including the project architecture, form-inspection code, calendar validation, pilot history, and the latest inspection-boundary documentation. The revised prompt should be more targeted than my previous version: **finish existing work**, rather than instructing the agent to rebuild safeguards it already has.
+
+## What the repository changes about the plan
+
+- The latest commit returned by GitHub is `4af02753a1af`, titled “Test diagnostic request accounting after worker interruption.” That means the earlier report that Task #25 was unmerged may already be stale. The agent should inspect that commit and its tests before doing more accounting work.
+- The current inspection documentation already describes a one-GET-per-path gate, declared-asset version matching, submission prevention, and fail-closed disabling in the CLI, scheduler, and Python worker. These are not all still implementation tasks.
+- The documented remaining boundary gap is specific: Playwright interception does not establish external enforcement over the inspector’s network traffic. The documentation also acknowledges that its response-size check happens after buffering the body.
+- There is a concrete diagnostics gap: `calendar_protocol.py` supports `COURT_ROOM`, but the `form_inspection.py` I read defines only six controls and omits courtroom. The proposed seven-control inspection and its implementation need reconciliation.
+- This is already a broader research application, not just a browser script: saved observations, review, financial ranges, authenticated records, and bounded discovery jobs exist in the documented architecture. The prompt should preserve those features and finish the blocked integration—not redesign the application.
+
+These findings come from repository files and commit metadata, not an executed code audit. I did not run tests, inspect the live database, or contact the court. The branch also changed during the review, so the agent must establish one current commit before implementing.
+
+## Revised master prompt
+
+***
+
+# Finish the existing Community Bail Research Tool
+
+## Mission
+
+Complete the blocked court-search workflow in the existing application. Deliver maintainable, integrated software and an accurately reported search outcome—not more planning tasks or a replacement architecture.
+
+Preserve the application’s existing research model: private-per-account observations, explicit live-discovery jobs, source-backed evidence, review history, and descriptive financial ranges.
+
+The immediate engineering objective is to finish the inspector’s remaining enforcement and diagnostic gaps. The eventual user-facing objective is to complete the exact approved court search and present its verified outcome.
+
+Do not conflate those milestones.
+
+## 1. Establish one current baseline, then work
+
+Inspect the current branch, HEAD, working tree, and relevant pending agent changes. Record the commit used as the implementation baseline.
+
+GitHub review found:
+
+- Commit `4af02753a1afd8efd5e3c9fa4023a53a4870837a`: “Test diagnostic request accounting after worker interruption.”
+- Commit `d9c93ec139fbb660577689103ea4eeffe53f2139`: “Document inspection browser egress boundary and live-enable criteria.”
+- Existing inspection safeguards documented in `docs/court-form-inspection.md`.
+- Existing form logic in:
+  - `artifacts/api-server/src/ujs/form_inspection.py`
+  - `artifacts/api-server/src/ujs/calendar_protocol.py`
+  - The integrated Python worker and TypeScript scheduler/operator paths.
+
+Verify what is present now. Do not assume Task #25 remains unmerged, and do not reimplement safeguards already present and tested.
+
+Read the relevant project instructions and memory rules, including the prohibition on fabricated records.
+
+Keep the baseline review brief. Proceed to implementation unless a specific consequential decision blocks it.
+
+## 2. Authority
+
+This prompt authorizes:
+
+- Routine local implementation.
+- Safe integration of existing agent changes.
+- Controlled offline tests and builds.
+- Necessary, non-destructive local schema changes.
+- Documentation and local task-state corrections.
+
+It does not authorize:
+
+- Court-source requests.
+- Creating or consuming live authorizations.
+- Search submission, results retrieval, or PDF retrieval.
+- Production deployment.
+- Paid infrastructure.
+- Destructive database changes.
+- Resetting historical permits or paused jobs.
+- Clearing source barriers, setting access verification, or approving collection without the required evidence and authority.
+- Weakening previously approved restrictions.
+
+Use fixtures or isolated controlled test services. Do not contact the court to debug enforcement.
+
+Ask only for a decision involving live access, cost, deployment, destructive changes, a material architecture change, changed search criteria, or relaxed restrictions. Routine authorized offline engineering does not require repeated approval.
+
+## 3. Close the actual remaining gaps
+
+### A. Verify interruption-safe accounting rather than rebuilding it
+
+Inspect the interruption-accounting commit and associated implementation.
+
+Confirm that:
+
+- Failed, interrupted, and uncertain transmissions remain consumed.
+- Worker termination or restart cannot restore or replay their allowance.
+- Concurrent workers cannot double-spend an authorization or request slot.
+- Historical consumed permits remain unchanged.
+- Reservation, attempted transmission, confirmed transmission, and uncertain state are represented honestly.
+
+Run the relevant tests in the integrated workspace. Fix demonstrated defects only; do not create another accounting subsystem.
+
+### B. Resolve the inspector network boundary
+
+Use the existing boundary review as the starting point. Do not repeat it as a new deliverable.
+
+First determine whether this hosting environment supports the required independently enforced boundary.
+
+The target is the inspector’s process or isolated runtime—not every unrelated process on the host.
+
+Distinguish:
+
+1. Persisted application request accounting.
+2. Browser HTTP/WebSocket interception.
+3. External network enforcement.
+
+Do not claim that browser routing or launch flags provide OS-level containment.
+
+The existing documented safeguards should be preserved and verified:
+
+- Enforcement initialized before navigation.
+- Three allowed GET paths for the scoped inspection.
+- At most one transmission per path.
+- Exact declared asset URLs and bounded version-query handling.
+- No redirects, automatic retries, or Search submission.
+- Conservative consumption of failed or uncertain attempts.
+- Session deadline and fetch timeout.
+- Service-worker restrictions and required interception APIs.
+- Live inspection disabled until readiness requirements are met.
+
+Implement the smallest compatible boundary that closes the documented bypasses. Address DNS, inherited proxies, direct connections, UDP/WebRTC, background browser traffic, and subprocesses as relevant to the chosen design.
+
+Explain which layer enforces destinations and which enforces HTTP methods, paths, and budgets. A destination allowlist alone does not enforce the full inspection scope.
+
+Verify the exact Playwright package, Chromium executable, and runtime configuration used by the inspector. Make incompatible or missing requirements fail closed.
+
+If this environment cannot support the required enforcement:
+
+- Demonstrate the specific limitation.
+- Do not keep adding browser flags as a substitute.
+- Preserve completed work.
+- Return one recommended minimal alternative and its cost, operational implications, and required user decision.
+- Do not provision it or weaken the requirement without approval.
+
+### C. Fix the response-size boundary
+
+The current documented HTML-size check runs after `response.body()` has buffered the response.
+
+Do not describe that as a transport-size limit.
+
+Implement a compatible bounded-receive approach if feasible within the selected architecture. Otherwise document the exact limitation and present the required alternative for review. Do not silently switch court-access methods or claim a limit that does not exist.
+
+### D. Align the inspector with the actual intended search
+
+There is an apparent contract mismatch:
+
+- Calendar validation supports `COURT_ROOM`.
+- The inspected `form_inspection.py` defines only six controls and omits courtroom.
+- The proposed inspection includes Courtroom 506.
+
+Inspect the current code and resolve that mismatch across:
+
+- Criteria.
+- Selection.
+- Readback.
+- Snapshot metadata.
+- Python diagnostics.
+- Parent validation.
+- Tests.
+
+Use a single explicit diagnostic contract or equivalent cross-language parity checks. Do not require unrelated code generation or refactoring.
+
+The recorded intended inspection criteria were:
+
+- Calendar Event.
+- Allegheny - 05.
+- CP-05-02-Crim.
+- Courtroom 506.
+- October 15, 2026, start and end.
+- Blank/no-filter event type, if supported.
+
+Check these against saved user criteria. Do not silently replace them.
+
+If the requested date is no longer supported at eventual execution time, report the conflict and request a specific decision. Do not substitute a future hearing window merely to get a successful run.
+
+### E. Preserve useful diagnostics without submission
+
+Inspection mode must never:
+
+- Click Search, including “click and abort.”
+- Press Enter to submit.
+- Invoke `submit()` or `requestSubmit()`.
+- Capture a generated submission as an inspection technique.
+- Run the search-submission function.
+
+Local observation and `FormData` checks must remain within the approved scope.
+
+Capture the first failing phase and safe control/reason metadata for:
+
+- Missing or ambiguous controls.
+- Missing, ambiguous, or disabled options.
+- Selected-value mismatch.
+- Form ownership.
+- Named backing-control association.
+- Native `FormData` occurrence and value agreement.
+- Date restrictions and local validity.
+- Unsupported form action, method, or encoding.
+- Required-resource failures.
+- Script failures.
+- Diagnostic-contract rejection.
+
+Preserve bounded structural diagnostic evidence before parent validation. Do not retain credentials, tokens, raw bodies, full HTML, screenshots, arbitrary console text, or case content for this inspection.
+
+A validator failure must not again erase the only useful explanation.
+
+## 4. Preserve the application’s research integrity
+
+Do not weaken these existing distinctions:
+
+- Saved-record searches versus explicit live discovery.
+- Source evidence versus an operative-order determination.
+- Court records versus current custody.
+- Unknown amounts versus zero amounts.
+- Monetary amounts versus nonmonetary conditions.
+- Local discovery filters versus reviewed financial ranges.
+- Inspection readiness versus verified source access.
+- A search with zero matches versus a failed or incomplete search.
+
+Do not fabricate docket records, parties, source evidence, successful retrievals, or positive source-proof fixtures.
+
+Use synthetic public-form markup for structural tests. For record-bearing tests, follow the repository’s existing data rules and use permitted source-backed, appropriately sanitized artifacts where available. Report untested paths honestly.
+
+Do not expand into team permissions, bulk collection, general imports/exports, historical coverage, or unrelated product work.
+
+## 5. Test the integrated result
+
+Use the existing test infrastructure.
+
+At minimum, verify:
+
+- Admission and disabled-state enforcement.
+- Duplicate and concurrent request handling.
+- Failed and uncertain transmissions.
+- Worker interruption and restart.
+- Attempted permit replay.
+- Declared versus undeclared asset URLs.
+- Redirect and retry prevention.
+- Submission prevention.
+- Courtroom diagnostic coverage.
+- Parent/child diagnostic parity.
+- Response-size behavior.
+- Boundary enforcement against relevant bypass attempts.
+- Accurate state transitions and user-facing errors.
+
+Boundary tests must include observation at the actual enforcement point, not merely successful Playwright interception.
+
+Keep controlled test traffic distinguishable from court-source traffic. Do not create a live court authorization for testing.
+
+Run the relevant suites, API typecheck/build, Python checks, and whitespace checks in the integrated workspace.
+
+Report:
+
+- Exact commands.
+- Actual results.
+- Important acceptance criteria demonstrated.
+- Remaining limitations.
+
+Do not use a growing test count as a substitute for demonstrating the remaining blocker is closed.
+
+## 6. Correct misleading completion states
+
+Preserve historical evidence.
+
+Where appropriate, correct local task titles and summaries so they describe delivered offline safeguards rather than a completed court search.
+
+Do not reset failed assessments, consumed permits, or paused historical jobs.
+
+The application must clearly distinguish:
+
+- Not attempted.
+- Blocked before navigation.
+- Inspection failed.
+- Inspection passed but no search submitted.
+- Search submitted but results unvalidated.
+- Validated zero matches.
+- Validated results.
+- PDF retrieved and identity checked, when separately authorized.
+
+Do not mark any stage complete without its required evidence.
+
+## 7. Finish in bounded milestones
+
+### Milestone 1: Offline readiness or decisive blocker
+
+Deliver either:
+
+- Integrated, tested accounting, diagnostics, and network enforcement ready for review; or
+- A demonstrated hosting limitation with the smallest viable alternative.
+
+Do not return another generic status report, duplicate review document, or new task restating the same blocker.
+
+### Milestone 2: Fresh inspection approval
+
+After offline readiness is established and reviewed, request one precise live-inspection authorization.
+
+State:
+
+- Exact destinations, methods, paths, and budgets.
+- Automatic-request treatment.
+- Asset-version policy.
+- Exact criteria.
+- Deadlines and stop conditions.
+- Evidence retained.
+- Explicit exclusion of Search, results, and PDFs.
+
+Keep inspection disabled until the required review is complete. Obtain approval before creating or consuming the applicable live authorization.
+
+### Milestone 3: Approved inspection
+
+If authorized, run exactly the approved inspection once.
+
+Report the actual first failing phase or successful local preflight. Successful preflight is not Search authorization.
+
+If a defect is found, fix and test it offline. Any subsequent live attempt requires fresh approval.
+
+### Milestone 4: Approved search and verified outcome
+
+Once inspection establishes readiness, present a separate bounded search-execution scope.
+
+After approval, execute it and verify:
+
+- Actual submitted criteria.
+- Result validation.
+- Zero matches versus execution failure.
+- Any separately authorized document retrieval and docket identity.
+- Correct presentation and provenance in the application.
+
+Do not expand into broader collection automatically.
+
+## 8. Execution style
+
+Work autonomously inside the authorized offline scope.
+
+Prefer small, reviewable changes and the existing architecture. Avoid broad refactors, new services, or new frameworks unless they are necessary and approved where consequential.
+
+Use parallel agents only when ownership and integration are clear.
+
+Communicate at genuine milestones:
+
+1. Delivered.
+2. Verified.
+3. Still blocked.
+4. Decision needed.
+
+A decision request must identify the exact choice and its consequences. Do not ask permission merely to continue an already authorized test or code change.
+
+## Start now
+
+Establish the current baseline, verify the already-merged interruption-accounting work, and finish the remaining boundary, response-size, and diagnostic-alignment gaps.
+
+Return with a tested integrated implementation ready for the next approval gate—or one decisive environment blocker with a concrete minimal alternative.
+
+Do not contact the court, deploy, or consume a live authorization.
+
+---

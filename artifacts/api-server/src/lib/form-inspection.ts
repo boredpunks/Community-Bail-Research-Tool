@@ -1,4 +1,4 @@
-export const formInspectionMethod = "playwright-form-inspection-v1";
+export const formInspectionMethod = "playwright-form-inspection-v2";
 
 // Keep disabled until the offline-reviewed request gate has a separate live
 // approval. Changing this requires a fresh enforcement review.
@@ -15,13 +15,13 @@ export function inspectionRequestAllowed(path: unknown, method: unknown) {
 }
 
 export function validInspectionMetadata(message: Record<string, unknown>) {
-  const labels = ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE"];
+  const labels = ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE"];
   const flags = ["uiPresent", "uiNamed", "uiEnabled", "uiSameForm", "uiMatches"];
   const counts = ["sameFormNamed", "outsideContainerNamed", "nativeMatches"];
   const types = ["hidden", "text", "date", "number", "select", "other"];
   const allowed = ["control", "types", ...flags, ...counts].sort().join(",");
   if (message.phase !== "BEFORE"
-    || !Array.isArray(message.controls) || message.controls.length !== 6
+    || !Array.isArray(message.controls) || message.controls.length !== 7
     || Object.keys(message).some(key => !["kind", "phase", "controls"].includes(key))) return false;
   return message.controls.every((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;

@@ -1,8 +1,10 @@
 """Read-only, redacted public filter diagnostics. Never return HTML or values."""
 
-METHOD = "playwright-form-inspection-v1"
-CONTROLS = ("SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "START_DATE", "END_DATE", "EVENT_TYPE")
-KEYS = ("SearchBy", "JudicialDistrict", "CourtOffice", "CalendarEventStartDate", "CalendarEventEndDate", "CalendarEventType")
+METHOD = "playwright-form-inspection-v2"
+CONTROLS = ("SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM",
+            "START_DATE", "END_DATE", "EVENT_TYPE")
+KEYS = ("SearchBy", "JudicialDistrict", "CourtOffice", "CourtRoomID",
+        "CalendarEventStartDate", "CalendarEventEndDate", "CalendarEventType")
 
 SNAPSHOT = """({expected}) => {
   const button = document.querySelector('#btnSearch'), form = button?.form;
@@ -19,13 +21,18 @@ SNAPSHOT = """({expected}) => {
   for (const [label, selector, containerId, publicId, value] of expected) {
     const ui = document.querySelector(selector), group = containerId && document.getElementById(containerId);
     const nodes = new Set(group ? group.querySelectorAll('input[name],select[name],textarea[name]') : []);
-    const identified = document.getElementById(publicId);
+    const identified = publicId ? document.getElementById(publicId) : null;
     if (identified) nodes.add(identified);
     if (!containerId && ui) nodes.add(ui);
     if (nodes.size > 32) return {error: 'INSPECTION_METADATA_INVALID'};
+    const courtRoom = label === 'COURT_ROOM';
+    const selectedValue = courtRoom ? ui?.value : value;
+    const uiMatches = courtRoom
+      ? !!ui && ui.selectedOptions.length === 1 && ui.selectedOptions[0].label.trim() === value
+      : !!ui && ['select-one','date','text'].includes(ui.type) && ui.value === value;
     const row = {control: label, uiPresent: !!ui, uiNamed: !!ui?.name,
       uiEnabled: !!ui && !ui.matches(':disabled'), uiSameForm: !!ui && ui.form === form,
-      uiMatches: !!ui && ['select-one','date','text'].includes(ui.type) && ui.value === value,
+      uiMatches,
       types: {hidden: 0, text: 0, date: 0, number: 0, select: 0, other: 0},
       sameFormNamed: 0, outsideContainerNamed: 0, nativeMatches: 0};
     for (const field of nodes) {
@@ -38,7 +45,7 @@ SNAPSHOT = """({expected}) => {
       row.sameFormNamed++;
       if (group && !group.contains(field)) row.outsideContainerNamed++;
       const entries = data.getAll(field.name);
-      if (entries.length === 1 && entries[0] === value) row.nativeMatches++;
+      if (entries.length === 1 && entries[0] === selectedValue) row.nativeMatches++;
       if (field.name.length > 128) return {error: 'INSPECTION_METADATA_INVALID'};
     }
     controls.push(row);
@@ -48,13 +55,15 @@ SNAPSHOT = """({expected}) => {
 
 
 def expected(criteria):
+    event_type = "" if criteria.get("eventType") == "ANY" else criteria["eventType"]
     return [
         [CONTROLS[0], "#SearchBy-Control select", "SearchBy-Control", KEYS[0], "CalendarEvent"],
         [CONTROLS[1], "#JudicialDistrict-Control select", "JudicialDistrict-Control", KEYS[1], "05"],
         [CONTROLS[2], "#CourtOffice-Control select", "CourtOffice-Control", KEYS[2], criteria["courtOffice"]],
-        [CONTROLS[3], "input[name=CalendarEventStartDate]", None, KEYS[3], criteria["startDate"]],
-        [CONTROLS[4], "input[name=CalendarEventEndDate]", None, KEYS[4], criteria["endDate"]],
-        [CONTROLS[5], "#CalendarEventType-Control select", "CalendarEventType-Control", KEYS[5], criteria["eventType"]],
+        [CONTROLS[3], 'select[name="CourtRoomID"]', None, None, criteria["courtRoom"]],
+        [CONTROLS[4], "input[name=CalendarEventStartDate]", None, KEYS[4], criteria["startDate"]],
+        [CONTROLS[5], "input[name=CalendarEventEndDate]", None, KEYS[5], criteria["endDate"]],
+        [CONTROLS[6], "#CalendarEventType-Control select", "CalendarEventType-Control", KEYS[6], event_type],
     ]
 
 

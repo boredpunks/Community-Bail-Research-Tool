@@ -188,7 +188,7 @@ unless all of the following are completed and reviewed:
    Even after that review, any live execution requires separate fresh explicit
    approval and a new one-use authorization; the review itself is not approval.
 
-- Method identifier: `playwright-form-inspection-v1`. The operator `INSPECT`
+- Method identifier: `playwright-form-inspection-v2`. The operator `INSPECT`
   stage is currently disabled; its old prepare/approve/run flow must not be
   used. This is a safety hold, not live authorization.
 - A future reviewed path is limited to three GETs total (bootstrap page plus
@@ -200,12 +200,48 @@ unless all of the following are completed and reviewed:
   ten-minute total deadline. Date expansion and cap increases are not allowed.
 
 The read-only snapshot counts bounded control types and same-form/FormData
-matches for six fixed public controls. It does not inspect or retain field
-values, names, tokens, raw content, screenshots, or console text. The parent
-accepts only one `BEFORE` diagnostic phase and rejects additional phases or
-collection-result messages. No click, `submit()`, `requestSubmit()`, native
-POST capture, Search submission, result retrieval, or PDF retrieval is part of
-the inspection.
+matches for seven fixed public controls: search mode, judicial district, court
+office, courtroom, start date, end date, and event type. For Courtroom, the
+public label is compared to the intended criterion while its selected native
+value is checked against FormData only in memory. The blank no-filter option is
+represented by the application sentinel `ANY` and must be a unique, enabled,
+empty option. No source option value is emitted. The October 15 offline fixture
+uses the saved scope CP-05-02-Crim / Courtroom 506 / no event-type filter and
+does not establish that the live form has those controls or bindings.
+
+The snapshot does not inspect or retain field values, names, tokens, raw
+content, screenshots, or console text. The parent accepts only one `BEFORE`
+diagnostic phase and rejects additional phases or collection-result messages.
+No click, `submit()`, `requestSubmit()`, native POST capture, Search submission,
+result retrieval, or PDF retrieval is part of the inspection.
+
+### Workspace enforcement probe (October 15, 2026)
+
+The checked-out workspace could not create a network namespace:
+`unshare -n true` failed with `Operation not permitted`. The process had no
+`CAP_NET_ADMIN`; `ip`, `iptables`, and `nft` were unavailable. Replit
+documentation searches returned no applicable per-process egress-control
+guidance. The checked-in `.replit` targets Autoscale, but this local probe does
+not establish what controls may be available to a separately configured
+deployment. No deployment network policy or egress-enforcement point has been
+verified.
+
+The current `route.fetch` path also cannot bound bytes while receiving them.
+The 4 MB check occurs only after the complete body is buffered. Playwright's
+route fetch API used here returns a complete response, so checking its headers
+or body afterward cannot prevent peak buffering.
+
+**Recommended minimum alternative (not provisioned):** run only the inspector
+in a dedicated isolated runner with default-deny network egress and a mandatory
+streaming egress proxy. The runner must be unable to connect directly; the
+proxy must allow only the approved destination and enforce a byte cap while
+streaming. Keep the existing application request gate for method, path,
+one-use budgets, and accounting. This requires separate compute/runtime setup,
+proxy and firewall policy, pinned browser images, monitoring, and ongoing
+security updates, with provider-specific recurring cost. No price or provider
+has been selected. The user must approve that architecture and cost before
+anything is provisioned. It does not itself authorize live inspection; the
+separate review and fresh, exact execution approval remain required.
 
 Historical `INSPECTED` reports refer to earlier, consumed executions. They are
 not proof that the current offline safeguards have worked against the live
