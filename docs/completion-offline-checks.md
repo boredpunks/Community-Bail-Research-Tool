@@ -158,3 +158,103 @@ The full session log, including verbose asyncio scheduling diagnostics, is
 `/tmp/calendar-timeout-corrected-fixture.log`. The process exited with status 1,
 as expected before the production fix. No full-suite pass is claimed.
 No court traffic, live permit, barrier change or deployment occurred.
+
+## v9 implementation attempt: verification stopped on one failure
+
+The user approved the offline cache/result-wait/v9 implementation. The working
+tree now contains:
+
+- Ephemeral bootstrap CSS/JS caching keyed by exact URL (including version query)
+  and resource type. Cached responses do not acquire a request grant, invoke
+  pacing or create network-accounting rows. They report separate counters.
+  Cookies and transport framing are not replayed from cache.
+- Navigation waits for commit rather than full load, then awaits the POST
+  response and starts a separate 45-second result-grid deadline. No unobserved
+  empty-result marker was invented.
+- Post-Search Playwright timeout classification
+  `CALENDAR_RESULT_LOAD_TIMEOUT`, on the explicit diagnostic allowlist.
+- Integrated method `playwright-calendar+urllib-pdf-v9`. Historical diagnostic
+  messages without new counters remain valid. Old v8 access proof cannot
+  authorize v9. Stored report retrieval was not changed; a CLI report round-trip
+  has not been exercised during this attempt.
+
+**Not complete:** the first full safety run failed. Per the requested stop rule,
+no further fix, build, API restart or live action followed that result.
+
+The primary timeout regression passed: the parser was reached with four real
+loopback network requests, four grants/accounts and two cached asset responses.
+The header-only fixture still stopped as RESULTS_NOT_VALIDATED, not an invented
+empty result. The missing-grid test passed with
+CALENDAR_RESULT_LOAD_TIMEOUT.
+
+The changed-asset-version test failed: its stylesheet was blocked before any
+fifth loopback network request, and the worker reported
+CALENDAR_REQUIRED_RESOURCE_BLOCKED. That test did not reach the parser.
+No cause beyond the observed local blocking is established here. The test run
+also emitted unhandled Playwright Response.finished teardown tasks ending in
+`playwright._impl._errors.Error: Target closed`; those warnings remain unresolved.
+
+Actual output excerpts:
+
+```text
+$ pnpm --filter @workspace/api-server run typecheck
+
+> @workspace/api-server@0.0.0 typecheck /home/runner/workspace/artifacts/api-server
+> tsc -p tsconfig.json --noEmit
+```
+
+This command and the immediately chained `git diff --check` exited 0.
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+
+> @workspace/api-server@0.0.0 test:safety /home/runner/workspace/artifacts/api-server
+> node ./tests/run-safety.mjs
+
+PASS: 473 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+
+FAIL: test_changed_asset_version_does_not_reuse_bootstrap_bytes (test_calendar_load_timeout.CalendarLoadTimeoutTests.test_changed_asset_version_does_not_reuse_bootstrap_bytes)
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 65 tests in 91.523s
+
+FAILED (failures=1)
+/home/runner/workspace/artifacts/api-server:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/api-server@0.0.0 test:safety: `node ./tests/run-safety.mjs`
+Exit status 1
+```
+
+Observed primary-regression counters and states, taken from the actual
+OFFLINE_REPRODUCTION output:
+
+```text
+"network": [["GET", "/CaseSearch"], ["GET", "/resource/css/sitemain.min.css"], ["GET", "/resource/js/sitemain.min.js"], ["POST", "/CaseSearch"]]
+"timeouts": []
+"parserReached": true
+"states": ["FORM_READY", "RESULTS_NOT_VALIDATED", "RESULTS_NOT_VALIDATED"]
+"barriers": ["RESULTS_NOT_VALIDATED"]
+"requestGrants": 4
+"responseAccounts": 4
+"networkRequests": 4
+"cachedResponses": 2
+```
+
+The failed changed-version fixture instead reported:
+
+```text
+"timeouts": []
+"parserReached": false
+"states": ["FORM_READY", "RESULTS_NOT_VALIDATED"]
+"barriers": ["CALENDAR_REQUIRED_RESOURCE_BLOCKED"]
+"blockedStylesheets": 1
+"consoleErrors": 1
+"networkRequests": 4
+"cachedResponses": 1
+```
+
+The complete session output, including all three fixture observations,
+tracebacks and teardown warnings, is `/tmp/calendar-v9-safety.log`.
+This is not a full-suite pass or live-readiness claim. Live inspection,
+the source barrier, source approvals and the paused infrastructure remain
+unchanged.

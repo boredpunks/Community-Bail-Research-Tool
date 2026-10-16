@@ -3,6 +3,7 @@ import math
 from source_protocol import CALENDAR_ASSETS
 
 SEARCH_CLICK_TIMEOUT_MS = 180_000
+CALENDAR_RESULT_TIMEOUT_MS = 45_000
 
 
 def calendar_asset_barrier(loaded_assets, blocked_scripts, blocked_stylesheets,
@@ -227,12 +228,21 @@ async def select_calendar_preview_controls(page, criteria):
 
 
 async def submit_calendar_search(page):
-    # Request pacing happens inside the routed request. The click timeout must
-    # exceed the 60–90 second pre-request wait or Playwright cancels it locally.
+    # Commit, not full load: result-page assets must not consume the submission
+    # deadline. This guard still allows the routed POST's pre-request pacing.
     async with page.expect_navigation(
-        wait_until="load", timeout=SEARCH_CLICK_TIMEOUT_MS
-    ):
-        await page.locator("#btnSearch").click(timeout=SEARCH_CLICK_TIMEOUT_MS)
+        wait_until="commit", timeout=SEARCH_CLICK_TIMEOUT_MS
+    ) as navigation:
+        await page.locator("#btnSearch").click(
+            timeout=SEARCH_CLICK_TIMEOUT_MS, no_wait_after=True)
+    response = await navigation.value
+    if response is None or response.request.method != "POST":
+        raise RuntimeError("SUBMISSION_NOT_OBSERVED")
+    await response.finished()
+    # Start the result deadline only after the POST body finishes. No exact
+    # source empty marker has been captured, so do not invent one here.
+    await page.locator("#caseSearchResultGrid").wait_for(
+        state="attached", timeout=CALENDAR_RESULT_TIMEOUT_MS)
 
 
 async def fill_calendar_dates(page, criteria):

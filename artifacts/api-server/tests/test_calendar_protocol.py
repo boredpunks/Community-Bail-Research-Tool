@@ -232,7 +232,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(0.1)
                     await route.fulfill(
                         status=200, content_type="text/html",
-                        body="<html><body>local intercepted response</body></html>")
+                        body='<html><body><div id="caseSearchResultGrid">local intercepted response</div></body></html>')
                 else:
                     await route.abort()
 

@@ -19,7 +19,7 @@ from test_form_inspection import CRITERIA, public_fixture
 
 
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
-    async def test_search_reaches_parser_without_repeated_asset_network_calls(self):
+    async def run_fixture(self, *, missing_grid=False, changed_version=False):
         # Scale the real completion-to-start pacing and click deadline together:
         # 80 logical seconds per request, a 180-logical-second navigation limit.
         scale = 0.02
@@ -47,6 +47,11 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             '<table id="caseSearchResultGrid"><thead><tr>'
             + ''.join('<th>' + text + '</th>' for text in headers)
             + '</tr></thead><tbody></tbody></table>')
+        if missing_grid:
+            results = results.replace('id="caseSearchResultGrid"', 'id="fixtureMissingResult"')
+        if changed_version:
+            results = results.replace('href="/resource/css/sitemain.min.css"',
+                                      'href="/resource/css/sitemain.min.css?v=fixture_new"')
 
         async def serve(reader, writer):
             try:
@@ -57,13 +62,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                                if line.lower().startswith("content-length:")), 0)
                 if length:
                     await reader.readexactly(length)  # Ephemeral; never retained.
-                network.append((method, urlsplit(target).path))
-                if target == "/CaseSearch":
+                network.append((method, target))
+                path = urlsplit(target).path
+                if path == "/CaseSearch":
                     body = results if method == "POST" else initial
                     content_type = "text/html"
-                elif target == "/resource/js/sitemain.min.js":
+                elif path == "/resource/js/sitemain.min.js":
                     body, content_type = "/* offline public fixture */", "application/javascript"
-                elif target == "/resource/css/sitemain.min.css":
+                elif path == "/resource/css/sitemain.min.css":
                     body, content_type = "/* offline public fixture */", "text/css"
                 else:
                     raise AssertionError("Unexpected loopback fixture request")
@@ -79,8 +85,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             # The production route policy still sees the exact source URL.
             # The transport is replaced before DNS/network access and can only
             # reach this ephemeral loopback listener.
-            path = urlsplit(route.request.url).path
-            return await original_fetch(route, url=f"http://127.0.0.1:{port}{path}", **kwargs)
+            parsed_url = urlsplit(route.request.url)
+            target = parsed_url.path + ("?" + parsed_url.query if parsed_url.query else "")
+            return await original_fetch(route, url=f"http://127.0.0.1:{port}{target}", **kwargs)
 
         def scaled_pause(last_completed, now, interval):
             return original_pause(None if last_completed is None else last_completed / scale,
@@ -114,6 +121,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(worker, "response_pause", scaled_pause))
                 stack.enter_context(patch.object(worker.random, "uniform", return_value=80))
                 stack.enter_context(patch.object(calendar_protocol, "SEARCH_CLICK_TIMEOUT_MS", int(180_000 * scale)))
+                # The normal fixture's result deadline is shorter than the
+                # 1.6-second pre-POST pause. It must start after that pause.
+                stack.enter_context(patch.object(calendar_protocol, "CALENDAR_RESULT_TIMEOUT_MS",
+                                                100 if missing_grid else 4_000 if changed_version else 1_000))
                 stack.enter_context(patch.object(worker, "submit_calendar_search", observe_submit))
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
                 stack.enter_context(patch.object(worker, "download", side_effect=AssertionError("No PDFs")))
@@ -123,16 +134,49 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             await server.wait_closed()
         states = [row["state"] for row in messages if row["kind"] == "calendar_state"]
         barriers = [row["code"] for row in messages if row["kind"] == "barrier"]
-        print("\nOFFLINE_REPRODUCTION", json.dumps({
+        observations = {
             "network": network, "timeouts": timeouts, "parserReached": bool(parsed),
             "states": states, "barriers": barriers,
             "formDiagnostics": [row for row in messages if row["kind"] == "calendar_form_diagnostic"],
-        }), flush=True)
-        self.assertFalse(timeouts, "Full-load wait timed out before the result parser")
-        self.assertTrue(parsed, "Result parser must be reached")
+            "requestGrants": sum(row["kind"] == "request" for row in messages),
+            "responseAccounts": sum(row["kind"] == "response" for row in messages),
+            "diagnostics": [row for row in messages if row["kind"] == "calendar_diagnostics"],
+        }
+        print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
+        return observations
+
+    async def test_search_reaches_parser_without_repeated_asset_network_calls(self):
+        observed = await self.run_fixture()
+        self.assertFalse(observed["timeouts"], "Full-load wait timed out before the result parser")
+        self.assertTrue(observed["parserReached"], "Result parser must be reached")
         # A header-only fixture must remain unvalidated; never invent empty proof.
-        self.assertIn("RESULTS_NOT_VALIDATED", states)
-        self.assertEqual(barriers, ["RESULTS_NOT_VALIDATED"])
-        self.assertEqual(sum(path == "/resource/js/sitemain.min.js" for _, path in network), 1)
-        self.assertEqual(sum(path == "/resource/css/sitemain.min.css" for _, path in network), 1)
-        self.assertEqual(sum(method == "POST" for method, _ in network), 1)
+        self.assertIn("RESULTS_NOT_VALIDATED", observed["states"])
+        self.assertEqual(observed["barriers"], ["RESULTS_NOT_VALIDATED"])
+        self.assertEqual(sum(path == "/resource/js/sitemain.min.js" for _, path in observed["network"]), 1)
+        self.assertEqual(sum(path == "/resource/css/sitemain.min.css" for _, path in observed["network"]), 1)
+        self.assertEqual(sum(method == "POST" for method, _ in observed["network"]), 1)
+        self.assertEqual(len(observed["network"]), 4)
+        self.assertEqual(observed["requestGrants"], 4)
+        self.assertEqual(observed["responseAccounts"], 4)
+        self.assertEqual(observed["diagnostics"][-1]["networkRequests"], 4)
+        self.assertEqual(observed["diagnostics"][-1]["cachedResponses"], 2)
+
+    async def test_missing_result_grid_reports_honest_post_search_timeout(self):
+        observed = await self.run_fixture(missing_grid=True)
+        self.assertEqual(observed["timeouts"], ["BrowserTimeout"])
+        self.assertFalse(observed["parserReached"])
+        self.assertIn("RESULTS_NOT_VALIDATED", observed["states"])
+        self.assertEqual(observed["barriers"], ["CALENDAR_RESULT_LOAD_TIMEOUT"])
+        self.assertEqual(observed["requestGrants"], 4)
+        self.assertEqual(observed["responseAccounts"], 4)
+
+    async def test_changed_asset_version_does_not_reuse_bootstrap_bytes(self):
+        observed = await self.run_fixture(changed_version=True)
+        self.assertFalse(observed["timeouts"])
+        self.assertTrue(observed["parserReached"])
+        self.assertEqual(observed["barriers"], ["RESULTS_NOT_VALIDATED"])
+        self.assertIn(("GET", "/resource/css/sitemain.min.css?v=fixture_new"), observed["network"])
+        self.assertEqual(len(observed["network"]), 5)
+        self.assertEqual(observed["requestGrants"], 5)
+        self.assertEqual(observed["responseAccounts"], 5)
+        self.assertEqual(observed["diagnostics"][-1]["cachedResponses"], 1)

@@ -58,6 +58,8 @@ async def main(config=None):
     calendar_time = None
     last_completed_clock = None
     loaded_assets = set()
+    asset_cache = {}
+    cached_responses = 0
     blocked_scripts = blocked_stylesheets = blocked_requests = page_errors = console_errors = 0
     optional_console_errors = 0
     blocked_optional_urls = set()
@@ -191,6 +193,7 @@ async def main(config=None):
         async def handle_route(route):
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
             nonlocal inspection_error
+            nonlocal cached_responses
             request = route.request
             if (inspection_only or coverage_only or filing_inspection_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
@@ -224,6 +227,19 @@ async def main(config=None):
                 await route.fulfill(status=400, content_type="text/plain", body="")
                 return
             try:
+                cacheable = (not (inspection_only or coverage_only or filing_inspection_only)
+                             and request.method == "GET"
+                             and urlsplit(request.url).path in CALENDAR_ASSETS
+                             and request.resource_type in ("script", "stylesheet"))
+                cached = asset_cache.get((request.url, request.resource_type)) if cacheable else None
+                if cached is not None:
+                    if stopped:
+                        await route.abort()
+                        return
+                    headers, body = cached
+                    await route.fulfill(status=200, headers=headers, body=body)
+                    cached_responses += 1
+                    return  # No grant, pacing, network request or source accounting.
                 response, body, _ = await retrieve(
                     request.url, request.method,
                     (lambda: None) if inspection_only else
@@ -236,6 +252,18 @@ async def main(config=None):
                 await route.fulfill(response=response)
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
+                    if cacheable and not calendar_post_observed and len(asset_cache) < 2:
+                        # Decoded bytes from the successful bootstrap only, in
+                        # this worker's memory. Exact URL/version and resource
+                        # type must match. Never replay cookies or wire framing.
+                        headers = {key: value for key, value in response.headers.items()
+                                   if key.lower() not in {
+                                       "set-cookie", "content-encoding", "content-length",
+                                       "transfer-encoding", "connection", "keep-alive",
+                                       "proxy-authenticate", "proxy-authorization",
+                                       "te", "trailer", "upgrade",
+                                   }}
+                        asset_cache[(request.url, request.resource_type)] = (headers, body)
                 await response.dispose()
                 del body
             except Exception:
@@ -284,6 +312,7 @@ async def main(config=None):
                  blockedStylesheets=blocked_stylesheets, blockedRequests=blocked_requests,
                  pageErrors=page_errors, consoleErrors=console_errors,
                  optionalConsoleErrors=optional_console_errors,
+                     networkRequests=requests, cachedResponses=cached_responses,
                  scriptLoaded=CALENDAR_ASSETS[0] in loaded_assets,
                  stylesheetLoaded=CALENDAR_ASSETS[1] in loaded_assets)
 
@@ -447,7 +476,10 @@ async def main(config=None):
                 emit("calendar_state", state="RESULTS_NOT_VALIDATED", formVisible=False)
             else:
                 emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=False)
-            safe_code = str(error) if isinstance(error, (RuntimeError, ValueError)) else type(error).__name__
+            safe_code = ("CALENDAR_RESULT_LOAD_TIMEOUT"
+                         if isinstance(error, BrowserTimeout) and calendar_post_completed
+                         else str(error) if isinstance(error, (RuntimeError, ValueError))
+                         else type(error).__name__)
             emit("barrier", code=safe_code if safe_code in {
                 "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_CONTROL_AMBIGUOUS",
                 "FILING_WIDGET_LIMIT", "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
@@ -458,6 +490,7 @@ async def main(config=None):
                 "INSPECTION_METADATA_INVALID", "INSPECTION_BODY_UNSUPPORTED",
                 "INSPECTION_UNEXPECTED_LOCAL_REQUEST", "INSPECTION_PUBLIC_STATE_MISMATCH",
                 "SOURCE_FORM_VALIDATION", "RESULTS_NOT_VALIDATED",
+                "CALENDAR_RESULT_LOAD_TIMEOUT",
                 "CALENDAR_REQUIRED_RESOURCE_BLOCKED", "CALENDAR_REQUIRED_ASSET_MISSING",
                 "CALENDAR_SCRIPT_ERROR", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_CONSOLE_ERROR",

@@ -1,6 +1,6 @@
 // This identifies the actual clients, not just the source domain. Changing
 // either retrieval method invalidates prior proof and requires fresh approval.
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v8";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v9";
 export const calendarPreviewMethod = "playwright-calendar-preview-v1";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 
@@ -148,6 +148,9 @@ export function allowedSourceRequest(raw: unknown, method: unknown) {
 
 export function validCalendarDiagnostics(message: Record<string, unknown>) {
   return ["READY", "RESULT"].includes(String(message.phase))
+    // Historical v8 diagnostics predate cache/network counters and remain readable.
+    && ["networkRequests", "cachedResponses"].every(key => message[key] === undefined
+      || Number.isSafeInteger(message[key]) && Number(message[key]) >= 0 && Number(message[key]) <= 10_000)
     && ["blockedScripts", "blockedStylesheets", "blockedRequests", "pageErrors", "consoleErrors", "optionalConsoleErrors"].every(
       (key) => Number.isSafeInteger(message[key]) && Number(message[key]) >= 0 && Number(message[key]) <= 10_000)
     && typeof message.scriptLoaded === "boolean" && typeof message.stylesheetLoaded === "boolean";

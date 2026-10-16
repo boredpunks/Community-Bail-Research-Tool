@@ -7,3 +7,4 @@
 - [Deferred pipeline options](deferred-pipeline-options.md) — Keep unused pipeline ideas ready for a later requested safeguard revision, without enabling them now.
 - [Inspector network boundary](inspection-network-boundary.md) — Workspace-first review, Unix datagram relay pitfalls, and a separate deployed-readiness gate.
 - [Calendar-only operator approval](calendar-only-operator-approval.md) — Building a one-use gate is not run approval; retain the global barrier and exclude PDFs.
+- [Playwright teardown](playwright-teardown.md) — Successful assertions can coexist with unhandled Response.finished shutdown errors; verify stderr, not just test status.

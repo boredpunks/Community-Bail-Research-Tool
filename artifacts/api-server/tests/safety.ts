@@ -79,6 +79,17 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v9");
+  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
+    verifiedMethod: "playwright-calendar+urllib-pdf-v8" }) === "ACCESS_UNVERIFIED");
+  const historicalDiagnostics = { phase: "RESULT", blockedScripts: 0, blockedStylesheets: 0,
+    blockedRequests: 0, pageErrors: 0, consoleErrors: 0, optionalConsoleErrors: 0,
+    scriptLoaded: true, stylesheetLoaded: true };
+  check(validCalendarDiagnostics(historicalDiagnostics));
+  check(validCalendarDiagnostics({ ...historicalDiagnostics, networkRequests: 4, cachedResponses: 2 }));
+  for (const key of ["networkRequests", "cachedResponses"])
+    for (const value of [-1, 0.5, 10_001, null, "2"])
+      check(!validCalendarDiagnostics({ ...historicalDiagnostics, [key]: value }));
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, verifiedMethod: "DIFFERENT_CLIENT" }) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, collectionApprovedAt: null }) === "COLLECTION_NOT_APPROVED");
   check(collectionBlock({ ...approved, blockedReason: "ACCESS_DENIED", pausedUntil: new Date(0) }) === "ACCESS_DENIED");

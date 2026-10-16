@@ -182,7 +182,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       } else if (message.kind === "calendar_diagnostics") {
         if (!validCalendarDiagnostics(message)) throw new Error("Invalid calendar diagnostics");
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
-          `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}. Counts only; no source content retained.`);
+          `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}; network requests=${message.networkRequests ?? "not reported"}, cached asset responses=${message.cachedResponses ?? "not reported"}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar") {
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
