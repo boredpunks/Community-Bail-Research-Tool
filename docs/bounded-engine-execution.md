@@ -111,9 +111,10 @@ any source request. An isolated fresh-interpreter test runs eight scenarios
 against the built worker, including zero-browser/zero-request behavior when
 the plugin is missing. Those built-worker checks passed.
 
-Both API and frontend builds/type checks passed. The latest full offline
-regression run is being checked against the corrected code. No new live
-permit has been prepared for the corrected method.
+Both API and frontend builds/type checks passed. The final full regression run
+against executable code committed as `252671d` passed: **725 parent checks and
+81 Python tests** (289.962 seconds), including the fresh-interpreter built-worker
+scenarios. No new live permit has been prepared for the corrected method.
 
 **Execution remains blocked on fresh user approval after this consumed failed
 attempt.** A successful observation would allow continuation through fresh
