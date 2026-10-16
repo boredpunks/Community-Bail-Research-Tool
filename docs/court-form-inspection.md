@@ -183,6 +183,40 @@ local test is not evidence of deployed containment. Live `INSPECT` must remain
 disabled until the deployed egress boundary and any host-mediated proxy or
 resolver paths are independently verified.
 
+#### Containment verification status (2026-10-15)
+
+The deployment service reports that this project has no active deployment.
+There is therefore no deployed worker runtime or enforcement point to attest;
+workspace observations below do not satisfy the deployed-verification gate.
+
+The workspace runtime matches the wrapper's pinned versions: Python 3.13.11,
+Playwright 1.63.0, Chromium 138.0.7204.100, Linux x86_64 (kernel 6.18.57).
+The network sandbox test suite passed all three tests. Its local-only canary
+starts Chromium beneath `network_sandbox.py`, confirms that the local HTTP and
+UDP observers receive no child traffic, confirms inherited proxy variables are
+removed, and observes `EPERM` for direct IPv4/IPv6 TCP, UDP, and packet-socket
+creation. `unshare --net` is denied in this workspace, so it does not provide a
+separate network namespace.
+
+The local probe is launched under the same `network_sandbox.py` pre-exec wrapper
+that the TypeScript discovery worker selects for `INSPECT`; its target is a
+local-only canary, not the live worker or scheduler.
+
+The workspace process namespace exposes Unix sockets for Docker and Replit
+services, in addition to display/audio sockets. The inspector's run-as user can
+access some of these paths. They were not contacted: their behavior as possible
+relays is unknown, and this workspace cannot establish their absence or
+non-relaying behavior. Closing inherited file descriptors does not prevent
+opening a visible Unix-socket path. This is a concrete reason not to treat the
+local seccomp result as host-service isolation.
+
+Accordingly, deployed runtime/version attestation, deployed canary observation,
+and proof that no Unix-socket host service relays traffic remain unverified.
+Keep live `INSPECT` disabled. Reconsideration requires an available deployed
+runtime and a supported boundary that both denies unapproved network egress and
+isolates the inspector from host relay sockets, followed by a fresh canary run
+at that boundary. No court source was contacted for this verification.
+
 - `MAX_RESPONSE_BYTES` is enforced while Chromium's response body is read from
   the DevTools `IO` stream, before it is fulfilled to the page. The bounded
   parser check remains as defense in depth. The streamed path rejects a missing
