@@ -11,6 +11,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const keys = (v: Record<string, unknown>, expected: string[]) =>
   Object.keys(v).sort().join() === [...expected].sort().join();
 const count = (v: unknown, max: number) => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= max;
+const oneOf = (v: unknown, values: string[]) => typeof v === "string" && values.includes(v);
 export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   if (!keys(m, ["kind", "version", "phase", "submissionObserved", "responseCompleted",
     "inspectionStatus", "structure", "parserAttempted", "parserOutcome", "stopGate",
@@ -19,8 +20,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     || !["submissionObserved", "responseCompleted", "parserAttempted", "classificationOverflow"]
       .every(k => typeof m[k] === "boolean")
     || !count(m.blockedDuringInspection, 10_000)
-    || !["OBSERVED", "NOT_SAFE", "UNAVAILABLE"].includes(String(m.inspectionStatus))
-    || !outcomes.includes(String(m.parserOutcome)) || !gates.includes(String(m.stopGate))
+    || !oneOf(m.inspectionStatus, ["OBSERVED", "NOT_SAFE", "UNAVAILABLE"])
+    || !oneOf(m.parserOutcome, outcomes) || !oneOf(m.stopGate, gates)
     || !Array.isArray(m.classifications) || m.classifications.length > 32) return false;
   if (m.responseCompleted && !m.submissionObserved
     || m.parserAttempted !== (m.parserOutcome !== "NOT_RUN")
@@ -39,13 +40,13 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   const seen = new Set<string>();
   for (const row of m.classifications) {
     if (!object(row) || !keys(row, ["category", "phase", "alias", "signal", "count"])
-      || !categories.includes(String(row.category)) || !["READY", "RESULT"].includes(String(row.phase))
-      || !aliases.includes(String(row.alias)) || !signals.includes(String(row.signal))
+      || !oneOf(row.category, categories) || !oneOf(row.phase, ["READY", "RESULT"])
+      || !oneOf(row.alias, aliases) || !oneOf(row.signal, signals)
       || !count(row.count, 10_000) || row.count === 0
       || row.category === "BLOCKED_OPTIONAL_RESOURCE_ERROR" && (row.alias !== "BLOCKED_OPTIONAL"
-        || !["RESOURCE_ABORT", "REQUEST_FAILED"].includes(String(row.signal)))
+        || !oneOf(row.signal, ["RESOURCE_ABORT", "REQUEST_FAILED"]))
       || row.category === "JAVASCRIPT_EXCEPTION" && (row.alias !== "UNKNOWN" || row.signal !== "SCRIPT_EXCEPTION")
-      || row.category === "REQUIRED_RESOURCE_FAILURE" && !["MAIN_SCRIPT", "MAIN_STYLESHEET"].includes(String(row.alias)))
+      || row.category === "REQUIRED_RESOURCE_FAILURE" && !oneOf(row.alias, ["MAIN_SCRIPT", "MAIN_STYLESHEET"]))
       return false;
     const key = JSON.stringify([row.category, row.phase, row.alias, row.signal]);
     if (seen.has(key)) return false;

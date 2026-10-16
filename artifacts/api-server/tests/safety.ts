@@ -103,6 +103,12 @@ try {
     { classifications: Array(33).fill(responseDiagnostic.classifications[0]) },
     { classifications: [responseDiagnostic.classifications[0], responseDiagnostic.classifications[0]] },
     { classifications: [{ ...responseDiagnostic.classifications[0], category: "BLOCKED_OPTIONAL_RESOURCE_ERROR" }] },
+    { stopGate: ["CALENDAR_CONSOLE_ERROR"] },
+    { inspectionStatus: ["NOT_SAFE"], structure: null },
+    { classifications: [{ ...responseDiagnostic.classifications[0], category: ["UNKNOWN_OR_UNSAFE"] }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], alias: ["UNKNOWN"] }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], phase: ["RESULT"] }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], signal: ["UNCLASSIFIED"] }] },
   ]) check(!validCalendarResponseDiagnostic({ ...responseDiagnostic, ...change }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));
