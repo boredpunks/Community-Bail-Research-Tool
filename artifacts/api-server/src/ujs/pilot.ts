@@ -16,6 +16,7 @@ import { formInspectionMethod } from "../lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage-inspection";
 import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
+import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
 
 // INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
 // child prohibit every document request and every transmitted POST.
@@ -80,6 +81,18 @@ async function main() {
       documentCap: diagnostic(stage) ? 0 : row!.criteria.recordCap,
       remotePostCap: diagnostic(stage) ? 0 : null,
        notice: "No source traffic. Preparation is not approval; protected operator caps remain unchanged. Diagnostic criteria recordCap and dates are legacy storage placeholders, never PDF permission or submitted dates. Current FILING_INSPECT observes bounded public widgets after filing mode, Advanced Search and County = Allegheny, with redacted displayed public office codes only; oversized option lists stay uninspected/unknown. No private option values or identities, other county, court/case/office selection, Search or date entry; dependent requests abort locally." }));
+    return;
+  }
+  if (command === "clear-barrier") {
+    const reason = value("reason");
+    if (!reason || reason.startsWith("--")) {
+      throw new Error('Use clear-barrier --reason "<text>" --user-approved; no operation performed.');
+    }
+    const result = await clearSourceValidationBarrier({
+      reason,
+      userApproved: flag("user-approved"),
+    });
+    console.log(JSON.stringify(result));
     return;
   }
   const id = value("id");
@@ -154,7 +167,7 @@ async function main() {
     console.log(JSON.stringify({ notice: "Current method explicitly approved. No search started, dates expanded, or budgets raised." }));
     return;
   }
-  if (command !== "run") throw new Error("Use prepare, prepare-calendar-only, approve, run, report, or approve-collection.");
+  if (command !== "run") throw new Error("Use prepare, prepare-calendar-only, clear-barrier, approve, run, report, or approve-collection.");
   const lease = await pool.connect();
   let acquired = false;
   let jobId: string | undefined;

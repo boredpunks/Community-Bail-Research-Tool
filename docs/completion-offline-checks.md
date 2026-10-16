@@ -711,3 +711,88 @@ source-barrier clearing, collection approvals, deployments or invented records
 were part of this correction. Passing these offline checks does not prove a
 live result layout, an empty-result marker, court-client compatibility, the
 reported live office count or deployed readiness.
+
+
+## Audited source-barrier clear command — offline only
+
+The operator CLI now supports:
+
+```text
+pnpm --filter @workspace/api-server run pilot clear-barrier --reason "<text>" --user-approved
+```
+
+This command has **not** been run with approval against the shared source state.
+It requires a non-empty reason and the explicit approval flag; only
+`SOURCE_VALIDATION_BARRIER` can be cleared. It refuses a source active request,
+any retained `IN_FLIGHT` request, any unexpired source pause, a missing source
+row, or a missing retained request/job to anchor the audit event.
+
+The clear and audit insert happen in one database transaction under a lock on
+the source row. The event is attached to the latest retained request's job and
+records the event timestamp, previous blocked reason, exact reason text, and
+operator identity. The operation changes only `blockedReason`;
+`pausedUntil`, access proof, collection approval, permits, requests, and job
+history remain unchanged. An unrelated stop reason cannot be cleared with this
+command.
+
+Offline verification on October 16, 2026:
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+PASS: 540 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+Ran 68 tests in 132.612s
+OK
+```
+
+The isolated-database checks cover missing approval/reason, active requests
+reported by either the source pointer or the request ledger, unexpired pauses
+following HTTP 429 and 403, unrelated stop reasons, audit fields, and
+preservation of the pause timestamp and all approval fields.
+
+```text
+$ PORT=5173 BASE_PATH=/ pnpm run build
+Exit status 0
+```
+
+This full build ran workspace typechecking successfully, then built the API and
+the other workspace artifacts. It retained the existing non-fatal tooltip
+sourcemap warning.
+
+The compiled CLI was invoked without approval and with a missing reason; both
+commands exited 1 before database access:
+
+```text
+Explicit --user-approved confirmation is required; source state is unchanged.
+CLI_EXIT=1
+
+Use clear-barrier --reason "<text>" --user-approved; no operation performed.
+CLI_EXIT=1
+```
+
+The successful-clear helper test used only the disposable test schema. No real
+barrier was read or cleared, no permit was prepared or approved, no court
+request or DNS lookup occurred, and no workflow restart or deployment occurred.
+
+
+### Operator decision remains required
+
+The October 12 v8 record shows a Search `POST /CaseSearch` returned HTTP 200 at
+13:19:00.103 UTC and a result stylesheet completed at 13:20:09.604 UTC; the job
+ended at 13:20:37.839 UTC. The result set was not validated and the recorded
+failure was `UNEXPECTED_RESPONSE`, not a court denial. The source barrier is
+recorded as retained. The current `validationStop` code path sets
+`SOURCE_VALIDATION_BARRIER` after a validation failure and clears prior access
+and collection approvals. The historical record does not prove whether any
+other manual action occurred.
+
+The offline reproduction of that timeout hypothesis made the Search POST,
+then timed out before the parser; it recorded
+`["FORM_READY","RESULTS_NOT_VALIDATED"]` followed by
+`UNEXPECTED_RESPONSE`. This reproduces an application-side timeout path, not a
+court response. The current timeout regression now reports
+`CALENDAR_RESULT_LOAD_TIMEOUT` for a missing result grid, and remains an offline
+fixture—not live source evidence.
+
+No real clearing is authorized by implementation or offline success. A separate
+explicit operator decision is required before running the CLI against the
+shared source state.

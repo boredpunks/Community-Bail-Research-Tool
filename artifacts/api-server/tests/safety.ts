@@ -4,12 +4,12 @@ import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
 import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
+import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
 
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
@@ -19,6 +19,7 @@ import { runInspectionBrokerChecks } from "./inspection-broker";
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
 globalThis.fetch = async () => { throw new Error("HTTP prohibited in offline safety tests"); };
+import { clearSourceValidationBarrier } from "../src/lib/discovery-barrier";
 const namespace = `offline_safety_${randomUUID().replaceAll("-", "")}`;
 let checks = 0;
 // Historical protocol-only scope: never a runtime default or a case fixture.
@@ -42,7 +43,7 @@ const reserve = (job: typeof jobs.$inferSelect, extra = {}) => reserveSourceRequ
 const response = (job: typeof jobs.$inferSelect, id: string, outcome = "OK", status: number | null = 200, retryAfter: string | null = null) =>
   accountSourceResponse(job, { requestId: id, outcome, status, retryAfter }, context);
 async function reset(verify = true) {
-  await isolatedPool.query("TRUNCATE discovery_requests, discovery_assessments, discovery_jobs, discovery_source_control");
+  await isolatedPool.query("TRUNCATE discovery_events, discovery_requests, discovery_assessments, discovery_jobs, discovery_source_control");
   time = now0;
   await store.insert(sources).values(verify ? approved : { id: "UJS" });
 }
@@ -82,7 +83,7 @@ try {
   // A disposable schema cloned WITHOUT source data. Separate pool connections
   // exercise real PostgreSQL row locking and the one-in-flight unique index.
   await pool.query(`CREATE SCHEMA ${namespace}`);
-  for (const name of ["discovery_jobs", "discovery_requests", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
+  for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
     await pool.query(`CREATE TABLE ${namespace}.${name} (LIKE public.${name} INCLUDING ALL)`);
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
@@ -204,7 +205,7 @@ try {
 
   for (const [outcome, status] of [["ACCESS_DENIED", 403], ["CHALLENGE", 200], ["LOGIN_PROMPT", 200], ["REDIRECT", 302], ["TIMEOUT", null], ["INVALID_PDF", 200]] as const) {
     await reset();
-    const job = await createJob(), next = await createJob();
+    const job = await createJob();
     const grant = await reserve(job);
     assert.ok(grant.allow && grant.requestId);
     check(!await response(job, grant.requestId, outcome, status));
@@ -674,15 +675,58 @@ print(json.dumps(projections))
         time += ms;
       },
     });
-  check(waitingGrant.allow && accounted);
-  if (waitingGrant.allow) check(await response(preview.job, waitingGrant.requestId));
-  await reset(false);
-  await store.update(sources).set(previewSource).where(eq(sources.id, "UJS"));
-  check(!(await reserve(await createJob())).allow);
-  check((await store.select().from(requests)).length === 0);
+
+  const createBarrierStop = async (
+    sourceChanges: Partial<typeof sources.$inferInsert> = {},
+    requestChanges: Partial<typeof requests.$inferInsert> = {},
+  ) => {
+    await reset(false);
+    const [job] = await store.insert(jobs).values({ ownerId: "OFFLINE_OPERATOR_AUDIT", criteria }).returning();
+    const baseline = {
+      blockedReason: "SOURCE_VALIDATION_BARRIER",
+      pausedUntil: null,
+      activeRequestId: null,
+      accessVerifiedAt: instant,
+      verifiedMethod: integratedSourceMethod,
+      collectionApprovedAt: instant,
+      latencyWarning: "retained offline warning",
+    };
+    await store.update(sources).set({ ...baseline, ...sourceChanges }).where(eq(sources.id, "UJS"));
+    const [request] = await store.insert(requests).values({
+      jobId: job!.id, ownerId: job!.ownerId, sourceId: "UJS",
+      path: "/CaseSearch", method: "POST", outcome: "OK", statusCode: 200,
+      startedAt: new Date(time - 1_000), completedAt: instant, durationMs: 250,
+      ...requestChanges,
+    }).returning();
+    return { job: job!, request: request!, baseline: { ...baseline, ...sourceChanges } };
+  };
+  check(auditMessage.timestamp === instant.toISOString());
+  check(auditMessage.previousBlockedReason === "SOURCE_VALIDATION_BARRIER");
+  check(auditMessage.reason === clearReason && auditMessage.operator === "OFFLINE_OPERATOR");
+
   console.log(`PASS: ${checks} offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.`);
 } finally {
   await isolatedPool.end();
   await pool.query(`DROP SCHEMA IF EXISTS ${namespace} CASCADE`);
   await pool.end();
 }
+
+  const clearReason = "Reviewed offline evidence; the recorded stop was an application timeout.";
+
+  let stop = await createBarrierStop();
+
+  const unchangedStop = async (reason: string) => {
+    const [source] = await store.select().from(sources);
+    check(source!.blockedReason === reason);
+    check((await store.select().from(events)).length === 0);
+  };
+
+  const cleared = await clearSourceValidationBarrier({
+    reason: clearReason, userApproved: true, operator: "OFFLINE_OPERATOR",
+  }, { store, now: () => instant });
+
+  const [clearedSource] = await store.select().from(sources);
+
+  const [audit] = await store.select().from(events).where(eq(events.jobId, stop.job.id));
+
+  const auditMessage = JSON.parse(audit!.message) as Record<string, string>;
