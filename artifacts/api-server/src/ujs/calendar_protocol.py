@@ -1,5 +1,6 @@
 """Calendar preflight and pacing helpers; never retain form/cookie contents."""
 import math
+import asyncio
 from playwright.async_api import TimeoutError as BrowserTimeout
 from source_protocol import CALENDAR_ASSETS
 
@@ -242,6 +243,67 @@ async def validate_calendar_form(page, criteria, selected_values=None):
     if result != "OK":
         raise RuntimeError(result if isinstance(result, str) and result.startswith(
             ("CALENDAR_", "SOURCE_FORM_", "UNSUPPORTED_CALENDAR_")) else "CALENDAR_PREFLIGHT_FAILED")
+
+
+async def select_bound_calendar_controls(page, criteria):
+    """Current method: resolve the observed public room, not a presumed field."""
+    other = {key: value for key, value in criteria.items() if key != "courtRoom"}
+    values = await select_calendar_preview_controls(page, other)
+    if criteria.get("courtRoom"):
+        if criteria["courtRoom"] != "Courtroom 506":
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "OPTION_MISSING")
+        from courtroom_observation import PROBE
+        deadline = asyncio.get_running_loop().time() + 15
+        selected = False
+        stable_since = None
+        previous = None
+        while True:
+            state = await page.evaluate(PROBE, {"select506": False})
+            if not isinstance(state, dict) or "error" in state:
+                raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "WRONG_FORM")
+            ready = (state["labels"] == 1 and state["controls"] == 1 and state["enabled"]
+                     and state["sameForm"] and not state["busy"]
+                     and state["room506Options"] == 1 and state["room506Enabled"])
+            now = asyncio.get_running_loop().time()
+            if state != previous:
+                previous, stable_since = state, now
+            stable = now - stable_since >= 0.5
+            if ready and stable:
+                if not selected:
+                    await page.evaluate(PROBE, {"select506": True})
+                    selected, previous = True, None
+                    continue
+                if state["room506Selected"] and state["namedBindings"] == 1 and state["nativeMatches"]:
+                    values["courtRoom"] = "Courtroom 506"  # Public criterion, never a native value.
+                    break
+            if now >= deadline:
+                reason = ("CONTROL_AMBIGUOUS" if state["labels"] > 1 or state["controls"] > 1
+                          else "MISSING" if not state["labels"] or not state["controls"]
+                          else "DISABLED" if not state["enabled"] or state["busy"]
+                          else "OPTION_MISSING" if state["room506Options"] != 1
+                          else "OPTION_DISABLED" if not state["room506Enabled"]
+                          else "BACKING_VALUE_MISMATCH")
+                raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", reason)
+            await asyncio.sleep(0.05)
+    return values
+
+
+async def validate_bound_calendar_form(page, criteria, selected_values):
+    if not criteria.get("courtRoom"):
+        return await validate_calendar_form(page, criteria, selected_values)
+    from courtroom_observation import PROBE
+    # Keep the frozen inspection validator intact. Check other fields with its
+    # existing native FormData checks, then rediscover and validate the room.
+    await validate_calendar_form(
+        page, {k: v for k, v in criteria.items() if k != "courtRoom"},
+        {k: v for k, v in selected_values.items() if k != "courtRoom"})
+    state = await page.evaluate(PROBE, {"select506": False})
+    if (criteria["courtRoom"] != "Courtroom 506" or not isinstance(state, dict)
+            or "error" in state or state["labels"] != 1 or state["controls"] != 1
+            or not all(state[k] for k in ("enabled", "sameForm", "room506Enabled",
+                                          "room506Selected", "nativeMatches"))
+            or state["busy"] or state["room506Options"] != 1 or state["namedBindings"] != 1):
+        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "BACKING_VALUE_MISMATCH")
 
 
 async def select_calendar_preview_controls(page, criteria):

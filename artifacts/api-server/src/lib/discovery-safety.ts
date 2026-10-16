@@ -2,8 +2,8 @@
 // either retrieval method invalidates prior proof and requires fresh approval.
 import { validCalendarCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v10";
-export const calendarPreviewMethod = "playwright-calendar-preview-v5";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v11";
+export const calendarPreviewMethod = "playwright-calendar-preview-v6";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
@@ -29,7 +29,9 @@ export function isCalendarPreviewCriteria(value: unknown): boolean {
   // check: admission/approval/run/scheduler separately reject stale dates.
   const legacy = candidate.eventType === "ANY";
   const keys = ["courtOffice", "eventType", "calendarPreviewOnly", "startDate", "endDate", "recordCap", "requestCap"];
-  if (legacy) keys.push("courtRoom");
+  const scopedRoom = candidate.courtRoom === "Courtroom 506"
+    && candidate.courtOffice === "CP-05-02-Crim" && candidate.eventType === "Bail Hearing";
+  if (legacy || scopedRoom) keys.push("courtRoom");
   return Object.keys(candidate).length === keys.length && keys.every(key => key in candidate)
     && candidate.calendarPreviewOnly === true && candidate.recordCap === 1 && candidate.requestCap === 8
     && (legacy

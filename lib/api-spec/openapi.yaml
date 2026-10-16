@@ -432,8 +432,8 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        stage: { type: string, enum: [SINGLE, SMALL, MODEST] }
-        state: { type: string, enum: [PREPARED, APPROVED, ATTEMPTED, FAILED, VERIFIED] }
+        stage: { type: string, enum: [SINGLE, SMALL, MODEST, BOUNDED_ENGINE] }
+        state: { type: string, enum: [PREPARED, APPROVED, ATTEMPTED, FAILED, VERIFIED, BOUNDED_COMPLETED] }
         criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
         expectedMethod: { type: string }
         approvedAt: { type: ["string", "null"], format: date-time }

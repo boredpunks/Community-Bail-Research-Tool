@@ -15,4 +15,5 @@ export const DiscoveryAssessmentState = {
   ATTEMPTED: 'ATTEMPTED',
   FAILED: 'FAILED',
   VERIFIED: 'VERIFIED',
+  BOUNDED_COMPLETED: 'BOUNDED_COMPLETED',
 } as const;

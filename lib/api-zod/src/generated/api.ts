@@ -299,8 +299,8 @@ export const listDiscoveryAssessmentsResponseCriteriaMatchFiltersMonetaryUpperBo
 
 export const ListDiscoveryAssessmentsResponseItem = zod.object({
   "id": zod.string().uuid(),
-  "stage": zod.enum(['SINGLE', 'SMALL', 'MODEST']),
-  "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED']),
+  "stage": zod.enum(['SINGLE', 'SMALL', 'MODEST', 'BOUNDED_ENGINE']),
+  "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED', 'BOUNDED_COMPLETED']),
   "criteria": zod.object({
   "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(listDiscoveryAssessmentsResponseCriteriaCourtRoomMax).optional(),

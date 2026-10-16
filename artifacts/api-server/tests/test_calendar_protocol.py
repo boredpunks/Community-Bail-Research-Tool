@@ -158,6 +158,55 @@ class PacingTests(unittest.TestCase):
 
 
 class FormTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bound_room_uses_public_labels_and_revalidates_native_binding(self):
+        from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form
+        markup = """
+        <form action="https://ujsportal.pacourts.us/CaseSearch" method="post">
+          <div id="SearchBy-Control"><select name="mode"><option>Calendar Event</option></select></div>
+          <div id="JudicialDistrict-Control"><select name="district"><option>Allegheny - 05</option></select></div>
+          <div id="CourtOffice-Control"><select name="office"><option>CP-05-02-Crim</option></select></div>
+          <div id="CalendarEventType-Control"><select name="event"><option>Bail Hearing</option></select></div>
+          <div><label for="public-room">Courtroom</label><select id="public-room" name="hypothetical-native">
+            <option value="" selected></option><option value="fixture-only-506">506</option></select></div>
+          <input type="date" name="CalendarEventStartDate" required>
+          <input type="date" name="CalendarEventEndDate" required>
+          <button id="btnSearch">Search</button>
+        </form>"""
+        criteria = {"courtOffice": "CP-05-02-Crim", "courtRoom": "Courtroom 506", "eventType": "Bail Hearing",
+                    "startDate": "2026-10-16", "endDate": "2026-10-22"}
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(executable_path=shutil.which("chromium"), headless=True,
+                args=["--disable-background-networking", "--no-sandbox"])
+            context = await browser.new_context(service_workers="block")
+            outbound = []
+            async def block(route):
+                outbound.append(route.request.url)
+                await route.abort()
+            await context.route("**/*", block)
+            page = await context.new_page()
+            try:
+                for unnamed in (False, True):
+                    await page.set_content(markup)
+                    if unnamed:
+                        await page.locator("#public-room").evaluate("""el => {
+                          el.removeAttribute('name');
+                          el.insertAdjacentHTML('afterend', '<input name="fixture-backing" type="hidden">');
+                          el.onchange = () => el.nextElementSibling.value = el.value;
+                        }""")
+                    values = await select_bound_calendar_controls(page, criteria)
+                    self.assertEqual(values["courtRoom"], "Courtroom 506")
+                    await fill_calendar_dates(page, criteria)
+                    await validate_bound_calendar_form(page, criteria, values)
+                    # Date entry or a late dependency must not invalidate room
+                    # silently; rediscover and fail before any Search.
+                    await page.locator("#public-room").evaluate("el => el.value = ''")
+                    with self.assertRaises(CalendarFormFailure):
+                        await validate_bound_calendar_form(page, criteria, values)
+                self.assertEqual(outbound, [])
+            finally:
+                await context.close()
+                await browser.close()
+
     async def test_selectable_criteria_exact_labels_and_unavailable_choices_stop_offline(self):
         # Public-control-only hypothetical fixture. No docket rows, source
         # bodies, source values or network transmission.

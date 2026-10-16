@@ -398,12 +398,11 @@ async def main(config=None):
                     inspection_local = True  # No further transmissions, including dependent-control fetches.
                 preview_values = None
                 form_phase = "CONTROL_SELECTION"
-                if calendar_preview_only:
-                    preview_values = await select_calendar_preview_controls(page, criteria)
-                elif inspection_only:
+                if inspection_only:
                     await select_calendar_preview_controls(page, criteria)
                 else:
-                    preview_values = await select_calendar_preview_controls(page, criteria)
+                    from calendar_protocol import select_bound_calendar_controls
+                    preview_values = await select_bound_calendar_controls(page, criteria)
                 if not inspection_only and not criteria.get("courtRoom"):
                     await validate_unfiltered_calendar_room(page)
                     preview_values["courtRoom"] = ""
@@ -431,7 +430,8 @@ async def main(config=None):
                 # Bound the final form, then validate the exact current criteria,
                 # owner, action, method and submitted backing values instead.
                 await calendar_form_field_count(page)
-                await validate_calendar_form(page, criteria, preview_values)
+                from calendar_protocol import validate_bound_calendar_form
+                await validate_bound_calendar_form(page, criteria, preview_values)
                 calendar_preflight("READY")
                 emit("calendar_state", state="FORM_READY", formVisible=await page.locator("#btnSearch").is_visible())
                 diagnostic_phase = "RESULT"

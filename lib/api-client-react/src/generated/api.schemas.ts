@@ -157,6 +157,7 @@ export const DiscoveryAssessmentStage = {
   SINGLE: 'SINGLE',
   SMALL: 'SMALL',
   MODEST: 'MODEST',
+  BOUNDED_ENGINE: 'BOUNDED_ENGINE',
 } as const;
 
 export type DiscoveryAssessmentState = typeof DiscoveryAssessmentState[keyof typeof DiscoveryAssessmentState];
@@ -168,6 +169,7 @@ export const DiscoveryAssessmentState = {
   ATTEMPTED: 'ATTEMPTED',
   FAILED: 'FAILED',
   VERIFIED: 'VERIFIED',
+  BOUNDED_COMPLETED: 'BOUNDED_COMPLETED',
 } as const;
 
 export interface DiscoveryAssessmentResult {

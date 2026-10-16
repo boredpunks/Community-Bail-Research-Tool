@@ -41,15 +41,18 @@ export function validCalendarCriteria(value: {
 }
 
 export function makeCalendarPreviewCriteria(input: {
-  courtOffice?: unknown; eventType?: unknown; startDate?: unknown; endDate?: unknown;
+  courtOffice?: unknown; eventType?: unknown; startDate?: unknown; endDate?: unknown; courtRoom?: unknown;
 }, minimumDate = easternToday()) {
-  if (!validCalendarCriteria(input, minimumDate)) {
+  if (!validCalendarCriteria(input, minimumDate)
+    || input.courtRoom !== undefined && (input.courtRoom !== "Courtroom 506"
+      || input.courtOffice !== "CP-05-02-Crim" || input.eventType !== "Bail Hearing")) {
     throw new Error("INVALID_CALENDAR_CRITERIA: Choose an observed office, Bail Hearing or Preliminary Arraignment, and real today-or-future dates covering at most seven days. No substitution.");
   }
   return {
     courtOffice: input.courtOffice as typeof calendarOffices[number],
     eventType: input.eventType as typeof calendarEvents[number],
     calendarPreviewOnly: true,
+    ...(input.courtRoom === undefined ? {} : { courtRoom: "Courtroom 506" }),
     startDate: input.startDate as string,
     endDate: input.endDate as string,
     recordCap: 1,

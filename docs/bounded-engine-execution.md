@@ -114,10 +114,61 @@ the plugin is missing. Those built-worker checks passed.
 Both API and frontend builds/type checks passed. The final full regression run
 against executable code committed as `252671d` passed: **725 parent checks and
 81 Python tests** (289.962 seconds), including the fresh-interpreter built-worker
-scenarios. No new live permit has been prepared for the corrected method.
+scenarios.
 
-**Execution remains blocked on fresh user approval after this consumed failed
-attempt.** A successful observation would allow continuation through fresh
-search/document permits under the already-recorded engine authorization and
-remaining overall budget, not another general conversational permission loop.
-Calendar search and the end-to-end objective remain incomplete.
+### Corrected observation — completed with binding established
+
+The user explicitly approved the corrected observation, with no added comments.
+
+- Method: `playwright-public-courtroom-observation-v2`.
+- Permit: `9714fc15-4fca-41cd-b97c-d390d691203b` (consumed, INSPECTED).
+- Job: `57ea133f-f814-44de-b59d-da530beb6c86` (COMPLETED).
+- Execution: 2026-10-16 20:45:41–20:48:03 UTC.
+- Three GETs, all HTTP 200 / accounted OK: form 820 ms, stylesheet 357 ms,
+  script 248 ms. Completion-to-next-start gaps: 69.192 and 63.981 seconds.
+- Outcome: **BOUND_506**. One public room label/control, enabled and owned by the
+  search form after criteria selection, 104 options, exactly one enabled 506
+  option, one native binding, selected 506 and matching native FormData value.
+  Binding stabilized; local observation took 1,043 ms.
+- No Search, calendar rows, documents, extraction or pending observations.
+- Source barrier retained; no active request, cooldown, access verification,
+  collection approval or latency warning remained.
+- **Overall budget consumed: 6/30 requests, 0/5 documents.**
+
+### Offline repair and scoped engine continuation
+
+Current calendar methods rediscover Courtroom 506 from the same public-label
+probe instead of assuming a named select. They select it after the approved
+office/event sequence, prove native binding, and rediscover/revalidate it after
+date entry, before Search. The frozen inspection validator and observation
+method remain unchanged. Named and unnamed/backed public-form fixtures test
+selection and rejection of a late value change, with all network blocked.
+
+Calendar preview method is now `playwright-calendar-preview-v6`; integrated
+method is `playwright-calendar+urllib-pdf-v11`. Historical proofs are not reused.
+
+A new one-use `BOUNDED_ENGINE` assessment uses
+`playwright-calendar+urllib-pdf-v11-bounded-506-v1`. Unlike the existing staged
+integrated pilot, it **never clears the global source barrier or grants access
+proof/collection approval**. It requires matching sanitized BOUND_506 evidence,
+the exact saved criteria, fresh explicit operator approval, the worker lease,
+and the unchanged idle source barrier. Per-transmission checks retain exact
+permit/job equality, expiry, pacing, rolling budgets, source stops and accounting.
+One Search POST, unique bootstrap GET paths, validated source-linked document
+identity/order, no repeated document attempt, and five document attempts maximum.
+The stricter job ceiling is **12 requests**, below the remaining aggregate 24.
+
+Valid retained evidence can be saved through `save-bounded-results` using the
+existing eligibility, observation construction, pending-review defaults and
+unique evidence keys. Missing bail remains unknown, not zero. Failed or
+unvalidated items are never saved. No source traffic occurs during saving.
+
+Offline checks: **756 parent/protocol/scheduler checks passed** after updating
+two obsolete preview-scope test expectations; **82 Python tests passed**
+(202.222 seconds), including public binding selection/final-validation checks.
+API/frontend type checks, API build and packaged Python imports passed.
+The API contract now exposes the scoped engine stage/report without exposing
+operator-only diagnostics or representing bounded completion as VERIFIED.
+
+Prepared engine permit: `d540c718-5720-4ae7-83e6-9c8cac0e7c93`.
+Calendar search and the end-to-end objective are not yet established.

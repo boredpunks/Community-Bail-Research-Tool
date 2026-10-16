@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { db, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import {
@@ -12,6 +12,7 @@ import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllow
 import { coverageInspectionMethod } from "./coverage-inspection";
 import { coverageMethod, courtroomObservationMethod, validCourtroomObservationCriteria } from "./courtroom-observation";
 import { filingInspectionMethod } from "./filing-inspection";
+import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,9 +40,11 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       if (current.requestsUsed >= current.criteria.requestCap) return deny("JOB_REQUEST_LIMIT");
       let calendarOnlyPermit = false;
       let diagnosticPermit = false;
+      let boundedPermit = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
-        const expectedMethod = permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
+        const expectedMethod = permit?.stage === "BOUNDED_ENGINE" ? boundedEngineMethod
+          : permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
           : permit?.stage === "COVERAGE" ? coverageMethod(permit.criteria)
           : permit?.stage === "INSPECT" ? formInspectionMethod
           : permit?.stage === "CALENDAR_ONLY" ? calendarPreviewMethod
@@ -59,6 +62,11 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
           return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
         }
         calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
+        boundedPermit = permit.stage === "BOUNDED_ENGINE";
+        if (boundedPermit && (!validBoundedEngineCriteria(current.criteria)
+          || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
+          || !calendarPreviewSourceAllowed(source, now, true)))
+          return deny("BOUNDED_ENGINE_SCOPE_INVALID");
         if (permit.expectedMethod === courtroomObservationMethod
           && (!validCourtroomObservationCriteria(current.criteria)
             || !calendarPreviewSourceAllowed(source, now, true)))
@@ -76,7 +84,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         const block = collectionBlock(source, now);
         if (block) return deny(block);
       }
-      if (diagnosticPermit) {
+      if (diagnosticPermit || boundedPermit && method === "GET" && requestPath !== "/Report/CpDocketSheet") {
         const [priorPath] = await tx.select({ id: discoveryRequestsTable.id })
           .from(discoveryRequestsTable)
           .where(and(
@@ -104,6 +112,16 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       let itemId: string | null = null;
       const resourceKey = createHash("sha256").update(`${method}|${url}`).digest("hex");
       if (requestPath === "/Report/CpDocketSheet") {
+        if (boundedPermit) {
+          if (!current.calendarComplete) return deny("CALENDAR_NOT_VALIDATED");
+          const attempted = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.path, "/Report/CpDocketSheet")));
+          if (attempted.length >= current.criteria.recordCap) return deny("DOCUMENT_CAP_REACHED");
+          const ordered = await tx.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
+          const next = ordered.find(item => item.provenance.extractionOutcome === "UNPROCESSED");
+          if (!next || next.sourceUrl !== url) return deny("DOCUMENT_ORDER_MISMATCH");
+        }
         const [item] = await tx.select().from(discoveryItemsTable).where(and(
           eq(discoveryItemsTable.jobId, current.id), eq(discoveryItemsTable.sourceUrl, url),
         )).for("update");
@@ -113,7 +131,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         itemId = item.id;
       } else {
         if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
-        if (calendarOnlyPermit && requestPath === "/CaseSearch" && method === "POST") {
+        if ((calendarOnlyPermit || boundedPermit) && requestPath === "/CaseSearch" && method === "POST") {
           const [priorSearch] = await tx.select({ id: discoveryRequestsTable.id })
             .from(discoveryRequestsTable)
             .where(and(
@@ -148,7 +166,8 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
   if (!validAccountingMessage(message)) {
     throw new Error("Malformed source response accounting");
   }
-  const calendarOnlyPreview = !!job.assessmentId && isCalendarPreviewCriteria(job.criteria);
+  const calendarOnlyPreview = !!job.assessmentId
+    && (isCalendarPreviewCriteria(job.criteria) || validBoundedEngineCriteria(job.criteria));
   return (context.store ?? db).transaction(async (tx) => {
     const now = context.now?.() ?? new Date();
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");

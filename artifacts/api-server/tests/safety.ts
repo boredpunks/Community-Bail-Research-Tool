@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
+import { boundedEngineMethod, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
@@ -91,8 +92,8 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v10");
-  check(calendarPreviewMethod === "playwright-calendar-preview-v5");
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v11");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v6");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
   check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));
@@ -600,6 +601,12 @@ print(json.dumps(projections))
   check(!isCalendarPreviewCriteria({ ...selectedPreview, requestCap: 9 }));
   check(!isCalendarPreviewCriteria({ ...selectedPreview, recordCap: 2 }));
   check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
+  check(isCalendarPreviewCriteria({ ...selectedPreview, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }));
+  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 507" }));
+  const roomPreview = makeCalendarPreviewCriteria({ ...selectedCriteria, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }, minimumDate);
+  check(roomPreview.courtRoom === "Courtroom 506" && isCalendarPreviewCriteria(roomPreview));
+  assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "" }, minimumDate));
+  assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "Courtroom 507" }, minimumDate));
   check(!calendarPreviewRequestAllowed("/Report/CpDocketSheet", "GET"));
   check(!calendarPreviewRequestAllowed("/resource/js/sitemain.min.js", "POST"));
   const previewSource = {
@@ -657,7 +664,7 @@ print(json.dumps(projections))
 
   for (const changed of [
     { startDate: "2026-10-14" }, { endDate: "2026-10-16" }, { courtRoom: "Courtroom 507" },
-    { courtRoom: undefined }, { eventType: "Bail Hearing" as const }, { calendarPreviewOnly: false },
+    { courtRoom: undefined }, { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
     { requestCap: 9 }, { recordCap: 2 }, { matchTarget: 1 },
   ]) {
     preview = await preparePreview(changed);
@@ -721,6 +728,61 @@ print(json.dumps(projections))
         time += ms;
       },
     });
+
+  const boundedCriteria = makeBoundedEngineCriteria("2026-10-16", "2026-10-22");
+  check(validBoundedEngineCriteria(boundedCriteria));
+  for (const change of [{ courtRoom: "" }, { courtRoom: "Courtroom 507" }, { recordCap: 6 },
+    { requestCap: 13 }, { endDate: "2026-10-23" }, { calendarPreviewOnly: false }, { eventType: "ANY" }])
+    check(!validBoundedEngineCriteria({ ...boundedCriteria, ...change }));
+  const prepareBounded = async (
+    changedCriteria: Partial<typeof criteria> = {},
+    changedSource: Partial<typeof sources.$inferInsert> = {},
+    changedPermit: Partial<typeof pilots.$inferInsert> = {},
+  ) => {
+    await reset(false);
+    time = Date.parse("2026-10-16T16:00:00Z");
+    await store.update(sources).set({ ...previewSource, ...changedSource }).where(eq(sources.id, "UJS"));
+    const scope = { ...boundedCriteria, ...changedCriteria };
+    const [permit] = await store.insert(pilots).values({
+      stage: "BOUNDED_ENGINE", expectedMethod: boundedEngineMethod, criteria: scope,
+      state: "ATTEMPTED", approvedAt: new Date(time), expiresAt: new Date(time + 86_400_000),
+      ...changedPermit,
+    }).returning();
+    const job = await createJob({ criteria: scope, assessmentId: permit!.id });
+    await store.update(pilots).set({ jobId: job.id }).where(eq(pilots.id, permit!.id));
+    return { job, permit: permit! };
+  };
+  let bounded = await prepareBounded();
+  const boundedGet = await previewReserve(bounded.job, bounded.permit.id);
+  assert.ok(boundedGet.allow);
+  check(await response(bounded.job, boundedGet.requestId));
+  const boundedPost = await previewReserve(bounded.job, bounded.permit.id, "POST");
+  assert.ok(boundedPost.allow);
+  check(await response(bounded.job, boundedPost.requestId));
+  check(!(await previewReserve(bounded.job, bounded.permit.id, "POST")).allow);
+  const [boundedSource] = await store.select().from(sources);
+  check(boundedSource!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !boundedSource!.accessVerifiedAt
+    && !boundedSource!.collectionApprovedAt);
+  for (const change of [{ courtRoom: "Courtroom 507" }, { requestCap: 13 }, { recordCap: 6 }]) {
+    bounded = await prepareBounded(change);
+    check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
+    check((await store.select().from(requests)).length === 0);
+  }
+  for (const change of [{ blockedReason: null }, { blockedReason: "ACCESS_DENIED" },
+    { latencyWarning: "slow" }, { collectionApprovedAt: instant }]) {
+    bounded = await prepareBounded({}, change);
+    check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
+  }
+  for (const change of [{ state: "APPROVED" }, { state: "FAILED" },
+    { expectedMethod: integratedSourceMethod }, { stage: "SINGLE" }]) {
+    bounded = await prepareBounded({}, {}, change);
+    check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
+  }
+  bounded = await prepareBounded();
+  check(!(await reserveSourceRequest(bounded.job, "/Report/CpDocketSheet", "GET", bounded.permit.id,
+    "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=not-a-docket",
+    () => false, context)).allow);
+  check((await store.select().from(requests)).length === 0);
 
   const createBarrierStop = async (
     sourceChanges: Partial<typeof sources.$inferInsert> = {},

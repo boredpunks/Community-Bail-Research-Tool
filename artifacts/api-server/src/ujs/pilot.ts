@@ -4,7 +4,7 @@
  * Collection approval is an additional explicit action after all stages.
  */
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { db, pool, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
+import { db, pool, bailRecordsTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import { actualDate, discoveryPolicy, easternToday } from "../lib/discovery";
 import {
   calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed,
@@ -17,14 +17,18 @@ import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage
 import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
+import { boundedEngineMethod, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../lib/bounded-engine";
+import { candidateEligible, observationValues } from "../lib/discovery-candidates";
+import { resultsDeadline } from "../lib/discovery-safety";
 import { coverageMethod, courtroomObservationMethod, makeCourtroomObservationCriteria,
   validCourtroomObservationMetadata, validCourtroomObservationCriteria } from "../lib/courtroom-observation";
 
 // INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
 // child prohibit every document request and every transmitted POST.
-const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1, CALENDAR_ONLY: 1 } as const;
+const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1, CALENDAR_ONLY: 1, BOUNDED_ENGINE: 5 } as const;
 const diagnostic = (stage: string) => ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(stage);
-const currentMethod = (stage: string, criteria?: unknown) => stage === "CALENDAR_ONLY" ? calendarPreviewMethod
+const currentMethod = (stage: string, criteria?: unknown) => stage === "BOUNDED_ENGINE" ? boundedEngineMethod
+  : stage === "CALENDAR_ONLY" ? calendarPreviewMethod
   : stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageMethod(criteria)
   : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
 const args = process.argv.slice(2);
@@ -33,6 +37,35 @@ const value = (key: string) => args.includes(`--${key}`) ? args[args.indexOf(`--
 const flag = (key: string) => args.includes(`--${key}`);
 
 async function main() {
+  if (command === "prepare-bounded-engine") {
+    const criteria = makeBoundedEngineCriteria(value("start"), value("end"));
+    const row = await db.transaction(async tx => {
+      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
+      if (!source || !calendarPreviewSourceAllowed(source)) throw new Error("Unchanged source barrier and idle source required.");
+      const [active] = await tx.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+      if (active) throw new Error("Another discovery job is active.");
+      const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.expectedMethod, boundedEngineMethod));
+      if (prior.some(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate))
+        throw new Error("A bounded engine permit already exists for this scope; no reuse or automatic retry.");
+      const observations = await tx.select().from(discoveryAssessmentsTable).where(and(
+        eq(discoveryAssessmentsTable.expectedMethod, courtroomObservationMethod),
+        eq(discoveryAssessmentsTable.state, "INSPECTED")));
+      const proof = observations.find(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate);
+      if (!proof?.jobId) throw new Error("Matching completed courtroom observation required.");
+      const evidence = await tx.select().from(discoveryEventsTable).where(and(
+        eq(discoveryEventsTable.jobId, proof.jobId), eq(discoveryEventsTable.kind, "COURTROOM_METADATA")));
+      if (evidence.length !== 1) throw new Error("Unique sanitized binding evidence required.");
+      const metadata = JSON.parse(evidence[0]!.message);
+      if (!validCourtroomObservationMetadata(metadata) || metadata.outcome !== "BOUND_506")
+        throw new Error("Courtroom 506 binding was not established.");
+      const [created] = await tx.insert(discoveryAssessmentsTable).values({
+        stage: "BOUNDED_ENGINE", expectedMethod: boundedEngineMethod, criteria,
+      }).returning();
+      return created!;
+    });
+    console.log(JSON.stringify({ ...row, notice: "Prepared without traffic. One exact calendar search and at most five distinct documents / 12 total requests. Barrier preserved; no collection enablement or retries." }));
+    return;
+  }
   if (command === "prepare-courtroom-observation") {
     const criteria = makeCourtroomObservationCriteria(value("start"), value("end"));
     const row = await db.transaction(async tx => {
@@ -56,6 +89,7 @@ async function main() {
   if (command === "prepare-calendar-only") {
     const criteria = makeCalendarPreviewCriteria({
       courtOffice: value("office"), eventType: value("event"), startDate: value("start"), endDate: value("end"),
+      courtRoom: value("room"),
     });
     const row = await db.transaction(async (tx) => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
@@ -66,10 +100,12 @@ async function main() {
         .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
       if (activeJob) throw new Error("Another discovery job is active; no permit was prepared.");
       const priorPermits = await tx.select().from(discoveryAssessmentsTable)
-        .where(eq(discoveryAssessmentsTable.stage, "CALENDAR_ONLY"));
+        .where(and(eq(discoveryAssessmentsTable.stage, "CALENDAR_ONLY"),
+          eq(discoveryAssessmentsTable.expectedMethod, calendarPreviewMethod)));
       if (priorPermits.some((permit) => JSON.stringify(permit.criteria) === JSON.stringify(criteria)
         || ["courtOffice", "eventType", "startDate", "endDate"].every(
-          key => permit.criteria[key as keyof typeof permit.criteria] === criteria[key as keyof typeof criteria]))) {
+           key => permit.criteria[key as keyof typeof permit.criteria] === criteria[key as keyof typeof criteria])
+           && permit.criteria.courtRoom === criteria.courtRoom)) {
         throw new Error("A permit already exists for this exact calendar scope. Reuse and retries are not permitted.");
       }
       const [created] = await tx.insert(discoveryAssessmentsTable).values({
@@ -89,7 +125,7 @@ async function main() {
     const stage = String(value("stage") ?? "").toUpperCase() as keyof typeof stageCaps;
     const startDate = value("start"), endDate = value("end"), requestCap = Number(value("requests"));
     if (stage === "INSPECT") throw new Error("FORM_INSPECTION_LIVE_DISABLED: offline safeguards require review before any live authorization.");
-    if (!stageCaps[stage] || stage === "CALENDAR_ONLY" || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
+    if (!stageCaps[stage] || stage === "CALENDAR_ONLY" || stage === "BOUNDED_ENGINE" || !actualDate(startDate) || !actualDate(endDate) || startDate < easternToday()
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
       || !Number.isInteger(requestCap) || requestCap < (diagnostic(stage) ? 3 : 8)
       || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE/FILING_INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days. Use prepare-calendar-only --office <observed-code> --event \"Bail Hearing\" or \"Preliminary Arraignment\" --start YYYY-MM-DD --end YYYY-MM-DD for an exact one-use preview scope.");
@@ -145,6 +181,39 @@ async function main() {
     return;
   }
   if (!flag("user-approved")) throw new Error("Separate explicit user approval is required; no operation performed.");
+  if (command === "save-bounded-results") {
+    const result = await db.transaction(async tx => {
+      const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
+      if (!permit || permit.stage !== "BOUNDED_ENGINE" || permit.expectedMethod !== boundedEngineMethod
+        || !["BOUNDED_COMPLETED", "FAILED"].includes(permit.state) || !permit.jobId
+        || !validBoundedEngineCriteria(permit.criteria)) throw new Error("A consumed bounded engine permit with retained evidence is required.");
+      const [job] = await tx.select().from(discoveryJobsTable).where(and(
+        eq(discoveryJobsTable.id, permit.jobId), eq(discoveryJobsTable.ownerId, WORKSPACE_OWNER_ID))).for("update");
+      if (!job || job.resultsExpiredAt || !["COMPLETED", "PAUSED"].includes(job.status)
+        || resultsDeadline(job) && resultsDeadline(job)! <= new Date())
+        throw new Error("Evidence is unavailable, active or expired; no observation saved.");
+      const items = await tx.select().from(discoveryItemsTable).where(and(
+        eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.ownerId, WORKSPACE_OWNER_ID)))
+        .orderBy(asc(discoveryItemsTable.position));
+      let eligibleDocuments = 0, inserted = 0;
+      for (const item of items) {
+        if (!candidateEligible(item)) continue;
+        eligibleDocuments++;
+        const entries = item.provenance.extractionOutcome === "MISSING_BAIL_SECTION"
+          ? [null] : item.provenance.entries;
+        for (const entry of entries) {
+          const values = observationValues(WORKSPACE_OWNER_ID, item, entry);
+          const rows = await tx.insert(bailRecordsTable).values(values)
+            .onConflictDoNothing({ target: [bailRecordsTable.ownerId, bailRecordsTable.discoveryKey] })
+            .returning({ id: bailRecordsTable.id });
+          inserted += rows.length;
+        }
+      }
+      return { eligibleDocuments, inserted, notice: "Saved source-backed evidence only, using existing pending-review defaults and deduplication. No confirmation, operative designation or source traffic." };
+    });
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (command === "approve") {
     await db.transaction(async (tx) => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
@@ -155,11 +224,14 @@ async function main() {
       if (row.expectedMethod === courtroomObservationMethod
         && (!validCourtroomObservationCriteria(row.criteria) || !source || !calendarPreviewSourceAllowed(source)))
         throw new Error("Courtroom observation requires its fixed saved criteria and unchanged source barrier.");
+      if (row.stage === "BOUNDED_ENGINE"
+        && (!validBoundedEngineCriteria(row.criteria) || !source || !calendarPreviewSourceAllowed(source)))
+        throw new Error("Bounded engine scope/barrier no longer matches.");
       if (row.stage === "CALENDAR_ONLY" && (!isCalendarPreviewCriteria(row.criteria)
         || !source || !calendarPreviewSourceAllowed(source))) {
         throw new Error("Calendar-only approval requires valid saved exact criteria and the unchanged SOURCE_VALIDATION_BARRIER. No source request or barrier override occurred.");
       }
-      if (row.stage !== "SINGLE" && !diagnostic(row.stage)) {
+      if (row.stage !== "SINGLE" && row.stage !== "BOUNDED_ENGINE" && !diagnostic(row.stage)) {
         if (row.stage === "CALENDAR_ONLY") {
           const [activeJob] = await tx.select().from(discoveryJobsTable)
             .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
@@ -221,6 +293,14 @@ async function main() {
       if (pilot.expectedMethod === courtroomObservationMethod
         && (!validCourtroomObservationCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)))
         throw new Error("Courtroom observation scope/barrier no longer matches; no source request sent.");
+      if (pilot.stage === "BOUNDED_ENGINE"
+        && (!validBoundedEngineCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)))
+        throw new Error("Bounded engine scope/barrier no longer matches; no source request sent.");
+      if (pilot.stage === "BOUNDED_ENGINE") {
+        const [active] = await tx.select().from(discoveryJobsTable)
+          .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+        if (active) throw new Error("Another discovery job is active; no source request sent.");
+      }
       const [created] = await tx.insert(discoveryJobsTable).values({
         ownerId: WORKSPACE_OWNER_ID, criteria: pilot.criteria, assessmentId: pilot.id,
         message: pilot.stage === "CALENDAR_ONLY"
@@ -262,14 +342,24 @@ async function main() {
          && items.every((item) => item.provenance.extractionOutcome === "UNPROCESSED")
          && failures === 0 && timingValid && !!source && calendarPreviewSourceAllowed(source)
          && !source.latencyWarning;
-       const verified = !inspection && !calendarOnly && current?.status === "COMPLETED" && current.calendarComplete
+        const bounded = assessment?.stage === "BOUNDED_ENGINE";
+        const boundedComplete = bounded && validBoundedEngineCriteria(assessment.criteria)
+          && current?.status === "COMPLETED" && current.calendarComplete && failures === 0 && timingValid
+          && requests.length > 0 && requests.length <= assessment.criteria.requestCap
+          && requests.filter(r => r.path === "/CaseSearch" && r.method === "POST").length === 1
+          && requests.filter(r => r.path === "/Report/CpDocketSheet").length <= 5
+          && requests.every(r => r.durationMs !== null && r.durationMs < 20_000)
+          && !!source && calendarPreviewSourceAllowed(source);
+        const verified = !bounded && !inspection && !calendarOnly && current?.status === "COMPLETED" && current.calendarComplete
         && validDocuments === job.criteria.recordCap && failures === 0 && requests.length > 0 && timingValid
         && requests.every((request) => request.durationMs !== null && request.durationMs < 20_000)
         && !source?.activeRequestId && !source?.latencyWarning;
       const completedAt = new Date();
-       const state = inspected ? "INSPECTED" : calendarValidated ? "CALENDAR_VALIDATED" : verified ? "VERIFIED" : "FAILED";
+        const state = boundedComplete ? "BOUNDED_COMPLETED" : inspected ? "INSPECTED" : calendarValidated ? "CALENDAR_VALIDATED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
-         reason: calendarValidated
+          reason: boundedComplete
+            ? `Bounded exact Courtroom 506 engine run completed: ${items.length} validated calendar row(s), ${validDocuments} identity-validated processed document(s). Evidence remains unreviewed. Source barrier unchanged; no global access proof or collection approval.`
+            : calendarValidated
            ? `One approved Calendar Event search completed with ${items.length} validated calendar row(s). No PDFs, bail extraction, or collection approval. SOURCE_VALIDATION_BARRIER remains unchanged.`
            : inspected ? (assessment?.expectedMethod === courtroomObservationMethod
              ? "Bounded public-label courtroom observation completed for Courtroom 506 under Calendar Event / Allegheny - 05 / CP-05-02-Crim / Bail Hearing. Binding outcome is in sanitized coverageEvidence. No Search, results, PDFs, access verification or collection approval; SOURCE_VALIDATION_BARRIER preserved."

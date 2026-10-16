@@ -21,6 +21,7 @@ import { InspectionFetchBroker } from "./inspection-fetch-broker";
 import { validCalendarRowDates } from "./calendar-criteria";
 import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtroomObservationCriteria,
   validCourtroomObservationMetadata } from "./courtroom-observation";
+import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -76,6 +77,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       || job.calendarComplete || !isCalendarPreviewCriteria(job.criteria))) {
     throw new Error("Invalid calendar preview worker scope");
   }
+  if (permit?.stage === "BOUNDED_ENGINE"
+    && (permit.expectedMethod !== boundedEngineMethod || !validBoundedEngineCriteria(job.criteria)))
+    throw new Error("Invalid bounded engine permit scope");
   const diagnosticOnly = inspectionOnly || coverageOnly || filingInspectionOnly;
   const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
@@ -217,7 +221,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
             if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
               || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
               || !Number.isSafeInteger(row.position) || row.position < 0
-              || !validCalendarRowDates(row, job.criteria, calendarPreviewOnly)
+               || !validCalendarRowDates(row, job.criteria, calendarPreviewOnly || permit?.stage === "BOUNDED_ENGINE")
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
               || job.criteria.eventType !== "ANY" && row.eventType !== job.criteria.eventType)
               throw new Error("Calendar identity conflict");

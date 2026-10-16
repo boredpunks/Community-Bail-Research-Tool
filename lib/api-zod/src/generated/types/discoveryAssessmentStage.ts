@@ -13,4 +13,5 @@ export const DiscoveryAssessmentStage = {
   SINGLE: 'SINGLE',
   SMALL: 'SMALL',
   MODEST: 'MODEST',
+  BOUNDED_ENGINE: 'BOUNDED_ENGINE',
 } as const;

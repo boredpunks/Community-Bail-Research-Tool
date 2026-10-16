@@ -48,10 +48,10 @@ router.get("/discovery/jobs", async (_req, res): Promise<void> => {
 });
 
 router.get("/discovery/assessments", async (_req, res): Promise<void> => {
-  // Operator-only diagnostics are not public staged access proofs. Keep the
-  // existing API contract and stage list limited to its three PDF stages.
+  // Read-only diagnostics remain operator-only. Scoped engine reports are
+  // visible but never represented as global staged access proof.
   const rows = await db.select().from(discoveryAssessmentsTable)
-    .where(inArray(discoveryAssessmentsTable.stage, ["SINGLE", "SMALL", "MODEST"]))
+    .where(inArray(discoveryAssessmentsTable.stage, ["SINGLE", "SMALL", "MODEST", "BOUNDED_ENGINE"]))
     .orderBy(desc(discoveryAssessmentsTable.createdAt)).limit(30);
   const payload = rows.map((row) => ({
     id: row.id, stage: row.stage, state: row.state, criteria: row.criteria, expectedMethod: row.expectedMethod,
