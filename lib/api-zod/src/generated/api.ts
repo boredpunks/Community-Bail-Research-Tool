@@ -94,9 +94,9 @@ export const listDiscoveryJobsResponseCriteriaMatchFiltersMonetaryUpperBoundCent
 export const ListDiscoveryJobsResponseItem = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(listDiscoveryJobsResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -147,9 +147,9 @@ export const createDiscoveryJobBodyMatchFiltersMonetaryUpperBoundCentsMax = 2147
 
 
 export const CreateDiscoveryJobBody = zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(createDiscoveryJobBodyCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -179,9 +179,9 @@ export const createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCen
 export const CreateDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(createDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -221,9 +221,10 @@ export const CreateDiscoveryJobResponse = zod.object({
  * @summary Run one calendar-only preview without retrieving docket documents
  */
 export const CreateCalendarPreviewBody = zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
-  "courtRoom": zod.enum(['Courtroom 506']),
-  "eventDate": zod.enum(['2026-10-15'])
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Observed October 12, 2026; runtime availability must be checked.'),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment']),
+  "startDate": zod.coerce.date().describe('Real date, today or later in America/New_York.'),
+  "endDate": zod.coerce.date().describe('Inclusive window of at most seven days.')
 })
 
 export const createCalendarPreviewResponseCriteriaCourtRoomMax = 80;
@@ -242,9 +243,9 @@ export const createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBound
 export const CreateCalendarPreviewResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(createCalendarPreviewResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -301,9 +302,9 @@ export const ListDiscoveryAssessmentsResponseItem = zod.object({
   "stage": zod.enum(['SINGLE', 'SMALL', 'MODEST']),
   "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED']),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(listDiscoveryAssessmentsResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -354,9 +355,9 @@ export const GetDiscoveryJobResponse = zod.object({
   "job": zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(getDiscoveryJobResponseJobCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
@@ -457,9 +458,9 @@ export const controlDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCe
 export const ControlDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim']),
+  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
   "courtRoom": zod.string().max(controlDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.enum(['Bail Hearing', 'ANY']),
+  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),

@@ -17,13 +17,14 @@ import {
   getGetDiscoveryJobQueryKey,
   type DiscoveryItem,
   type DiscoveryControlAction,
+  CalendarPreviewInputCourtOffice,
+  CalendarPreviewInputEventType,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-retention';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
-const PREVIEW_DATE = '2026-10-15';
 
 function dayNum(d: string) { const [y, m, dd] = d.split('-').map(Number); return Date.UTC(y, m - 1, dd) / 86400000; }
 
@@ -155,6 +156,8 @@ export default function Discovery() {
   const [jobId, setJobId] = useState<string>('');
   const [startE, setStart] = useState<string | undefined>();
   const [endE, setEnd] = useState<string | undefined>();
+  const [office, setOffice] = useState<CalendarPreviewInputCourtOffice>('CP-05-02-Crim');
+  const [event, setEvent] = useState<CalendarPreviewInputEventType>('Bail Hearing');
   const [recCapE, setRecCap] = useState<string | undefined>();
   const [reqCapE, setReqCap] = useState<string | undefined>();
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -223,7 +226,7 @@ export default function Discovery() {
     if (mt > rc) return setFormErr(`The processing safety cap (${rc}) is below the number of matches wanted (${mt}). Raise it under advanced details, up to ${pol.maxRecordCap}.`);
     if (collectMonetary && (upper == null || upper < 1 || upper > 2147483647)) return setFormErr('Enter a positive monetary upper bound in whole cents, such as 500.00.');
     create.mutate(
-      { data: { courtOffice: 'CP-05-02-Crim', eventType: 'Bail Hearing', startDate: start, endDate: end,
+      { data: { courtOffice: office, eventType: event, startDate: start, endDate: end,
         recordCap: rc, requestCap: qc2, matchTarget: mt,
         matchFilters: { monetaryUpperBoundCents: collectMonetary ? upper : null, excludeShownPosted: collectPosted, inclusiveMaximum: true } } },
       {
@@ -241,15 +244,16 @@ export default function Discovery() {
       setPreviewErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
       return;
     }
-    if (PREVIEW_DATE < pol.minimumDate) {
-      setPreviewErr(`The selected date ${PREVIEW_DATE} is before the supported minimum ${pol.minimumDate}. No date will be substituted.`);
+    if (!start || !end || start < pol.minimumDate || end < start || dayNum(end) - dayNum(start) > 6) {
+      setPreviewErr('Choose today-or-future dates covering at most seven days. No date will be substituted.');
       return;
     }
     createCalendarPreview.mutate({
       data: {
-        courtOffice: 'CP-05-02-Crim',
-        courtRoom: 'Courtroom 506',
-        eventDate: PREVIEW_DATE,
+        courtOffice: office,
+        eventType: event,
+        startDate: start,
+        endDate: end,
       },
     }, {
       onSuccess: (j) => {
@@ -349,15 +353,34 @@ export default function Discovery() {
         ) : null}
       </section>
 
+      <section className="panel mb-8" aria-label="Calendar search criteria">
+        <h2 className="mono text-xl font-bold mb-3">Calendar search criteria</h2>
+        <p className="hint mb-4">Both forms below use these exact choices. Office options were observed October 12, 2026; availability is checked again at run time. Only Common Pleas criminal results have prior validated coverage. Preliminary Arraignment and other offices are not yet proven end to end. Filing-date/MDJ search is not implemented here.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div><label className="lbl" htmlFor="d-court">Court office</label>
+            <select id="d-court" className="field" value={office} onChange={e => setOffice(e.target.value as CalendarPreviewInputCourtOffice)} data-testid="select-court">
+              {Object.values(CalendarPreviewInputCourtOffice).map(code => <option key={code} value={code}>{code}</option>)}
+            </select></div>
+          <div><label className="lbl" htmlFor="d-event">Event type</label>
+            <select id="d-event" className="field" value={event} onChange={e => setEvent(e.target.value as CalendarPreviewInputEventType)} data-testid="select-event">
+              {Object.values(CalendarPreviewInputEventType).map(label => <option key={label} value={label}>{label}</option>)}
+            </select></div>
+          <div><label className="lbl" htmlFor="d-start">Start date</label>
+            <input id="d-start" type="date" className="field" min={pol?.minimumDate} max="2999-12-31" value={start} onChange={e => setStart(e.target.value)} data-testid="input-start" /></div>
+          <div><label className="lbl" htmlFor="d-end">End date (at most seven days inclusive)</label>
+            <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + 6) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={e => setEnd(e.target.value)} data-testid="input-end" /></div>
+        </div>
+      </section>
+
       <form onSubmit={submitCalendarPreview} className="panel mb-8" aria-label="Calendar-only preview" data-testid="form-calendar-preview">
         <h2 className="mono text-xl font-bold mb-2">Calendar Event preview</h2>
         <p className="hint mb-4">
-          One explicitly started search for Allegheny Common Pleas office CP-05-02-Crim, Courtroom 506, on one date, with no event-type filter.
+          One explicitly started Calendar Event search using the office, event and dates selected above.
           This preview retains only validated calendar result rows. It does not request docket PDFs, extract bail evidence, or save candidates.
           The shared source approval and request limiter still apply. While the source barrier is active, this button stays disabled.
-          A separate one-use operator permit can authorize only the exact search shown here, without clearing the barrier or enabling PDFs.
+          A separately approved one-use operator permit is limited to its saved exact criteria, without clearing the barrier or enabling PDFs.
         </p>
-        <p className="mono">Calendar date: {PREVIEW_DATE}</p>
+        <p className="mono">{office} · {event} · {start} to {end}</p>
         {previewErr ? <p className="errbox mt-3" role="alert" data-testid="text-calendar-preview-error">{previewErr}</p> : null}
         <button type="submit" className="btn btn-primary mt-4"
           disabled={!pol?.collectionEnabled || createCalendarPreview.isPending}
@@ -369,10 +392,6 @@ export default function Discovery() {
       <form onSubmit={submit} className="panel mb-8" aria-label="Start a discovery job" data-testid="form-job">
         <h2 className="mono text-xl font-bold mb-3">What are you looking for?</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div><label className="lbl" htmlFor="d-start">Start date</label>
-            <input id="d-start" type="date" className="field" min={pol?.minimumDate} value={start} onChange={(e) => setStart(e.target.value)} data-testid="input-start" /></div>
-          <div><label className="lbl" htmlFor="d-end">End date</label>
-            <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + 6) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={(e) => setEnd(e.target.value)} data-testid="input-end" /></div>
           <div><label className="lbl" htmlFor="d-match-bound">Maximum bail amount (dollars)</label>
             <input id="d-match-bound" inputMode="decimal" className="field" disabled={!collectMonetary} value={collectBound} onChange={(e) => setCollectBound(e.target.value)} data-testid="input-collection-bound" /></div>
           <div><label className="lbl" htmlFor="d-target">Number of matching dockets to return (max {pol?.maxRecordCap ?? '...'})</label>
@@ -383,10 +402,6 @@ export default function Discovery() {
         <details className="mt-4 border border-border rounded p-4" data-testid="details-advanced">
           <summary className="cursor-pointer mono font-bold text-primary">Advanced details: budgets, court, event, filters</summary>
           <div className="grid gap-4 sm:grid-cols-2 my-4">
-            <div><label className="lbl" htmlFor="d-court">Court office</label>
-              <select id="d-court" className="field" value="CP-05-02-Crim" onChange={() => undefined} data-testid="select-court"><option value="CP-05-02-Crim">CP-05-02-Crim (Common Pleas)</option></select></div>
-            <div><label className="lbl" htmlFor="d-event">Event type</label>
-              <select id="d-event" className="field" value="Bail Hearing" onChange={() => undefined} data-testid="select-event"><option value="Bail Hearing">Bail Hearing</option></select></div>
             <div><label className="lbl" htmlFor="d-rc">Processing safety cap (max {pol?.maxRecordCap ?? '...'})</label>
               <input id="d-rc" inputMode="numeric" className="field" value={recCap} onChange={(e) => setRecCap(e.target.value)} data-testid="input-record-cap" /></div>
             <div><label className="lbl" htmlFor="d-qc">Request budget (max {pol?.maxRequestCap ?? '...'})</label>
@@ -395,7 +410,7 @@ export default function Discovery() {
           <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require monetary total bail at or below the maximum amount</label>
           <label className="flex items-center gap-2 mt-2"><input type="checkbox" checked={collectPosted} onChange={(e) => setCollectPosted(e.target.checked)} data-testid="checkbox-collection-posted" /> Exclude dockets explicitly showing a posted entry</label>
           <p className="hint mt-3">Filters are evaluated locally after extraction and stay fixed for this job. Any recorded monetary TOTAL_BAIL entry may qualify; this is not a current operative-order finding. Unknown or nonmonetary amounts never count as zero. An unknown posted state is not excluded and does not prove custody.</p>
-          <p className="hint mt-2">The matching target is separate from the processing and request caps. The worker goes one docket at a time and stops when the target is reached, calendar results run out, or a cap is reached. Source failures pause collection. The target is not guaranteed and dates or budgets never expand automatically. Only Common Pleas Bail Hearing is supported; MDJ and Preliminary Arraignment searches are not offered.</p>
+          <p className="hint mt-2">The matching target is separate from the processing and request caps. The worker goes one docket at a time and stops when the target is reached, calendar results run out, or a cap is reached. Source failures pause collection. The target is not guaranteed and dates or budgets never expand automatically. Selectable form options do not establish validated results or PDF coverage; unrecognized layouts stop without substitution.</p>
         </details>
         {formErr ? <p className="errbox mt-3" role="alert" data-testid="text-form-error">{formErr}</p> : null}
         <button type="submit" className="btn btn-primary mt-4" disabled={!pol?.collectionEnabled || create.isPending} data-testid="button-start-job">
@@ -435,7 +450,7 @@ export default function Discovery() {
             <>
               <div className="panel mb-6" role="status" aria-live="polite">
                 <p className="mono font-bold text-lg" data-testid="text-job-status">{job.status}</p>
-                <p>{job.criteria.courtOffice}{job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.calendarPreviewOnly || job.criteria.eventType === 'ANY' ? 'no event-type filter' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
+                <p>{job.criteria.courtOffice}{job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.eventType === 'ANY' ? 'no event-type filter' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
                 {job.message ? <p className="mt-1" data-testid="text-job-message">{job.message}</p> : null}
                 {!isCalendarPreview ? <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
                   ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`

@@ -5,7 +5,9 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
-import { allowedSourceRequest, calendarPreviewCriteria, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
+import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
+import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 
@@ -19,6 +21,12 @@ import { runInspectionBrokerChecks } from "./inspection-broker";
 globalThis.fetch = async () => { throw new Error("HTTP prohibited in offline safety tests"); };
 const namespace = `offline_safety_${randomUUID().replaceAll("-", "")}`;
 let checks = 0;
+// Historical protocol-only scope: never a runtime default or a case fixture.
+const calendarPreviewCriteria = {
+  courtOffice: "CP-05-02-Crim", courtRoom: "Courtroom 506", eventType: "ANY",
+  calendarPreviewOnly: true, startDate: "2026-10-15", endDate: "2026-10-15",
+  recordCap: 1, requestCap: 8,
+} as const;
 const check = (ok: unknown) => { assert.ok(ok); checks++; };
 const now0 = Date.parse("2026-10-06T16:00:00Z");
 let time = now0;
@@ -488,7 +496,52 @@ try {
   }
   // One-use operator gate: protocol metadata only, never source or case fixtures.
   check(isCalendarPreviewCriteria({ ...calendarPreviewCriteria }));
-  check(calendarPreviewCriteria.startDate === "2026-10-15");
+  const selectedCriteria = {
+    courtOffice: "CP-05-02-Crim", eventType: "Preliminary Arraignment",
+    startDate: "2026-10-16", endDate: "2026-10-22",
+  };
+  const minimumDate = "2026-10-16";
+  check(validCalendarCriteria(selectedCriteria, minimumDate));
+  check(easternToday(new Date("2026-10-16T02:00:00Z")) === "2026-10-15");
+  const selectedPreview = makeCalendarPreviewCriteria(selectedCriteria, minimumDate);
+  check(isCalendarPreviewCriteria(selectedPreview));
+  check(selectedPreview.eventType === selectedCriteria.eventType && selectedPreview.endDate === selectedCriteria.endDate);
+  // Exercise the exact parser date projection -> parent worker guard handoff.
+  // Only date cells exist here: no docket, identity, case record or result claim.
+  const projectedDates = spawnSync("python", ["-c", `
+import json, sys
+sys.path.insert(0, "src/ujs")
+from evidence import calendar_date_fields
+criteria = {"startDate": "2026-10-16", "endDate": "2026-10-22"}
+projections = []
+for display_date in ("10/16/2026", "10/19/2026 09:00 AM", "10/22/2026"):
+    cells = [""] * 18
+    cells[16] = display_date
+    projections.append(calendar_date_fields(cells, criteria))
+print(json.dumps(projections))
+`], { encoding: "utf8" });
+  assert.equal(projectedDates.status, 0, projectedDates.stderr);
+  const dateRows = JSON.parse(projectedDates.stdout) as { eventDate: string; filingDate: null }[];
+  check(dateRows.length === 3 && dateRows[1]!.eventDate === "2026-10-19");
+  for (const row of dateRows) check(validCalendarRowDates(row, selectedPreview, true));
+  for (const eventDate of [null, "10/19/2026", "2026-10-15", "2026-10-23", "2026-02-30"]) {
+    check(!validCalendarRowDates({ eventDate, filingDate: null }, selectedPreview, true));
+  }
+  check(!validCalendarRowDates({ eventDate: "2026-10-19", filingDate: "10/01/2026" }, selectedPreview, true));
+  for (const change of [
+    { startDate: "2026-10-15" }, // Past in the server's calendar timezone.
+    { endDate: "2026-10-23" }, // Eight days inclusive.
+    { courtOffice: "UNKNOWN_OFFICE" },
+    { eventType: "Preliminary Arraignments" }, // No grammatical substitution.
+    { startDate: "2026-02-30" },
+    { endDate: "2026-10-14" },
+  ]) {
+    check(!validCalendarCriteria({ ...selectedCriteria, ...change }, minimumDate));
+    assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
+  }
+  check(!isCalendarPreviewCriteria({ ...selectedPreview, requestCap: 9 }));
+  check(!isCalendarPreviewCriteria({ ...selectedPreview, recordCap: 2 }));
+  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
   check(!calendarPreviewRequestAllowed("/Report/CpDocketSheet", "GET"));
   check(!calendarPreviewRequestAllowed("/resource/js/sitemain.min.js", "POST"));
   const previewSource = {
@@ -519,6 +572,15 @@ try {
   };
   const previewReserve = (job: typeof jobs.$inferSelect, permitId: string, method = "GET") =>
     reserveSourceRequest(job, "/CaseSearch", method, permitId, requestUrl, () => false, context);
+
+  // Current selectable scope still needs exact permit/job equality and leaves
+  // the global source barrier and zero-PDF boundary intact.
+  const currentPreview = await preparePreview({ ...selectedPreview, courtRoom: undefined });
+  // The database omits undefined properties, as it does for production JSON.
+  check((await previewReserve(currentPreview.job, currentPreview.permit.id)).allow);
+  check(!(await reserveSourceRequest(currentPreview.job, "/Report/CpDocketSheet", "GET",
+    currentPreview.permit.id, "https://ujsportal.pacourts.us/Report/CpDocketSheet",
+    () => false, context)).allow);
 
   let preview = await preparePreview();
   const pageGrant = await previewReserve(preview.job, preview.permit.id);

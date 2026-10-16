@@ -6,9 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Observed October 12, 2026; runtime availability must be checked.
+ */
 export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
 
 
 export const CalendarPreviewInputCourtOffice = {
   'CP-05-02-Crim': 'CP-05-02-Crim',
+  'CP-05-02-Fam': 'CP-05-02-Fam',
+  'CP-05-02-Juv': 'CP-05-02-Juv',
 } as const;

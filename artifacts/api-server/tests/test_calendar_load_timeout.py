@@ -41,6 +41,18 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL">', ''
         ).replace('</form>',
                   '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></form>')
+        # This shared fixture originally displayed internal diagnostic tokens
+        # instead of public labels. Exact-label selection must remain strict;
+        # use the already documented public labels in this local fixture only.
+        for value, token, label in (
+            ("CalendarEvent", "SEARCH_MODE", "Calendar Event"),
+            ("05", "JUDICIAL_DISTRICT", "Allegheny - 05"),
+            (CRITERIA["courtOffice"], "COURT_OFFICE", CRITERIA["courtOffice"]),
+            ("Bail Hearing", "EVENT_TYPE", "Bail Hearing"),
+        ):
+            initial = initial.replace(
+                f'<option value="{value}">{token}</option>',
+                f'<option value="{value}">{label}</option>')
         headers = ["Column"] * 18
         for index, label in {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
                              9: "County", 10: "Court Office", 14: "Event Type"}.items():

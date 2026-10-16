@@ -18,6 +18,7 @@ import { collectionBlock, resultsDeadline } from "../lib/discovery-safety";
 import { discoverySourceStatus, sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/discovery-retention";
 import { candidateEligible, observationValues } from "../lib/discovery-candidates";
+import { makeCalendarPreviewCriteria, validCalendarCriteria } from "../lib/calendar-criteria";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
@@ -31,7 +32,7 @@ router.get("/discovery/policy", async (_req, res): Promise<void> => {
     defaultRequestCap: Math.min(12, discoveryPolicy.maxRequestCap), maxRequestCap: discoveryPolicy.maxRequestCap,
     ...await discoverySourceStatus(),
     calendarRequestAllowance: 8,
-    coverageNote: "Supported adapter scope, not fresh access proof: Allegheny Common Pleas (CP-05-02-Crim), Bail Hearing, today/future windows up to 7 days. Integrated calendar and PDF access must be separately verified and collection approved. Historical dates, MDJ and Preliminary Arraignments are unproven. Only demonstrated bail layouts are extracted; ambiguous/deposit-bearing rows fail closed. No custody, operative-order, completeness or freshness claim. Remote pagination is not traversed. Required browser assets count; unnecessary assets are blocked before transmission. Hourly/daily quotas and adaptive pacing are conservative local controls, not published court limits. Targets, dates and budgets do not expand automatically.",
+    coverageNote: "Calendar office options observed October 12, 2026: CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv. Bail Hearing and Preliminary Arraignment are selectable with real today/future windows up to 7 days; runtime unavailability stops as CRITERIA_NOT_AVAILABLE_ON_SOURCE. These options are not fresh access proof. Only Common Pleas criminal results have prior validated coverage; Preliminary Arraignment and other offices are unproven end to end. Filing-date/MDJ search is not implemented. Integrated calendar and PDF access must be separately verified and collection approved. Only demonstrated bail layouts are extracted; ambiguous/deposit-bearing rows fail closed. No custody, operative-order, completeness or freshness claim. Remote pagination is not traversed. Required browser assets count; unnecessary assets are blocked before transmission. Hourly/daily quotas and adaptive pacing are conservative local controls, not published court limits. Targets, dates and budgets do not expand automatically.",
   };
   GetDiscoveryPolicyResponse.parse(payload);
   res.json(payload);
@@ -64,13 +65,11 @@ router.get("/discovery/assessments", async (_req, res): Promise<void> => {
 router.post("/discovery/jobs", async (req, res): Promise<void> => {
   const body = CreateDiscoveryJobBody.safeParse(req.body);
   const { startDate, endDate } = req.body ?? {};
-  if (!body.success || !actualDate(startDate) || !actualDate(endDate)
-    || startDate < easternToday() || endDate < startDate
-    || (Date.parse(endDate) - Date.parse(startDate)) / 86_400_000 > 6) {
+  if (!body.success || !validCalendarCriteria(req.body ?? {}, easternToday())) {
     res.status(400).json({ error: "Use supported court/event choices and a real today-or-future calendar window of at most seven days. Historical dates are not substituted." }); return;
   }
-  if (body.data.calendarPreviewOnly || body.data.eventType !== "Bail Hearing" || body.data.courtRoom) {
-    res.status(400).json({ error: "Calendar-only previews use the dedicated one-search endpoint; regular discovery remains limited to the supported Bail Hearing scope." }); return;
+  if (body.data.calendarPreviewOnly || body.data.courtRoom) {
+    res.status(400).json({ error: "Calendar-only previews use the dedicated one-search endpoint; courtroom filters are not offered for new searches." }); return;
   }
   if (body.data.recordCap > discoveryPolicy.maxRecordCap || body.data.requestCap > discoveryPolicy.maxRequestCap) {
     res.status(400).json({ error: "Your explicit budget exceeds protected operator limits." }); return;
@@ -105,9 +104,8 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
 
 router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
   const body = CreateCalendarPreviewBody.safeParse(req.body);
-  const eventDate = req.body?.eventDate;
-  if (!body.success || !actualDate(eventDate) || eventDate !== "2026-10-15" || eventDate < easternToday()) {
-    res.status(400).json({ error: "This preview is limited to the selected October 15, 2026 Allegheny court-office and courtroom search. No other date will be substituted." });
+  if (!body.success || !validCalendarCriteria(req.body ?? {}, easternToday())) {
+    res.status(400).json({ error: "INVALID_CALENDAR_CRITERIA: Use an observed office, Bail Hearing or Preliminary Arraignment, and real today-or-future dates covering at most seven days. No substitution." });
     return;
   }
 
@@ -118,16 +116,7 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
   }
   const { ownerId, ownerIds } = getWorkspaceIdentity(res);
   const requestCap = Math.min(8, discoveryPolicy.maxRequestCap);
-  const criteria = {
-    courtOffice: body.data.courtOffice,
-    courtRoom: body.data.courtRoom,
-    eventType: "ANY" as const,
-    calendarPreviewOnly: true,
-    startDate: eventDate,
-    endDate: eventDate,
-    recordCap: 1,
-    requestCap,
-  };
+  const criteria = { ...makeCalendarPreviewCriteria(req.body), requestCap };
   const result = await db.transaction(async (tx) => {
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
     if (await sourceAdmissionBlock(tx, source)) return null;
@@ -149,7 +138,7 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
     return;
   }
   await discoveryEvent(result, "QUEUED",
-    `One Calendar Event preview: ${criteria.courtOffice}, ${criteria.courtRoom}, ${eventDate}; no event-type filter. Request budget ${requestCap}; docket-document downloads disabled.`);
+    `One Calendar Event preview: ${criteria.courtOffice}, ${criteria.eventType}, ${criteria.startDate} to ${criteria.endDate}. Request budget ${requestCap}; docket-document downloads disabled.`);
   const payload = await jobSummary(result);
   CreateCalendarPreviewResponse.parse(payload);
   res.status(201).json(payload);

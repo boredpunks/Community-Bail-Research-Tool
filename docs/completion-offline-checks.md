@@ -1,6 +1,237 @@
 # Completion work: offline evidence and stop points
 
-**Current offline status:** the v9 timeout/cache regressions and full safety
+## Final multi-day result handoff correction
+
+Completion checking found two remaining date-handoff defects: the parser
+validated the display date but emitted the original text, and the parent
+restricted preview result dates to the window's first day. The parser now
+emits the validated ISO date; the parent validates the inclusive start/end
+range. All identity, link, event and coverage checks remain in place.
+
+A new offline cross-language test calls the parser's actual date-only row
+projection and sends its output through the exact date guard used by the
+parent worker. It covers first, middle and final days of a seven-day window,
+including source date/time display text, and rejects missing preview dates,
+display-format wire dates, invalid dates and both out-of-window boundaries.
+It also retains filing-date validation. Only date cells are populated: no
+fabricated docket, case identity, result row or source-access claim is used.
+
+Latest actual output (both commands exited 0):
+
+```text
+$ PORT=5173 BASE_PATH=/ pnpm run build
+> workspace@0.0.0 build /home/runner/workspace
+> pnpm run typecheck && pnpm -r --if-present run build
+
+scripts typecheck: Done
+artifacts/community-bail-research typecheck: Done
+artifacts/mockup-sandbox typecheck: Done
+artifacts/api-server typecheck: Done
+artifacts/mockup-sandbox build: ✓ built in 1.45s
+artifacts/mockup-sandbox build: Done
+artifacts/api-server build: ⚡ Done in 950ms
+artifacts/api-server build: Done
+artifacts/community-bail-research build: ✓ built in 3.36s
+artifacts/community-bail-research build: Done
+```
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+> @workspace/api-server@0.0.0 test:safety /home/runner/workspace/artifacts/api-server
+> node ./tests/run-safety.mjs
+
+PASS: 497 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+----------------------------------------------------------------------
+Ran 66 tests in 107.515s
+
+OK
+```
+
+Full output is in `/tmp/selectable-calendar-date-handoff-build.log` and
+`/tmp/selectable-calendar-date-handoff-safety.log`. The existing non-fatal
+build warnings remain as described below. All loopback observations still
+record `shutdownErrors: []`. The managed API was restarted once for this
+final batch; the frontend did not change. No source requests, valid permit
+preparations, approvals, barrier changes or deployment occurred.
+
+## Selectable criteria: authorized offline correction now passes
+
+October 16, 2026: the user approved **“Fix the offline incompatibilities and
+rerun.”** The stored JSON criteria TypeScript type now matches the observed
+calendar office choices and singular Preliminary Arraignment. No column,
+database migration, record or approval was changed.
+
+The loopback timeout fixture reused diagnostic placeholders (`SEARCH_MODE`,
+`JUDICIAL_DISTRICT`, `COURT_OFFICE`, `EVENT_TYPE`) as displayed option labels.
+The selectable worker correctly requires exact public labels. Only that local
+fixture's displayed labels were corrected to the documented public labels.
+No production selector, validation, source layout assumption or assertion
+was weakened to make the tests pass.
+
+Actual passing command output (excerpts; all three commands exited 0):
+
+```text
+$ pnpm run typecheck
+> workspace@0.0.0 typecheck /home/runner/workspace
+> pnpm run typecheck:libs && pnpm -r --filter "./artifacts/**" --filter "./scripts" --if-present run typecheck
+
+> workspace@0.0.0 typecheck:libs /home/runner/workspace
+> tsc --build
+
+Scope: 4 of 9 workspace projects
+artifacts/api-server typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/community-bail-research typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/mockup-sandbox typecheck$ tsc -p tsconfig.json --noEmit
+scripts typecheck$ tsc -p tsconfig.json --noEmit
+scripts typecheck: Done
+artifacts/api-server typecheck: Done
+artifacts/mockup-sandbox typecheck: Done
+artifacts/community-bail-research typecheck: Done
+```
+
+```text
+$ PORT=5173 BASE_PATH=/ pnpm run build
+> workspace@0.0.0 build /home/runner/workspace
+> pnpm run typecheck && pnpm -r --if-present run build
+
+artifacts/mockup-sandbox build: ✓ built in 1.86s
+artifacts/mockup-sandbox build: Done
+artifacts/api-server build: ⚡ Done in 356ms
+artifacts/api-server build: Done
+artifacts/community-bail-research build: ✓ 1826 modules transformed.
+artifacts/community-bail-research build: ✓ built in 3.44s
+artifacts/community-bail-research build: Done
+```
+
+The full build also emitted non-fatal warnings about the mockup image reference,
+API bundle size and an unresolved tooltip sourcemap location. These are not
+failed build claims. Complete typecheck and build output is in the session
+logs `/tmp/selectable-calendar-typecheck-corrected.log` and
+`/tmp/selectable-calendar-build.log`. No dependencies changed or were installed.
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+> @workspace/api-server@0.0.0 test:safety /home/runner/workspace/artifacts/api-server
+> node ./tests/run-safety.mjs
+
+PASS: 487 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+----------------------------------------------------------------------
+Ran 66 tests in 111.879s
+
+OK
+```
+
+The complete safety output, including actual OFFLINE_REPRODUCTION observations,
+is in `/tmp/selectable-calendar-safety-corrected.log`. Those observations show:
+
+- Changed asset version: parser reached; five loopback requests, one cached
+  response; the header-only table remains `RESULTS_NOT_VALIDATED`.
+- Missing grid: four loopback requests, two cached responses, one
+  `BrowserTimeout`, exact barrier `CALENDAR_RESULT_LOAD_TIMEOUT`.
+- Identical assets: parser reached; four loopback requests and two cached
+  responses; the header-only table remains `RESULTS_NOT_VALIDATED`.
+- All three observations: `shutdownErrors: []`; no invented empty-result proof.
+
+The built CLI was exercised only with deliberately invalid criteria, never a
+valid preparation command. A local assertion runner invoked
+`pnpm --filter @workspace/api-server run pilot prepare-calendar-only` with all
+four criteria flags for each rejection and required exit 1 with
+`INVALID_CALENDAR_CRITERIA`. Actual runner output:
+
+```text
+PASS: CLI rejected past date with INVALID_CALENDAR_CRITERIA before permit preparation.
+PASS: CLI rejected eight-day window with INVALID_CALENDAR_CRITERIA before permit preparation.
+PASS: CLI rejected unknown office with INVALID_CALENDAR_CRITERIA before permit preparation.
+```
+
+`git diff --check` exited 0 with no output. The managed API and web workflows
+were each restarted once after the correction and started successfully:
+
+```text
+⚡ Done in 372ms
+[08:03:15.229] INFO (13091): Server listening
+    port: 8080
+VITE v7.3.6  ready in 269 ms
+```
+
+The development API health route returned:
+
+```text
+{"status":"ok"}
+HTTP 200
+```
+
+A screenshot of `/discovery` rendered the existing signed-out landing gate
+without browser errors; it does not verify authenticated interactions. The
+generated contracts, input handling and offline form behavior were checked
+through the build, typecheck and safety suite rather than any live search.
+
+**Current status:** selectable calendar criteria pass offline verification.
+No court requests, valid permit preparations, approvals, barrier changes,
+source DNS lookups, PDF downloads or deployment occurred. All frozen
+infrastructure and approval gates remain unchanged. Filing-date/MDJ search is
+not implemented by this work. Live source/PDF milestones remain separately
+untried and separately approval-gated.
+
+## Selectable-criteria first attempt: historical verification failures
+
+October 16, 2026, before the authorized correction above: selectable calendar
+criteria were partially implemented, **not complete**. Verification stopped
+under the user's explicit stop-on-failure rule.
+The earlier v9 passing results below describe the prior implementation, not a
+passing claim for this working tree. No further implementation, build, workflow
+restart or live verification followed these failures. No court request, new
+permit, approval, source-barrier clearing or deployment occurred.
+
+Orval codegen completed successfully. Actual verification output excerpts:
+
+```text
+$ pnpm run typecheck
+artifacts/api-server typecheck: src/routes/discovery.ts(93,55): error TS2769: No overload matches this call.
+artifacts/api-server typecheck:           Type '"CP-05-02-Crim" | "CP-05-02-Fam" | "CP-05-02-Juv"' is not assignable to type '"CP-05-02-Crim"'.
+artifacts/api-server typecheck:             Type '"CP-05-02-Fam"' is not assignable to type '"CP-05-02-Crim"'.
+artifacts/api-server typecheck: src/routes/discovery.ts(129,55): error TS2769: No overload matches this call.
+artifacts/api-server typecheck: src/ujs/pilot.ts(52,68): error TS2769: No overload matches this call.
+artifacts/api-server typecheck: Failed
+```
+
+The command exited 2. Complete actual output is in the session log
+`/tmp/selectable-calendar-typecheck.log`. The stored discovery criteria type
+still restricts the office to the old single office; this was not corrected
+after the failed check.
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+> @workspace/api-server@0.0.0 test:safety /home/runner/workspace/artifacts/api-server
+> node ./tests/run-safety.mjs
+
+PASS: 487 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+FAIL: test_changed_asset_version_does_not_reuse_bootstrap_bytes (test_calendar_load_timeout.CalendarLoadTimeoutTests.test_changed_asset_version_does_not_reuse_bootstrap_bytes)
+AssertionError: False is not true
+FAIL: test_missing_result_grid_reports_honest_post_search_timeout (test_calendar_load_timeout.CalendarLoadTimeoutTests.test_missing_result_grid_reports_honest_post_search_timeout)
+AssertionError: Lists differ: [] != ['BrowserTimeout']
+FAIL: test_search_reaches_parser_without_repeated_asset_network_calls (test_calendar_load_timeout.CalendarLoadTimeoutTests.test_search_reaches_parser_without_repeated_asset_network_calls)
+AssertionError: False is not true : Result parser must be reached
+
+----------------------------------------------------------------------
+Ran 66 tests in 90.605s
+
+FAILED (failures=3)
+```
+
+The overall safety command exited 1. Each of the three loopback reproduction
+observations recorded only the bootstrap GET and two asset GETs, no Search
+POST, `parserReached: false`, `SUBMISSION_NOT_OBSERVED` and barrier
+`CRITERIA_NOT_AVAILABLE_ON_SOURCE`; all recorded `shutdownErrors: []`.
+Those are local fixture observations, not court responses. Complete actual
+output is in `/tmp/selectable-calendar-safety.log`. No full-suite pass is claimed.
+
+At that stop, the next step required user direction: correct the stored-type mismatch and
+investigate the offline fixture/selection incompatibility without weakening
+source validation, then rerun offline verification. Do not guess source
+structure, authorize traffic or clear the source barrier.
+
+**Prior v9 correction status:** the v9 timeout/cache regressions and full safety
 suite now pass after the corrections recorded at the end of this document.
 Full-project typechecking and the managed API build passed; API health is 200.
 Earlier failures below are retained as actual before-fix evidence, not current

@@ -6,9 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.
+ */
 export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
 
 
 export const DiscoveryCriteriaCourtOffice = {
   'CP-05-02-Crim': 'CP-05-02-Crim',
+  'CP-05-02-Fam': 'CP-05-02-Fam',
+  'CP-05-02-Juv': 'CP-05-02-Juv',
 } as const;

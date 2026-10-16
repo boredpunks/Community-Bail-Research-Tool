@@ -370,9 +370,9 @@ components:
     DiscoveryCriteria:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim] }
+        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage." }
         courtRoom: { type: string, maxLength: 80 }
-        eventType: { type: string, enum: [Bail Hearing, ANY] }
+        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment, ANY] }
         calendarPreviewOnly: { type: boolean }
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
@@ -384,10 +384,11 @@ components:
     CalendarPreviewInput:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim] }
-        courtRoom: { type: string, enum: ["Courtroom 506"] }
-        eventDate: { type: string, format: date, enum: ["2026-10-15"] }
-      required: [courtOffice, courtRoom, eventDate]
+        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Observed October 12, 2026; runtime availability must be checked." }
+        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment] }
+        startDate: { type: string, format: date, description: "Real date, today or later in America/New_York." }
+        endDate: { type: string, format: date, description: "Inclusive window of at most seven days." }
+      required: [courtOffice, eventType, startDate, endDate]
     DiscoveryMatchFilters:
       type: object
       properties:

@@ -1,5 +1,7 @@
 // This identifies the actual clients, not just the source domain. Changing
 // either retrieval method invalidates prior proof and requires fresh approval.
+import { validCalendarCriteria } from "./calendar-criteria";
+
 export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v9";
 export const calendarPreviewMethod = "playwright-calendar-preview-v1";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
@@ -12,25 +14,20 @@ type SourceState = {
   collectionApprovedAt: Date | null;
 };
 
-export const calendarPreviewCriteria = Object.freeze({
-  courtOffice: "CP-05-02-Crim",
-  courtRoom: "Courtroom 506",
-  eventType: "ANY",
-  calendarPreviewOnly: true,
-  startDate: "2026-10-15",
-  endDate: "2026-10-15",
-  recordCap: 1,
-  requestCap: 8,
-} as const);
-
 export function isCalendarPreviewCriteria(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  const actualKeys = Object.keys(candidate).sort();
-  const expectedKeys = Object.keys(calendarPreviewCriteria).sort();
-  return actualKeys.length === expectedKeys.length
-    && actualKeys.every((key, index) => key === expectedKeys[index]
-      && candidate[key] === calendarPreviewCriteria[key as keyof typeof calendarPreviewCriteria]);
+  // Historical reports keep their exact old shape. This is not a freshness
+  // check: admission/approval/run/scheduler separately reject stale dates.
+  const legacy = candidate.eventType === "ANY";
+  const keys = ["courtOffice", "eventType", "calendarPreviewOnly", "startDate", "endDate", "recordCap", "requestCap"];
+  if (legacy) keys.push("courtRoom");
+  return Object.keys(candidate).length === keys.length && keys.every(key => key in candidate)
+    && candidate.calendarPreviewOnly === true && candidate.recordCap === 1 && candidate.requestCap === 8
+    && (legacy
+      ? candidate.courtOffice === "CP-05-02-Crim" && candidate.courtRoom === "Courtroom 506"
+        && candidate.startDate === "2026-10-15" && candidate.endDate === "2026-10-15"
+      : validCalendarCriteria(candidate));
 }
 
 export function calendarPreviewSourceAllowed(source: {

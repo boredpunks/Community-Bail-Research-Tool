@@ -370,14 +370,11 @@ async def main(config=None):
                 elif inspection_only:
                     await select_calendar_preview_controls(page, criteria)
                 else:
-                    await page.locator("#SearchBy-Control select").select_option("CalendarEvent")
-                    await page.locator("#JudicialDistrict-Control select").select_option("05")
-                    await page.locator("#CourtOffice-Control select").select_option(criteria["courtOffice"])
-                    await page.locator("#CalendarEventType-Control select").select_option(criteria["eventType"])
+                    preview_values = await select_calendar_preview_controls(page, criteria)
                 start = page.locator("input[name=CalendarEventStartDate]")
                 minimum = await start.get_attribute("min")
                 if minimum and criteria["startDate"] < minimum:
-                    raise RuntimeError("UNSUPPORTED_HISTORICAL_WINDOW")
+                    raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
                 await fill_calendar_dates(page, criteria)
                 if inspection_only:
                     from form_inspection import snapshot
@@ -491,6 +488,7 @@ async def main(config=None):
                 "INSPECTION_UNEXPECTED_LOCAL_REQUEST", "INSPECTION_PUBLIC_STATE_MISMATCH",
                 "SOURCE_FORM_VALIDATION", "RESULTS_NOT_VALIDATED",
                 "CALENDAR_RESULT_LOAD_TIMEOUT",
+                "CRITERIA_NOT_AVAILABLE_ON_SOURCE",
                 "CALENDAR_REQUIRED_RESOURCE_BLOCKED", "CALENDAR_REQUIRED_ASSET_MISSING",
                 "CALENDAR_SCRIPT_ERROR", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_CONSOLE_ERROR",

@@ -19,11 +19,16 @@ export interface WorkspaceSession {
   expiresInSeconds?: number;
 }
 
+/**
+ * Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.
+ */
 export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
 
 
 export const DiscoveryCriteriaCourtOffice = {
   'CP-05-02-Crim': 'CP-05-02-Crim',
+  'CP-05-02-Fam': 'CP-05-02-Fam',
+  'CP-05-02-Juv': 'CP-05-02-Juv',
 } as const;
 
 export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof typeof DiscoveryCriteriaEventType];
@@ -31,6 +36,7 @@ export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof
 
 export const DiscoveryCriteriaEventType = {
   Bail_Hearing: 'Bail Hearing',
+  Preliminary_Arraignment: 'Preliminary Arraignment',
   ANY: 'ANY',
 } as const;
 
@@ -48,6 +54,7 @@ export interface DiscoveryMatchFilters {
 }
 
 export interface DiscoveryCriteria {
+  /** Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage. */
   courtOffice: DiscoveryCriteriaCourtOffice;
   /** @maxLength 80 */
   courtRoom?: string;
@@ -74,31 +81,34 @@ export interface DiscoveryCriteria {
   matchFilters?: DiscoveryMatchFilters;
 }
 
+/**
+ * Observed October 12, 2026; runtime availability must be checked.
+ */
 export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
 
 
 export const CalendarPreviewInputCourtOffice = {
   'CP-05-02-Crim': 'CP-05-02-Crim',
+  'CP-05-02-Fam': 'CP-05-02-Fam',
+  'CP-05-02-Juv': 'CP-05-02-Juv',
 } as const;
 
-export type CalendarPreviewInputCourtRoom = typeof CalendarPreviewInputCourtRoom[keyof typeof CalendarPreviewInputCourtRoom];
+export type CalendarPreviewInputEventType = typeof CalendarPreviewInputEventType[keyof typeof CalendarPreviewInputEventType];
 
 
-export const CalendarPreviewInputCourtRoom = {
-  Courtroom_506: 'Courtroom 506',
-} as const;
-
-export type CalendarPreviewInputEventDate = typeof CalendarPreviewInputEventDate[keyof typeof CalendarPreviewInputEventDate];
-
-
-export const CalendarPreviewInputEventDate = {
-  '2026-10-15': '2026-10-15',
+export const CalendarPreviewInputEventType = {
+  Bail_Hearing: 'Bail Hearing',
+  Preliminary_Arraignment: 'Preliminary Arraignment',
 } as const;
 
 export interface CalendarPreviewInput {
+  /** Observed October 12, 2026; runtime availability must be checked. */
   courtOffice: CalendarPreviewInputCourtOffice;
-  courtRoom: CalendarPreviewInputCourtRoom;
-  eventDate: CalendarPreviewInputEventDate;
+  eventType: CalendarPreviewInputEventType;
+  /** Real date, today or later in America/New_York. */
+  startDate: string;
+  /** Inclusive window of at most seven days. */
+  endDate: string;
 }
 
 export interface DiscoveryPolicy {

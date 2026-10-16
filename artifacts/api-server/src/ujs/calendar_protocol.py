@@ -175,15 +175,19 @@ async def select_calendar_preview_controls(page, criteria):
             reason = result.get("reason") if isinstance(result, dict) else None
             if reason not in CONTROL_REASONS:
                 reason = "OPTION_MISSING"
+            if criteria.get("eventType") != "ANY":
+                raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
             raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", control_name, reason)
         await page.locator(selector).select_option(value=result["value"])
         selected = await page.locator(selector).input_value()
         if selected != result["value"]:
+            if criteria.get("eventType") != "ANY":
+                raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
             raise CalendarFormFailure(
                 "CALENDAR_CONTROL_STATE_MISMATCH", control_name, "VALUE_MISMATCH")
         return selected
 
-    if criteria.get("eventType") != "ANY" or not criteria.get("courtRoom"):
+    if criteria.get("eventType") not in ("ANY", "Bail Hearing", "Preliminary Arraignment"):
         raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
 
     search_mode = await select_exact_option(
@@ -192,8 +196,19 @@ async def select_calendar_preview_controls(page, criteria):
         "#JudicialDistrict-Control select", "Allegheny - 05", "JUDICIAL_DISTRICT")
     court_office = await select_exact_option(
         "#CourtOffice-Control select", criteria["courtOffice"], "COURT_OFFICE")
-    court_room = await select_exact_option(
-        'select[name="CourtRoomID"]', criteria["courtRoom"], "COURT_ROOM")
+    court_room = None
+    if criteria.get("courtRoom"):
+        court_room = await select_exact_option(
+            'select[name="CourtRoomID"]', criteria["courtRoom"], "COURT_ROOM")
+
+    if criteria["eventType"] != "ANY":
+        event_type = await select_exact_option(
+            "#CalendarEventType-Control select", criteria["eventType"], "EVENT_TYPE")
+        return {"searchMode": search_mode, "judicialDistrict": judicial_district,
+                "courtOffice": court_office, "eventType": event_type,
+                **({"courtRoom": court_room} if court_room else {})}
+    if not court_room:
+        raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
 
     # "ANY" is an application sentinel, never a source value. The served form
     # must already expose and select one unique empty no-filter option.
@@ -263,8 +278,19 @@ async def fill_calendar_dates(page, criteria):
     for name, key in (("CalendarEventStartDate", "startDate"),
                       ("CalendarEventEndDate", "endDate")):
         control = page.locator(f"input[name={name}]")
+        if await control.count() != 1 or not await control.is_enabled():
+            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+        # Native public constraints are source availability, not permission to
+        # clamp a date. Missing/changed controls still fail closed.
+        minimum = await control.get_attribute("min")
+        maximum = await control.get_attribute("max")
+        if ((minimum and criteria[key] < minimum)
+                or (maximum and criteria[key] > maximum)):
+            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
         await control.fill(criteria[key])
         await control.blur()
+        if await control.input_value() != criteria[key]:
+            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
 
 
 def response_pause(last_completed, now, interval):

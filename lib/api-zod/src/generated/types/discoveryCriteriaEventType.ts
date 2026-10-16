@@ -11,5 +11,6 @@ export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof
 
 export const DiscoveryCriteriaEventType = {
   Bail_Hearing: 'Bail Hearing',
+  Preliminary_Arraignment: 'Preliminary Arraignment',
   ANY: 'ANY',
 } as const;

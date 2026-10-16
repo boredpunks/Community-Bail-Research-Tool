@@ -18,11 +18,7 @@ export const discoveryPolicy = {
   dailyRequestCap: policyInteger("UJS_MAX_DAILY_REQUESTS", 120, 1, 2000),
 };
 
-export function easternToday() {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-  const value = (type: string) => parts.find((part) => part.type === type)!.value;
-  return `${value("year")}-${value("month")}-${value("day")}`;
-}
+export { easternToday, actualDate } from "./calendar-criteria";
 
 export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, filters: DiscoveryCriteriaData["matchFilters"]) {
   if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(provenance.extractionOutcome)) return false;
@@ -62,7 +58,3 @@ export async function discoveryEvent(job: Pick<DiscoveryJobRow, "id" | "ownerId"
   await db.insert(discoveryEventsTable).values({ jobId: job.id, ownerId: job.ownerId, kind, message });
 }
 
-export function actualDate(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-}

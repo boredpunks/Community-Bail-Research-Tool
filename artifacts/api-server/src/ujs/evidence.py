@@ -26,6 +26,14 @@ def validate_event_date(text, criteria):
     return calendar_date
 
 
+def calendar_date_fields(cells, criteria):
+    """Date-only projection of a result row for the parent protocol."""
+    return {
+        "eventDate": validate_event_date(cells[16].strip(), criteria),
+        "filingDate": iso_date(cells[6].strip()),
+    }
+
+
 class CalendarResults(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -94,8 +102,7 @@ class CalendarResults(HTMLParser):
                     or not event_type
                     or event_type_filter is not None and event_type != event_type_filter):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
-            event_date = cells[16].strip()
-            validate_event_date(event_date, criteria)
+            date_fields = calendar_date_fields(cells, criteria)
             if docket in seen:
                 # Validate even repeated rows before first-seen deduplication.
                 continue
@@ -103,8 +110,7 @@ class CalendarResults(HTMLParser):
             result.append({
                 "docketNumber": docket, "position": len(result),
                 "sourceUrl": "https://ujsportal.pacourts.us" + link,
-                "eventDate": event_date or None,
-                "filingDate": iso_date(cells[6].strip()),
+                **date_fields,
                 "eventType": event_type,
             })
         return result

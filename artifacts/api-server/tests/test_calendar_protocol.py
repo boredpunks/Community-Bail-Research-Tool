@@ -155,6 +155,63 @@ class PacingTests(unittest.TestCase):
 
 
 class FormTests(unittest.IsolatedAsyncioTestCase):
+    async def test_selectable_criteria_exact_labels_and_unavailable_choices_stop_offline(self):
+        # Public-control-only hypothetical fixture. No docket rows, source
+        # bodies, source values or network transmission.
+        markup = """
+        <form action="https://ujsportal.pacourts.us/CaseSearch" method="post">
+          <div id="SearchBy-Control"><select name="SearchBy"><option value="fixture-mode">Calendar Event</option></select></div>
+          <div id="JudicialDistrict-Control"><select name="JudicialDistrict"><option value="fixture-district">Allegheny - 05</option></select></div>
+          <div id="CourtOffice-Control"><select name="CourtOffice"><option value="fixture-office">CP-05-02-Crim</option></select></div>
+          <div id="CalendarEventType-Control"><select name="CalendarEventType">
+            <option value="fixture-bail">Bail Hearing</option>
+            <option value="fixture-arraignment">Preliminary Arraignment</option>
+          </select></div>
+          <input type="date" name="CalendarEventStartDate" min="2026-10-16" max="2999-12-31" required>
+          <input type="date" name="CalendarEventEndDate" min="2026-10-16" max="2999-12-31" required>
+          <button id="btnSearch" type="submit">Search</button>
+        </form>"""
+        criteria = {"courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
+                    "startDate": "2026-10-16", "endDate": "2026-10-22"}
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                executable_path=shutil.which("chromium"), headless=True,
+                args=["--disable-background-networking", "--disable-component-update",
+                      "--disable-sync", "--no-first-run", "--no-sandbox"])
+            context = await browser.new_context(service_workers="block")
+            outbound = []
+
+            async def block_every_request(route):
+                outbound.append(route.request.url)
+                await route.abort()
+
+            await context.route("**/*", block_every_request)
+            page = await context.new_page()
+            try:
+                for event in ("Bail Hearing", "Preliminary Arraignment"):
+                    await page.set_content(markup)
+                    selected = {**criteria, "eventType": event}
+                    values = await select_calendar_preview_controls(page, selected)
+                    await fill_calendar_dates(page, selected)
+                    await validate_calendar_form(page, selected, values)
+                    self.assertEqual(await page.locator("#CalendarEventType-Control select").input_value(),
+                                     "fixture-bail" if event == "Bail Hearing" else "fixture-arraignment")
+                for change in ({"courtOffice": "CP-05-02-Fam"},
+                               {"eventType": "Preliminary Arraignment"}):
+                    await page.set_content(markup)
+                    if "eventType" in change:
+                        await page.locator('option[value="fixture-arraignment"]').evaluate("(option) => option.disabled = true")
+                    with self.assertRaisesRegex(RuntimeError, "^CRITERIA_NOT_AVAILABLE_ON_SOURCE$"):
+                        await select_calendar_preview_controls(page, {**criteria, **change})
+                for dates in ({"startDate": "2026-10-15"}, {"endDate": "3000-01-01"}):
+                    await page.set_content(markup)
+                    with self.assertRaisesRegex(RuntimeError, "^CRITERIA_NOT_AVAILABLE_ON_SOURCE$"):
+                        await fill_calendar_dates(page, {**criteria, **dates})
+                self.assertEqual(outbound, [])
+            finally:
+                await context.close()
+                await browser.close()
+
     async def test_preview_resolves_exact_labels_and_preserves_form_field_order_offline(self):
         # Local-only fixture. Values are intentionally fixture-specific; no
         # court request, docket row, or source option value is used.

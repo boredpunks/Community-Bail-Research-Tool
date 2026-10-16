@@ -17,6 +17,7 @@ import { formInspectionMethod, validInspectionMetadata } from "./form-inspection
 import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from "./coverage-inspection";
 import { filingInspectionMethod, filingPhases, validFilingInventoryMetadata } from "./filing-inspection";
 import { InspectionFetchBroker } from "./inspection-fetch-broker";
+import { validCalendarRowDates } from "./calendar-criteria";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -65,7 +66,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     throw new Error("Invalid calendar-only operator permit scope");
   }
   if (calendarPreviewOnly && ((job.assessmentId && !calendarOnlyPermit) || inspectionOnly || coverageOnly || filingInspectionOnly
-      || job.calendarComplete || job.criteria.eventType !== "ANY" || !job.criteria.courtRoom)) {
+      || job.calendarComplete || !isCalendarPreviewCriteria(job.criteria))) {
     throw new Error("Invalid calendar preview worker scope");
   }
   const diagnosticOnly = inspectionOnly || coverageOnly || filingInspectionOnly;
@@ -192,10 +193,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
             if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
               || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
               || !Number.isSafeInteger(row.position) || row.position < 0
-              || row.eventDate !== null && !actualDate(row.eventDate) || row.filingDate !== null && !actualDate(row.filingDate)
+              || !validCalendarRowDates(row, job.criteria, calendarPreviewOnly)
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
-              || calendarPreviewOnly && row.eventDate !== job.criteria.startDate
-              || !calendarPreviewOnly && row.eventType !== job.criteria.eventType)
+              || job.criteria.eventType !== "ANY" && row.eventType !== job.criteria.eventType)
               throw new Error("Calendar identity conflict");
             await tx.insert(discoveryItemsTable).values({
               jobId: job.id, ownerId: job.ownerId, ...row,

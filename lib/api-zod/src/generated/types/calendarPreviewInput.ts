@@ -6,11 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CalendarPreviewInputCourtOffice } from './calendarPreviewInputCourtOffice';
-import type { CalendarPreviewInputCourtRoom } from './calendarPreviewInputCourtRoom';
-import type { CalendarPreviewInputEventDate } from './calendarPreviewInputEventDate';
+import type { CalendarPreviewInputEventType } from './calendarPreviewInputEventType';
 
 export interface CalendarPreviewInput {
+  /** Observed October 12, 2026; runtime availability must be checked. */
   courtOffice: CalendarPreviewInputCourtOffice;
-  courtRoom: CalendarPreviewInputCourtRoom;
-  eventDate: CalendarPreviewInputEventDate;
+  eventType: CalendarPreviewInputEventType;
+  /** Real date, today or later in America/New_York. */
+  startDate: Date;
+  /** Inclusive window of at most seven days. */
+  endDate: Date;
 }
