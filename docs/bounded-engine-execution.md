@@ -171,4 +171,47 @@ The API contract now exposes the scoped engine stage/report without exposing
 operator-only diagnostics or representing bounded completion as VERIFIED.
 
 Prepared engine permit: `d540c718-5720-4ae7-83e6-9c8cac0e7c93`.
-Calendar search and the end-to-end objective are not yet established.
+
+### Bounded engine attempt — submitted, response not validated
+
+- Executable code: `17acad7`. Permit:
+  `d540c718-5720-4ae7-83e6-9c8cac0e7c93` (consumed, FAILED).
+- Job: `ce959474-89f6-4210-bb7b-72e828489ded` (PAUSED).
+- Execution: 2026-10-16 20:57:11–21:00:51 UTC.
+- Four transmissions, all HTTP 200 / accounted OK:
+  - GET form: 1,306 ms.
+  - GET stylesheet: 231 ms.
+  - GET script: 221 ms.
+  - POST Search: 2,029 ms.
+- Completion-to-next-start gaps: 72.459, 74.146 and 63.790 seconds.
+- `FORM_READY` established before Search: approved office/event/room/date
+  controls and native bindings passed final validation. No presumed room selector.
+- Bootstrap/READY had zero blocked required resources, page errors or
+  unclassified console errors; two proven optional-abort console errors.
+- After the POST: zero blocked required resources/page errors, **three
+  unclassified console errors**, four proven optional-abort errors, two cached
+  asset responses. `CALENDAR_CONSOLE_ERROR` stopped processing at the existing
+  pre-parser gate.
+- No results were validated. This is **not** a validated empty search. No
+  calendar row, docket document, extraction or pending observation was obtained.
+- Retained diagnostics contain counts only. Error messages and locations were
+  deliberately not retained, so neither the actual error categories nor their
+  source/local cause can be established offline. Do not relabel the three as
+  harmless, infer a rate limit, or claim a source defect.
+- Source remains `SOURCE_VALIDATION_BARRIER`, with no active request, cooldown,
+  access proof, collection approval or latency warning.
+- **Overall execution consumed: 10/30 requests, 0/5 documents.** No automatic
+  retry, replay, barrier clearing, alternate client or new live permit.
+
+The exact resulting executable code passed 756 parent/scheduler checks.
+Its unchanged Python code passed the 82-test run above; API/frontend type checks
+and builds passed. Frontend production build used the artifact's configured
+PORT/BASE_PATH after a bare shell invocation correctly rejected missing PORT.
+Managed services are running; API health returned 200; the public app screenshot
+rendered correctly. This does not establish the signed-in results path or
+positive live extraction.
+
+**The end-to-end objective remains incomplete at a demonstrated validation
+barrier.** Another source attempt requires fresh user approval. Root-cause work
+must first improve bounded, redacted diagnostic discrimination offline, not
+weaken the console gate or repeat the consumed run unchanged.
