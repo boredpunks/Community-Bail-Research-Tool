@@ -1,7 +1,7 @@
 """Bounded public-control evidence, not a filing adapter or submission proof."""
 from coverage_inspection import SELECT_MODE
 
-METHOD = "playwright-filing-control-inventory-v7"
+METHOD = "playwright-filing-control-inventory-v8"
 PHASES = ("INITIAL", "FILING", "ADVANCED", "COUNTY", "FINAL")
 INVENTORY_ERRORS = frozenset({
     "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_WIDGET_LIMIT",
@@ -188,7 +188,8 @@ INVENTORY = """({phase}) => {
     for (const option of options) {
       // Displayed text only. No option.value/name/id, arbitrary labels or names emit.
       const text = (option.label || '').trim().replace(/\\s+/g, ' ');
-      const matches = [...text.matchAll(/(?:^|[\\s(\\[])((?:(?:MJ|MDJ)[ -])?05-\\d-\\d{2}|(?:MJ|MDJ)[ -]05\\d{3})(?=$|[\\s)\\],;:])/gi)];
+      // Accept a hyphenated name suffix, never a two-letter case-type continuation.
+      const matches = [...text.matchAll(/(?:^|[\\s(\\[])((?:(?:MJ|MDJ)[ -])?05-\\d-\\d{2}|(?:MJ|MDJ)[ -]05\\d{3})(?=$|[\\s)\\],;:]|-(?!\\s*[A-Z]{2}\\s*-)\\s*[A-Z])/gi)];
       // Multiple tokens remain unknown, never pick the first arbitrarily.
       if (matches.length !== 1) continue;
       const match = matches[0], token = match[1];
@@ -204,7 +205,7 @@ INVENTORY = """({phase}) => {
     officeIdentification.codes = codes;
     officeIdentification.unrecognizedOptions = options.length - codes.length;
   }
-  return {method: 'playwright-filing-control-inventory-v7', phase, modeMatchesFiling,
+  return {method: 'playwright-filing-control-inventory-v8', phase, modeMatchesFiling,
     controls, omittedSensitiveControls, advancedSearch, county, officeIdentification};
 }"""
 

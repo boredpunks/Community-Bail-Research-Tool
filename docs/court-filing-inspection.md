@@ -25,7 +25,7 @@ institutional labels and displayed district-05 office codes, with no private
 option values, arbitrary labels, names or identities. It does not authorize
 office selection, other filters, Search, dates, PDFs or dependent transmissions.
 
-Current method: `playwright-filing-control-inventory-v7`, preserving the five
+Current method: `playwright-filing-control-inventory-v8`, preserving the five
 v6 phases and action sequence. After local Allegheny selection, a closed
 `officeIdentification` object reports candidate count, snapshot control ordinal,
 state, recognized displayed codes and unrecognized option count. A visible,
@@ -47,9 +47,28 @@ unknown. Native `option.label` is used, because that is the browser's displayed
 label and can differ from underlying text. No private option values are read for
 identification.
 The parent independently validates candidate/state accounting, code grammar,
-closed keys, counts and phase readiness. Historical v6 reports remain readable
-but cannot execute v7. Trailing colon/asterisk label markers are normalized as a
+closed keys, counts and phase readiness. Historical v6 and v7 reports remain readable
+but cannot execute v8. Trailing colon/asterisk label markers are normalized as a
 sequence; added exact institutional labels remain a closed vocabulary.
+
+The v8 parser also recognizes a hyphen followed by an alphabetic name suffix,
+such as `MDJ-05-2-01-[name]` (with an actual alphabetic name in place of the
+placeholder). It rejects two-letter case-type continuations such as `-CR-`
+and `-MD-`, numeric/empty suffixes and ambiguous multiple-code labels. Only the
+code and existing closed flags emit; no name or option value is retained.
+This revision was authorized for offline implementation and verification only.
+It does not prove the reported 48 live choices, authorize a source request,
+clear the source barrier or enable the disabled form inspector.
+
+Offline verification on October 16, 2026 passed
+`pnpm --filter @workspace/api-server run test:safety` (459 offline checks and
+all 62 Python tests), API TypeScript checking and `git diff --check`.
+The new local Chromium fixture covers hyphenated explicit MDJ and compact MJ
+labels, plain numeric codes retaining unverified classification, name/value
+redaction, case-type/numeric/empty suffix rejection, ambiguous labels and no
+office activation. Compatibility checks cover all five historical v7 phases,
+reject malformed v7 office metadata and reject v7 in the current worker
+validator. These results do not establish a live office count or source access.
 
 #### Completed identification checks — unresolved
 

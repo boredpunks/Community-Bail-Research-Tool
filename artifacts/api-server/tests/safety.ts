@@ -386,6 +386,19 @@ try {
     officeIdentification: { state: "OBSERVED", candidates: 1, controlOrdinal: 3, unrecognizedOptions: 1,
       codes: [{ code: "05-2-99", kind: "DISTRICT_CODE_UNVERIFIED", enabled: true, selected: false }] } };
   check(validFilingInventoryMetadata(identified));
+  // Historical v7 reports retain the full closed office schema, but cannot
+  // satisfy the current worker's method check or be upgraded into v8 proof.
+  for (const snapshot of [{ ...inventory, phase: "INITIAL" }, inventory, completedAdvanced,
+    completedCounty, { ...identified, phase: "FINAL" }]) {
+    const historicalV7 = { ...snapshot, method: "playwright-filing-control-inventory-v7" };
+    check(validFilingMetadata(historicalV7));
+    check(!validFilingInventoryMetadata(historicalV7));
+  }
+  check(!validFilingMetadata({ ...identified, method: "playwright-filing-control-inventory-v7",
+    officeIdentification: { ...identified.officeIdentification, unrecognizedOptions: 0 } }));
+  check(!validFilingMetadata({ ...identified, method: "playwright-filing-control-inventory-v7",
+    officeIdentification: { ...identified.officeIdentification, privateLabel: "PRIVATE_SENTINEL" } }));
+  check(!validFilingMetadata({ ...historicalV6, method: "playwright-filing-control-inventory-v7" }));
   for (const change of [{ state: "MDJ_VERIFIED" }, { candidates: 2 }, { controlOrdinal: 0 }, { unrecognizedOptions: 0 },
     { codes: null }, { privateValue: "secret" },
     ...[{ code: "06-2-99" }, { kind: "MDJ" }, { selected: "false" }, { value: "private" }, { label: "Person" }]

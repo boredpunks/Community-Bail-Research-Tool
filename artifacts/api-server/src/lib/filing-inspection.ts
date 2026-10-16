@@ -1,6 +1,6 @@
 /** Closed, redacted source-form observations; never submitted search proof. */
-export const filingInspectionMethod = "playwright-filing-control-inventory-v7";
-const legacyInventoryMethods = ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3", "playwright-filing-control-inventory-v4", "playwright-filing-control-inventory-v5", "playwright-filing-control-inventory-v6"];
+export const filingInspectionMethod = "playwright-filing-control-inventory-v8";
+const legacyInventoryMethods = ["playwright-filing-control-inventory-v2", "playwright-filing-control-inventory-v3", "playwright-filing-control-inventory-v4", "playwright-filing-control-inventory-v5", "playwright-filing-control-inventory-v6", "playwright-filing-control-inventory-v7"];
 export const filingPhases = ["INITIAL", "FILING", "ADVANCED", "COUNTY", "FINAL"] as const;
 const legacyInventoryPhases = ["INITIAL", "FILING", "FINAL"];
 const legacyFilingPhases = ["FILING", "COURT_TYPE", "COUNTY", "CASE_TYPE", "FINAL"] as const;
@@ -79,13 +79,14 @@ export function validFilingInventoryMetadata(message: Record<string, unknown>, a
   const legacyV2 = legacy && message.method === legacyInventoryMethods[0];
   const legacyV5 = legacy && message.method === legacyInventoryMethods[3];
   const legacyV6 = legacy && message.method === legacyInventoryMethods[4];
-  const wordInventory = !legacy || message.method === legacyInventoryMethods[2] || legacyV5 || legacyV6;
+  const legacyV7 = legacy && message.method === legacyInventoryMethods[5];
+  const wordInventory = !legacy || message.method === legacyInventoryMethods[2] || legacyV5 || legacyV6 || legacyV7;
   const allowedPhases: readonly string[] = legacyV5 ? ["INITIAL", "FILING", "ADVANCED", "FINAL"]
-    : legacy && !legacyV6 ? legacyInventoryPhases : filingPhases;
+    : legacy && !legacyV6 && !legacyV7 ? legacyInventoryPhases : filingPhases;
   const choiceKeys = ["FILING", "MDJ", "ALLEGHENY", "CRIMINAL", ...(wordInventory ? ["COMMON_PLEAS"] : [])];
   if (!exactKeys(message, ["kind", "method", "phase", "modeMatchesFiling", "controls", "omittedSensitiveControls",
-      ...(!legacy || legacyV5 || legacyV6 ? ["advancedSearch"] : []),
-      ...(!legacy || legacyV6 ? ["county"] : []), ...(legacy ? [] : ["officeIdentification"])])
+      ...(!legacy || legacyV5 || legacyV6 || legacyV7 ? ["advancedSearch"] : []),
+      ...(!legacy || legacyV6 || legacyV7 ? ["county"] : []), ...(!legacy || legacyV7 ? ["officeIdentification"] : [])])
     || message.kind !== "filing_metadata" || message.method !== filingInspectionMethod && !legacy
     || !allowedPhases.includes(String(message.phase))
     || typeof message.modeMatchesFiling !== "boolean" || !count(message.omittedSensitiveControls, 128)
@@ -120,7 +121,7 @@ export function validFilingInventoryMetadata(message: Record<string, unknown>, a
     }
     priorOrdinal = Number(row.ordinal);
   }
-  if (legacy && !legacyV5 && !legacyV6) return true;
+  if (legacy && !legacyV5 && !legacyV6 && !legacyV7) return true;
   const advanced = message.advancedSearch;
   const candidates = message.controls.filter(row => row.widget === "CHECKBOX" && row.labels.includes("Advanced Search"));
   const eligible = candidates.length === 1 && message.modeMatchesFiling && candidates[0].visible

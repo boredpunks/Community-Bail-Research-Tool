@@ -540,6 +540,44 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('05-2-98', json.dumps(metadata))
         self.assertNotIn('05-2-91', json.dumps(metadata))
 
+    async def test_hyphenated_office_names_are_redacted_and_case_suffixes_rejected(self):
+        # Public option-label format only; no case records or source access.
+        accepted = [
+            ('MDJ-05-2-01-PRIVATE_NAME_SENTINEL', '05-2-01', 'EXPLICIT_MDJ'),
+            ('MDJ-05-3-17-PRIVATE_NAME_SENTINEL', '05-3-17', 'EXPLICIT_MDJ'),
+            ('MJ-05297-PRIVATE_NAME_SENTINEL', '05-2-97', 'EXPLICIT_MDJ'),
+            ('05-2-96-PRIVATE_NAME_SENTINEL', '05-2-96', 'DISTRICT_CODE_UNVERIFIED'),
+        ]
+        rejected = ['MDJ-05-2-99-' + suffix + '-PRIVATE_DOCKET_SENTINEL'
+                    for suffix in ['CR', 'MD', 'CV', 'TR', 'NT', 'SA', 'SU', 'DP', 'ZZ']]
+        rejected += ['MDJ-05-2-99-', 'MDJ-05-2-99-123', 'MDJ-05-2-99--PRIVATE_NAME_SENTINEL',
+                     'MDJ-05-2-99-PRIVATE_NAME_SENTINEL MJ-05-1-99']
+        options = '<option value="">Choose</option>' + ''.join(
+            '<option value="PRIVATE_VALUE_SENTINEL">' + label + '</option>'
+            for label in [row[0] for row in accepted] + rejected)
+        fixture = self.filing_fixture().replace(
+            '<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option></select>',
+            '<select id="fixtureOffice" name="fixtureOffice">' + options + '</select>')
+        script = """document.addEventListener('change', event => {
+          if (event.target.id === 'fixtureOffice') throw Error('Office selection prohibited');
+        });"""
+        messages, fetches = await self.run_fixture(filing=True, fixture=fixture, script=script)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(any(row['kind'] == 'filing_finished' for row in messages))
+        metadata = [row for row in messages if row['kind'] == 'filing_metadata']
+        self.assertEqual(len(metadata), 5)
+        self.assertTrue(all(row['method'] == 'playwright-filing-control-inventory-v8' for row in metadata))
+        for phase in metadata[:3]:
+            self.assertEqual(phase['officeIdentification']['state'], 'NOT_READY')
+            self.assertIsNone(phase['officeIdentification']['codes'])
+        for phase in metadata[3:]:
+            self.assertEqual(phase['officeIdentification']['state'], 'OBSERVED')
+            self.assertEqual(phase['officeIdentification']['unrecognizedOptions'], len(rejected) + 1)
+            self.assertEqual(phase['officeIdentification']['codes'], [
+                {'code': code, 'kind': kind, 'enabled': True, 'selected': False}
+                for _, code, kind in accepted])
+        self.assertNotIn('SENTINEL', json.dumps(messages))
+
     async def test_office_code_limit_unknown_and_ambiguous_candidates_fail_closed(self):
         base = self.filing_fixture()
         replacement = '<select id="fixtureOffice" name="fixtureOffice">' + '<option>05-2-99</option>' * 251 + '</select>'
