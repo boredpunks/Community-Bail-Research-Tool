@@ -1,0 +1,46 @@
+The Replit app is stuck on bugs in its own code, not on the court website. The office dropdown problem from the last three inspections is a one-line code bug, and I have the fix ready on a local branch.
+
+## What I found
+
+**The 49 choices.** I opened the court portal's search page once, chose Date Filed, ticked Advanced Search and selected Allegheny. I didn't click Search or download anything. The office dropdown has 49 entries: one blank, plus 48 local criminal-court (MDJ) offices. They display like this:
+
+`MDJ-05-2-01-Smith, Tara` … `MDJ-05-3-17-Kearney, Jack`
+
+Each one shows the office code and then the judge's name. The code lines up with docket numbers: office 05-3-17 matches dockets like `MJ-05317-CR-…`, which I saw on October 5.
+
+**The bug.** The code that reads each option (`filing_inventory.py`, line 191) only accepts a code if a space, a closing bracket or the end of the text comes right after it. On the real site a hyphen comes next ("05-2-01-Smith"), so all 48 offices fail. The tests passed anyway because none of the made-up test options used the real format.
+
+I checked this by running the app's actual pattern in Node against the real labels:
+
+| Input | Current pattern | Fixed pattern |
+|---|---|---|
+| `MDJ-05-2-01-Smith, Tara` | no match | `MDJ-05-2-01` |
+| `05-2-99-CR-…` (looks like a docket number, should be rejected) | rejected | still rejected |
+| The existing test cases | match | same results |
+
+**The fix** lets a hyphen follow the code as long as a name comes after it. It still rejects text that continues into a docket number (`-CR-`, `-MD-` and so on). It's 3 lines on a local branch, `fix/mdj-office-label-hyphen`: 1 line in the code and 2 lines adding a test option in the real format. I haven't run the app's Python test suite, because Playwright isn't installed here. I also left the method version at v7, because moving to v8 means changing how the app reads old v7 reports, which is Replit's job.
+
+## The bigger problem
+
+The app worked end to end on October 6. The project docs say it ran a Common Pleas Bail Hearing calendar search, got results, downloaded the docket PDF and pulled out the bail fields. Since then, the failures have come from the app's own checks:
+
+- **October 15:** the run stopped on `WORKER_PROTOCOL_FAILURE`, because two of the app's own validators didn't agree with each other.
+- **October 12 office checks:** the hyphen bug above.
+- **The v8 attempt:** `RESULTS_NOT_VALIDATED` after a Search that returned HTTP 200, cause unknown. The project's own notes say to "stop guessing public widget/model layouts from hypothetical fixtures".
+- **`SOURCE_VALIDATION_BARRIER`:** the docs say nothing records who set it or why.
+
+Meanwhile the newest work is a sandbox, an HTTPS relay and network-blocking rules for a 3-request read-only check, and that live check is switched off. That protection goes far beyond the risk of reading a free public court website, and it isn't moving the project forward.
+
+## How I'd finish it
+
+1. **Merge the fix and confirm it.** Run `pnpm --filter @workspace/api-server run test:safety`, bump to v8 the way the app already handles old versions, then run one office inspection. Expected result: 48 codes, each marked as an explicit MDJ office.
+2. **Record one real search instead of guessing.** You do one Bail Hearing search by hand in Comet with the browser's developer tools open. Then save the Search request's field names (no values) and the structure of the results table, with names removed. Build the results check from that recording, which should clear `RESULTS_NOT_VALIDATED` without more guessing.
+3. **Make an explicit decision on the source barrier.** You're the operator. Record a decision to clear or keep it, citing the October 6 success and noting that the later failures came from the app's own validators, not from the court refusing access.
+4. **Pause the sandbox and HTTPS relay work.** Leave it switched off, and use the plain web-request method you already approved for downloading PDFs.
+5. **Run the end-to-end test once.** You pick one MDJ office and a filing-date range. One search, then a check that every result row has the right office code, county and date, then up to 3 PDFs spaced 30–60 seconds apart, each compared by hand.
+6. **Call it done** when step 5 passes. That proves the user-selected search works. The calendar searches and larger runs become separate, later milestones.
+
+The quickest unblock is step 1. Should I push the branch and open a pull request on your repo, or would you rather paste the patch into Replit yourself?
+
+Files are in /home/user/workspace/bailtest/:
+- mdj-office-label-fix.patch
