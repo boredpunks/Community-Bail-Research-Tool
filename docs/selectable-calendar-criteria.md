@@ -7,10 +7,11 @@ results at the start of `completion-offline-checks.md`. No successful search
 result or PDF/document request occurred.
 
 The current calendar-only response-check method is
-`playwright-calendar-preview-v4`, verified offline on October 16, 2026 and
+`playwright-calendar-preview-v5`, with the offline readiness repair documented in
+`calendar-preview-readiness-repair.md`. The historical v4 method was
 used for one separately approved attempt that stopped before Search POST. This
 is a separate preview gate, not the integrated method label
-`playwright-calendar+urllib-pdf-v9`; neither identifier silently authorizes the
+`playwright-calendar+urllib-pdf-v10`; neither identifier silently authorizes the
 other. A new attempt requires fresh exact-scope approval. See the latest
 verification section in `completion-offline-checks.md`.
 

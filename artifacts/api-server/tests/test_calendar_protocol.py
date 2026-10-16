@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import calendar_protocol
-from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
+from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, validate_unfiltered_calendar_room
 from source_protocol import CALENDAR_ASSETS
 from evidence import calendar_result_state
 from evidence import CALENDAR_AUDIT_HEADERS, CalendarResults, validate_event_date
@@ -166,6 +166,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
           <div id="SearchBy-Control"><select name="SearchBy"><option value="fixture-mode">Calendar Event</option></select></div>
           <div id="JudicialDistrict-Control"><select name="JudicialDistrict"><option value="fixture-district">Allegheny - 05</option></select></div>
           <div id="CourtOffice-Control"><select name="CourtOffice"><option value="fixture-office">CP-05-02-Crim</option></select></div>
+          <select name="CourtRoomID"><option value="" selected></option><option value="fixture-room">Courtroom 506</option></select>
           <div id="CalendarEventType-Control"><select name="CalendarEventType">
             <option value="fixture-bail">Bail Hearing</option>
             <option value="fixture-arraignment">Preliminary Arraignment</option>
@@ -195,8 +196,16 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                     await page.set_content(markup)
                     selected = {**criteria, "eventType": event}
                     values = await select_calendar_preview_controls(page, selected)
+                    await validate_unfiltered_calendar_room(page)
+                    values["courtRoom"] = ""
                     await fill_calendar_dates(page, selected)
                     await validate_calendar_form(page, selected, values)
+                    await page.locator('select[name="CourtRoomID"]').select_option("fixture-room")
+                    with self.assertRaisesRegex(RuntimeError, "CALENDAR_CONTROL_STATE_MISMATCH"):
+                        await validate_unfiltered_calendar_room(page)
+                    with self.assertRaisesRegex(RuntimeError, "CALENDAR_CONTROL_STATE_MISMATCH"):
+                        await validate_calendar_form(page, selected, values)
+                    await page.locator('select[name="CourtRoomID"]').select_option("")
                     self.assertEqual(await page.locator("#CalendarEventType-Control select").input_value(),
                                      "fixture-bail" if event == "Bail Hearing" else "fixture-arraignment")
                 for change in ({"courtOffice": "CP-05-02-Fam"},
@@ -257,11 +266,11 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             page = await context.new_page()
             try:
                 await page.set_content(markup)
-                before = await calendar_form_field_shape(page)
+                before = await calendar_form_field_count(page)
                 values = await select_calendar_preview_controls(page, criteria)
                 await fill_calendar_dates(page, criteria)
-                after = await calendar_form_field_shape(page)
-                self.assertEqual(len(before), 33)
+                after = await calendar_form_field_count(page)
+                self.assertEqual(before, 33)
                 self.assertEqual(after, before)
                 self.assertEqual(values["eventType"], "")
                 self.assertEqual(await page.locator("#CalendarEventType-Control select").input_value(), "")
@@ -438,7 +447,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                     ("document.querySelector('input[name=CalendarEventStartDate]').value = ''", "SOURCE_FORM_VALIDATION"),
                     ("document.querySelector('#JudicialDistrict-Control select').name = ''", "CALENDAR_CONTROL_STATE_MISMATCH"),
                     ("document.querySelector('form').insertAdjacentHTML('beforeend', '<input name=JudicialDistrict value=other>')", "CALENDAR_SUBMITTED_VALUES_MISMATCH"),
-                    ("document.querySelector('#btnSearch').disabled = true", "SOURCE_FORM_VALIDATION"),
+                    ("document.querySelector('#btnSearch').disabled = true", "CALENDAR_CONTROL_STATE_MISMATCH"),
                 ]
                 metadata = {
                     "document.querySelector('#CourtOffice-Control select').disabled = true": ("COURT_OFFICE", "DISABLED"),

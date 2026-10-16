@@ -8,7 +8,7 @@ import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./disco
 import {
   allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, isCalendarPreviewCriteria,
   validCalendarAuditHeaders,
-  validCalendarDiagnostics, validCalendarFormDiagnostic,
+  validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { logger } from "./logger";
@@ -172,15 +172,16 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         const states = ["FORM_READY", "SUBMISSION_NOT_OBSERVED", "FORM_VALIDATION_ERROR",
           "RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED", "ACCESS_DENIED", "UNEXPECTED_RESPONSE",
           "RESULTS_NOT_VALIDATED"];
-        if (!states.includes(String(message.state)) || typeof message.formVisible !== "boolean") {
+        if (!states.includes(String(message.state))
+          || !(typeof message.formVisible === "boolean" || message.formVisible === null)) {
           throw new Error("Invalid calendar state evidence");
         }
         await discoveryEvent(job, "CALENDAR_STATE",
-          `${String(message.state)}; search form visible=${message.formVisible}. No form values, row identifiers, or response content retained.`);
+          `${String(message.state)}; Search button visible=${message.formVisible === null ? "not observed" : message.formVisible}. No form values, row identifiers, or response content retained.`);
       } else if (message.kind === "calendar_form_diagnostic") {
         if (!validCalendarFormDiagnostic(message)) throw new Error("Invalid public form diagnostic");
         await discoveryEvent(job, "CALENDAR_FORM_DIAGNOSTIC",
-          `${message.code}: ${message.control} / ${message.reason}. Fixed labels only; no field values, hidden tokens or source text retained.`);
+          `${message.phase ?? "PHASE_NOT_REPORTED"}: ${message.code}: ${message.control} / ${message.reason}. Fixed labels only; no field values, hidden tokens or source text retained.`);
       } else if (message.kind === "calendar_diagnostics") {
         if (!validCalendarDiagnostics(message)) throw new Error("Invalid calendar diagnostics");
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
@@ -291,6 +292,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       } else await pause(job, `Worker stopped before completion (exit ${code}; ${stderrBytes} diagnostic bytes). No automatic retry; partial results retained.`);
     }
   } catch (error) {
+    const rejected = calendarDiagnosticRejection(error instanceof Error ? error.message : null);
+    if (rejected) await discoveryEvent(job, "PARENT_DIAGNOSTIC_REJECTION",
+      `${rejected}. The worker diagnostic was rejected locally; this does not establish a court-form defect. No automatic retry.`);
     await validationStop("WORKER_PROTOCOL_FAILURE");
     throw error;
   } finally {

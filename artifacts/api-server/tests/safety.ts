@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
-import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
@@ -51,26 +51,26 @@ try {
   await runInspectionBrokerChecks();
   const formDiagnostic = { code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "COURT_OFFICE", reason: "DISABLED" };
   check(validCalendarFormDiagnostic(formDiagnostic));
-  // Read literal public labels from Python without executing the source client.
-  // A new worker label must fail here until the parent accepts the same contract.
+  // Import only the pure protocol declarations; no worker/browser/source run.
+  // Every actual wire code/reason and phase must match the parent contract.
   const formProtocol = JSON.parse(execFileSync("python", ["-c", [
-    "import ast, json",
-    "tree = ast.parse(open('src/ujs/calendar_protocol.py').read())",
-    "names = {'PUBLIC_CONTROLS', 'CONTROL_REASONS', 'SUBMITTED_REASONS'}",
-    "values = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id in names}",
-    "print(json.dumps(values))",
-  ].join("\n")], { encoding: "utf8" })) as Record<string, string[]>;
-  for (const control of formProtocol.PUBLIC_CONTROLS!) {
-    for (const reason of formProtocol.CONTROL_REASONS!) {
-      check(validCalendarFormDiagnostic({
-        kind: "calendar_form_diagnostic", code: "CALENDAR_CONTROL_STATE_MISMATCH", control, reason,
-      }));
+    "import json, sys",
+    "sys.path.insert(0, 'src/ujs')",
+    "from calendar_protocol import PUBLIC_CONTROLS, FORM_REASONS, FORM_DIAGNOSTIC_PHASES",
+    "print(json.dumps(dict(controls=PUBLIC_CONTROLS, reasons=FORM_REASONS, phases=FORM_DIAGNOSTIC_PHASES)))",
+  ].join("\n")], { encoding: "utf8" })) as { controls: string[]; reasons: Record<string, string[]>; phases: string[] };
+  for (const control of formProtocol.controls) {
+    for (const [code, reasons] of Object.entries(formProtocol.reasons)) {
+      for (const reason of reasons)
+        check(validCalendarFormDiagnostic({ kind: "calendar_form_diagnostic", code, control, reason }));
     }
-    for (const reason of formProtocol.SUBMITTED_REASONS!)
-      check(validCalendarFormDiagnostic({
-        kind: "calendar_form_diagnostic", code: "CALENDAR_SUBMITTED_VALUES_MISMATCH", control, reason,
-      }));
   }
+  for (const phase of formProtocol.phases) check(validCalendarFormDiagnostic({ ...formDiagnostic, phase }));
+  check(!validCalendarFormDiagnostic({ ...formDiagnostic, phase: "raw-source-text" }));
+  check(calendarDiagnosticRejection("Invalid public form diagnostic") === "PARENT_REJECTED_CALENDAR_FORM_DIAGNOSTIC");
+  check(calendarDiagnosticRejection("Invalid calendar diagnostics") === "PARENT_REJECTED_CALENDAR_DIAGNOSTIC");
+  check(calendarDiagnosticRejection("Invalid calendar state evidence") === "PARENT_REJECTED_CALENDAR_STATE");
+  check(calendarDiagnosticRejection("raw-source-text") === null);
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, control: "raw-field-value" }));
@@ -87,8 +87,8 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v9");
-  check(calendarPreviewMethod === "playwright-calendar-preview-v4");
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v10");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v5");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
   check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));

@@ -1,5 +1,11 @@
 # Completion work: offline evidence and stop points
 
+**Latest work:** the calendar form-readiness repair is integrated offline as
+`playwright-calendar-preview-v5` / `playwright-calendar+urllib-pdf-v10`.
+See `calendar-preview-readiness-repair.md` for the exact defect, evidence limits,
+verification and proposed one-use scope. No new source request or permit was
+authorized by this repair. The v4 attempt below remains historical evidence.
+
 ## Calendar preview response guards: offline verification
 
 October 16, 2026: the user authorized offline-only response-check changes. The

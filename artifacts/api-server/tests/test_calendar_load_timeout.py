@@ -24,7 +24,9 @@ CHANGED_ASSET_VERSION = "fixture_new_version_0001"
 
 
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
-    async def run_fixture(self, *, missing_grid=False, changed_version=False):
+    async def run_fixture(self, *, missing_grid=False, changed_version=False,
+                          dependent_replacement=False, initialize_button=False,
+                          hidden_button=False, selected_room=False):
         # Scale the real completion-to-start pacing and click deadline together:
         # 80 logical seconds per request, a 180-logical-second navigation limit.
         scale = 0.02
@@ -32,6 +34,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         original_pause = calendar_protocol.response_pause
         original_submit = worker.submit_calendar_search
         original_feed = CalendarResults.feed
+        original_field_count = worker.calendar_form_field_count
+        field_shapes = []
+        container_visibility = []
         messages, network, timeouts, parsed = [], [], [], []
         # The shared inspection fixture deliberately has a verification input
         # inside every unnamed widget. That makes each widget's backing model
@@ -40,7 +45,12 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         initial = public_fixture().replace(
             '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL">', ''
         ).replace('</form>',
+                  '<select name="CourtRoomID"><option value="" selected></option>'
+                  '<option value="fixture-room">Courtroom 506</option></select>'
                   '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></form>')
+        if selected_room:
+            initial = initial.replace('<option value="" selected>', '<option value="">').replace(
+                '<option value="fixture-room">', '<option value="fixture-room" selected>')
         # This shared fixture originally displayed internal diagnostic tokens
         # instead of public labels. Exact-label selection must remain strict;
         # use the already documented public labels in this local fixture only.
@@ -53,6 +63,42 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             initial = initial.replace(
                 f'<option value="{value}">{token}</option>',
                 f'<option value="{value}">{label}</option>')
+        if dependent_replacement:
+            # Hypothetical public widget replacement, not a claim about live DOM.
+            initial = initial.replace('<form method=', '<form style="display:contents" method=')
+            initial = initial.replace(
+                f'<option value="{CRITERIA["courtOffice"]}">{CRITERIA["courtOffice"]}</option>',
+                '<option value="CP-05-02-Fam" selected>CP-05-02-Fam</option>'
+                '<option value="CP-05-02-Crim">CP-05-02-Crim</option>')
+            initial = initial.replace(
+                'name="CourtOffice" value="CP-05-02-Crim"',
+                'name="CourtOffice" value="CP-05-02-Fam"')
+            initial = initial.replace('</form>',
+                '<input type="hidden" name="OfficeContextBefore" value="public-fixture"></form>')
+            initial += """<script>
+              document.querySelector("#CourtOffice-Control select").addEventListener("change", event => {
+                const old = document.querySelector("#CourtOffice-Control");
+                const replacement = old.cloneNode(true);
+                replacement.querySelector("select").value = event.target.value;
+                replacement.querySelector("input[name=CourtOffice]").value = event.target.value;
+                old.replaceWith(replacement);
+                const context = document.querySelector("input[name=OfficeContextBefore]");
+                context.name = "OfficeContextAfter";
+              });
+            </script>"""
+        script_body = "/* offline public fixture */"
+        if initialize_button:
+            script_body = """document.addEventListener("DOMContentLoaded", () => {
+              const button = document.querySelector("#btnSearch");
+              if (!button) return;
+              const form = button.form; button.remove();
+              setTimeout(() => form.append(button), 100);
+            });"""
+        elif hidden_button:
+            script_body = """document.addEventListener("DOMContentLoaded", () => {
+              const button = document.querySelector("#btnSearch");
+              if (button) button.hidden = true;
+            });"""
         headers = ["Column"] * 18
         for index, label in {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
                              9: "County", 10: "Court Office", 14: "Event Type"}.items():
@@ -90,7 +136,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                     body = results if method == "POST" else initial
                     content_type = "text/html"
                 elif path == "/resource/js/sitemain.min.js":
-                    body, content_type = "/* offline public fixture */", "application/javascript"
+                    body, content_type = script_body, "application/javascript"
                 elif path == "/resource/css/sitemain.min.css":
                     body, content_type = "/* offline public fixture */", "text/css"
                 else:
@@ -126,10 +172,20 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             parsed.append(True)
             return original_feed(parser, html)
 
+        async def observe_field_count(page):
+            # Fixture-only comparison proves the old whole-form equality would
+            # reject this otherwise valid dependent-control replacement.
+            field_shapes.append(await page.evaluate("""() =>
+              [...new FormData(document.querySelector("#btnSearch").form).keys()]"""))
+            container_visibility.append(await page.locator("form").evaluate("""el => {
+              const box = el.getBoundingClientRect(); return box.width > 0 && box.height > 0;
+            }"""))
+            return await original_field_count(page)
+
         server = await asyncio.start_server(serve, "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         config = {"criteria": CRITERIA, "calendarComplete": False, "pendingItems": [],
-                  "remainingRecords": 0}
+                  "remainingRecords": 0, "calendarPreviewOnly": True}
         protocol = []
         for index in range(8):
             protocol.extend([json.dumps({"allow": True, "requestId": f"offline-{index}"}),
@@ -156,6 +212,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(worker, "response_pause", scaled_pause))
                 stack.enter_context(patch.object(worker.random, "uniform", return_value=80))
                 stack.enter_context(patch.object(calendar_protocol, "SEARCH_CLICK_TIMEOUT_MS", int(180_000 * scale)))
+                stack.enter_context(patch.object(calendar_protocol, "CALENDAR_FORM_READY_TIMEOUT_MS", 1_000))
+                stack.enter_context(patch.object(worker, "calendar_form_field_count", observe_field_count))
                 # The normal fixture's result deadline is shorter than the
                 # 1.6-second pre-POST pause. It must start after that pause.
                 stack.enter_context(patch.object(calendar_protocol, "CALENDAR_RESULT_TIMEOUT_MS",
@@ -184,6 +242,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "responseAccounts": sum(row["kind"] == "response" for row in messages),
             "diagnostics": [row for row in messages if row["kind"] == "calendar_diagnostics"],
             "shutdownErrors": shutdown_errors,
+            "formShapeChanged": len(field_shapes) == 2 and field_shapes[0] != field_shapes[1],
+            "formContainerHasBox": container_visibility,
+            "formStates": [row for row in messages if row["kind"] == "calendar_state"],
         }
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
         self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
@@ -224,3 +285,43 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observed["requestGrants"], 5)
         self.assertEqual(observed["responseAccounts"], 5)
         self.assertEqual(observed["diagnostics"][-1]["cachedResponses"], 1)
+
+    async def test_dependent_control_replacement_reaches_final_validation_and_parser(self):
+        observed = await self.run_fixture(dependent_replacement=True)
+        self.assertTrue(observed["formShapeChanged"])
+        self.assertEqual(observed["formContainerHasBox"], [False, False])
+        self.assertTrue(observed["parserReached"])
+        self.assertEqual(observed["formDiagnostics"], [])
+        self.assertEqual(observed["barriers"], ["RESULTS_NOT_VALIDATED"])
+        self.assertEqual(observed["requestGrants"], 4)
+        self.assertEqual(observed["responseAccounts"], 4)
+        self.assertEqual(sum(method == "POST" for method, _ in observed["network"]), 1)
+
+    async def test_delayed_search_button_initialization_is_awaited(self):
+        observed = await self.run_fixture(initialize_button=True)
+        self.assertTrue(observed["parserReached"])
+        self.assertEqual(observed["barriers"], ["RESULTS_NOT_VALIDATED"])
+        self.assertEqual(observed["formDiagnostics"], [])
+
+    async def test_hidden_search_button_stops_before_post_with_phase_and_reason(self):
+        observed = await self.run_fixture(hidden_button=True)
+        self.assertFalse(observed["parserReached"])
+        self.assertEqual(observed["barriers"], ["CALENDAR_FORM_INITIALIZATION_TIMEOUT"])
+        self.assertEqual(observed["formDiagnostics"], [{
+            "kind": "calendar_form_diagnostic",
+            "code": "CALENDAR_FORM_INITIALIZATION_TIMEOUT", "control": "SEARCH_BUTTON",
+            "reason": "HIDDEN", "phase": "INITIALIZATION",
+        }])
+        self.assertFalse(observed["formStates"][-1]["formVisible"])
+        self.assertEqual(observed["requestGrants"], 3)
+        self.assertFalse(any(method == "POST" for method, _ in observed["network"]))
+
+    async def test_no_room_scope_never_silently_uses_source_selected_room(self):
+        observed = await self.run_fixture(selected_room=True)
+        self.assertFalse(observed["parserReached"])
+        self.assertEqual(observed["formDiagnostics"], [{
+            "kind": "calendar_form_diagnostic",
+            "code": "CALENDAR_CONTROL_STATE_MISMATCH", "control": "COURT_ROOM",
+            "reason": "NO_FILTER_NOT_SELECTED", "phase": "CONTROL_SELECTION",
+        }])
+        self.assertFalse(any(method == "POST" for method, _ in observed["network"]))

@@ -22,6 +22,7 @@ import {
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-retention';
+import { CalendarPreviewStatus } from '@/components/calendar-preview-status';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
@@ -333,8 +334,8 @@ export default function Discovery() {
             <button type="button" className="btn btn-danger mt-3" onClick={() => policy.refetch()} data-testid="button-retry-policy">Retry</button></div>
         ) : pol ? (
           <div className="space-y-2">
-            <p>Court: <span className="mono font-semibold">CP-05-02-Crim</span> (Common Pleas). Event: <span className="mono font-semibold">Bail Hearing</span>.</p>
-            <p className="hint">Not supported yet: Magisterial District Court (MDJ) searches and the Preliminary Arraignment event are unproven, so they are not offered and nothing is substituted for them. History before {pol.minimumDate} is not covered.</p>
+            <p>Prior demonstrated result coverage: <span className="mono font-semibold">CP-05-02-Crim</span> (Common Pleas), <span className="mono font-semibold">Bail Hearing</span>. This is not fresh exact-client access proof.</p>
+            <p className="hint">Magisterial District Court (MDJ) searches are not implemented. Preliminary Arraignment is selectable for bounded validation but remains unproven end to end; nothing is substituted for it. History before {pol.minimumDate} is not covered.</p>
             <p className="hint" data-testid="text-coverage">{pol.coverageNote}</p>
             <p className="hint">Current pacing: at least {pol.currentSpacingMs / 1000} seconds after each response finishes, concurrency {pol.concurrency}, automatic retries {pol.automaticRetries}. Protected maxima: {pol.maxRecordCap} processed dockets, {pol.maxRequestCap} requests per job. These safeguards cannot guarantee access or prevent rate limits.</p>
             <p className="mono text-sm" data-testid="text-rolling-budgets">Rolling hour: {pol.hourlyRequestsUsed}/{pol.hourlyRequestCap} requests. Rolling day: {pol.dailyRequestsUsed}/{pol.dailyRequestCap}. Required assets, failed attempts and uncertain transmissions all count.</p>
@@ -494,6 +495,7 @@ export default function Discovery() {
                 <section className="panel mb-6" data-testid="section-calendar-preview-results">
                   <h3 className="mono font-bold mb-2">Calendar rows only</h3>
                   <p className="hint mb-3">These are source-linked rows retained from the validated calendar table. Dockets are shown as plain text here; this preview has no document links, bail extraction, or candidate-saving controls.</p>
+                  <CalendarPreviewStatus job={job} retainedRows={items.length} events={report.data?.events ?? []} />
                   {items.length > 0 ? (
                     <div className="overflow-x-auto" data-testid="calendar-preview-table-wrap">
                       <table className="w-full text-left text-sm min-w-[44rem]" data-testid="calendar-preview-table">

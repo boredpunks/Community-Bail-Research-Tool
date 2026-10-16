@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright, TimeoutError as BrowserTimeou
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
 from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
-from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
+from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, calendar_form_field_shape, wait_for_calendar_search_button, calendar_search_button_visible, validate_unfiltered_calendar_room
 from inspection_safety import (
     InspectionBrokerResponse, InspectionRequestGate, InspectionRequestRouter,
     read_inspection_protocol_line,
@@ -64,6 +64,7 @@ async def main(config=None):
     optional_console_errors = 0
     blocked_optional_urls = set()
     diagnostic_phase = "READY"
+    form_phase = "INITIALIZATION"
     calendar_post_observed = False
     calendar_post_completed = False
     submission_armed = False
@@ -341,7 +342,12 @@ async def main(config=None):
                         raise RuntimeError("INSPECTION_SESSION_DEADLINE")
                 await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=goto_timeout)
                 calendar_preflight("READY")
-                initial_form_shape = await calendar_form_field_shape(page)
+                # Inspection inventory has its own readiness rules and remains frozen.
+                if filing_inspection_only or coverage_only or inspection_only:
+                    await calendar_form_field_shape(page)
+                else:
+                    await wait_for_calendar_search_button(page)
+                    await calendar_form_field_count(page)
                 if filing_inspection_only:
                     inspection_local = True
                     from filing_inventory import observe
@@ -370,16 +376,17 @@ async def main(config=None):
                 if inspection_only:
                     inspection_local = True  # No further transmissions, including dependent-control fetches.
                 preview_values = None
+                form_phase = "CONTROL_SELECTION"
                 if calendar_preview_only:
                     preview_values = await select_calendar_preview_controls(page, criteria)
                 elif inspection_only:
                     await select_calendar_preview_controls(page, criteria)
                 else:
                     preview_values = await select_calendar_preview_controls(page, criteria)
-                start = page.locator("input[name=CalendarEventStartDate]")
-                minimum = await start.get_attribute("min")
-                if minimum and criteria["startDate"] < minimum:
-                    raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+                if not inspection_only and not criteria.get("courtRoom"):
+                    await validate_unfiltered_calendar_room(page)
+                    preview_values["courtRoom"] = ""
+                form_phase = "DATE_ENTRY"
                 await fill_calendar_dates(page, criteria)
                 if inspection_only:
                     from form_inspection import snapshot
@@ -398,12 +405,16 @@ async def main(config=None):
                     calendar_preflight("RESULT")
                     emit("inspection_finished")
                     return
-                if await calendar_form_field_shape(page) != initial_form_shape:
-                    raise RuntimeError("CALENDAR_FORM_STRUCTURE_CHANGED")
+                form_phase = "FINAL_VALIDATION"
+                # Dependent widgets may replace/reorder unrelated native fields.
+                # Bound the final form, then validate the exact current criteria,
+                # owner, action, method and submitted backing values instead.
+                await calendar_form_field_count(page)
                 await validate_calendar_form(page, criteria, preview_values)
                 calendar_preflight("READY")
                 emit("calendar_state", state="FORM_READY", formVisible=await page.locator("#btnSearch").is_visible())
                 diagnostic_phase = "RESULT"
+                form_phase = "SUBMISSION"
                 submission_armed = True
                 await submit_calendar_search(page)
                 calendar_preflight("RESULT")
@@ -468,17 +479,18 @@ async def main(config=None):
             calendar_diagnostics(diagnostic_phase)
             if isinstance(error, CalendarFormFailure):
                 for failure in error.failures:
-                    emit("calendar_form_diagnostic", **failure)
+                    emit("calendar_form_diagnostic", **failure, phase=form_phase)
+            form_visible = await calendar_search_button_visible(page)
             if source_stop_state == "ACCESS_DENIED":
-                emit("calendar_state", state="ACCESS_DENIED", formVisible=False)
+                emit("calendar_state", state="ACCESS_DENIED", formVisible=form_visible)
             elif isinstance(error, RuntimeError) and str(error) == "SOURCE_FORM_VALIDATION":
-                emit("calendar_state", state="FORM_VALIDATION_ERROR", formVisible=False)
+                emit("calendar_state", state="FORM_VALIDATION_ERROR", formVisible=form_visible)
             elif not calendar_post_observed:
-                emit("calendar_state", state="SUBMISSION_NOT_OBSERVED", formVisible=False)
+                emit("calendar_state", state="SUBMISSION_NOT_OBSERVED", formVisible=form_visible)
             elif calendar_post_completed:
-                emit("calendar_state", state="RESULTS_NOT_VALIDATED", formVisible=False)
+                emit("calendar_state", state="RESULTS_NOT_VALIDATED", formVisible=form_visible)
             else:
-                emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=False)
+                emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=form_visible)
             safe_code = ("CALENDAR_RESULT_LOAD_TIMEOUT"
                          if isinstance(error, BrowserTimeout) and calendar_post_completed
                          else source_stop_state
@@ -511,6 +523,7 @@ async def main(config=None):
                 "CALENDAR_FORM_MISSING", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_PREFLIGHT_FAILED",
                 "CALENDAR_FORM_STRUCTURE_CHANGED",
+                "CALENDAR_FORM_INITIALIZATION_TIMEOUT",
                 "SUBMISSION_NOT_OBSERVED", "UNEXPECTED_RESPONSE",
                 "CALENDAR_DOCUMENT_LINK_MISSING", "UNSUPPORTED_CALENDAR_LAYOUT",
                 "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT", "UNSUPPORTED_EVENT_DATE_LAYOUT",

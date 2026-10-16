@@ -33,15 +33,14 @@ PUBLIC_CONTROLS = ("SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT",
 CONTROL_REASONS = ("MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
                    "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
                    "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
-                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN",
-                   "EMPTY", "FIELD_LIMIT", "OUTSIDE_SOURCE_RANGE")
+                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN")
 SUBMITTED_REASONS = ("SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH")
 FORM_REASONS = {"CALENDAR_CONTROL_STATE_MISMATCH": CONTROL_REASONS,
                 "CALENDAR_SUBMITTED_VALUES_MISMATCH": SUBMITTED_REASONS,
                 "CALENDAR_FORM_MISSING": ("MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM"),
                 "CALENDAR_FORM_INITIALIZATION_TIMEOUT": (
                     "MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM", "DISABLED", "HIDDEN"),
-                "CALENDAR_FORM_STRUCTURE_CHANGED": ("MISSING", "EMPTY", "FIELD_LIMIT"),
+                "CALENDAR_FORM_STRUCTURE_CHANGED": ("MISSING", "EMPTY", "FIELD_LIMIT", "FIELD_NAME_LIMIT"),
                 "CRITERIA_NOT_AVAILABLE_ON_SOURCE": (
                     "OPTION_MISSING", "OPTION_DISABLED", "OUTSIDE_SOURCE_RANGE")}
 FORM_DIAGNOSTIC_PHASES = (
@@ -62,7 +61,8 @@ async def wait_for_calendar_search_button(page):
         await page.wait_for_function("""() => {
           const buttons = [...document.querySelectorAll("#btnSearch")];
           return buttons.length === 1 && !!buttons[0].form
-            && !buttons[0].matches(":disabled") && buttons[0].checkVisibility();
+            && !buttons[0].matches(":disabled")
+            && buttons[0].checkVisibility({visibilityProperty: true});
         }""", timeout=CALENDAR_FORM_READY_TIMEOUT_MS)
     except BrowserTimeout as error:
         state = await page.evaluate("""() => {
@@ -70,7 +70,7 @@ async def wait_for_calendar_search_button(page):
           const button = buttons.length === 1 ? buttons[0] : null;
           return {
             count: Math.min(buttons.length, 2),
-            visible: button ? button.checkVisibility() : false,
+            visible: button ? button.checkVisibility({visibilityProperty: true}) : false,
             enabled: button ? !button.matches(":disabled") : false,
             associated: button ? !!button.form : false,
           };
@@ -94,10 +94,10 @@ async def calendar_search_button_visible(page):
     try:
         return await page.evaluate("""() => {
           const buttons = [...document.querySelectorAll("#btnSearch")];
-          return buttons.length === 1 && buttons[0].checkVisibility();
+          return buttons.length === 1 && buttons[0].checkVisibility({visibilityProperty: true});
         }""")
     except Exception:
-        return False
+        return None  # A closed/unreadable page is unknown, not an observed hidden button.
 
 
 async def calendar_form_field_count(page):
@@ -106,7 +106,8 @@ async def calendar_form_field_count(page):
       const form = document.querySelector("#btnSearch")?.form;
       if (!form) return null;
       let count = 0;
-      for (const _entry of new FormData(form)) {
+      for (const [name] of new FormData(form)) {
+        if (name.length > 128) return -1;
         count += 1;
         if (count > 128) return count;
       }
@@ -114,6 +115,8 @@ async def calendar_form_field_count(page):
     }""")
     if result is None:
         raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "MISSING")
+    if result == -1:
+        raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "FIELD_NAME_LIMIT")
     if not isinstance(result, int) or result < 1:
         raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "EMPTY")
     if result > 128:
@@ -121,23 +124,49 @@ async def calendar_form_field_count(page):
     return result
 
 
+async def calendar_form_field_shape(page):
+    """Historical inventory guard; keep paused inspection behavior unchanged."""
+    result = await page.evaluate("""() => {
+      const form = document.querySelector("#btnSearch")?.form;
+      if (!form) return null;
+      return [...new FormData(form).keys()].map(name =>
+        /token|password|secret|session|cookie|captcha|verification|auth/i.test(name)
+          ? "<sensitive>" : name);
+    }""")
+    if (not isinstance(result, list) or not 1 <= len(result) <= 128
+            or any(not isinstance(name, str) or len(name) > 128 for name in result)):
+        raise RuntimeError("CALENDAR_FORM_STRUCTURE_CHANGED")
+    return tuple(result)
+
+
 FORM_CHECK = """({expected}) => {
-  const button = document.querySelector("#btnSearch");
+  const buttons = [...document.querySelectorAll("#btnSearch")];
+  if (buttons.length !== 1) return {failures: [{
+    code: "CALENDAR_FORM_MISSING", control: "SEARCH_BUTTON",
+    reason: buttons.length === 0 ? "MISSING" : "CONTROL_AMBIGUOUS"}]};
+  const button = buttons[0];
   const form = button?.form;
-  if (!form) return "CALENDAR_FORM_MISSING";
+  if (!form) return {failures: [{
+    code: "CALENDAR_FORM_MISSING", control: "SEARCH_BUTTON", reason: "WRONG_FORM"}]};
+  if (!button.checkVisibility({visibilityProperty: true})) return {failures: [{
+    code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "SEARCH_BUTTON", reason: "HIDDEN"}]};
+  if (button.matches(":disabled")) return {failures: [{
+    code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "SEARCH_BUTTON", reason: "DISABLED"}]};
   const action = new URL(button.getAttribute("formaction") || form.action, document.baseURI);
   if (action.href !== "https://ujsportal.pacourts.us/CaseSearch"
       || (button.getAttribute("formmethod") || form.method).toLowerCase() !== "post"
       || (button.getAttribute("formenctype") || form.enctype).toLowerCase()
         !== "application/x-www-form-urlencoded")
     return "UNSUPPORTED_CALENDAR_FORM_TARGET";
-  if (button.matches(":disabled") || !form.checkValidity()) return "SOURCE_FORM_VALIDATION";
+  if (!form.checkValidity()) return "SOURCE_FORM_VALIDATION";
   const data = new FormData(form);
   const failures = [];
   const fail = (code, control, reason) => failures.push({code, control, reason});
   for (const [selector, value, name, containerSelector] of expected) {
-    const control = document.querySelector(selector);
+    const controls = [...document.querySelectorAll(selector)];
+    const control = controls[0];
     const reason = !control ? "MISSING"
+      : controls.length !== 1 ? "CONTROL_AMBIGUOUS"
       : control.form !== form ? "WRONG_FORM"
       : control.matches(":disabled") ? "DISABLED"
       : control.value !== value ? "VALUE_MISMATCH" : null;
@@ -197,9 +226,9 @@ async def validate_calendar_form(page, criteria, selected_values=None):
         ["input[name=CalendarEventEndDate]", criteria["endDate"], "END_DATE", None],
         ["#CalendarEventType-Control select", selected_values.get("eventType", criteria["eventType"]), "EVENT_TYPE", "#CalendarEventType-Control"],
     ]
-    if criteria.get("courtRoom"):
+    if criteria.get("courtRoom") or "courtRoom" in selected_values:
         expected.insert(3, ['select[name="CourtRoomID"]',
-                            selected_values.get("courtRoom", criteria["courtRoom"]),
+                            selected_values.get("courtRoom", criteria.get("courtRoom", "")),
                             "COURT_ROOM", None])
     result = await page.evaluate(FORM_CHECK, {"expected": expected})
     if isinstance(result, dict):
@@ -236,14 +265,15 @@ async def select_calendar_preview_controls(page, criteria):
             reason = result.get("reason") if isinstance(result, dict) else None
             if reason not in CONTROL_REASONS:
                 reason = "OPTION_MISSING"
-            if criteria.get("eventType") != "ANY":
-                raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+            if (reason in ("OPTION_MISSING", "OPTION_DISABLED")
+                    and control_name in ("COURT_OFFICE", "EVENT_TYPE")
+                    and criteria.get("eventType") != "ANY"):
+                raise CalendarFormFailure(
+                    "CRITERIA_NOT_AVAILABLE_ON_SOURCE", control_name, reason)
             raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", control_name, reason)
         await page.locator(selector).select_option(value=result["value"])
         selected = await page.locator(selector).input_value()
         if selected != result["value"]:
-            if criteria.get("eventType") != "ANY":
-                raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
             raise CalendarFormFailure(
                 "CALENDAR_CONTROL_STATE_MISMATCH", control_name, "VALUE_MISMATCH")
         return selected
@@ -339,19 +369,28 @@ async def fill_calendar_dates(page, criteria):
     for name, key in (("CalendarEventStartDate", "startDate"),
                       ("CalendarEventEndDate", "endDate")):
         control = page.locator(f"input[name={name}]")
-        if await control.count() != 1 or not await control.is_enabled():
-            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+        label = "START_DATE" if key == "startDate" else "END_DATE"
+        count = await control.count()
+        if count != 1:
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", label,
+                                      "MISSING" if count == 0 else "CONTROL_AMBIGUOUS")
+        if not await control.is_enabled():
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", label, "DISABLED")
+        if not await control.evaluate(
+                "(el) => !!el.form && el.form === document.querySelector('#btnSearch')?.form"):
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", label, "WRONG_FORM")
         # Native public constraints are source availability, not permission to
         # clamp a date. Missing/changed controls still fail closed.
         minimum = await control.get_attribute("min")
         maximum = await control.get_attribute("max")
         if ((minimum and criteria[key] < minimum)
                 or (maximum and criteria[key] > maximum)):
-            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+            raise CalendarFormFailure(
+                "CRITERIA_NOT_AVAILABLE_ON_SOURCE", label, "OUTSIDE_SOURCE_RANGE")
         await control.fill(criteria[key])
         await control.blur()
         if await control.input_value() != criteria[key]:
-            raise RuntimeError("CRITERIA_NOT_AVAILABLE_ON_SOURCE")
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", label, "VALUE_MISMATCH")
 
 
 def response_pause(last_completed, now, interval):
@@ -361,3 +400,25 @@ def response_pause(last_completed, now, interval):
     if not math.isfinite(now) or last_completed is not None and not math.isfinite(last_completed):
         raise ValueError("INVALID_RESPONSE_CLOCK")
     return 0 if last_completed is None else max(0, last_completed + interval - now)
+
+
+async def validate_unfiltered_calendar_room(page):
+    """No criterion is not proof of no source filter; never reset a chosen room."""
+    reason = await page.evaluate("""() => {
+      const controls = [...document.querySelectorAll('select[name="CourtRoomID"]')];
+      if (!controls.length) return "MISSING";
+      if (controls.length !== 1) return "CONTROL_AMBIGUOUS";
+      const control = controls[0], form = document.querySelector("#btnSearch")?.form;
+      if (!form || control.form !== form) return "WRONG_FORM";
+      if (control.matches(":disabled")) return "DISABLED";
+      const blanks = [...control.options].filter(option =>
+        option.value === "" && option.label.trim() === "");
+      if (!blanks.length) return "OPTION_MISSING";
+      if (blanks.length !== 1) return "OPTION_AMBIGUOUS";
+      if (blanks[0].disabled) return "OPTION_DISABLED";
+      return control.selectedOptions.length === 1 && control.selectedOptions[0] === blanks[0]
+        ? null : "NO_FILTER_NOT_SELECTED";
+    }""")
+    if reason is not None:
+        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM",
+                                  reason if reason in CONTROL_REASONS else "OPTION_MISSING")

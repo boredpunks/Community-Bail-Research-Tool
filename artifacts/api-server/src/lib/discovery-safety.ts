@@ -2,8 +2,8 @@
 // either retrieval method invalidates prior proof and requires fresh approval.
 import { validCalendarCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v9";
-export const calendarPreviewMethod = "playwright-calendar-preview-v4";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v10";
+export const calendarPreviewMethod = "playwright-calendar-preview-v5";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
@@ -169,14 +169,29 @@ export function validCalendarFormDiagnostic(message: Record<string, unknown>) {
     ? ["MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
       "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
       "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
-      "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED"]
+      "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN"]
     : message.code === "CALENDAR_SUBMITTED_VALUES_MISMATCH"
-    ? ["SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH"] : [];
-  return Object.keys(message).every((key) => ["kind", "code", "control", "reason"].includes(key))
+    ? ["SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH"]
+    : message.code === "CALENDAR_FORM_MISSING"
+    ? ["MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM"]
+    : message.code === "CALENDAR_FORM_INITIALIZATION_TIMEOUT"
+    ? ["MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM", "DISABLED", "HIDDEN"]
+    : message.code === "CALENDAR_FORM_STRUCTURE_CHANGED"
+    ? ["MISSING", "EMPTY", "FIELD_LIMIT", "FIELD_NAME_LIMIT"]
+    : message.code === "CRITERIA_NOT_AVAILABLE_ON_SOURCE"
+    ? ["OPTION_MISSING", "OPTION_DISABLED", "OUTSIDE_SOURCE_RANGE"] : [];
+  return Object.keys(message).every((key) => ["kind", "code", "control", "reason", "phase"].includes(key))
     && (message.kind === undefined || message.kind === "calendar_form_diagnostic")
-    && ["CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH"].includes(String(message.code))
-    && ["SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
+    && (message.phase === undefined || ["INITIALIZATION", "CONTROL_SELECTION", "DATE_ENTRY", "FINAL_VALIDATION", "SUBMISSION"].includes(String(message.phase)))
+    && ["SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
     && reasons.includes(String(message.reason));
+}
+
+export function calendarDiagnosticRejection(message: unknown): string | null {
+  if (message === "Invalid public form diagnostic") return "PARENT_REJECTED_CALENDAR_FORM_DIAGNOSTIC";
+  if (message === "Invalid calendar diagnostics") return "PARENT_REJECTED_CALENDAR_DIAGNOSTIC";
+  if (message === "Invalid calendar state evidence") return "PARENT_REJECTED_CALENDAR_STATE";
+  return null;
 }
 
 export function collectionBlock(source: SourceState | undefined, now = new Date()): string | null {

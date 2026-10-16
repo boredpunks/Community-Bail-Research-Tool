@@ -106,7 +106,9 @@ form-element, option and ARIA/group-reference limit categories without retaining
 raw text or private identities. Do not retrospectively assign a category to
 the generic historical failure, raise limits or reuse its consumed approval.
 Generic calendar exception-path status/visibility markers are not source-DOM
-observations or proof that a filing diagnostic attempted Search.
+observations or proof that a filing diagnostic attempted Search. In particular,
+historical pre-POST failures wrote a constant `formVisible=false`; this does not
+prove that the source Search button or its form was hidden.
 
 For observational inventory only, oversized option lists can remain explicitly
 uninspected while other bounded controls are observed; unknown is not zero.
@@ -200,3 +202,28 @@ the scope above; keep dependent traffic blocked. Local Allegheny selection is
 now separately approved under the limits above. Do not treat the available Allegheny choice, an
 unclassified court-office-related dropdown, its option count or hidden Criminal choice as MDJ coverage,
 an absence proof, a submitted binding or permission to choose Common Pleas.
+
+Do not use equality of the entire before/after native form-field sequence as
+the readiness boundary for a search with dependent widgets.
+
+**Why:** A calendar attempt stopped at that generic comparison after local
+criteria selection. Its retained evidence did not identify the changed field
+or the failing subcondition. Controlled fixtures demonstrated that legitimate
+dependent-widget replacement changes the sequence while all intended submitted
+criteria remain valid; they do not prove the historical live cause.
+
+**How to apply:** Preserve form size bounds and validate the current intended
+controls, exact native submitted values, form association, allowed target/method
+and usable Search button. Retain fixed failure phases/reasons, not field names
+or source content. Treat missing historical detail as unknown, not source change.
+
+A criteria object without a courtroom field does not prove that the source form
+is unfiltered.
+
+**Why:** The latest selectable-criteria contract omitted courtroom, whereas an
+earlier scope specified Courtroom 506. Leaving the source's default unchecked
+would make the proposed exact scope ambiguous.
+
+**How to apply:** Explicitly disclose courtroom scope in live approval. For a
+no-filter search, prove the source's no-filter state and exact empty submitted
+binding before Search; do not silently keep or reset a selected room.
