@@ -22,7 +22,15 @@ MAX_SESSION_SECONDS = 10 * 60
 MAX_RESPONSE_BYTES = 4_000_000
 RESPONSE_READ_CHUNK_BYTES = 64 * 1024
 FETCH_TIMEOUT_MS = 45_000
+MAX_BROKER_MESSAGE_CHARS = 6_000_000
 _VERSION = re.compile(r"v=([A-Za-z0-9_-]{16,128})\Z")
+
+
+def read_inspection_protocol_line(stream):
+    line = stream.readline(MAX_BROKER_MESSAGE_CHARS + 1)
+    if not line or len(line) > MAX_BROKER_MESSAGE_CHARS or not line.endswith("\n"):
+        raise RuntimeError("INSPECTION_BROKER_MESSAGE_INVALID")
+    return line
 
 
 class ResponseSizeLimitError(ValueError):
@@ -52,6 +60,8 @@ class InspectionBrokerResponse:
     def __init__(self, message):
         if not isinstance(message, dict) or message.get("allow") is not True:
             raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+        if set(message) != {"allow", "requestId", "status", "headers", "body"}:
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
         self.request_id = message.get("requestId")
         self.status = message.get("status")
         raw_headers = message.get("headers")
@@ -69,6 +79,7 @@ class InspectionBrokerResponse:
             if (not isinstance(pair, list) or len(pair) != 2
                     or not isinstance(pair[0], str) or not isinstance(pair[1], str)
                     or not pair[0] or len(pair[0]) > 128 or len(pair[1]) > 8192
+                    or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", pair[0])
                     or any(char in pair[0] + pair[1] for char in "\r\n\0")):
                 raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
             total += len(pair[0]) + len(pair[1])

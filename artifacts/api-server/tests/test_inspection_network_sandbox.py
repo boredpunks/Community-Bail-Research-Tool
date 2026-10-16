@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import unittest
 from collections import Counter
@@ -41,6 +42,11 @@ class _CanaryHandler(BaseHTTPRequestHandler):
 
 class InspectionNetworkSandboxTests(unittest.TestCase):
     def setUp(self):
+        self.unix_directory = tempfile.TemporaryDirectory(prefix="inspection-unix-canary-")
+        self.unix_path = self.unix_directory.name + "/canary"
+        self.unix = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.unix.bind(self.unix_path)
+        self.unix.settimeout(0.1)
         _CanaryHandler.hits.clear()
         self.http = ThreadingHTTPServer(("127.0.0.1", 0), _CanaryHandler)
         self.http_thread = threading.Thread(target=self.http.serve_forever, daemon=True)
@@ -66,6 +72,8 @@ class InspectionNetworkSandboxTests(unittest.TestCase):
         self.dns_thread.start()
 
     def tearDown(self):
+        self.unix.close()
+        self.unix_directory.cleanup()
         self.dns_stop.set()
         self.dns.close()
         self.http.shutdown()
@@ -92,6 +100,9 @@ class InspectionNetworkSandboxTests(unittest.TestCase):
     def test_actual_chromium_descendants_cannot_reach_canary_http_or_dns(self):
         http_port = self.http.server_address[1]
         dns_port = self.dns.getsockname()[1]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as baseline:
+            baseline.sendto(b"controlled-unix-baseline", self.unix_path)
+        self.assertEqual(self.unix.recv(1024), b"controlled-unix-baseline")
 
         # Prove the controlled endpoint is live before using it as a canary.
         opener = build_opener(ProxyHandler({}))
@@ -110,7 +121,7 @@ class InspectionNetworkSandboxTests(unittest.TestCase):
         probe = ROOT / "tests" / "inspection_sandbox_probe.py"
         sandbox = UJS / "network_sandbox.py"
         result = subprocess.run(
-            [sys.executable, str(sandbox), str(probe), str(http_port), str(dns_port)],
+            [sys.executable, str(sandbox), str(probe), str(http_port), str(dns_port), self.unix_path],
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
@@ -123,6 +134,12 @@ class InspectionNetworkSandboxTests(unittest.TestCase):
         self.assertEqual(observation["ipv4UdpErrno"], errno.EPERM)
         self.assertEqual(observation["ipv6TcpErrno"], errno.EPERM)
         self.assertEqual(observation["packetErrno"], errno.EPERM)
+        self.assertIsNone(observation["unixStreamErrno"])  # Local browser listener, not outbound connect.
+        self.assertEqual(observation["unixDatagramErrno"], errno.EPERM)
+        self.assertEqual(observation["unixDatagramPairErrno"], errno.EPERM)
+        self.assertEqual(observation["unixConnectErrno"], errno.EPERM)
+        self.assertEqual(observation["unixNamedSendErrno"], errno.EISCONN)
+        self.assertTrue(observation["pairedIpcWorks"])
         self.assertEqual(observation["dnsErrno"], errno.EPERM)
         self.assertEqual(observation["proxyVariables"], [])
         self.assertTrue(observation["browserStarted"])
@@ -136,3 +153,5 @@ class InspectionNetworkSandboxTests(unittest.TestCase):
         with _CanaryHandler.lock:
             self.assertEqual(dict(_CanaryHandler.hits), {})
         self.assertEqual(self.dns_hits, [])
+        with self.assertRaises(socket.timeout):
+            self.unix.recv(1024)

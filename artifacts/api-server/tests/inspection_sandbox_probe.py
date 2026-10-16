@@ -20,12 +20,14 @@ def denied_socket(family, kind):
         return None
 
 
-async def main(http_port, dns_port):
+async def main(http_port, dns_port, unix_path):
     results = {
         "ipv4TcpErrno": denied_socket(socket.AF_INET, socket.SOCK_STREAM),
         "ipv4UdpErrno": denied_socket(socket.AF_INET, socket.SOCK_DGRAM),
         "ipv6TcpErrno": denied_socket(socket.AF_INET6, socket.SOCK_STREAM),
         "packetErrno": denied_socket(socket.AF_PACKET, socket.SOCK_RAW),
+        "unixStreamErrno": denied_socket(socket.AF_UNIX, socket.SOCK_STREAM),
+        "unixDatagramErrno": denied_socket(socket.AF_UNIX, socket.SOCK_DGRAM),
         "proxyVariables": sorted(
             key for key in os.environ
             if key.lower() in {
@@ -35,8 +37,27 @@ async def main(http_port, dns_port):
         ),
     }
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    left.send(b"paired-ipc")
+    results["pairedIpcWorks"] = right.recv(32) == b"paired-ipc"
+    try:
+        left.connect(unix_path)
+        results["unixConnectErrno"] = None
+    except OSError as error:
+        results["unixConnectErrno"] = error.errno
+    try:
+        left.sendmsg([b"controlled-unix-canary"], [], 0, unix_path)
+        results["unixNamedSendErrno"] = None
+    except OSError as error:
+        results["unixNamedSendErrno"] = error.errno
     left.close()
     right.close()
+    try:
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        left.close()
+        right.close()
+        results["unixDatagramPairErrno"] = None
+    except OSError as error:
+        results["unixDatagramPairErrno"] = error.errno
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
@@ -86,4 +107,4 @@ async def main(http_port, dns_port):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(int(sys.argv[1]), int(sys.argv[2])))
+    asyncio.run(main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]))

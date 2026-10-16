@@ -19,6 +19,7 @@ from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 from inspection_safety import (
     InspectionBrokerResponse, InspectionRequestGate, InspectionRequestRouter,
+    read_inspection_protocol_line,
 )
 from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
@@ -81,7 +82,8 @@ async def main(config=None):
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
 
             async def read_protocol_line():
-                reader = asyncio.to_thread(sys.stdin.readline)
+                reader = (asyncio.to_thread(read_inspection_protocol_line, sys.stdin)
+                          if inspection_only else asyncio.to_thread(sys.stdin.readline))
                 if not inspection_only:
                     return await reader
                 remaining = inspection_gate.remaining_seconds()
@@ -159,6 +161,9 @@ async def main(config=None):
                     last_completed_clock = clock.time()
                     if not acknowledgement.get("continue"):
                         stopped = True
+                        if inspection_only:
+                            await response.dispose()
+                            raise SourceFailure("SOURCE_STOPPED", attempted=True)
                     if outcome != "OK":
                         stopped = True
                         await response.dispose()
@@ -228,8 +233,7 @@ async def main(config=None):
                 )
                 if inspection_only and urlsplit(request.url).path == "/CaseSearch":
                     inspection_gate.declare_document(request.url, body)
-                if not inspection_only:
-                    await route.fulfill(response=response)
+                await route.fulfill(response=response)
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
                 await response.dispose()

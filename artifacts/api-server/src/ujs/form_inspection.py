@@ -1,6 +1,6 @@
 """Read-only, redacted public filter diagnostics. Never return HTML or values."""
 
-METHOD = "playwright-form-inspection-v2"
+METHOD = "parent-https+playwright-form-inspection-v3"
 CONTROLS = ("SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM",
             "START_DATE", "END_DATE", "EVENT_TYPE")
 KEYS = ("SearchBy", "JudicialDistrict", "CourtOffice", "CourtRoomID",

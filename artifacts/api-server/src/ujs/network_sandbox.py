@@ -1,8 +1,8 @@
 """Fail-closed Linux seccomp boundary for the dormant form inspector.
 
-The filter denies socket() entirely and permits only AF_UNIX socketpair() for
-browser/driver IPC. It is installed before the worker is exec'd, so the worker
-and all Chromium descendants inherit it.
+The filter permits only AF_UNIX stream/seqpacket sockets for browser IPC,
+denies connect(), and rejects datagram sockets/pairs that could address a
+named host relay. The worker and all Chromium descendants inherit it.
 """
 import ctypes
 import errno
@@ -25,9 +25,11 @@ _SECCOMP_RET_ALLOW = 0x7FFF0000
 _BPF_LD_W_ABS = 0x20
 _BPF_JMP_JEQ_K = 0x15
 _BPF_RET_K = 0x06
+_BPF_ALU_AND_K = 0x54
 _SECCOMP_DATA_ARCH = 4
 _SECCOMP_DATA_NR = 0
 _SECCOMP_DATA_ARG0 = 16
+_SECCOMP_DATA_ARG1 = 24
 _AF_UNIX = 1
 INSPECTION_PYTHON_VERSION = (3, 13, 11)
 INSPECTION_PLAYWRIGHT_VERSION = "1.63.0"
@@ -47,14 +49,14 @@ class _SockFprog(ctypes.Structure):
 def _platform_spec():
     machine = platform.machine().lower()
     if machine in ("x86_64", "amd64"):
-        return 0xC000003E, 41, 53, 425  # AUDIT_ARCH_X86_64
+        return 0xC000003E, 41, 53, 425, 42  # AUDIT_ARCH_X86_64
     if machine in ("aarch64", "arm64"):
-        return 0xC00000B7, 198, 199, 425  # AUDIT_ARCH_AARCH64
+        return 0xC00000B7, 198, 199, 425, 203  # AUDIT_ARCH_AARCH64
     raise RuntimeError("INSPECTION_NETWORK_SANDBOX_UNSUPPORTED_ARCH")
 
 
 def _filter_program():
-    arch, socket_syscall, socketpair_syscall, io_uring_setup = _platform_spec()
+    arch, socket_syscall, socketpair_syscall, io_uring_setup, connect_syscall = _platform_spec()
     instructions = [
         _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARCH),
         _SockFilter(_BPF_JMP_JEQ_K, 1, 0, arch),
@@ -64,29 +66,35 @@ def _filter_program():
 
     # io_uring can create sockets from its submission queue without a socket()
     # syscall, so it must be unavailable to this process tree.
-    for syscall_number in (io_uring_setup,):
+    for syscall_number in (io_uring_setup, connect_syscall):
         instructions.extend([
             _SockFilter(_BPF_JMP_JEQ_K, 0, 1, syscall_number),
             _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
         ])
 
-    # Deny socket() entirely so no process can open a named host Unix socket.
-    # socketpair() is the only permitted socket creation, and only for AF_UNIX.
+    # Chromium's profile singleton requires a local stream listener. Allow only
+    # AF_UNIX streams/seqpackets; connect() is denied above. Datagram sockets
+    # and pairs can sendmsg() to a named host socket without connect().
     # On 32-bit x86, socketcall multiplexes all socket operations.
     machine = platform.machine().lower()
     if machine in ("i386", "i486", "i586", "i686", "x86"):
         raise RuntimeError("INSPECTION_NETWORK_SANDBOX_UNSUPPORTED_ARCH")
 
     # The syscall numbers are known for the two architectures above.
-    instructions.extend([
-        _SockFilter(_BPF_JMP_JEQ_K, 0, 1, socket_syscall),
-        _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
-        _SockFilter(_BPF_JMP_JEQ_K, 0, 3, socketpair_syscall),
-        _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARG0),
-        _SockFilter(_BPF_JMP_JEQ_K, 1, 0, _AF_UNIX),
-        _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
-        _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ALLOW),
-    ])
+    for syscall_number in (socket_syscall, socketpair_syscall):
+        instructions.extend([
+            _SockFilter(_BPF_JMP_JEQ_K, 0, 9, syscall_number),
+            _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARG0),
+            _SockFilter(_BPF_JMP_JEQ_K, 1, 0, _AF_UNIX),
+            _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
+            _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARG1),
+            _SockFilter(_BPF_ALU_AND_K, 0, 0, 0xF),
+            _SockFilter(_BPF_JMP_JEQ_K, 2, 0, 1),  # SOCK_STREAM
+            _SockFilter(_BPF_JMP_JEQ_K, 1, 0, 5),  # SOCK_SEQPACKET
+            _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
+            _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ALLOW),
+        ])
+    instructions.append(_SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ALLOW))
     array_type = _SockFilter * len(instructions)
     return array_type(*instructions)
 

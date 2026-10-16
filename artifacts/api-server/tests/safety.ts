@@ -12,6 +12,7 @@ import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
 import { filingInspectionMethod, filingRoles, validFilingMetadata, validFilingInventoryMetadata } from "../src/lib/filing-inspection";
+import { runInspectionBrokerChecks } from "./inspection-broker";
 
 // HTTP/protocol and job-control tests only: NO docket rows, case records,
 // invented case evidence, Python source worker, or external HTTP requests.
@@ -39,6 +40,7 @@ async function reset(verify = true) {
 }
 
 try {
+  await runInspectionBrokerChecks();
   const formDiagnostic = { code: "CALENDAR_CONTROL_STATE_MISMATCH", control: "COURT_OFFICE", reason: "DISABLED" };
   check(validCalendarFormDiagnostic(formDiagnostic));
   // Read literal public labels from Python without executing the source client.

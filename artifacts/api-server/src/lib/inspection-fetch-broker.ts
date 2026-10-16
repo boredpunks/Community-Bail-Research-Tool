@@ -1,5 +1,6 @@
 import { Resolver } from "node:dns";
-import { request as httpsRequest, type IncomingMessage } from "node:https";
+import { request as httpsRequest } from "node:https";
+import type { IncomingMessage } from "node:http";
 
 export const INSPECTION_BROKER_ORIGIN = "https://ujsportal.pacourts.us";
 export const INSPECTION_BROKER_MAX_BYTES = 4_000_000;
@@ -15,18 +16,13 @@ const ASSET_PATHS = new Set([
 type ResourceType = "document" | "script" | "stylesheet";
 type HeaderPairs = Array<[string, string]>;
 
-export type InspectionBrokerResponse = {
-  status: number;
-  headers: HeaderPairs;
-  body: Buffer;
-};
-
 type TransportResponse = {
   status: number;
   rawHeaders: string[];
   body: AsyncIterable<Uint8Array>;
   cancel(): void;
   close(): void;
+  trailers?(): string[];
 };
 
 type BrokerRequest = {
@@ -77,7 +73,7 @@ type Transport = (
   timeoutMs: number,
 ) => Promise<TransportResponse>;
 
-class BrokerTimeoutError extends Error {}
+export class BrokerTimeoutError extends Error {}
 class BrokerSizeLimitError extends Error {
   constructor(readonly status: number, readonly retryAfter: string | null) {
     super("INSPECTION_RESPONSE_TOO_LARGE");
@@ -89,7 +85,7 @@ class UnsupportedResponseError extends Error {
   }
 }
 
-function isPublicIpv4(address: string): boolean {
+export function isPublicIpv4(address: string): boolean {
   const parts = address.split(".");
   if (parts.length !== 4 || parts.some((part) => !/^(0|[1-9]\d{0,2})$/.test(part))) return false;
   const octets = parts.map(Number);
@@ -108,7 +104,7 @@ function isPublicIpv4(address: string): boolean {
 }
 
 async function resolvePinnedPublicIpv4(host: string, timeoutMs: number): Promise<string> {
-  const resolver = new Resolver();
+  const resolver = new Resolver({ timeout: Math.max(1, timeoutMs), tries: 1 });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       resolver.cancel();
@@ -137,6 +133,7 @@ function openHttpsResponse(
 ): Promise<TransportResponse> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timedOut = false;
     const request = httpsRequest({
       hostname: address,
       port: 443,
@@ -156,12 +153,21 @@ function openHttpsResponse(
       resolve({
         status: response.statusCode ?? 0,
         rawHeaders: response.rawHeaders,
-        body: response,
+        body: (async function* () {
+          try {
+            for await (const chunk of response) yield chunk as Buffer;
+          } catch (error) {
+            if (timedOut) throw new BrokerTimeoutError("INSPECTION_FETCH_TIMEOUT");
+            throw error;
+          }
+        })(),
         cancel: () => request.destroy(),
         close: () => clearTimeout(timer),
+        trailers: () => response.rawTrailers,
       });
     });
     const timer = setTimeout(() => {
+      timedOut = true;
       request.destroy(new BrokerTimeoutError("INSPECTION_FETCH_TIMEOUT"));
     }, timeoutMs);
     request.once("error", (error) => {
@@ -169,6 +175,14 @@ function openHttpsResponse(
       if (!settled) {
         settled = true;
         reject(error);
+      }
+    });
+    request.once("upgrade", (response, socket) => {
+      socket.destroy();
+      clearTimeout(timer);
+      if (!settled) {
+        settled = true;
+        reject(new UnsupportedResponseError(response.statusCode ?? 101, null));
       }
     });
     request.end();
@@ -180,30 +194,11 @@ async function defaultTransport(
   headers: Record<string, string>,
   timeoutMs: number,
 ): Promise<TransportResponse> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   const address = await resolvePinnedPublicIpv4(url.hostname, timeoutMs);
-  const remaining = deadline - Date.now();
+  const remaining = Math.floor(deadline - performance.now());
   if (remaining <= 0) throw new BrokerTimeoutError("INSPECTION_FETCH_TIMEOUT");
   return openHttpsResponse(url, address, headers, remaining);
-}
-
-function pairsFromRawHeaders(rawHeaders: string[]): HeaderPairs {
-  if (rawHeaders.length % 2 !== 0 || rawHeaders.length > 512) {
-    throw new Error("INSPECTION_RESPONSE_HEADERS_INVALID");
-  }
-  const pairs: HeaderPairs = [];
-  let bytes = 0;
-  for (let index = 0; index < rawHeaders.length; index += 2) {
-    const name = rawHeaders[index]!;
-    const value = rawHeaders[index + 1]!;
-    bytes += name.length + value.length;
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)
-      || /[\r\n\0]/.test(value) || bytes > MAX_RESPONSE_HEADERS_BYTES) {
-      throw new Error("INSPECTION_RESPONSE_HEADERS_INVALID");
-    }
-    pairs.push([name, value]);
-  }
-  return pairs;
 }
 
 function valuesFor(headers: HeaderPairs, name: string): string[] {
@@ -283,6 +278,7 @@ export function declaredInspectionAssets(documentUrl: string, body: Uint8Array):
   }
   if (base.origin !== INSPECTION_BROKER_ORIGIN || base.pathname !== "/CaseSearch" || base.search) return result;
   const html = Buffer.from(body).toString("utf8");
+  const lowerHtml = html.toLowerCase();
   let index = 0;
   while (index < html.length) {
     const start = html.indexOf("<", index);
@@ -302,6 +298,12 @@ export function declaredInspectionAssets(documentUrl: string, body: Uint8Array):
     index = end + 1;
     const parsed = parseStartTag(html, start, end);
     if (!parsed) continue;
+    if (["script", "style", "textarea", "title"].includes(parsed.tag)) {
+      const close = new RegExp(`</${parsed.tag}(?=[\\s/>])`, "g");
+      close.lastIndex = index;
+      const match = close.exec(lowerHtml);
+      index = match ? match.index : html.length;
+    }
     let rawUrl: string | undefined;
     let type: ResourceType | undefined;
     if (parsed.tag === "script" && parsed.attributes.has("src")) {
@@ -332,6 +334,7 @@ function validateRequestHeaders(raw: unknown): Record<string, string> | null {
   const entries = Object.entries(raw as Record<string, unknown>);
   if (entries.length > 64) return null;
   const output: Record<string, string> = {};
+  const seen = new Set<string>();
   let total = 0;
   const ignoredTransportHeaders = new Set([
     "host", "connection", "content-length", "transfer-encoding", "accept-encoding",
@@ -350,8 +353,12 @@ function validateRequestHeaders(raw: unknown): Record<string, string> | null {
   for (const [rawName, rawValue] of entries) {
     const name = rawName.toLowerCase();
     if (!/^[!#$%&'*+.^_`|~0-9a-z-]+$/.test(name)
-      || typeof rawValue !== "string" || /[\r\n\0]/.test(rawValue)
+      || typeof rawValue !== "string" || /[^\t\x20-\x7e]/.test(rawValue)
       || rawValue.length > 8_192) return null;
+    if (seen.has(name)) return null;
+    seen.add(name);
+    total += name.length + rawValue.length;
+    if (total > MAX_REQUEST_HEADERS_BYTES) return null;
     if (ignoredTransportHeaders.has(name)) continue;
     if (forbidden.has(name)) return null;
     if (!allowed.has(name)) return null;
@@ -369,8 +376,6 @@ function validateRequestHeaders(raw: unknown): Record<string, string> | null {
         return null;
       }
     }
-    total += name.length + rawValue.length;
-    if (total > MAX_REQUEST_HEADERS_BYTES) return null;
     output[name] = rawValue;
   }
   output["accept-encoding"] = "identity";
@@ -430,6 +435,9 @@ function retryAfter(headers: HeaderPairs): string | null {
 
 async function readBoundedBody(response: TransportResponse): Promise<Buffer> {
   const headers = parseHeaderPairs(response.rawHeaders);
+  if (headers.some(([, value]) => /[^\t\x20-\x7e]/.test(value))) {
+    throw new UnsupportedResponseError(response.status, retryAfter(headers));
+  }
   const contentLengths = valuesFor(headers, "content-length");
   if (contentLengths.length > 1) {
     throw new UnsupportedResponseError(response.status, retryAfter(headers));
@@ -445,6 +453,12 @@ async function readBoundedBody(response: TransportResponse): Promise<Buffer> {
   if (encodings.some((value) => value.trim().toLowerCase() !== "identity")) {
     throw new UnsupportedResponseError(response.status, retryAfter(headers));
   }
+  const connectionTokens = valuesFor(headers, "connection").flatMap((value) =>
+    value.toLowerCase().split(",").map((token) => token.trim()));
+  if (valuesFor(headers, "trailer").length
+    || connectionTokens.some((token) => !["close", "keep-alive"].includes(token))) {
+    throw new UnsupportedResponseError(response.status, retryAfter(headers));
+  }
   const chunks: Buffer[] = [];
   let bytes = 0;
   try {
@@ -458,6 +472,9 @@ async function readBoundedBody(response: TransportResponse): Promise<Buffer> {
       chunks.push(chunk);
       bytes += chunk.length;
     }
+    if (response.trailers?.().length) {
+      throw new UnsupportedResponseError(response.status, retryAfter(headers));
+    }
     return Buffer.concat(chunks, bytes);
   } finally {
     response.close();
@@ -465,23 +482,58 @@ async function readBoundedBody(response: TransportResponse): Promise<Buffer> {
 }
 
 export class InspectionFetchBroker {
-  private readonly startedAt = Date.now();
+  private readonly startedAt: number;
   private readonly requestedPaths = new Set<string>();
   private readonly declaredAssets = new Map<string, ResourceType>();
+  private busy = false;
+  private pending: {
+    requestId: string; status: number | null; outcome: string; retryAfter: string | null;
+  } | null = null;
 
   constructor(
     private readonly transport: Transport = defaultTransport,
     private readonly maxBytes = INSPECTION_BROKER_MAX_BYTES,
+    private readonly clock: () => number = () => performance.now(),
   ) {
+    this.startedAt = this.clock();
     if (maxBytes !== INSPECTION_BROKER_MAX_BYTES) {
       throw new Error("INSPECTION_BROKER_POLICY_FIXED");
     }
   }
 
   async handle(raw: Record<string, unknown>, authorize: AuthorizeRequest): Promise<BrokerReply> {
+    if (this.busy || this.pending) return { allow: false, reason: "INSPECTION_ACCOUNTING_REQUIRED" };
+    this.busy = true;
+    try {
+      const reply = await this.handleRequest(raw, authorize);
+      if (reply.allow) {
+        const outcome = "transportError" in reply ? reply.transportError
+          : "brokerOutcome" in reply ? reply.brokerOutcome
+            : classifyBrokerResponse(reply.status, reply.headers, Buffer.from(reply.body, "base64"));
+        this.pending = {
+          requestId: reply.requestId, status: reply.status, outcome,
+          retryAfter: "headers" in reply ? retryAfter(reply.headers) : reply.retryAfter,
+        };
+      }
+      return reply;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  acknowledge(message: Record<string, unknown>): boolean {
+    const expected = this.pending;
+    if (!expected || message.requestId !== expected.requestId
+      || message.status !== expected.status || message.outcome !== expected.outcome
+      || (message.retryAfter ?? null) !== expected.retryAfter) return false;
+    this.pending = null;
+    return true;
+  }
+
+  private async handleRequest(raw: Record<string, unknown>, authorize: AuthorizeRequest): Promise<BrokerReply> {
     const request = validateBrokerRequest(raw);
     if (!request) return { allow: false, reason: "INSPECTION_BROKER_REQUEST_INVALID" };
-    if (Date.now() - this.startedAt >= INSPECTION_SESSION_MS) {
+    if (this.clock() - this.startedAt >= INSPECTION_SESSION_MS) {
       return { allow: false, reason: "INSPECTION_SESSION_DEADLINE" };
     }
     if (this.requestedPaths.has(request.path)) {
@@ -495,10 +547,11 @@ export class InspectionFetchBroker {
     }
     this.requestedPaths.add(request.path);
     const authorization = await authorize(request.path, "GET", request.url.href);
-    if (!authorization.allow || !authorization.requestId) {
+    if (authorization.allow !== true || typeof authorization.requestId !== "string"
+      || !/^[\da-f-]{36}$/i.test(authorization.requestId)) {
       return { allow: false, reason: authorization.reason ?? "REQUEST_NOT_PERMITTED" };
     }
-    if (Date.now() - this.startedAt >= INSPECTION_SESSION_MS) {
+    if (this.clock() - this.startedAt >= INSPECTION_SESSION_MS) {
       return {
         allow: true, requestId: authorization.requestId, transportError: "TIMEOUT",
         status: null, retryAfter: null,
@@ -507,7 +560,7 @@ export class InspectionFetchBroker {
 
     let response: TransportResponse | undefined;
     try {
-      const remaining = Math.max(1, INSPECTION_SESSION_MS - (Date.now() - this.startedAt));
+      const remaining = Math.max(1, Math.floor(INSPECTION_SESSION_MS - (this.clock() - this.startedAt)));
       response = await this.transport(
         request.url, request.headers, Math.min(INSPECTION_BROKER_TIMEOUT_MS, remaining),
       );
@@ -549,4 +602,20 @@ export class InspectionFetchBroker {
       };
     }
   }
+}
+
+function classifyBrokerResponse(status: number, headers: HeaderPairs, body: Buffer): string {
+  if (status === 429) return "RATE_LIMIT";
+  if (status === 401 || status === 403) return "ACCESS_DENIED";
+  if (status >= 300 && status < 400) return "REDIRECT";
+  if (status !== 200) return "HTTP_ERROR";
+  const text = body.toString("utf8");
+  const html = valuesFor(headers, "content-type").some((value) => /text\/html/i.test(value))
+    || /^\s*(?:<html|<!doctype)/i.test(text);
+  if (html) {
+    if (/verify you are human|cf-chl-|g-recaptcha|hcaptcha/i.test(text)) return "CHALLENGE";
+    if (/too many requests|too many attempts/i.test(text)) return "RATE_LIMIT";
+    if (/access denied/i.test(text)) return "ACCESS_DENIED";
+  }
+  return "OK";
 }

@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import asyncio
+import base64
 import shutil
 import unittest
 from pathlib import Path
@@ -18,8 +19,9 @@ from calendar_protocol import select_calendar_preview_controls
 from form_inspection import expected
 from inspection_safety import (
     CASE_SEARCH, MAX_RESPONSE_BYTES,
-    InspectionRequestGate, InspectionResponseStream, ResponseSizeLimitError,
-    declared_asset_urls, fetch_inspection_once, read_bounded_response,
+    InspectionRequestGate, InspectionRequestRouter, InspectionBrokerResponse,
+    ResponseSizeLimitError, declared_asset_urls, read_bounded_response,
+    read_inspection_protocol_line, MAX_BROKER_MESSAGE_CHARS,
 )
 
 CRITERIA = {"courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
@@ -660,18 +662,9 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_timeout_and_uncertain_attempts_still_consume_the_path(self):
         await self.bootstrap()
 
-        class Route:
-            calls = 0
-            async def continue_(self):
-                self.calls += 1
-
         self.assertTrue(await self.gate.reserve(self.js, "GET", "script"))
-        route = Route()
-        with self.assertRaisesRegex(RuntimeError, "INSPECTION_RESPONSE_STREAM_REQUIRED"):
-            await fetch_inspection_once(route, self.gate)
         self.assertEqual(self.gate.reserved_count, 2)
         self.assertFalse(await self.gate.reserve(self.js, "GET", "script"))
-        self.assertEqual(route.calls, 0)
 
     async def test_redirect_target_is_denied_by_the_request_gate(self):
         await self.bootstrap()
@@ -684,20 +677,12 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await gate.reserve(CASE_SEARCH, "GET", "document"))
         gate.declare_document(CASE_SEARCH, b"")
 
-        class Route:
-            calls = 0
-            async def continue_(self):
-                self.calls += 1
-
-        route = Route()
         clock[0] += 601
         self.assertFalse(await gate.reserve(
             "https://ujsportal.pacourts.us/resource/js/sitemain.min.js",
             "GET", "script",
         ))
-        with self.assertRaisesRegex(TimeoutError, "INSPECTION_SESSION_DEADLINE"):
-            await fetch_inspection_once(route, gate)
-        self.assertEqual(route.calls, 0)
+        self.assertEqual(gate.remaining_timeout_ms(), 0)
 
     def test_submission_path_is_removed_and_inspector_is_hard_disabled(self):
         worker_source = Path(worker.__file__).read_text()
@@ -740,101 +725,85 @@ class InspectionRequestGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(exact_reads), 3)
         self.assertEqual(len(oversized_reads), 3)
 
-    async def _serve_chunked_fixture(self, payload):
-        async def handle(reader, writer):
+    def broker_message(self, body=b"fixture", headers=None):
+        return {
+            "allow": True, "requestId": "00000000-0000-4000-8000-000000000001",
+            "status": 200, "headers": headers or [["Content-Type", "text/html"]],
+            "body": base64.b64encode(body).decode("ascii"),
+        }
+
+    def test_broker_response_rejects_malformed_and_oversized_messages(self):
+        message = self.broker_message()
+        for invalid in (
+            {**message, "body": "!invalid"},
+            {**message, "status": True},
+            {**message, "requestId": "not-a-reservation"},
+            {**message, "headers": [["x", "bad\r\nheader"]]},
+            {**message, "unexpected": "not-permitted"},
+            self.broker_message(b"x" * (MAX_RESPONSE_BYTES + 1)),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "INSPECTION_BROKER_RESPONSE_INVALID"):
+                InspectionBrokerResponse(invalid)
+
+    def test_broker_protocol_rejects_eof_interruption_and_oversized_lines(self):
+        self.assertEqual(read_inspection_protocol_line(io.StringIO('{"allow":false}\n')),
+                         '{"allow":false}\n')
+        for invalid in ("", '{"allow":', "x" * (MAX_BROKER_MESSAGE_CHARS + 1)):
+            with self.assertRaisesRegex(RuntimeError, "INSPECTION_BROKER_MESSAGE_INVALID"):
+                read_inspection_protocol_line(io.StringIO(invalid))
+
+    async def test_request_stage_router_preserves_duplicate_cookies_without_network(self):
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                executable_path=shutil.which("chromium"), headless=True,
+                args=["--no-sandbox", "--disable-background-networking",
+                      "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"],
+            )
             try:
-                await reader.readuntil(b"\r\n\r\n")
-                writer.write(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
-                    b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                context = await browser.new_context(service_workers="block")
+                page = await context.new_page()
+                cdp = await context.new_cdp_session(page)
+                router = InspectionRequestRouter(cdp)
+                observed = []
+                asset_headers = []
+
+                async def fulfill(route):
+                    observed.append(route.request.url)
+                    if route.request.url == "https://broker-fixture.invalid/asset.js":
+                        asset_headers.append(await route.request.all_headers())
+                        response = InspectionBrokerResponse(self.broker_message(
+                            b"window.offlineAssetLoaded=true;",
+                            [["Content-Type", "application/javascript"]],
+                        ))
+                        await route.fulfill(response=response)
+                        return
+                    if route.request.url != "https://broker-fixture.invalid/CaseSearch":
+                        await route.abort()
+                        return
+                    response = InspectionBrokerResponse(self.broker_message(
+                        b'<html><body>offline broker fixture<script src="/asset.js"></script></body></html>',
+                        [["Content-Type", "text/html"],
+                         ["Set-Cookie", "first=one; Path=/; Secure"],
+                         ["Set-Cookie", "second=two; Path=/; Secure"]],
+                    ))
+                    await route.fulfill(response=response)
+                    await response.dispose()
+
+                await router.start(fulfill)
+                response = await page.goto(
+                    "https://broker-fixture.invalid/CaseSearch", wait_until="load", timeout=15_000,
                 )
-                await writer.drain()
-                for offset in range(0, len(payload), 32_768):
-                    chunk = payload[offset:offset + 32_768]
-                    writer.write(f"{len(chunk):X}\r\n".encode("ascii") + chunk + b"\r\n")
-                    await writer.drain()
-                writer.write(b"0\r\n\r\n")
-                await writer.drain()
-            except (ConnectionError, asyncio.IncompleteReadError):
-                pass
+                self.assertEqual(response.status, 200)
+                self.assertIn("offline broker fixture", await page.content())
+                cookies = {cookie["name"]: cookie["value"] for cookie in await context.cookies()}
+                self.assertEqual(cookies, {"first": "one", "second": "two"})
+                self.assertEqual(observed[0], "https://broker-fixture.invalid/CaseSearch")
+                self.assertTrue(await page.evaluate("window.offlineAssetLoaded"))
+                self.assertEqual(len(asset_headers), 1)
+                self.assertIn("first=one", asset_headers[0].get("cookie", ""))
+                self.assertIn("second=two", asset_headers[0].get("cookie", ""))
             finally:
-                writer.close()
-                await writer.wait_closed()
-
-        server = await asyncio.start_server(handle, "127.0.0.1", 0)
-        return server, server.sockets[0].getsockname()[1]
-
-    async def test_local_chunked_fixture_at_limit_is_fulfilled(self):
-        server, port = await self._serve_chunked_fixture(b"x" * MAX_RESPONSE_BYTES)
-        async with server:
-            async with async_playwright() as playwright:
-                browser = await playwright.chromium.launch(
-                    executable_path=shutil.which("chromium"),
-                    headless=True,
-                    args=["--no-sandbox"],
-                )
-                try:
-                    context = await browser.new_context()
-                    page = await context.new_page()
-                    cdp = await context.new_cdp_session(page)
-                    stream = InspectionResponseStream(
-                        cdp, url_pattern=f"http://127.0.0.1:{port}/*",
-                    )
-                    await stream.start()
-
-                    async def fulfill(route):
-                        response = await stream.fetch(route, timeout_ms=15_000)
-                        self.assertEqual(len(await response.body()), MAX_RESPONSE_BYTES)
-                        await response.fulfill()
-                        await response.dispose()
-
-                    await context.route("**/*", fulfill)
-                    response = await page.goto(
-                        f"http://127.0.0.1:{port}/boundary",
-                        wait_until="commit",
-                        timeout=20_000,
-                    )
-                    self.assertEqual(response.status, 200)
-                finally:
-                    await browser.close()
-
-    async def test_local_chunked_fixture_over_limit_is_aborted(self):
-        server, port = await self._serve_chunked_fixture(b"x" * (MAX_RESPONSE_BYTES + 1))
-        async with server:
-            async with async_playwright() as playwright:
-                browser = await playwright.chromium.launch(
-                    executable_path=shutil.which("chromium"),
-                    headless=True,
-                    args=["--no-sandbox"],
-                )
-                try:
-                    context = await browser.new_context()
-                    page = await context.new_page()
-                    cdp = await context.new_cdp_session(page)
-                    stream = InspectionResponseStream(
-                        cdp, url_pattern=f"http://127.0.0.1:{port}/*",
-                    )
-                    await stream.start()
-                    failures = []
-
-                    async def reject_oversized(route):
-                        try:
-                            await stream.fetch(route, timeout_ms=15_000)
-                        except ResponseSizeLimitError as error:
-                            failures.append(str(error))
-                            return
-                        self.fail("Oversized local fixture response was retained")
-
-                    await context.route("**/*", reject_oversized)
-                    with self.assertRaises(Exception):
-                        await page.goto(
-                            f"http://127.0.0.1:{port}/oversized",
-                            wait_until="commit",
-                            timeout=20_000,
-                        )
-                    self.assertEqual(failures, ["INSPECTION_RESPONSE_TOO_LARGE"])
-                finally:
-                    await browser.close()
+                await browser.close()
 
     async def test_local_form_snapshot_never_invokes_click_or_submission(self):
         from form_inspection import snapshot

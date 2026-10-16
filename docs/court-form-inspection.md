@@ -130,11 +130,12 @@ reserving a source request, and the Python worker exits before starting
 Playwright. Thus the context routes below are currently unreachable for live
 `INSPECT`; their presence is not an enabled or source-tested boundary.
 
-In the dormant browser path, the context HTTP route is installed before the
-first navigation. It reserves each accepted request through the fixed gate
-before the browser continues it. Chromium's response interception streams the
-response through the documented byte ceiling before it can be fulfilled to the
-page. The request gate allows only the bootstrap document and exact
+In the dormant browser path, CDP request-stage interception is installed before
+the first navigation. Requests are never continued onto Chromium's network.
+The child gate reserves each candidate, and the Node parent independently
+validates it, reserves/paces it through the persisted scheduler, and performs
+the bounded HTTPS retrieval. CDP fulfills the paused request from that response.
+The request gate allows only the bootstrap document and exact
 script/stylesheet URLs declared by that document. The context blocks service
 workers, and the browser launch disables background networking, component
 updates, sync, and first-run behavior. The kernel boundary below is independent
@@ -144,9 +145,10 @@ of Playwright routing and applies before the worker starts.
   executing the worker, that wrapper closes inherited file descriptors above
   standard input/output/error, removes inherited HTTP/HTTPS/ALL/FTP/WebSocket
   proxy variables, verifies the exact runtime, and installs a Linux seccomp
-  filter with `PR_SET_NO_NEW_PRIVS`. The filter permits only `AF_UNIX` socket
-  creation for local browser/driver IPC; all other socket families are denied
-  with `EPERM`. It also denies `io_uring_setup`, so the filter cannot be bypassed
+  filter with `PR_SET_NO_NEW_PRIVS`. The filter permits only `AF_UNIX` stream
+  and seqpacket sockets/pairs for local browser/driver IPC. All `connect()`
+  calls, datagram sockets/pairs, and non-Unix socket creation are denied with
+  `EPERM`. It also denies `io_uring_setup`, so the filter cannot be bypassed
   by creating sockets through io_uring. The kernel filter is inherited by the
   worker, Playwright driver, Chromium, and their descendants. If Linux,
   architecture support, `no_new_privs`, seccomp, or runtime checks are
@@ -173,17 +175,21 @@ of Playwright routing and applies before the worker starts.
 This is a process-tree syscall boundary, not a separate network namespace or
 host firewall. The current container rejects `unshare --net` with
 `Operation not permitted`, so no network namespace guarantee is claimed.
-`AF_UNIX` remains available for Chromium IPC. The filter prevents the worker
-tree from creating IP sockets and the wrapper removes inherited proxy settings,
-but it cannot prevent an independently running host service reachable over a
-Unix socket from relaying a request on the worker's behalf. No such relay is
-configured by this code; its absence must be verified in the deployed runtime.
-This limitation, and the lack of deployed-host canary observation, mean the
-local test is not evidence of deployed containment. Live `INSPECT` must remain
-disabled until the deployed egress boundary and any host-mediated proxy or
-resolver paths are independently verified.
+`AF_UNIX` remains available for Chromium IPC, but initiating named-socket
+connections and creating datagram relay channels are now denied. This is not
+a general hostile-process isolation claim: it does not establish filesystem,
+same-user process-control, or arbitrary descriptor-transfer isolation. The
+workspace-first evidence and its limits are recorded in
+[`inspection-broker-workspace-review.md`](inspection-broker-workspace-review.md).
+Live `INSPECT` remains disabled. A future deployed execution has a separate
+environment-specific gate; workspace evidence never satisfies it.
 
 #### Containment verification status (2026-10-15)
+
+Historical snapshot, before the parent broker and socket restrictions below.
+The operator-controlled workspace is now the first review target; the old
+deployment-only prerequisite below is not the prerequisite for that first
+review. It remains a separate gate for any future deployed execution.
 
 The deployment service reports that this project has no active deployment.
 There is therefore no deployed worker runtime or enforcement point to attest;
@@ -217,30 +223,29 @@ runtime and a supported boundary that both denies unapproved network egress and
 isolates the inspector from host relay sockets, followed by a fresh canary run
 at that boundary. No court source was contacted for this verification.
 
-- `MAX_RESPONSE_BYTES` is enforced while Chromium's response body is read from
-  the DevTools `IO` stream, before it is fulfilled to the page. The bounded
-  parser check remains as defense in depth. The streamed path rejects a missing
-  or invalid limit and aborts oversized responses without retaining their
-  accumulated chunks.
+- `MAX_RESPONSE_BYTES` is now enforced by the parent while reading HTTPS body
+  chunks, before any body is sent to the child. The child validates the bounded
+  base64 protocol response again before CDP fulfillment. This replaces the old
+  Chromium response-stream path; no `continueRequest` is used for inspection.
 
 **Conditions before reconsidering the disabled flag:** keep `INSPECT` disabled
 unless all of the following are completed and reviewed:
 
-1. Attest the deployed Python, Playwright, Chromium, Linux architecture, and
-   seccomp behavior; any mismatch must fail closed.
-2. Demonstrate at the deployed enforcement point that no Unix-socket host
-   service can relay requests, and repeat the local/canary bypass matrix under
-   the actual worker launch path. If this cannot be proven, add a supported
-   network namespace/host egress-deny layer or keep the stage disabled.
-3. Review the response-streaming implementation and confirm it remains active
-   in the deployed Chromium runtime. The offline fixture tests prove the
-   4,000,000-byte boundary and early rejection of larger chunked responses;
-   they do not establish deployed runtime behavior.
+1. Review the operator-controlled workspace runtime, inherited enforcement,
+   parent/child broker flow, bounded responses, and local canary evidence.
+   Runtime mismatch must fail closed.
+2. Review the host-socket assessment without contacting Docker or Replit
+   service sockets. Require stronger supported isolation if the reviewed
+   threat model cannot be met by this process-tree boundary.
+3. Keep a separate deployed gate: any future deployed run needs its own
+   runtime/version attestation, inherited filter and IPC proof, host-relay
+   assessment, broker checks, and canary observation in that environment.
+   Workspace evidence cannot establish deployed readiness.
 4. Obtain a fresh independent enforcement review before changing the live flag.
    Even after that review, any live execution requires separate fresh explicit
    approval and a new one-use authorization; the review itself is not approval.
 
-- Method identifier: `playwright-form-inspection-v2`. The operator `INSPECT`
+- Method identifier: `parent-https+playwright-form-inspection-v3`. The operator `INSPECT`
   stage is currently disabled; its old prepare/approve/run flow must not be
   used. This is a safety hold, not live authorization.
 - A future reviewed path is limited to three GETs total (bootstrap page plus
@@ -278,13 +283,14 @@ not establish what controls may be available to a separately configured
 deployment. No deployment network policy or egress-enforcement point has been
 verified.
 
-Playwright's `route.fetch` API returns a complete response, so inspection now
-continues the browser request and intercepts its response through Chromium's
+At that time, Playwright's `route.fetch` API returned a complete response, so inspection
+continued the browser request and intercepted its response through Chromium's
 DevTools Fetch/IO streaming interface. The worker reads at most 64 KiB per
-stream read, stops when the 4,000,000-byte ceiling would be exceeded, and fails
+stream read, stopped when the 4,000,000-byte ceiling would be exceeded, and failed
 that request before fulfilling it to the page. Chunked fixture responses
 exercise both the exact boundary and the first over-limit byte. This local
-check does not establish deployed Chromium behavior.
+check did not establish deployed Chromium behavior. This transport has since
+been replaced by the parent broker; see the workspace review linked above.
 
 **Recommended minimum alternative (not provisioned):** run only the inspector
 in a dedicated isolated runner with default-deny network egress and a mandatory
@@ -304,12 +310,15 @@ form, and do not enable source access or collection.
 
 ## Offline checks
 
-`pnpm --filter @workspace/api-server run test:safety` exercises parent metadata
+`pnpm --filter @workspace/api-server run test:safety` exercises the in-memory
+parent HTTPS-broker fixtures, parent metadata
 validation, scheduler admission in a disposable schema, Python request-gate
 fixtures, and the seccomp/Chromium canary test. The local fixtures cover
 allowed/denied requests, duplicate and concurrent attempts, declared-version
 matching, redirects, retries, timeouts, uncertain persisted requests, the
 session deadline, submission prevention, fixed runtime versions, the
-worker-inherited network filter, proxy removal, and local TCP/UDP canaries. They
+worker-inherited network filter, proxy removal, local TCP/UDP/Unix canaries,
+bounded protocol replies, duplicate response cookies, and browser cookie
+forwarding to subsequent assets. They
 use no court traffic, case fixtures, or live form observations. These checks
 verify this workspace only; they are not deployment/source proof.

@@ -54,6 +54,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
   const [permit] = permitId ? await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, permitId)) : [];
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
+  if (permit?.stage === "INSPECT" && !inspectionOnly)
+    throw new Error("Invalid form inspection client scope");
   const coverageOnly = permit?.stage === "COVERAGE" && permit.expectedMethod === coverageInspectionMethod;
   const filingInspectionOnly = permit?.stage === "FILING_INSPECT" && permit.expectedMethod === filingInspectionMethod;
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
@@ -107,7 +109,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   try {
     const lines = createInterface({ input: child.stdout });
     for await (const line of lines) {
-      if (line.length > 6_000_000) throw new Error("Worker message exceeds bound");
+      if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (finished) throw new Error("Worker message after completion");
       if (inspectionOnly && !["request", "response", "inspection_metadata",
@@ -131,6 +133,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           : await grant(job, message.path, message.method, permitId, message.url);
         child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
+        if (inspectionOnly && !inspectionBroker!.acknowledge(message))
+          throw new Error("Inspection response accounting mismatch");
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
       } else if (message.kind === "filing_metadata") {
         if (!filingInspectionOnly || !validFilingInventoryMetadata(message) || message.phase !== filingPhases[filingPhase])

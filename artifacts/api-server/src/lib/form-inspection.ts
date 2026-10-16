@@ -1,4 +1,4 @@
-export const formInspectionMethod = "playwright-form-inspection-v2";
+export const formInspectionMethod = "parent-https+playwright-form-inspection-v3";
 
 // Keep disabled until the offline-reviewed request gate has a separate live
 // approval. Changing this requires a fresh enforcement review.
