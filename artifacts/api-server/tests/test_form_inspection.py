@@ -506,6 +506,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
             '<select id="fixtureOffice" name="fixtureOffice"><option value="">Choose</option>'
             '<option value="PRIVATE_VALUE_SENTINEL">05-2-99 - PRIVATE_NAME_SENTINEL</option>'
             '<option value="PRIVATE_VALUE_SENTINEL">MJ-05-1-99</option>'
+            '<option value="PRIVATE_VALUE_SENTINEL">MDJ-05-2-90-PRIVATE_NAME_SENTINEL, Fixture</option>'
             '<option value="PRIVATE_VALUE_SENTINEL">Magisterial District Court 05-3-99</option>'
             '<option value="05-2-98">PRIVATE_LABEL_SENTINEL</option>'
             '<option>PRIVATE_NAME_SENTINEL (MJ-05297)</option>'
@@ -530,6 +531,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final['codes'], [
             {'code': '05-2-99', 'kind': 'DISTRICT_CODE_UNVERIFIED', 'enabled': True, 'selected': False},
             {'code': '05-1-99', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
+            {'code': '05-2-90', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
             {'code': '05-3-99', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
             {'code': '05-2-97', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False},
             {'code': '05-2-96', 'kind': 'DISTRICT_CODE_UNVERIFIED', 'enabled': True, 'selected': False},

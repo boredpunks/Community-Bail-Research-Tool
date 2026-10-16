@@ -1,0 +1,239 @@
+Your role and the goal
+You are finishing the Community Bail Research Tool in this repo (boredpunks/Community-Bail-Research-Tool). The project helps community volunteers find public Allegheny County criminal dockets with a low stated monetary bail. Volunteers can then verify each one by hand. It reads the public UJS portal (https://ujsportal.pacourts.us/CaseSearch) and docket sheet PDFs.
+
+The app worked end to end once, on October 6, 2026. Since then, every failure has come from this app's own code, not from the court website. Your job is to fix those specific defects, prove each fix offline, and then run a short, approved sequence of live checks. Do not add new safety infrastructure. Follow the order below and stop at every listed stop point.
+
+Rules that do not change
+Never invent dockets, cases, hearings, bail amounts or execution results. Read .agents/memory/no-fabricated-records.md before you start. Test fixtures must not look like real cases.
+
+Every reported fact must trace to a validated result row or a downloaded docket sheet.
+
+Use the phrase "low stated monetary bail." Do not use "bargain," "payable," "eligible," "recommended," or "good candidate."
+
+Do not infer eligibility for help, likelihood of release or current custody. A docket sheet does not prove current custody. Show "Custody: not established by this source" unless a source actually establishes it.
+
+Never bypass a CAPTCHA, a login or a rate limit. No proxies, stealth tools or identity rotation. No sealed records. Don't contact courts or people. No payments.
+
+Every discovery card must keep this statement: "This is a discovery result, not a recommendation. The stated bail amount does not establish the amount required for release, current custody, absence of other holds, or eligibility for assistance."
+
+Never silently switch methods, events, courts, offices or dates after a failure. If something fails, stop and report the exact error code.
+
+Never report a test as passing unless you ran it and saw it pass. Paste the real command output.
+
+Live court requests happen only at the stop points below, after the user approves the exact scope.
+
+What the inspection found (verify each item before you change code)
+1. The October 12 failure was the app's own navigation timeout, not the court
+The evidence is the request log in docs/court-access-pilot-results.md for permit a7734b57-…, job b25c9b18-…:
+
+Request	Completed (UTC)
+GET /resource/js/sitemain.min.js	13:17:36.358
+POST /CaseSearch (Search)	13:19:00.103, HTTP 200
+GET /resource/css/sitemain.min.css (result page re-requests it)	13:20:09.604
+Job ends	13:20:37.839
+Here is how the code produces that pattern:
+
+submit_calendar_search (src/ujs/calendar_protocol.py, around line 229) wraps the Search click in page.expect_navigation(wait_until="load", timeout=SEARCH_CLICK_TIMEOUT_MS). SEARCH_CLICK_TIMEOUT_MS = 180_000.
+
+Every routed request, including each CSS or JS file the result page re-requests, waits 60–90 seconds first (random.uniform(60, 90) in worker.py, around line 98). The results page can't fire load until both of its asset files arrive. That means about 80 seconds of waiting before the POST, about 69 seconds before the CSS, then another 60–90 seconds before the JS.
+
+The timer started at the click, about 13:17:36. 180 seconds later is about 13:20:36, which is when the job ended, before the JS file was requested.
+
+Playwright then throws TimeoutError, which is not a RuntimeError. The handler in worker.py (around lines 440–472) emits calendar_state=RESULTS_NOT_VALIDATED, because the POST had completed. It then turns the code into UNEXPECTED_RESPONSE, because "TimeoutError" isn't on the safe-code allowlist.
+
+The worker's barrier message then calls validationStop("SOURCE_VALIDATION_BARRIER") (src/lib/discovery-worker.ts, around line 256). That sets the source-wide stop.
+
+So the result page was probably never parsed. The parser in evidence.py may be fine for Common Pleas results; it just wasn't reached.
+
+Treat this as a strong hypothesis and confirm it offline (task 2) before you rely on it.
+
+2. Who set SOURCE_VALIDATION_BARRIER
+The worker's barrier message from that failed run set it automatically. validationStop also clears accessVerifiedAt, verifiedMethod and collectionApprovedAt. Nobody set it by hand, and it doesn't mean the court refused access. Clearing it is an operator decision (task 6).
+
+3. The office dropdown bug (fix is ready)
+On Oct 16 I opened the portal page once, chose Date Filed, ticked Advanced Search and selected Allegheny. I did not click Search. The "MDJS Court Office" dropdown then listed 49 entries: one blank and 48 offices. Every office label puts a hyphen between the code and the judge's name, for example MDJ-05-2-01-Smith, Tara and MDJ-05-3-17-Kearney, Jack.
+
+The regex in src/ujs/filing_inventory.py (around line 191) ends with the lookahead (?=$|[\s)\],;:]). That lookahead rejects a hyphen, so none of the 48 offices are recognized. The tests passed only because no fixture used the real format.
+
+The fix changes the lookahead to:
+
+text
+(?=$|[\s)\],;:]|-(?!(?:CR|MD|TR|NT|SU|LT|CV)-)[A-Za-z])
+This accepts a hyphen followed by a name and still rejects docket-like suffixes such as 05-2-99-CR-…. It's in commit 519e5aa on branch fix/mdj-office-label-hyphen, and also as a patch file. The commit also adds one fixture option, MDJ-05-2-90-PRIVATE_NAME_SENTINEL, Fixture, with expected output {'code': '05-2-90', 'kind': 'EXPLICIT_MDJ', 'enabled': True, 'selected': False}.
+
+I checked the fixed pattern in Node against the real labels and the existing fixture cases. The Python suite was not run. The method string was left at v7 on purpose (see task 4).
+
+4. Other blockers I found
+Fixed date that is already past. calendarPreviewCriteria in src/lib/discovery-safety.ts, the POST /discovery/calendar-previews route (eventDate !== "2026-10-15") and the OpenAPI enum eventDate: ["2026-10-15"] all hardcode a date that has already passed. As a result, pilot prepare-calendar-only can never succeed again.
+
+Fixed court office. OpenAPI (courtOffice: enum [CP-05-02-Crim]) and pages/discovery.tsx (lines 226, 250, 387) hardcode the Common Pleas office. The page's court and event dropdowns use onChange={() => undefined}, so the user can't choose anything.
+
+Results parser only handles Common Pleas. evidence.py matches dockets with DOCKET = CP-02-CR-\d{7}-\d{4}, accepts only /Report/CpDocketSheet links, and requires County = Allegheny and Court Office equal to the criteria value. MDJ dockets look like MJ-05xxx-CR-0000000-YYYY and link to /Report/MdjDocketSheet?docketNumber=…&dnh=…, which I saw on October 5 filing-date results. The office code maps to the docket prefix: MDJ-05-3-17 ↔ MJ-05317-….
+
+Live form inspection is switched off. formInspectionLiveEnabled = false in src/lib/form-inspection.ts. The HTTPS relay and network-sandbox work (inspection-fetch-broker.ts, network_sandbox.py) only serves that switched-off 3-request check.
+
+Definition of done
+The project is finished when all of these are true, each backed by real output:
+
+A volunteer can pick the search method in the UI, without editing code:
+
+(a) a Calendar Event search for Bail Hearing;
+
+(b) a Calendar Event search for Preliminary Arraignment;
+
+(c) a criminal filing-date search by MDJ office.
+
+The court office, any future date window allowed by the source and the bail limit are also chosen in the UI. Nothing is substituted silently.
+
+One live search of each method you support returns a validated result set, or a validated empty result. Each method's state is recorded in the docs as working, failing (with the exact error code) or not yet tried.
+
+The worker downloads docket PDFs for result rows one at a time, at the approved spacing. It extracts the docket number and stated bail, excludes bail shown as posted, and stops at the first HTTP 429 or 403.
+
+A human has compared the first 3 extracted PDFs with the app's output, field by field, and the comparison is recorded.
+
+The volunteer report shows only the docket number, the stated bail amount and type, whether bail is shown as posted, and custody stated as "not established by this source." Each row links to its source docket sheet and carries the required statement.
+
+The typecheck, build and safety test suite pass, and the real output is pasted into the docs.
+
+Tasks, in order
+Task 0: Freeze extra infrastructure
+Do not change inspection-fetch-broker.ts, network_sandbox.py, the seccomp work or form-inspection v3 except to delete code that is unreachable.
+
+Leave formInspectionLiveEnabled = false.
+
+Do not add new one-time permit types.
+
+Done when: a short note in docs/ says this work is paused, and why: it guards a check that is switched off and not needed for the definition of done.
+
+Task 1: Merge the office-label fix
+Apply the change from section 3.
+
+Run the Python tests: python3 -m unittest discover -s artifacts/api-server/tests -p 'test_*.py', or whatever command test:safety uses.
+
+Done when: the test that checks office codes (test_public_office_codes_are_displayed_only_bounded_and_not_selected) passes with the new fixture option, and every other test is unchanged.
+
+Task 2: Reproduce the October 12 timeout offline, then fix it
+Reproduce first. Add an offline test with a local fixture server. A Search POST returns a results page that loads sitemain.min.css and sitemain.min.js. Use the real pacing code with a fake clock or shortened intervals, so the test shows the post-Search load running past SEARCH_CLICK_TIMEOUT_MS. Confirm it produces RESULTS_NOT_VALIDATED followed by barrier code UNEXPECTED_RESPONSE. If it doesn't, stop and report what actually happens.
+
+Fix it in a way that also reduces court traffic. Cache the CSS and JS bodies from the first page load, and fulfill later identical requests from memory with route.fulfill, so they make no network request and need no pacing. Count cached responses separately from network requests in the accounting.
+
+Wait for the results, not the full page load. Start waiting after the POST completes, then wait for #caseSearchResultGrid or a validated empty-result marker. The timeout must not include the pacing wait before the POST.
+
+Name timeout errors honestly. Map Playwright TimeoutError after the Search to a new allowlisted code, CALENDAR_RESULT_LOAD_TIMEOUT, so it is never reported as UNEXPECTED_RESPONSE again. Add any other exception types you find to the allowlist explicitly.
+
+Bump the method. Change integratedSourceMethod to playwright-calendar+urllib-pdf-v9. v8 reports must stay readable.
+
+Done when: the reproduction test fails on the old code and passes on the new code, and you've pasted both results.
+
+Task 3: Make the search criteria selectable in the UI
+Replace the hardcoded calendarPreviewCriteria date and office and the eventDate enum with values validated on the server:
+
+a real date, today or later;
+
+a window of at most 7 days;
+
+an office code from the option list actually seen on the source form, or else a fixed list stored in the repo along with the date it was observed.
+
+Event types: Bail Hearing and Preliminary Arraignment.
+
+Wire up the dropdowns in pages/discovery.tsx.
+
+If a chosen value isn't available on the source form at run time, stop with CRITERIA_NOT_AVAILABLE_ON_SOURCE. Never substitute another value.
+
+Update openapi.yaml, regenerate with Orval, and update pilot.ts so prepare-calendar-only accepts --office --event --start --end.
+
+Done when: the typecheck passes and safety tests cover a rejected past date, a rejected window over 7 days and a rejected unknown office.
+
+Task 4: Bump the filing inventory method to v8 correctly
+Change playwright-filing-control-inventory-v7 to -v8 in both filing_inventory.py and src/lib/filing-inspection.ts.
+
+Don't just append v7 to legacyInventoryMethods. The legacy branches in validFilingInventoryMetadata expect older key and phase shapes, and v7 has officeIdentification and five phases. Add an explicit legacyV7 branch that validates v7 exactly like current v8.
+
+Done when: a v7 historical report and a v8 report both validate, and a v6 report still validates under its own rules.
+
+Task 5: Support MDJ dockets in the results parser and PDF step
+In evidence.py:
+
+make the docket pattern and the expected link path depend on court type: CP-02-CR-\d{7}-\d{4} with /Report/CpDocketSheet, or MJ-05\d{3}-CR-\d{7}-\d{4} with /Report/MdjDocketSheet;
+
+for MDJ rows, check that the docket's office prefix matches the selected office code (05-3-17 ↔ MJ-05317);
+
+keep the requirement that the link's docketNumber equals the row's docket;
+
+accept extra link query parameters such as dnh, but don't use them for identity.
+
+Don't guess the MDJ column positions. Take them from the redacted header capture in task 7. Until then, MDJ rows must fail with UNSUPPORTED_CALENDAR_LAYOUT.
+
+Task 6: Operator decision on the source barrier (stop point)
+Add a command: pilot clear-barrier --reason "<text>" --user-approved. It records an event with the timestamp, the previous blockedReason, the reason text and the operator. It refuses to run if a request is active, or if the last stop was a 429 or 403 whose pausedUntil hasn't passed.
+
+Stop and ask the user. Show the evidence from section 2 and the task 2 test result. Clear the barrier only if they approve, and record their exact words.
+
+Task 7: One live calendar search, no PDFs (stop point)
+Before the run, ask the user to approve the exact scope: method v9, Calendar Event, Bail Hearing, CP-05-02-Crim, one date window they choose, 0 PDFs, a request cap of 8, and about 30–60 seconds between network requests.
+
+After the run, report:
+
+each request's path, status and timing;
+
+the validation state and row count;
+
+a redacted header capture: the column header texts and their positions, with no cell values.
+
+If the run fails, report the exact error code and stop. Do not retry.
+
+Task 8: PDF ladder (stop point at each step)
+One PDF: use the standard-HTTP method the user already approved on October 6. If the result is HTTP 403, stop.
+
+Three PDFs: next, after the one-PDF step works. A human compares the docket number, the bail type and amount, and the posted-bail state with the app's output, and you record the comparison in the docs.
+
+Ten PDFs: only after that comparison is recorded.
+
+Throughout: about 30–60 seconds between downloads, one at a time, stop at the first 429 and keep its Retry-After.
+
+Task 9: Repeat for MDJ filing-date search and Preliminary Arraignment (stop point each)
+Run the same ladder as tasks 7 and 8 for each method: one search with a header capture, then 1, 3 and 10 PDFs, each with its own approval.
+
+The filing-date path: Search By "Date Filed" → Advanced Search → County Allegheny → "MDJS Court Office" (the user picks one office) → filed-date window.
+
+Record each method's state in the docs: working, failing (with the code) or not yet tried.
+
+Task 10: The 200-docket run (stop point)
+Only after at least one method passes the 10-PDF step.
+
+Ask the user to approve: a target of 200 dockets, the bail limit (for example, under $500), excluding bail shown as posted, the method, the dates and the request cap.
+
+Keep progress saved and resumable, and stop at the first 429 or 403.
+
+The report lists the 10 lowest stated monetary bail amounts under the limit, with docket number, amount, bail type and posted state, and "Custody: not established by this source."
+
+Verification commands (paste the real output each time)
+text
+pnpm install
+pnpm run typecheck
+PORT=5173 BASE_PATH=/ pnpm run build
+pnpm --filter @workspace/api-server run test:safety
+git diff --check
+The operator CLI is pnpm --filter @workspace/api-server run pilot <command>. Run report --id <id> after every live run and paste its output.
+
+Stop and ask the user when
+you're about to send any live court request (tasks 6–10);
+
+a test you expected to pass fails, or a reproduction doesn't match the hypothesis in section 1;
+
+the source returns 429, 403, a CAPTCHA or a login wall;
+
+a selected office, event or date isn't on the source form;
+
+you'd have to guess a column position, field name or page structure.
+
+Do not
+start a new safety-infrastructure project, or describe untested code as complete;
+
+retry a used permit, or resend an identical failed request without a code change that addresses the recorded error;
+
+treat a returned search form, an HTTP 200 or the page's help-text examples as results;
+
+save names, addresses or other personal details from dockets;
+
+fill gaps with sample data.
