@@ -215,3 +215,101 @@ positive live extraction.
 barrier.** Another source attempt requires fresh user approval. Root-cause work
 must first improve bounded, redacted diagnostic discrimination offline, not
 weaken the console gate or repeat the consumed run unchanged.
+
+## Post-submission diagnostic repair — no live authority
+
+The user's subsequent instruction in
+`attached_assets/Pasted-The-run-got-further-Courtroom-506-is-bound-correctly-an_1792184816574.txt`
+authorizes this offline diagnostic/policy repair only, **not source requests**.
+The prior unused 20-request balance is not continuing execution permission.
+The calendar/document/bail objective remains open.
+
+### What the retained evidence establishes
+
+The actual stop was `calendar_preflight("RESULT")`, calling
+`calendar_asset_barrier(...)`; its three unclassified console errors produced
+`CALENDAR_CONSOLE_ERROR` before `CalendarResults.feed()` or `validated()` ran.
+The Search POST body had arrived, been read and classified OK by the existing
+transport/content policy, and was fulfilled into the browser. Required known
+assets were loaded or served from the session's exact cache. This is transport
+evidence, **not inspection/validation of result structure**.
+
+No page exceptions or blocked required requests were recorded. Four other
+console errors had exact session-optional-abort proof. The three unclassified
+errors cannot be attributed to required resources, deliberate optional aborts,
+application execution or another origin from historical counts. Their text
+and locations cannot be recovered. They were the **reason validation stopped**,
+not an established cause of search failure. No result/empty outcome, document
+or extraction was established.
+
+### Integrated repair
+
+- Normal calendar methods now keep bounded in-memory error groups keyed by
+  category, READY/RESULT phase, fixed resource alias and fixed signal; at most
+  32 groups and 10,000 observations per group, with overflow explicitly flagged.
+- Categories distinguish JS exceptions, required-resource failures, optional
+  resource errors with exact session-abort proof, other console errors and
+  unknown/unsafe messages. Resource aliases are institutional constants, not
+  source URLs. Arbitrary text, stack traces, query strings, tokens, credentials,
+  private widget values and case content are never retained in diagnostics.
+- The optional classification still requires both a deliberately aborted
+  resource from this session and an exact demonstrated browser abort signature.
+  An arbitrary error at the same URL is not exempt. All other console errors
+  and page exceptions remain fail-closed for record acceptance.
+- A post-response unknown/other console error or exception immediately blocks
+  new browser transmissions. Pending routes recheck before requesting a grant
+  and before transport. A grant already waiting at the parent is conservatively
+  consumed/accounted as uncertain if it cannot be used after the stop; it is
+  never transmitted or reused.
+- Where transport completed, no source stop is active and no request is in
+  flight, a fixed passive DOM projection records body/form presence, result-table
+  multiplicity, bounded header/row/link counts and expected-header booleans.
+  No HTML, cell text, docket identifiers or URLs are returned by this probe.
+  It has a 1.5-second deadline and a 10,000-element traversal ceiling.
+- Source/access stops and in-flight traffic are not inspected through.
+  Inspection unavailable, bounds exceeded or classifier overflow prevents
+  acceptance. Duplicate/missing result tables are not accepted.
+- Unknown errors may allow this passive structural diagnosis, **not result
+  acceptance or PDF retrieval**. Proven optional noise alone does not block the
+  parser. Header-only tables still do not establish zero matches. A late-error
+  check occurs before any validated calendar checkpoint.
+- A strict parent validator checks the complete versioned wire envelope, exact
+  keys, categories, aliases, phases, bounds and basic consistency before
+  retaining `CALENDAR_RESPONSE_DIAGNOSTIC`. Parser-attempt/outcome metadata stays
+  distinct from structure-only evidence and the stop gate.
+- The existing completed Courtroom 506 observation, public-label binding,
+  disabled/frozen inspection paths, broker/sandbox protections, transport
+  clients, pacing, quotas, source barrier and consumed permit histories remain.
+
+Current methods: `playwright-calendar-preview-v7`,
+`playwright-calendar+urllib-pdf-v12`, and
+`playwright-calendar+urllib-pdf-v12-bounded-506-v2`.
+The packaged worker imports the new diagnostic module before source access.
+
+Regression coverage uses only public-form/header-only fixtures and loopback
+transport substitution, never synthetic docket/case records. Cases include
+deliberate optional aborts, required-script HTTP failure, page exceptions,
+other/unknown-origin console errors, returned forms, missing grids, malformed
+headers, post-stop data requests, sanitization and actual-worker/parent wire
+acceptance. These fixtures **do not reproduce or explain the historical live
+messages**.
+
+### Proposed fresh execution (not approved or run)
+
+- Same exact criteria: Allegheny - 05 / CP-05-02-Crim / Bail Hearing /
+  **Courtroom 506**, **2026-10-16 through 2026-10-22**, inclusive.
+- A new one-use bounded-engine permit is required for the current method.
+- Fresh total ceiling: **12 source requests**, including form/assets, Search,
+  documents and failed/uncertain attempts; **at most five distinct documents**.
+  These are ceilings, not targets. Stricter operator/rolling limits prevail.
+- One request at a time, existing 60–90-second completion-based pauses,
+  adaptive slowdown and cooldowns. No accelerated pacing or automatic retries.
+- Stop on denial/challenge/rate limit, unexpected redirect, uncertain state,
+  required-resource/runtime or unclassified-console validation stops,
+  unavailable/oversized diagnostics, unvalidated criteria/results, identity
+  mismatch, exhausted budgets, or unsupported access.
+- Only validated calendar dockets, in returned order, through existing document
+  links/routes. Preserve source-backed partial evidence and multiple bail entries;
+  unknown amount is not zero. Eligible observations are saved pending review only.
+- Keep the global source barrier and all prior failed permits unchanged.
+- This is a **new approval decision**, not use of the old remaining balance.

@@ -86,6 +86,17 @@ async def main(config=None):
     calendar_post_completed = False
     submission_armed = False
     source_stop_state = None
+    response_recorder = None
+    if not (inspection_only or config.get("coverageOnly") or config.get("filingInspectionOnly")):
+        from calendar_diagnostics import CalendarDiagnosticRecorder, RESPONSE_STRUCTURE, parser_outcome
+        response_recorder = CalendarDiagnosticRecorder()
+    response_structure = None
+    response_inspection_status = "NOT_SAFE"
+    response_inspection_attempted = False
+    response_parser_attempted = False
+    response_parser_outcome = "NOT_RUN"
+    post_response_read_only = False
+    blocked_during_inspection = 0
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             executable_path=shutil.which("chromium"), headless=True,
@@ -112,7 +123,7 @@ async def main(config=None):
                 return await asyncio.wait_for(reader, timeout=remaining)
 
             async with lock:
-                if stopped or not allowed(url, method):
+                if stopped or not allowed(url, method) or post_response_read_only and resource_type is not None:
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
                 clock = asyncio.get_running_loop()
                 pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
@@ -123,6 +134,8 @@ async def main(config=None):
                     await asyncio.wait_for(asyncio.sleep(pause), timeout=remaining)
                 else:
                     await asyncio.sleep(pause)
+                if post_response_read_only and resource_type is not None:
+                    raise SourceFailure("RESPONSE_INSPECTION_READ_ONLY")
                 if inspection_only:
                     emit("request", path=urlsplit(url).path, method=method, url=url,
                          resourceType=resource_type, headers=headers or {})
@@ -132,6 +145,15 @@ async def main(config=None):
                 if not permission.get("allow"):
                     stopped = True
                     raise SourceFailure(str(permission.get("reason") or "REQUEST_NOT_PERMITTED"))
+                if post_response_read_only and resource_type is not None:
+                    # A grant may have been awaiting the parent when a console
+                    # stop arrived. Do not transmit after that stop; conservatively
+                    # consume/account the granted slot rather than silently reuse it.
+                    emit("response", requestId=permission["requestId"], status=None,
+                         outcome="UNCERTAIN_AFTER_WORKER", retryAfter=None)
+                    await read_protocol_line()
+                    stopped = True
+                    raise SourceFailure("SOURCE_STOPPED")
                 if inspection_only and inspection_gate.remaining_seconds() <= 0:
                     stopped = True
                     raise SourceFailure("INSPECTION_SESSION_DEADLINE")
@@ -178,6 +200,8 @@ async def main(config=None):
                     )
                     if outcome != "OK":
                         source_stop_state = outcome
+                        if response_recorder:
+                            response_recorder.resource_failure(url, resource_type, blocked_optional_urls, diagnostic_phase)
                     emit("response", requestId=permission["requestId"], status=response.status,
                          outcome=outcome, retryAfter=response.headers.get("retry-after"))
                     acknowledgement = json.loads(await read_protocol_line())
@@ -216,7 +240,7 @@ async def main(config=None):
         async def handle_route(route):
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
             nonlocal inspection_error
-            nonlocal cached_responses
+            nonlocal cached_responses, blocked_during_inspection
             request = route.request
             if (inspection_only or coverage_only or filing_inspection_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
@@ -240,6 +264,8 @@ async def main(config=None):
                 blocked_requests += request.resource_type in ("document", "xhr", "fetch")
                 if request.resource_type in ("image", "font", "media") and len(blocked_optional_urls) < 10_000:
                     blocked_optional_urls.add(request.url)  # Ephemeral; never emitted.
+                if post_response_read_only:
+                    blocked_during_inspection = min(10_000, blocked_during_inspection + 1)
                 await route.abort()
                 return
             if (request.method == "POST" and urlsplit(request.url).path == "/CaseSearch"
@@ -263,6 +289,14 @@ async def main(config=None):
                     await route.fulfill(status=200, headers=headers, body=body)
                     cached_responses += 1
                     return  # No grant, pacing, network request or source accounting.
+                if post_response_read_only:
+                    blocked_during_inspection = min(10_000, blocked_during_inspection + 1)
+                    blocked += 1
+                    blocked_scripts += request.resource_type == "script"
+                    blocked_stylesheets += request.resource_type == "stylesheet"
+                    blocked_requests += request.resource_type in ("document", "xhr", "fetch")
+                    await route.abort()
+                    return
                 response, body, _ = await retrieve(
                     request.url, request.method,
                     (lambda: None) if inspection_only else
@@ -314,21 +348,33 @@ async def main(config=None):
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
 
         def note_page_error(_error):
-            nonlocal page_errors
-            page_errors += 1  # Never log the message; it can contain source data.
+            nonlocal page_errors, post_response_read_only
+            page_errors = min(10_000, page_errors + 1)  # Never log source messages.
+            if response_recorder:
+                response_recorder.exception(diagnostic_phase)
+                if calendar_post_completed:
+                    post_response_read_only = True
 
         def note_console(message):
-            nonlocal console_errors, optional_console_errors
+            nonlocal console_errors, optional_console_errors, post_response_read_only
             if message.type == "error":
-                if expected_optional_console_error(message.type, message.text,
-                                                   message.location.get("url"), blocked_optional_urls):
-                    optional_console_errors += 1
+                optional = (response_recorder.console(message.type, message.text,
+                    message.location.get("url"), blocked_optional_urls, diagnostic_phase)
+                    if response_recorder else expected_optional_console_error(
+                        message.type, message.text, message.location.get("url"), blocked_optional_urls))
+                if optional:
+                    optional_console_errors = min(10_000, optional_console_errors + 1)
                 else:
-                    console_errors += 1
+                    console_errors = min(10_000, console_errors + 1)
+                    if response_recorder and calendar_post_completed:
+                        post_response_read_only = True
                 # Retain category counts only, never text, source URLs or tokens.
 
         page.on("pageerror", note_page_error)
         page.on("console", note_console)
+        if response_recorder:
+            page.on("requestfailed", lambda request: response_recorder.resource_failure(
+                request.url, request.resource_type, blocked_optional_urls, diagnostic_phase))
 
         def calendar_diagnostics(phase):
             emit("calendar_diagnostics", phase=phase, blockedScripts=blocked_scripts,
@@ -348,6 +394,40 @@ async def main(config=None):
                                             console_errors)
             if barrier:
                 raise RuntimeError(barrier)
+
+        async def inspect_loaded_response():
+            nonlocal post_response_read_only, response_structure, response_inspection_status
+            nonlocal response_inspection_attempted
+            if not response_recorder or response_inspection_attempted:
+                return
+            response_inspection_attempted = True
+            # All subsequent browser retrieval is local or aborted. PDFs use
+            # the separately authorized sequential path only after validation.
+            post_response_read_only = True
+            if stopped or not calendar_post_observed or not calendar_post_completed or lock.locked():
+                return
+            try:
+                response_structure = await asyncio.wait_for(page.evaluate(RESPONSE_STRUCTURE), timeout=1.5)
+                response_inspection_status = "OBSERVED"
+                await asyncio.sleep(0)
+            except Exception:
+                response_inspection_status = "UNAVAILABLE"
+                response_structure = None
+
+        def response_diagnostic():
+            if not response_recorder or not calendar_post_observed:
+                return
+            gate = ("SOURCE_STOPPED" if stopped else calendar_asset_barrier(
+                loaded_assets, blocked_scripts, blocked_stylesheets, blocked_requests, page_errors, console_errors))
+            if not gate and (response_inspection_status != "OBSERVED"
+                             or response_structure["countsCapped"] or response_recorder.overflow):
+                gate = "CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE"
+            emit("calendar_response_diagnostic", version=1, phase="RESULT",
+                 submissionObserved=calendar_post_observed, responseCompleted=calendar_post_completed,
+                 inspectionStatus=response_inspection_status, structure=response_structure,
+                 parserAttempted=response_parser_attempted, parserOutcome=response_parser_outcome,
+                 stopGate=gate or "NONE", classifications=response_recorder.snapshot(),
+                 classificationOverflow=response_recorder.overflow, blockedDuringInspection=blocked_during_inspection)
 
         try:
             items = config["pendingItems"]
@@ -438,24 +518,35 @@ async def main(config=None):
                 form_phase = "SUBMISSION"
                 submission_armed = True
                 await submit_calendar_search(page)
+                await inspect_loaded_response()
                 calendar_preflight("RESULT")
                 if not calendar_post_observed:
                     raise RuntimeError("SUBMISSION_NOT_OBSERVED")
                 if not calendar_post_completed:
                     raise RuntimeError("UNEXPECTED_RESPONSE")
+                if (response_inspection_status != "OBSERVED" or response_structure["countsCapped"]
+                        or response_recorder.overflow):
+                    raise RuntimeError("CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE")
+                if response_structure["resultTableCount"] != 1:
+                    raise RuntimeError("RESULTS_NOT_VALIDATED")
                 parser = CalendarResults()
+                response_parser_attempted = True
                 parser.feed(await page.content())
                 try:
                     items = parser.validated(criteria)
                 except ValueError as error:
+                    response_parser_outcome = parser_outcome(error)
                     emit("calendar_state", state="RESULTS_NOT_VALIDATED",
                          formVisible=await page.locator("#btnSearch").is_visible())
                     raise RuntimeError(str(error)) from error
+                response_parser_outcome = "CANDIDATE_NONEMPTY" if items else "NO_EMPTY_PROOF"
+                calendar_preflight("RESULT")
                 state = calendar_result_state(parser.table_found, items or [], explicit_empty_state=False)
                 emit("calendar_state", state=state,
                      formVisible=await page.locator("#btnSearch").is_visible())
                 if state not in ("RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"):
                     raise RuntimeError("RESULTS_NOT_VALIDATED")
+                response_diagnostic()
                 # No automatic remote page traversal: disclose incomplete coverage.
                 emit("calendar", rows=items, retrievedAt=calendar_time,
                      paginationComplete=not parser.has_remote_pagination and len(items) < 500,
@@ -497,6 +588,11 @@ async def main(config=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
+            if response_parser_attempted and response_parser_outcome == "NOT_RUN":
+                response_parser_outcome = "PARSER_ERROR"
+            if response_recorder and calendar_post_observed:
+                await inspect_loaded_response()
+                response_diagnostic()
             calendar_diagnostics(diagnostic_phase)
             if isinstance(error, CalendarFormFailure):
                 for failure in error.failures:
@@ -541,6 +637,7 @@ async def main(config=None):
                 "CALENDAR_REQUIRED_RESOURCE_BLOCKED", "CALENDAR_REQUIRED_ASSET_MISSING",
                 "CALENDAR_SCRIPT_ERROR", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_CONSOLE_ERROR",
+                "CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE",
                 "CALENDAR_CONTROL_STATE_MISMATCH", "CALENDAR_SUBMITTED_VALUES_MISMATCH",
                 "CALENDAR_FORM_MISSING", "UNSUPPORTED_CALENDAR_FORM_TARGET",
                 "CALENDAR_PREFLIGHT_FAILED",

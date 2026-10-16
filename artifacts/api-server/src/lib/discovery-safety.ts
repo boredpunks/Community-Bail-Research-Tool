@@ -2,8 +2,8 @@
 // either retrieval method invalidates prior proof and requires fresh approval.
 import { validCalendarCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v11";
-export const calendarPreviewMethod = "playwright-calendar-preview-v6";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v12";
+export const calendarPreviewMethod = "playwright-calendar-preview-v7";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
@@ -193,6 +193,7 @@ export function calendarDiagnosticRejection(message: unknown): string | null {
   if (message === "Invalid public form diagnostic") return "PARENT_REJECTED_CALENDAR_FORM_DIAGNOSTIC";
   if (message === "Invalid calendar diagnostics") return "PARENT_REJECTED_CALENDAR_DIAGNOSTIC";
   if (message === "Invalid calendar state evidence") return "PARENT_REJECTED_CALENDAR_STATE";
+  if (message === "Invalid calendar response diagnostic") return "PARENT_REJECTED_CALENDAR_RESPONSE_DIAGNOSTIC";
   return null;
 }
 

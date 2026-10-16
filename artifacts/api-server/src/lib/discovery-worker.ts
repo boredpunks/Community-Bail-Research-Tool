@@ -22,6 +22,7 @@ import { validCalendarRowDates } from "./calendar-criteria";
 import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtroomObservationCriteria,
   validCourtroomObservationMetadata } from "./courtroom-observation";
 import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
+import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -208,6 +209,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (!validCalendarDiagnostics(message)) throw new Error("Invalid calendar diagnostics");
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
           `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}; network requests=${message.networkRequests ?? "not reported"}, cached asset responses=${message.cachedResponses ?? "not reported"}. Counts only; no source content retained.`);
+      } else if (message.kind === "calendar_response_diagnostic") {
+        if (diagnosticOnly || !validCalendarResponseDiagnostic(message))
+          throw new Error("Invalid calendar response diagnostic");
+        await discoveryEvent(job, "CALENDAR_RESPONSE_DIAGNOSTIC", JSON.stringify(message));
       } else if (message.kind === "calendar") {
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];

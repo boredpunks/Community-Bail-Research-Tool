@@ -33,6 +33,20 @@ Console-error counts alone do not prove a required-script or form failure.
 
 **How to apply:** Classify optional-resource noise only with exact provenance and a demonstrated browser signature. Keep unclassified errors fail-closed, never retrospectively reclassify a historical run from counts alone, and never record raw console text or token-bearing URLs.
 
+An error-based stop must remain diagnosable: where safe, block further browser
+transmissions and collect a bounded, passive structural projection of the
+already-loaded response before stopping. Record separately whether parsing ran.
+Unknown errors neither prove search failure nor validate results.
+
+**Why:** The user said the same counts-only diagnostic weakness recurred after
+Search, and explicitly requested repair before any further live access.
+
+**How to apply:** Retain fixed categories, phases, institutional resource aliases
+and bounded structural counts only. Attribute optional aborts only with exact
+session provenance. Never inspect through a transport/access stop or convert a
+header-only/returned form into an empty-result claim. Diagnostic repair itself
+does not authorize a new source attempt; obtain one fresh exact-scope approval.
+
 Use fixed public control labels and reason categories for form validation failures, not a single generic mismatch code.
 
 **Why:** Once bundle loading and optional aborts were distinguished, a live run stopped on a control mismatch; no retained evidence identified which field was missing, disabled, unassociated or changed. That prevented offline diagnosis despite a correctly stopped request stream.

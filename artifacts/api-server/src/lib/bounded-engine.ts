@@ -2,7 +2,7 @@ import { actualDate, easternToday } from "./calendar-criteria";
 import { integratedSourceMethod } from "./discovery-safety";
 
 // A scoped assessment, never collection enablement or global access proof.
-export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v1`;
+export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v2`;
 const keys = ["courtOffice", "courtRoom", "eventType", "startDate", "endDate", "recordCap", "requestCap"];
 export function validBoundedEngineCriteria(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

@@ -3,6 +3,7 @@ import asyncio
 import gc
 import io
 import json
+import os
 import sys
 import unittest
 from contextlib import ExitStack
@@ -26,7 +27,7 @@ CHANGED_ASSET_VERSION = "fixture_new_version_0001"
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def run_fixture(self, *, missing_grid=False, changed_version=False,
                           dependent_replacement=False, initialize_button=False,
-                          hidden_button=False, selected_room=False):
+                          hidden_button=False, selected_room=False, post_case=None):
         # Scale the real completion-to-start pacing and click deadline together:
         # 80 logical seconds per request, a 180-logical-second navigation limit.
         scale = 0.02
@@ -120,6 +121,24 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(allowed(
                 f"https://ujsportal.pacourts.us/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}",
                 "GET"))
+        if post_case == "optional_abort":
+            results = '<img src="/fixture-optional?token=REDACTION_SENTINEL">' + results
+        elif post_case == "required_script":
+            results = results.replace('src="/resource/js/sitemain.min.js"',
+                'src="/resource/js/sitemain.min.js?v=fixture_required_failure_0001"')
+        elif post_case == "runtime_exception":
+            results = '<script>throw new Error("REDACTION_SENTINEL");</script>' + results
+        elif post_case == "other_console":
+            results = '<script>console.error("REDACTION_SENTINEL token=private-fixture");</script>' + results
+        elif post_case == "unclassified_console":
+            results = """<script>eval('console.error("REDACTION_SENTINEL");\\n'
+              + '//# sourceURL=https://invalid.test/REDACTION_SENTINEL?token=private-fixture');</script>""" + results
+        elif post_case == "post_stop_fetch":
+            results = '<script>console.error("REDACTION_SENTINEL"); fetch("/CaseSearch").catch(() => {});</script>' + results
+        elif post_case == "returned_form":
+            results = initial
+        elif post_case == "malformed_headers":
+            results = results.replace("Docket Number", "Unrecognized public header")
 
         async def serve(reader, writer):
             try:
@@ -142,7 +161,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 else:
                     raise AssertionError("Unexpected loopback fixture request")
                 body = body.encode()
-                writer.write((f"HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\n"
+                status = "503 Service Unavailable" if post_case == "required_script" and "fixture_required_failure" in target else "200 OK"
+                writer.write((f"HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\n"
                               f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode() + body)
                 await writer.drain()
             finally:
@@ -164,6 +184,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         async def observe_submit(page):
             try:
                 await original_submit(page)
+                if post_case:
+                    await page.wait_for_load_state("load")
             except BrowserTimeout:
                 timeouts.append("BrowserTimeout")
                 raise
@@ -217,7 +239,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 # The normal fixture's result deadline is shorter than the
                 # 1.6-second pre-POST pause. It must start after that pause.
                 stack.enter_context(patch.object(calendar_protocol, "CALENDAR_RESULT_TIMEOUT_MS",
-                                                100 if missing_grid else 4_000 if changed_version else 1_000))
+                                                100 if missing_grid or post_case == "returned_form" else 4_000 if changed_version or post_case == "required_script" else 1_000))
                 stack.enter_context(patch.object(worker, "submit_calendar_search", observe_submit))
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
                 stack.enter_context(patch.object(Response, "finished",
@@ -245,10 +267,99 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "formShapeChanged": len(field_shapes) == 2 and field_shapes[0] != field_shapes[1],
             "formContainerHasBox": container_visibility,
             "formStates": [row for row in messages if row["kind"] == "calendar_state"],
+            "responseDiagnostics": [row for row in messages if row["kind"] == "calendar_response_diagnostic"],
+            "checkpointEmitted": any(row["kind"] in ("calendar", "docket", "calendar_preview_finished") for row in messages),
         }
+        capture = os.environ.get("CALENDAR_DIAGNOSTIC_CAPTURE")
+        if capture:
+            with open(capture, "a") as output:
+                for row in observations["responseDiagnostics"]:
+                    output.write(json.dumps(row) + "\n")
+        for row in observations["responseDiagnostics"]:
+            serialized = json.dumps(row)
+            for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
+                self.assertNotIn(private, serialized)
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
         self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
         return observations
+
+    async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
+        o = await self.run_fixture(post_case="optional_abort")
+        d = o["responseDiagnostics"][-1]
+        self.assertTrue(o["parserReached"])
+        self.assertEqual(d["parserOutcome"], "NO_EMPTY_PROOF")
+        self.assertEqual(d["stopGate"], "NONE")
+        self.assertTrue(any(r["category"] == "BLOCKED_OPTIONAL_RESOURCE_ERROR" for r in d["classifications"]))
+        self.assertFalse(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" for r in d["classifications"]))
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_post_required_script_failure_is_not_optional_or_safe_to_inspect(self):
+        o = await self.run_fixture(post_case="required_script")
+        d = o["responseDiagnostics"][-1]
+        self.assertFalse(o["parserReached"])
+        self.assertTrue(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" and r["alias"] == "MAIN_SCRIPT"
+                            for r in d["classifications"]))
+        self.assertEqual(d["inspectionStatus"], "NOT_SAFE")
+        self.assertEqual(d["stopGate"], "SOURCE_STOPPED")
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_post_runtime_exception_still_collects_passive_structure_then_stops(self):
+        o = await self.run_fixture(post_case="runtime_exception")
+        d = o["responseDiagnostics"][-1]
+        self.assertFalse(o["parserReached"])
+        self.assertEqual(d["stopGate"], "CALENDAR_SCRIPT_ERROR")
+        self.assertEqual(d["inspectionStatus"], "OBSERVED")
+        self.assertTrue(d["structure"]["expectedHeaders"])
+        self.assertTrue(any(r["category"] == "JAVASCRIPT_EXCEPTION" for r in d["classifications"]))
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_post_other_console_still_collects_structure_without_accepting_records(self):
+        o = await self.run_fixture(post_case="other_console")
+        d = o["responseDiagnostics"][-1]
+        self.assertFalse(o["parserReached"])
+        self.assertEqual(d["stopGate"], "CALENDAR_CONSOLE_ERROR")
+        self.assertEqual(d["inspectionStatus"], "OBSERVED")
+        self.assertTrue(any(r["category"] == "OTHER_CONSOLE_ERROR" and r["phase"] == "RESULT"
+                            for r in d["classifications"]))
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_post_unknown_origin_is_redacted_not_a_result_proof(self):
+        o = await self.run_fixture(post_case="unclassified_console")
+        d = o["responseDiagnostics"][-1]
+        self.assertFalse(o["parserReached"])
+        self.assertEqual(d["stopGate"], "CALENDAR_CONSOLE_ERROR")
+        self.assertTrue(any(r["category"] == "UNKNOWN_OR_UNSAFE" for r in d["classifications"]))
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_console_stop_aborts_new_browser_data_requests_without_another_grant(self):
+        o = await self.run_fixture(post_case="post_stop_fetch")
+        d = o["responseDiagnostics"][-1]
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertEqual(len(o["network"]), 4)
+        self.assertGreaterEqual(d["blockedDuringInspection"], 1)
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_returned_form_has_structural_diagnostics_without_claiming_zero(self):
+        o = await self.run_fixture(post_case="returned_form")
+        d = o["responseDiagnostics"][-1]
+        self.assertFalse(o["parserReached"])
+        self.assertTrue(d["responseCompleted"])
+        self.assertTrue(d["structure"]["searchFormPresent"])
+        self.assertEqual(d["structure"]["resultTableCount"], 0)
+        self.assertEqual(d["parserOutcome"], "NOT_RUN")
+        self.assertFalse(o["checkpointEmitted"])
+        self.assertNotIn("EMPTY_RESULTS_VALIDATED", o["states"])
+
+    async def test_malformed_result_header_has_safe_parser_and_structure_outcomes(self):
+        o = await self.run_fixture(post_case="malformed_headers")
+        d = o["responseDiagnostics"][-1]
+        self.assertTrue(o["parserReached"])
+        self.assertFalse(d["structure"]["expectedHeaders"])
+        self.assertEqual(d["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertFalse(o["checkpointEmitted"])
 
     async def test_search_reaches_parser_without_repeated_asset_network_calls(self):
         observed = await self.run_fixture()

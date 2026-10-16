@@ -7,6 +7,7 @@ import * as schema from "@workspace/db";
 import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
+import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
@@ -76,6 +77,33 @@ try {
   check(calendarDiagnosticRejection("Invalid calendar diagnostics") === "PARENT_REJECTED_CALENDAR_DIAGNOSTIC");
   check(calendarDiagnosticRejection("Invalid calendar state evidence") === "PARENT_REJECTED_CALENDAR_STATE");
   check(calendarDiagnosticRejection("raw-source-text") === null);
+  check(calendarDiagnosticRejection("Invalid calendar response diagnostic") === "PARENT_REJECTED_CALENDAR_RESPONSE_DIAGNOSTIC");
+  const responseDiagnostic = {
+    kind: "calendar_response_diagnostic", version: 1, phase: "RESULT",
+    submissionObserved: true, responseCompleted: true, inspectionStatus: "OBSERVED",
+    structure: { bodyPresent: true, searchButtonCount: 1, searchFormPresent: true,
+      resultTableCount: 1, headerCellCount: 18, expectedHeaders: true, dataRowCount: 0,
+      documentLinkCount: 0, countsCapped: false },
+    parserAttempted: false, parserOutcome: "NOT_RUN", stopGate: "CALENDAR_CONSOLE_ERROR",
+    classifications: [{ category: "UNKNOWN_OR_UNSAFE", phase: "RESULT", alias: "UNKNOWN",
+      signal: "UNCLASSIFIED", count: 3 }], classificationOverflow: false, blockedDuringInspection: 0,
+  };
+  check(validCalendarResponseDiagnostic(responseDiagnostic));
+  for (const change of [
+    { text: "not permitted" }, { rawHtml: "not permitted" }, { phase: "arbitrary" },
+    { version: 2 }, { parserAttempted: true }, { responseCompleted: false },
+    { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
+    { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
+    { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
+    { structure: { ...responseDiagnostic.structure, expectedHeaders: "true" } },
+    { classifications: [{ ...responseDiagnostic.classifications[0], message: "not permitted" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], alias: "/private?token=not permitted" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], count: 10001 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], count: 0 }] },
+    { classifications: Array(33).fill(responseDiagnostic.classifications[0]) },
+    { classifications: [responseDiagnostic.classifications[0], responseDiagnostic.classifications[0]] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], category: "BLOCKED_OPTIONAL_RESOURCE_ERROR" }] },
+  ]) check(!validCalendarResponseDiagnostic({ ...responseDiagnostic, ...change }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, control: "raw-field-value" }));
@@ -92,8 +120,8 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v11");
-  check(calendarPreviewMethod === "playwright-calendar-preview-v6");
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v12");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v7");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
   check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));
