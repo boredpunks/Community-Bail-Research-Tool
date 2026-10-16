@@ -1,0 +1,224 @@
+Understood. You are authorizing retrieval—not just another proposal for retrieval. The prompt should direct the agent to build and run the engine within explicit limits, stopping only for a real access barrier or a consequential scope change.
+
+Paste this:
+
+***
+
+# Build and run the functional calendar-to-bail research engine
+
+## Authorization and objective
+
+I explicitly authorize live court-source retrieval through the application’s supported, bounded access routes, including:
+
+- Loading the public search form and required resources.
+- Observing public controls needed to establish correct bindings.
+- Submitting calendar searches.
+- Retrieving calendar results.
+- Following validated docket-document links or existing supported document routes.
+- Retrieving docket PDFs/documents.
+- Extracting docket identifiers and bail information.
+- Displaying results and saving source-backed observations as pending review.
+
+This is execution authority, not merely permission to prepare another proposal.
+
+The goal is a **functional engine** that reliably performs:
+
+Calendar search → validated results → docket selection → document retrieval → identity validation → bail extraction → evidence-backed display and pending storage.
+
+Do not stop at one successful diagnostic or treat one extracted record as proof that every part of the engine works.
+
+## 1. Apply this authorization through the actual controls
+
+Use the project’s existing operator authorization and permit mechanisms. Record this instruction as the authorization for the bounded work described below where those mechanisms support it.
+
+Create fresh authorizations as required. Never reset or reuse consumed permits.
+
+If a mandatory platform approval requires my direct interaction, present that specific approval immediately. Do not replace it with repeated conversational questions asking whether I want retrieval.
+
+Do not bypass authorization checks, remove source barriers globally, or declare access verified merely because this instruction authorizes an attempt. Use the supported scoped assessment/execution routes while preserving historical state.
+
+## 2. Execution scope and defaults
+
+Use:
+
+- Judicial district: Allegheny - 05.
+- Court office: `CP-05-02-Crim`.
+- Event type: Bail Hearing.
+- Courtroom: Courtroom 506, if supported.
+
+For this execution, I authorize selecting the earliest supported calendar window beginning today in `America/New_York`, up to seven calendar days inclusive. Record the exact chosen dates before execution. Do not use this permission to claim historical coverage.
+
+If Courtroom 506 cannot be selected, do not silently broaden the search. Identify whether the filter is genuinely unsupported or simply not yet correctly bound. Ask me only if changing the criterion is necessary.
+
+For the initial end-to-end validation:
+
+- Maximum five distinct docket documents.
+- Maximum 30 total transmitted source requests across the run, including forms, assets, calendar submissions, results, documents, and failed or uncertain transmissions.
+- Existing stricter operator limits prevail.
+- One concurrent source request.
+- Preserve the existing enforced pacing and cooldowns; do not accelerate traffic.
+- No automatic retries of failed or uncertain transmissions.
+
+These are ceilings, not targets. Stop earlier when sufficient evidence is obtained or a safety condition requires it.
+
+Do not raise operator ceilings to accommodate this instruction. If existing policy prevents execution, identify the exact setting and required decision.
+
+## 3. Finish the courtroom binding as part of execution
+
+Do not run another guessed selector.
+
+Use an authorized read-only form observation to establish the actual public courtroom control, its label association, enabled state, form ownership, available intended option, and native binding.
+
+Do not click Search during an observation-only phase.
+
+Once the binding is established:
+
+1. Implement any necessary repair offline.
+2. Run the relevant regression checks.
+3. Continue through a fresh authorized search stage within the overall limits above.
+
+A normal, successfully completed observation is not a reason to return for another conversational approval. Follow mandatory permit boundaries, but continue work already authorized here.
+
+If a live attempt fails, do not automatically repeat it. Diagnose and repair offline. Return for fresh approval if another source attempt is required after a consumed failed permit.
+
+## 4. Make calendar discovery work in the app
+
+The engine must:
+
+- Select and verify the actual approved criteria.
+- Submit the search through the supported route.
+- Validate the response.
+- Display source-provided calendar rows and docket identifiers.
+- Preserve authorized progress and partial results.
+- Clearly report exhaustion, interruption, and failure.
+
+Keep these outcomes distinct:
+
+- Search not submitted.
+- Search submitted but response unvalidated.
+- Validated results.
+- Validated zero matches.
+- Request-budget exhaustion.
+- Source denial, challenge, or rate limit.
+
+HTTP 200 or a missing table does not establish success or zero matches.
+
+## 5. Retrieve and process real docket documents
+
+Process distinct validated calendar dockets in returned order using existing supported document links or routes.
+
+Retrieve documents one at a time. Check each result before proceeding.
+
+Continue past a document with no identifiable bail information, within the five-document and total-request ceilings. Do not stop the entire engine merely because the first document lacks an amount.
+
+For every document:
+
+- Verify its docket identity against the selected calendar result.
+- Reject or flag mismatches.
+- Extract supported docket and bail information.
+- Record provenance and extraction status.
+- Preserve failures and partial successes without duplicate retrieval or duplicate saving.
+
+Do not guess docket numbers or document URLs.
+
+## 6. Extract bail information accurately
+
+Display and retain, where explicitly supported:
+
+- Docket number.
+- Bail amount and currency.
+- Bail category or financial basis.
+- Associated order/event date.
+- Source document reference.
+- Retrieval time.
+- Supporting page/section and a minimal excerpt.
+- Ambiguity and extraction limitations.
+
+Preserve multiple entries rather than automatically selecting the largest or latest as operative.
+
+Distinguish:
+
+- Total bail.
+- Deposit percentage.
+- Required deposit.
+- Posted or paid amount.
+- Fees.
+- Nonmonetary conditions.
+- Unknown or absent information.
+
+“No amount identified” must not become zero.
+
+Do not infer current custody, an operative order, or an outstanding balance.
+
+Save source-backed observations as pending review. Do not automatically confirm them or mark them reviewed-operative.
+
+## 7. Build an engine, not a one-off script
+
+Use the existing application architecture and make the workflow repeatable:
+
+- Explicit job criteria and budgets.
+- Persisted progress.
+- Distinct-docket tracking.
+- Accurate request accounting.
+- Pause/cancel behavior.
+- Interruption recovery without replaying uncertain requests.
+- Actionable diagnostics.
+- User-visible calendar and extraction results.
+- Provenance carried from discovery through saved observation.
+
+Keep ordinary saved-record searches separate from live source retrieval.
+
+Do not introduce unnecessary services, broad refactors, bulk exports, or unrelated features.
+
+## 8. Preserve safety without more planning loops
+
+Retain applicable transport, containment, response-size, authentication, pacing, redaction, and authorization protections.
+
+Verify their applicability to the actual calendar and document paths. Do not assume an inspection-only safeguard covers every route.
+
+Stop on:
+
+- Access denial or challenge.
+- Rate limiting.
+- Unexpected redirects.
+- Uncertain transmission state.
+- Unvalidated search criteria or results.
+- Docket identity mismatch requiring investigation.
+- Exhausted budget.
+- A required access method outside this authorization.
+
+Do not use proxies, credentials, challenge solving, alternate hosts, or client switching to circumvent a barrier.
+
+If the current environment cannot provide the required execution boundary, report the demonstrated limitation and smallest alternative. Do not keep adding unrelated safeguards without explaining their necessity.
+
+## 9. Verify and deliver
+
+Run relevant integrated tests, type checks, and builds against the actual resulting commit. Use permitted source-backed artifacts for positive extraction tests; never fabricate court records.
+
+Report live evidence separately from fixture results.
+
+The deliverable is:
+
+1. A working calendar search in the application.
+2. Validated calendar results or a source-backed empty outcome.
+3. Document retrieval connected to discovered dockets.
+4. Docket-number and bail extraction with evidence.
+5. Pending observations accessible for review.
+6. Honest handling of failures, missing amounts, and partial completion.
+
+If live data does not supply a monetary bail entry within the approved limits, show what was retrieved and what the engine could establish. Do not fabricate success or exceed the scope to obtain a better demonstration.
+
+## Start now
+
+Use implementation mode, finish necessary offline repairs, apply this retrieval authorization through the existing mechanisms, and execute within the stated limits.
+
+Do not return with another general plan or ask whether retrieval is authorized.
+
+Return when:
+
+- The bounded end-to-end run is complete; or
+- A mandatory approval interaction, source barrier, environment limitation, or material scope decision genuinely prevents further work.
+
+Report what works, what was actually retrieved, what was extracted, where it appears in the app, and any remaining limitation.
+
+---

@@ -17,13 +17,15 @@ import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage
 import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
+import { coverageMethod, courtroomObservationMethod, makeCourtroomObservationCriteria,
+  validCourtroomObservationMetadata, validCourtroomObservationCriteria } from "../lib/courtroom-observation";
 
 // INSPECT uses a storage placeholder, not a PDF allowance. Its scheduler and
 // child prohibit every document request and every transmitted POST.
 const stageCaps = { SINGLE: 1, SMALL: 3, MODEST: 10, INSPECT: 1, COVERAGE: 1, FILING_INSPECT: 1, CALENDAR_ONLY: 1 } as const;
 const diagnostic = (stage: string) => ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(stage);
-const currentMethod = (stage: string) => stage === "CALENDAR_ONLY" ? calendarPreviewMethod
-  : stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageInspectionMethod
+const currentMethod = (stage: string, criteria?: unknown) => stage === "CALENDAR_ONLY" ? calendarPreviewMethod
+  : stage === "FILING_INSPECT" ? filingInspectionMethod : stage === "COVERAGE" ? coverageMethod(criteria)
   : stage === "INSPECT" ? formInspectionMethod : integratedSourceMethod;
 const args = process.argv.slice(2);
 const command = args.shift();
@@ -31,6 +33,26 @@ const value = (key: string) => args.includes(`--${key}`) ? args[args.indexOf(`--
 const flag = (key: string) => args.includes(`--${key}`);
 
 async function main() {
+  if (command === "prepare-courtroom-observation") {
+    const criteria = makeCourtroomObservationCriteria(value("start"), value("end"));
+    const row = await db.transaction(async tx => {
+      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
+      if (!source || !calendarPreviewSourceAllowed(source)) throw new Error("SOURCE_VALIDATION_BARRIER must remain unchanged and no request may be active.");
+      const [active] = await tx.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+      if (active) throw new Error("Another discovery job is active.");
+      const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.expectedMethod, courtroomObservationMethod));
+      if (prior.some(p => JSON.stringify(p.criteria) === JSON.stringify(criteria)
+        || p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate))
+        throw new Error("An observation permit already exists for this exact scope; no reuse or retry.");
+      const [created] = await tx.insert(discoveryAssessmentsTable).values({
+        stage: "COVERAGE", expectedMethod: courtroomObservationMethod, criteria,
+      }).returning();
+      return created!;
+    });
+    console.log(JSON.stringify({ ...row, documentCap: 0, remotePostCap: 0,
+      notice: "Prepared without source traffic. Existing COVERAGE accounting; three GETs only. Separate approval required; source barrier unchanged." }));
+    return;
+  }
   if (command === "prepare-calendar-only") {
     const criteria = makeCalendarPreviewCriteria({
       courtOffice: value("office"), eventType: value("event"), startDate: value("start"), endDate: value("end"),
@@ -103,11 +125,13 @@ async function main() {
     const coverageEvidence: Record<string, unknown>[] = [];
     if (["COVERAGE", "FILING_INSPECT"].includes(row.stage) && row.jobId) {
       const events = await db.select().from(discoveryEventsTable).where(and(
-        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind, row.stage === "COVERAGE" ? "COVERAGE_METADATA" : "FILING_METADATA"),
+        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind, row.expectedMethod === courtroomObservationMethod
+          ? "COURTROOM_METADATA" : row.stage === "COVERAGE" ? "COVERAGE_METADATA" : "FILING_METADATA"),
       )).orderBy(asc(discoveryEventsTable.createdAt));
       for (const event of events) {
         const metadata = JSON.parse(event.message) as Record<string, unknown>;
-        if (!(row.stage === "COVERAGE" ? validCoverageMetadata(metadata) : validFilingMetadata(metadata))) throw new Error("Stored inspection metadata is invalid; no raw content returned.");
+        if (!(row.expectedMethod === courtroomObservationMethod ? validCourtroomObservationMetadata(metadata)
+          : row.stage === "COVERAGE" ? validCoverageMetadata(metadata) : validFilingMetadata(metadata))) throw new Error("Stored inspection metadata is invalid; no raw content returned.");
         coverageEvidence.push(metadata);
       }
     }
@@ -125,9 +149,12 @@ async function main() {
     await db.transaction(async (tx) => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [row] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
-      if (!row || row.stage === "INSPECT" || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage)
+      if (!row || row.stage === "INSPECT" || row.state !== "PREPARED" || !Object.hasOwn(stageCaps, row.stage) || row.expectedMethod !== currentMethod(row.stage, row.criteria)
         || diagnostic(row.stage) && row.criteria.requestCap !== 3) throw new Error("Only an unused prepared current-method pilot can be approved.");
       if (row.criteria.startDate < easternToday() || row.criteria.recordCap > discoveryPolicy.maxRecordCap || row.criteria.requestCap > discoveryPolicy.maxRequestCap) throw new Error("Scope is stale or exceeds protected limits. Obtain separate operator-budget authorization; limits will not increase automatically.");
+      if (row.expectedMethod === courtroomObservationMethod
+        && (!validCourtroomObservationCriteria(row.criteria) || !source || !calendarPreviewSourceAllowed(source)))
+        throw new Error("Courtroom observation requires its fixed saved criteria and unchanged source barrier.");
       if (row.stage === "CALENDAR_ONLY" && (!isCalendarPreviewCriteria(row.criteria)
         || !source || !calendarPreviewSourceAllowed(source))) {
         throw new Error("Calendar-only approval requires valid saved exact criteria and the unchanged SOURCE_VALIDATION_BARRIER. No source request or barrier override occurred.");
@@ -178,7 +205,7 @@ async function main() {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [pilot] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id)).for("update");
       if (!pilot || pilot.state !== "APPROVED" || !pilot.expiresAt || pilot.expiresAt <= new Date()
-         || pilot.stage === "INSPECT" || !Object.hasOwn(stageCaps, pilot.stage) || pilot.expectedMethod !== currentMethod(pilot.stage)
+         || pilot.stage === "INSPECT" || !Object.hasOwn(stageCaps, pilot.stage) || pilot.expectedMethod !== currentMethod(pilot.stage, pilot.criteria)
          || diagnostic(pilot.stage) && pilot.criteria.requestCap !== 3 || pilot.criteria.startDate < easternToday()
         || pilot.criteria.recordCap > discoveryPolicy.maxRecordCap || pilot.criteria.requestCap > discoveryPolicy.maxRequestCap
         || !source || source.activeRequestId || source.pausedUntil && source.pausedUntil > new Date()
@@ -191,6 +218,9 @@ async function main() {
           .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
         if (activeJob) throw new Error("Another discovery job is active; no source request sent.");
       }
+      if (pilot.expectedMethod === courtroomObservationMethod
+        && (!validCourtroomObservationCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)))
+        throw new Error("Courtroom observation scope/barrier no longer matches; no source request sent.");
       const [created] = await tx.insert(discoveryJobsTable).values({
         ownerId: WORKSPACE_OWNER_ID, criteria: pilot.criteria, assessmentId: pilot.id,
         message: pilot.stage === "CALENDAR_ONLY"
@@ -241,7 +271,9 @@ async function main() {
        const report = { requests: requests.length, validDocuments, failures,
          reason: calendarValidated
            ? `One approved Calendar Event search completed with ${items.length} validated calendar row(s). No PDFs, bail extraction, or collection approval. SOURCE_VALIDATION_BARRIER remains unchanged.`
-           : inspected ? (assessment?.stage === "FILING_INSPECT"
+           : inspected ? (assessment?.expectedMethod === courtroomObservationMethod
+             ? "Bounded public-label courtroom observation completed for Courtroom 506 under Calendar Event / Allegheny - 05 / CP-05-02-Crim / Bail Hearing. Binding outcome is in sanitized coverageEvidence. No Search, results, PDFs, access verification or collection approval; SOURCE_VALIDATION_BARRIER preserved."
+             : assessment?.stage === "FILING_INSPECT"
              ? "Bounded public widget inventory after filing mode, Advanced Search and local County = Allegheny, with redacted displayed public office codes only. No private option values or identities, other county, court/case/office selection, Search, dates, dependent transmission, remote POST, PDF or submitted binding proof. Numeric district codes alone do not establish MDJ context. Collection disabled; existing source state preserved."
            : assessment?.stage === "COVERAGE"
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."

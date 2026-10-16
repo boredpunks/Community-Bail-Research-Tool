@@ -90,7 +90,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(f"[{labels.group(1)}]"), list(form_inspection.CONTROLS))
         self.assertIn(f'formInspectionMethod = "{form_inspection.METHOD}"', parent)
 
-    async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None, filing=False):
+    async def run_fixture(self, script="/* public fixture */", coverage=False, fixture=None, filing=False, courtroom=False):
         messages, fetches = [], []
         html = fixture if fixture is not None else public_fixture()
         original_fulfill = Route.fulfill
@@ -122,7 +122,9 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                                               headers=response.headers, body=response.content)
             return await original_fulfill(route, **kwargs)
 
-        config = {"criteria": CRITERIA, "inspectionOnly": not (coverage or filing), "coverageOnly": coverage,
+        scope = {**CRITERIA, "courtRoom": "Courtroom 506", "requestCap": 3, "recordCap": 1} if courtroom else CRITERIA
+        config = {"criteria": scope, "inspectionOnly": not (coverage or filing or courtroom), "coverageOnly": coverage or courtroom,
+                  "courtroomObservationOnly": courtroom,
                   "filingInspectionOnly": filing, "calendarComplete": False,
                   "pendingItems": [], "remainingRecords": 1}
         lines = [json.dumps(config)]
@@ -133,9 +135,118 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(worker.sys, "stdin", io.StringIO("\n".join(lines) + "\n")), \
                 patch.object(worker, "emit", lambda kind, **values: messages.append({"kind": kind, **values})), \
                 patch.object(worker, "response_pause", return_value=0), \
+                patch("courtroom_observation.LOCAL_TIMEOUT_SECONDS", 0.65), \
+                patch("courtroom_observation.STABLE_SECONDS", 0.05), \
                 patch.object(worker, "download", side_effect=AssertionError("PDFs prohibited")):
             await worker.main()
         return messages, fetches
+
+    def courtroom_fixture(self, room=""):
+        html = public_fixture()
+        for value, token, label in (
+            ("CalendarEvent", "SEARCH_MODE", "Calendar Event"),
+            ("05", "JUDICIAL_DISTRICT", "Allegheny - 05"),
+            ("CP-05-02-Crim", "COURT_OFFICE", "CP-05-02-Crim"),
+            ("Bail Hearing", "EVENT_TYPE", "Bail Hearing"),
+        ):
+            html = html.replace(f'<option value="{value}">{token}</option>',
+                                f'<option value="{value}">{label}</option>')
+        return html.replace("</form>", room + "</form>")
+
+    async def courtroom_result(self, room="", script="/* public fixture */"):
+        messages, fetches = await self.run_fixture(
+            courtroom=True, fixture=self.courtroom_fixture(room), script=script)
+        self.assertEqual(len(fetches), 3)
+        self.assertTrue(all(method == "GET" for method, _ in fetches))
+        self.assertFalse(any(m["kind"] in {"calendar", "docket", "finished"} for m in messages))
+        retained = json.dumps(messages)
+        for forbidden in ("REDACTION_SENTINEL", "unpredictableNative", "private-value-506", "private-value-507"):
+            self.assertNotIn(forbidden, retained)
+        rows = [m for m in messages if m["kind"] == "courtroom_metadata"]
+        return rows, messages
+
+    async def test_public_room_label_discovers_unpredicted_named_binding_without_post(self):
+        rows, messages = await self.courtroom_result("""
+          <label for="unpredictableNative">Courtroom:</label>
+          <select id="unpredictableNative" name="unpredictableNative">
+            <option value="private-value-507">Courtroom 507</option>
+            <option value="private-value-506">Courtroom 506</option>
+          </select>""")
+        self.assertEqual(rows[0]["outcome"], "BOUND_506")
+        self.assertFalse(rows[0]["afterCriteria"]["room506Selected"])
+        self.assertTrue(rows[0]["afterSelection"]["nativeMatches"])
+        self.assertTrue(any(m["kind"] == "coverage_finished" for m in messages))
+
+    async def test_public_room_label_waits_for_replaced_unnamed_widget_binding(self):
+        room = """<div id="roomGroup"><label>Court room</label>
+          <select disabled></select><input type="hidden" name="unpredictableNative" value=""></div>"""
+        script = """document.addEventListener("DOMContentLoaded", () => {
+          document.querySelector("#CourtOffice-Control select").addEventListener("change", () => {
+            setTimeout(() => {
+              const old = document.querySelector("#roomGroup select");
+              const select = document.createElement("select");
+              select.innerHTML = '<option value="private-value-507">507</option><option value="private-value-506">506</option>';
+              const model = document.querySelector("#roomGroup input");
+              model.value = select.value;
+              select.addEventListener("change", () => { model.value = select.value; });
+              old.replaceWith(select);
+            }, 100);
+          });
+        });"""
+        rows, _ = await self.courtroom_result(room, script)
+        self.assertFalse(rows[0]["initial"]["enabled"])
+        self.assertEqual(rows[0]["outcome"], "BOUND_506")
+        self.assertEqual(rows[0]["afterSelection"]["namedBindings"], 1)
+
+    async def test_room_absent_is_observed_nonexposure_not_no_filter_permission(self):
+        rows, _ = await self.courtroom_result()
+        self.assertEqual(rows[0]["outcome"], "CONTROL_NOT_EXPOSED")
+        self.assertEqual(rows[0]["afterCriteria"]["labels"], 0)
+        self.assertTrue(rows[0]["stable"])
+        self.assertIsNone(rows[0]["afterSelection"])
+
+    async def test_room_disabled_dependency_is_not_forced_or_substituted(self):
+        rows, _ = await self.courtroom_result("""<label for="room">Courtroom</label>
+          <select id="room" disabled><option>506</option></select>""")
+        self.assertEqual(rows[0]["outcome"], "DEPENDENCY_UNRESOLVED")
+        self.assertIsNone(rows[0]["afterSelection"])
+
+    async def test_room_506_unavailable_is_not_another_room(self):
+        rows, _ = await self.courtroom_result("""<label for="room">Courtroom</label>
+          <select id="room" name="unpredictableNative"><option value="private-value-507">507</option></select>""")
+        self.assertEqual(rows[0]["outcome"], "ROOM_506_UNAVAILABLE")
+        self.assertIsNone(rows[0]["afterSelection"])
+
+    async def test_room_ambiguous_backing_does_not_claim_binding(self):
+        rows, _ = await self.courtroom_result("""<div><label>Courtroom</label>
+          <select><option value="private-value-506">506</option></select>
+          <input type="hidden" name="one" value="private-value-506">
+          <input type="hidden" name="two" value="private-value-506"></div>""")
+        self.assertEqual(rows[0]["outcome"], "BINDING_UNPROVEN")
+        self.assertEqual(rows[0]["afterSelection"]["namedBindings"], 2)
+
+    async def test_room_observation_dependency_fetch_never_transmits(self):
+        _, messages = await self.courtroom_result(
+            script="document.addEventListener('change', () => fetch('/CaseSearch'));")
+        self.assertFalse(any(m["kind"] == "coverage_finished" for m in messages))
+        self.assertTrue(any(m["kind"] == "barrier" and m["code"] == "COVERAGE_UNEXPECTED_LOCAL_REQUEST" for m in messages))
+
+    async def test_missing_courtroom_plugin_stops_before_browser_or_network(self):
+        import builtins
+        real_import = builtins.__import__
+        messages = []
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "courtroom_observation":
+                raise ModuleNotFoundError("Offline packaging test")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=blocked_import), \
+                patch.object(worker, "async_playwright", side_effect=AssertionError("Browser must not start")), \
+                patch.object(worker, "emit", side_effect=lambda kind, **values: messages.append({"kind": kind, **values})):
+            await worker.main({"criteria": {**CRITERIA, "courtRoom": "Courtroom 506", "requestCap": 3, "recordCap": 1},
+                               "courtroomObservationOnly": True, "coverageOnly": True})
+        self.assertEqual(messages, [{"kind": "barrier", "code": "COURTROOM_OBSERVATION_UNAVAILABLE"}])
 
     def filing_fixture(self):
         # Hypothetical public filter controls, NOT portal evidence or case data.

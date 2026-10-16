@@ -51,6 +51,23 @@ async def main(config=None):
         verify_inspection_runtime(shutil.which("chromium"))
     inspection_gate = InspectionRequestGate() if inspection_only else None
     calendar_preview_only = config.get("calendarPreviewOnly") is True
+    courtroom_observation_only = config.get("courtroomObservationOnly") is True
+    if courtroom_observation_only and (
+            config.get("coverageOnly") is not True
+            or criteria.get("courtOffice") != "CP-05-02-Crim"
+            or criteria.get("eventType") != "Bail Hearing"
+            or criteria.get("courtRoom") != "Courtroom 506"
+            or criteria.get("requestCap") != 3 or criteria.get("recordCap") != 1):
+        emit("barrier", code="COURTROOM_OBSERVATION_SCOPE_INVALID")
+        return
+    courtroom_observer = None
+    if courtroom_observation_only:
+        # A packaging failure must be discovered before any source request.
+        try:
+            from courtroom_observation import observe as courtroom_observer
+        except ImportError:
+            emit("barrier", code="COURTROOM_OBSERVATION_UNAVAILABLE")
+            return
     lock = asyncio.Lock()
     stopped = False
     requests = 0
@@ -363,8 +380,12 @@ async def main(config=None):
                 if coverage_only:
                     # Bootstrap is complete. No subsequent transmission is allowed.
                     inspection_local = True
-                    from coverage_inspection import observe
-                    await observe(page, emit)
+                    if courtroom_observation_only:
+                        form_phase = "CONTROL_SELECTION"
+                        await courtroom_observer(page, emit, criteria, lambda: inspection_error is None)
+                    else:
+                        from coverage_inspection import observe
+                        await observe(page, emit)
                     await asyncio.sleep(0.1)
                     if inspection_error:
                         raise RuntimeError("COVERAGE_UNEXPECTED_LOCAL_REQUEST")
@@ -511,6 +532,7 @@ async def main(config=None):
                 "FILING_MODE_NOT_ESTABLISHED", "FILING_ADVANCED_NOT_ESTABLISHED", "FILING_COUNTY_NOT_ESTABLISHED", "FILING_UNEXPECTED_LOCAL_REQUEST",
                 "COVERAGE_FORM_MISSING", "COVERAGE_CONTROL_INVALID",
                 "COVERAGE_CONTROL_AMBIGUOUS", "COVERAGE_UNEXPECTED_LOCAL_REQUEST",
+                "COURTROOM_OBSERVATION_FORM_MISSING", "COURTROOM_OBSERVATION_LIMIT",
                 "INSPECTION_METADATA_INVALID", "INSPECTION_BODY_UNSUPPORTED",
                 "INSPECTION_UNEXPECTED_LOCAL_REQUEST", "INSPECTION_PUBLIC_STATE_MISMATCH",
                 "SOURCE_FORM_VALIDATION", "RESULTS_NOT_VALIDATED",

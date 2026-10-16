@@ -13,6 +13,9 @@ import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as 
 
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed, validInspectionMetadata } from "../src/lib/form-inspection";
 import { coverageInspectionMethod, validCoverageMetadata } from "../src/lib/coverage-inspection";
+import { coverageMethod, courtroomObservationMethod, courtroomObservationDeadlineMs,
+  makeCourtroomObservationCriteria, validCourtroomObservationCriteria,
+  validCourtroomObservationMetadata } from "../src/lib/courtroom-observation";
 import { filingInspectionMethod, filingRoles, validFilingMetadata, validFilingInventoryMetadata } from "../src/lib/filing-inspection";
 import { runInspectionBrokerChecks } from "./inspection-broker";
 
@@ -209,6 +212,7 @@ try {
     const grant = await reserve(job);
     assert.ok(grant.allow && grant.requestId);
     check(!await response(job, grant.requestId, outcome, status));
+    const next = await createJob();
     check(!(await reserve(next)).allow);
     check((await store.select().from(requests)).length === 1);
   }
@@ -335,6 +339,48 @@ try {
     bailHearingPresent: false, preliminarySingularPresent: false, preliminaryPluralPresent: false,
     districtMatchesScope: true, officeCodes: ["CP-05-02-Crim"], dates: [], unretainedModeOptions: 0 };
   check(validCoverageMetadata(coverageMetadata));
+  const roomScope = makeCourtroomObservationCriteria("2999-01-01", "2999-01-07");
+  check(validCourtroomObservationCriteria(roomScope));
+  check(coverageMethod(roomScope) === courtroomObservationMethod);
+  check(coverageMethod(diagnosticCriteria) === coverageInspectionMethod);
+  check(courtroomObservationDeadlineMs === 480_000);
+  for (const bad of [{ ...roomScope, courtRoom: "Other" }, { ...roomScope, requestCap: 4 },
+    { ...roomScope, recordCap: 5 }, { ...roomScope, eventType: "ANY" },
+    { ...roomScope, courtOffice: "CP-05-02-Fam" }, { ...roomScope, extra: true },
+    { ...roomScope, endDate: "2999-01-08" }]) check(!validCourtroomObservationCriteria(bad));
+  const roomState = { labels: 1, controls: 1, options: 2, room506Options: 1, namedBindings: 1,
+    enabled: true, sameForm: true, busy: false, room506Enabled: true, room506Selected: true, nativeMatches: true };
+  const roomEvidence = { kind: "courtroom_metadata", phase: "OBSERVED", initial: roomState,
+    afterCriteria: roomState, afterSelection: roomState, outcome: "BOUND_506", waitMs: 500, stable: true };
+  check(validCourtroomObservationMetadata(roomEvidence));
+  for (const bad of [{ ...roomEvidence, html: "forbidden" }, { ...roomEvidence, waitMs: 15001 },
+    { ...roomEvidence, stable: false }, { ...roomEvidence, afterSelection: null },
+    ...["nativeMatches", "room506Selected", "sameForm", "room506Enabled"].map(key =>
+      ({ ...roomEvidence, afterSelection: { ...roomState, [key]: false } })),
+    { ...roomEvidence, afterSelection: { ...roomState, fieldName: "forbidden" } },
+    { ...roomEvidence, afterSelection: { ...roomState, namedBindings: 2 } },
+  ]) check(!validCourtroomObservationMetadata(bad));
+  // Existing COVERAGE accounting admits exactly three unique bootstrap GETs.
+  // These are isolated protocol records, never source permits or case fixtures.
+  await reset(false);
+  await store.update(sources).set({ blockedReason: "SOURCE_VALIDATION_BARRIER" }).where(eq(sources.id, "UJS"));
+  const [roomPermit] = await store.insert(pilots).values({ stage: "COVERAGE",
+    expectedMethod: courtroomObservationMethod, criteria: roomScope, state: "ATTEMPTED",
+    approvedAt: instant, expiresAt: new Date(now0 + 3_600_000) }).returning();
+  const roomJob = await createJob({ criteria: roomScope, assessmentId: roomPermit!.id });
+  await store.update(pilots).set({ jobId: roomJob.id }).where(eq(pilots.id, roomPermit!.id));
+  for (const path of ["/CaseSearch", "/resource/css/sitemain.min.css", "/resource/js/sitemain.min.js"]) {
+    const grant = await reserveSourceRequest(roomJob, path, "GET", roomPermit!.id,
+      `https://ujsportal.pacourts.us${path}`, () => false, context);
+    assert.ok(grant.allow);
+    time += 100;
+    check(await response(roomJob, grant.requestId));
+  }
+  check(!(await reserveSourceRequest(roomJob, "/CaseSearch", "POST", roomPermit!.id,
+    requestUrl, () => false, context)).allow);
+  check((await store.select().from(requests)).length === 3);
+  const [roomSource] = await store.select().from(sources);
+  check(roomSource!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !roomSource!.collectionApprovedAt);
   for (const bad of [
     { ...coverageMetadata, html: "forbidden" }, { ...coverageMetadata, phase: "UNVERIFIED" },
     { ...coverageMetadata, officeCodes: ["CP-04-02-Crim"] },
@@ -700,6 +746,18 @@ print(json.dumps(projections))
     }).returning();
     return { job: job!, request: request!, baseline: { ...baseline, ...sourceChanges } };
   };
+  const clearReason = "Reviewed offline evidence; the recorded stop was an application timeout.";
+  const stop = await createBarrierStop();
+  await clearSourceValidationBarrier({
+    reason: clearReason, userApproved: true, operator: "OFFLINE_OPERATOR",
+  }, { store, now: () => instant });
+  const [clearedSource] = await store.select().from(sources);
+  const [audit] = await store.select().from(events).where(eq(events.jobId, stop.job.id));
+  const auditMessage = JSON.parse(audit!.message) as Record<string, string>;
+  check(clearedSource!.blockedReason === null);
+  check(clearedSource!.accessVerifiedAt?.getTime() === instant.getTime()
+    && clearedSource!.collectionApprovedAt?.getTime() === instant.getTime()
+    && clearedSource!.latencyWarning === stop.baseline.latencyWarning);
   check(auditMessage.timestamp === instant.toISOString());
   check(auditMessage.previousBlockedReason === "SOURCE_VALIDATION_BARRIER");
   check(auditMessage.reason === clearReason && auditMessage.operator === "OFFLINE_OPERATOR");
@@ -710,23 +768,3 @@ print(json.dumps(projections))
   await pool.query(`DROP SCHEMA IF EXISTS ${namespace} CASCADE`);
   await pool.end();
 }
-
-  const clearReason = "Reviewed offline evidence; the recorded stop was an application timeout.";
-
-  let stop = await createBarrierStop();
-
-  const unchangedStop = async (reason: string) => {
-    const [source] = await store.select().from(sources);
-    check(source!.blockedReason === reason);
-    check((await store.select().from(events)).length === 0);
-  };
-
-  const cleared = await clearSourceValidationBarrier({
-    reason: clearReason, userApproved: true, operator: "OFFLINE_OPERATOR",
-  }, { store, now: () => instant });
-
-  const [clearedSource] = await store.select().from(sources);
-
-  const [audit] = await store.select().from(events).where(eq(events.jobId, stop.job.id));
-
-  const auditMessage = JSON.parse(audit!.message) as Record<string, string>;

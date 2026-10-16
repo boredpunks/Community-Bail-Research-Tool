@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm, mkdir, copyFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -122,9 +123,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
-  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "filing_inventory.py"]) {
+  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }
+  // Check the actual packaged import path, without launching a browser/network.
+  // Source-only tests cannot detect an omitted dynamically imported module.
+  const smoke = spawnSync("python", ["-c",
+    "from worker import main; from courtroom_observation import observe"], {
+    cwd: path.join(distDir, "ujs"), stdio: "inherit",
+  });
+  if (smoke.status !== 0) throw new Error("Packaged Python worker import verification failed.");
 }
 
 buildAll().catch((err) => {

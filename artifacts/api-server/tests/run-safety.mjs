@@ -6,6 +6,8 @@ import path from "node:path";
 
 const dir = await mkdtemp(path.join(tmpdir(), "court-offline-safety-"));
 try {
+  const packaged = spawnSync("node", ["build.mjs"], { stdio: "inherit" });
+  if (packaged.status !== 0) throw new Error("Cannot test an unverified worker package.");
   const out = path.join(dir, "checks.mjs");
   await build({
     entryPoints: ["tests/safety.ts"], outfile: out, bundle: true, platform: "node", format: "esm",

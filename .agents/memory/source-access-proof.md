@@ -239,3 +239,13 @@ identify the actual courtroom widget or establish that no filter exists.
 and do not require that guessed native shape as if observed. Obtain bounded
 public control/association evidence before changing the courtroom binding.
 Do not repeat a consumed search attempt to discover that information.
+
+Courtroom 506 remains the intended criterion; never silently select all rooms
+or a no-filter option.
+
+**Why:** The user explicitly repeated this requirement after a no-filter
+attempt. A missing guessed selector does not establish that 506 is unsupported.
+
+**How to apply:** Discover the actual public label/form association, prove the
+available 506 option and native binding, and ask only if changing the criterion
+is necessary. General retrieval authority is not permission to broaden it.

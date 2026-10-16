@@ -10,6 +10,7 @@ import {
 } from "./discovery-safety";
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
 import { coverageInspectionMethod } from "./coverage-inspection";
+import { coverageMethod, courtroomObservationMethod, validCourtroomObservationCriteria } from "./courtroom-observation";
 import { filingInspectionMethod } from "./filing-inspection";
 
 const sourceId = "UJS";
@@ -41,7 +42,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         const expectedMethod = permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
-          : permit?.stage === "COVERAGE" ? coverageInspectionMethod
+          : permit?.stage === "COVERAGE" ? coverageMethod(permit.criteria)
           : permit?.stage === "INSPECT" ? formInspectionMethod
           : permit?.stage === "CALENDAR_ONLY" ? calendarPreviewMethod
           : integratedSourceMethod;
@@ -58,6 +59,10 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
           return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
         }
         calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
+        if (permit.expectedMethod === courtroomObservationMethod
+          && (!validCourtroomObservationCriteria(current.criteria)
+            || !calendarPreviewSourceAllowed(source, now, true)))
+          return deny("COURTROOM_OBSERVATION_SCOPE_INVALID");
         diagnosticPermit = ["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage);
         if (["INSPECT", "COVERAGE", "FILING_INSPECT"].includes(permit.stage) && (current.criteria.requestCap !== 3
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)

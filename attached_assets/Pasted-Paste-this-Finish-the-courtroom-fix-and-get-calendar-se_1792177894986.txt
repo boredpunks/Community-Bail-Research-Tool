@@ -1,0 +1,90 @@
+Paste this:
+
+***
+
+# Finish the courtroom fix and get calendar search working
+
+Stop the proposal–status–proposal loop. Own this issue through diagnosis, repair, integration, and verification. The deliverable is a usable calendar search—not another safely failed attempt marked complete.
+
+**Priority:** resolve the courtroom binding without guessing, then execute the intended search after the necessary explicit live approval.
+
+## 1. Complete all offline preparation without asking again
+
+You are authorized to make routine local changes, run controlled tests, integrate fixes, and build within the existing architecture.
+
+Use implementation mode. If I must switch modes in the interface, tell me once, directly.
+
+Build one observation-and-repair path that:
+
+- Discovers the courtroom control from its public label and actual form structure—not an assumed field name.
+- Determines whether Courtroom 506 is available.
+- Establishes its UI-to-native-form binding.
+- Distinguishes an absent filter from a filter that has not initialized or requires an additional dependency.
+- Produces useful sanitized diagnostics if it cannot establish the binding.
+- Does not click Search or submit anything during observation.
+
+Test that path offline using the actual worker. Reuse the completed transport, accounting, containment, and response-size protections. Do not rebuild them or commission another general review unless this change exposes a concrete defect.
+
+Do not add unrelated features or create more planning tasks.
+
+## 2. Ask once for the missing live authority
+
+As soon as the observation path is tested, present one concise, exact approval request for the minimum live observation needed.
+
+Include the method, destinations, request ceiling, allowed local interactions, spacing, deadline, and stop conditions. State that it submits no Search, retrieves no results or PDFs, and preserves the source barrier.
+
+Do not ask whether you should prepare this proposal. Prepare it.
+
+Do not contact the court, create or consume a live permit, or reuse the failed permit before approval.
+
+## 3. After the approved observation, finish the repair autonomously
+
+Use the observed structure to implement the binding, add regression coverage, integrate the change, and rerun relevant checks. This offline work is already authorized; do not stop to ask permission to edit, test, or build.
+
+Do not return merely to say the control was identified.
+
+Keep Courtroom 506 as the intended criterion. Do not silently broaden to all courtrooms or substitute a no-filter selection.
+
+If Courtroom 506 cannot be selected, or the relevant state requires access outside the approved scope, report that exact limitation and ask only for the decision needed. Do not guess or weaken validation.
+
+## 4. Move directly to the calendar-search approval
+
+Once the repair is supported by the observation and integrated tests, present the exact bounded calendar-search approval:
+
+- Allegheny - 05.
+- `CP-05-02-Crim`.
+- Bail Hearing.
+- Courtroom 506, unless I explicitly approve a change.
+- Explicit proposed dates; do not silently replace previous dates.
+- Zero PDFs and zero docket-document retrieval.
+- Eight total requests maximum if sufficient for the verified request inventory; otherwise explain the necessary budget change.
+- Exact spacing, deadline, and stop conditions.
+- The calendar information that will be displayed or retained.
+
+Do not require another standalone readiness proposal between finishing the repair and presenting this approval.
+
+After approval, execute the search once and display its validated outcome in the application. Do not automatically advance to PDFs or broader collection.
+
+## 5. Completion and reporting
+
+Keep the calendar-search objective open until the application displays either:
+
+- Validated calendar results for the approved criteria; or
+- A validated source-backed zero-match outcome.
+
+A stopped attempt is not either outcome.
+
+If blocked, return the precise blocker, evidence, and single decision needed—not another long status inventory.
+
+At each handoff, report only:
+
+1. What is fixed.
+2. What was verified.
+3. What I can use.
+4. The exact approval or decision needed.
+
+Preserve historical permits, request accounting, source barriers, and evidence. Never fabricate success or bypass source restrictions.
+
+Start now with offline implementation. Your next response should be the tested observation’s exact approval request, unless a concrete implementation blocker genuinely requires my decision.
+
+---

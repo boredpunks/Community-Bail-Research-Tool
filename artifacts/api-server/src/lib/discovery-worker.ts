@@ -19,6 +19,8 @@ import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from 
 import { filingInspectionMethod, filingPhases, validFilingInventoryMetadata } from "./filing-inspection";
 import { InspectionFetchBroker } from "./inspection-fetch-broker";
 import { validCalendarRowDates } from "./calendar-criteria";
+import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtroomObservationCriteria,
+  validCourtroomObservationMetadata } from "./courtroom-observation";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -58,7 +60,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
   if (permit?.stage === "INSPECT" && !inspectionOnly)
     throw new Error("Invalid form inspection client scope");
-  const coverageOnly = permit?.stage === "COVERAGE" && permit.expectedMethod === coverageInspectionMethod;
+  const courtroomObservationOnly = permit?.stage === "COVERAGE"
+    && permit.expectedMethod === courtroomObservationMethod && validCourtroomObservationCriteria(job.criteria);
+  const coverageOnly = permit?.stage === "COVERAGE"
+    && (permit.expectedMethod === coverageInspectionMethod || courtroomObservationOnly);
+  if (permit?.stage === "COVERAGE" && !coverageOnly) throw new Error("Invalid coverage observation scope");
   const filingInspectionOnly = permit?.stage === "FILING_INSPECT" && permit.expectedMethod === filingInspectionMethod;
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
   const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
@@ -91,6 +97,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     : ["-u", script];
   const child = spawn("python", args, { stdio: ["pipe", "pipe", "pipe"], detached: true });
   activeChild = child;
+  let observationTimedOut = false;
+  const observationTimer = courtroomObservationOnly ? setTimeout(() => {
+    observationTimedOut = true;
+    if (child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch { /* Exited. */ }
+  }, courtroomObservationDeadlineMs) : null;
+  observationTimer?.unref();
   const exit = new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", resolve);
@@ -104,7 +116,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
-    calendarPreviewOnly,
+    calendarPreviewOnly, courtroomObservationOnly,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
@@ -117,7 +129,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       if (inspectionOnly && !["request", "response", "inspection_metadata",
         "inspection_finished", "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
         throw new Error("Inspection cannot emit collection results");
-      if (coverageOnly && !["request", "response", "coverage_metadata", "coverage_finished",
+      if (coverageOnly && !["request", "response", ...(courtroomObservationOnly
+        ? ["courtroom_metadata", "calendar_form_diagnostic"] : ["coverage_metadata"]), "coverage_finished",
         "calendar_diagnostics", "calendar_state", "barrier"].includes(String(message.kind)))
         throw new Error("Coverage inspection cannot emit collection results");
       if (filingInspectionOnly && !["request", "response", "filing_metadata", "filing_finished",
@@ -147,13 +160,18 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (!filingInspectionOnly || filingPhase !== filingPhases.length || Object.keys(message).length !== 1)
           throw new Error("Incomplete filing inspection");
         finished = true;
+      } else if (message.kind === "courtroom_metadata") {
+        if (!courtroomObservationOnly || coveragePhase !== 0 || !validCourtroomObservationMetadata(message))
+          throw new Error("Invalid courtroom observation metadata");
+        coveragePhase++;
+        await discoveryEvent(job, "COURTROOM_METADATA", JSON.stringify(message));
       } else if (message.kind === "coverage_metadata") {
-        if (!coverageOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
+        if (!coverageOnly || courtroomObservationOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
           throw new Error("Invalid coverage metadata");
         coveragePhase++;
         await discoveryEvent(job, "COVERAGE_METADATA", JSON.stringify(message));
       } else if (message.kind === "coverage_finished") {
-        if (!coverageOnly || coveragePhase !== coveragePhases.length || Object.keys(message).length !== 1)
+        if (!coverageOnly || coveragePhase !== (courtroomObservationOnly ? 1 : coveragePhases.length) || Object.keys(message).length !== 1)
           throw new Error("Incomplete coverage inspection");
         finished = true;
       } else if (message.kind === "inspection_metadata") {
@@ -269,11 +287,14 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       }
     }
     const code = await exit;
+    if (observationTimedOut) await pause(job, "Courtroom observation reached its 480-second deadline. Permit consumed; no automatic retry.");
     const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
     if (current?.status === "RUNNING") {
       if (finished && code === 0) {
         const counts = await jobSummary(current);
-        const message = filingInspectionOnly
+        const message = courtroomObservationOnly
+          ? "Public courtroom-control observation retained. This is not a submitted search, results, access proof or collection approval. No Search, documents or dependent transmissions; source barrier preserved."
+          : filingInspectionOnly
           ? "Bounded public control inventory after filing mode, Advanced Search and local County = Allegheny, including redacted displayed public office codes. No private option values or identities, other county, court/case/office selection, Search, date entry, dependent transmission, remote POST or PDF. Numeric district codes alone do not establish MDJ context or submission bindings; collection remains disabled."
           : coverageOnly
           ? "Public method/office/date metadata inspected. No Search click, remote POST, PDF or result validation. Missing options are not proof of unsupported coverage; source pause unchanged."
@@ -298,6 +319,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     await validationStop("WORKER_PROTOCOL_FAILURE");
     throw error;
   } finally {
+    if (observationTimer) clearTimeout(observationTimer);
     if (child.pid) {
       try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already exited. */ }
     }
