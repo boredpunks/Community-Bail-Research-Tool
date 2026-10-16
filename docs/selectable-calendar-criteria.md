@@ -1,11 +1,18 @@
-# Selectable calendar criteria (offline work)
+# Selectable calendar criteria
 
-**Status: offline verification passed after the user-authorized correction.**
-Full-project typechecking and build, 497 offline TypeScript safety checks and
-66 Python tests pass. CLI rejection checks, workflow startup and API health
-also pass. See the actual results at the start of
-`completion-offline-checks.md`. No live search or PDF access was tested or
-authorized by these results.
+**Status:** offline verification passed; one separately approved live attempt
+stopped before submitting a search. Full-project typechecking and build, 512
+offline TypeScript safety checks and 68 Python tests pass. See the actual
+results at the start of `completion-offline-checks.md`. No successful search
+result or PDF/document request occurred.
+
+The current calendar-only response-check method is
+`playwright-calendar-preview-v4`, verified offline on October 16, 2026 and
+used for one separately approved attempt that stopped before Search POST. This
+is a separate preview gate, not the integrated method label
+`playwright-calendar+urllib-pdf-v9`; neither identifier silently authorizes the
+other. A new attempt requires fresh exact-scope approval. See the latest
+verification section in `completion-offline-checks.md`.
 
 ## Boundaries
 
@@ -13,7 +20,8 @@ This change implements selectable **Calendar Event** criteria, not filing-date
 search or live-source verification. It does not authorize a request. The global
 source barrier, disabled inspector, frozen inspection broker/sandbox, pacing,
 request caps, zero-PDF calendar-preview boundary and all approval gates remain
-in place. No permit was created or approved as part of this work.
+in place. The separately approved one-use permit is recorded as failed; the
+barrier was not cleared and no retry was authorized.
 
 ## Dated public option evidence
 
@@ -51,7 +59,7 @@ the full inclusive requested window by the parent worker, not just its first
 day. An offline date-only parser-to-worker regression covers later days without
 creating synthetic dockets or case records.
 
-Operator command syntax (documentation only; not run to prepare a permit):
+Example command syntax (not the separately approved Bail Hearing scope):
 
 ```text
 pnpm --filter @workspace/api-server run pilot prepare-calendar-only \
@@ -70,7 +78,7 @@ No new permit type or barrier-clear command was introduced.
 
 | Path | Status |
 | --- | --- |
-| Common Pleas criminal / Bail Hearing | Prior live evidence is historical; current selectable-criteria path not live-tried here |
+| Common Pleas criminal / Bail Hearing | One approved attempt stopped before Search POST with `CALENDAR_FORM_STRUCTURE_CHANGED`; no result validated |
 | Preliminary Arraignment | Selectable, not live-tried here |
 | Family / Juvenile office choices | Observed public options only; criminal-result/PDF coverage not established |
 | Filing-date / MDJ | Not implemented by this change; no working-search claim |

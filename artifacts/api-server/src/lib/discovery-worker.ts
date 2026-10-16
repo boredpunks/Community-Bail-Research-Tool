@@ -6,7 +6,8 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
-  allowedSourceRequest, calendarPreviewMethod, isCalendarPreviewCriteria,
+  allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, isCalendarPreviewCriteria,
+  validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
@@ -187,7 +188,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       } else if (message.kind === "calendar") {
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
-        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string" || !Number.isFinite(Date.parse(message.retrievedAt))) throw new Error("Invalid calendar checkpoint");
+        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"
+          || !Number.isFinite(Date.parse(message.retrievedAt))
+          || calendarPreviewOnly && !validCalendarAuditHeaders(message.columnHeaders)) {
+          throw new Error("Invalid calendar checkpoint");
+        }
         await db.transaction(async (tx) => {
           for (const row of rows) {
             if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
@@ -213,7 +218,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
             resultCapReached: message.resultCapReached === true, updatedAt: new Date(),
           }).where(eq(discoveryJobsTable.id, job.id));
         });
-        await discoveryEvent(job, "CALENDAR", `Validated ${rows.length} distinct result-linked dockets in source order. ${message.paginationComplete ? "All rows in this returned table inspected; no remote pagination detected." : "Pagination or source result cap limits coverage."} Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
+        await discoveryEvent(job, "CALENDAR",
+          `Validated ${rows.length} distinct result-linked dockets in source order. ${calendarPreviewOnly
+            ? `Validated column headers (allowlisted labels only): ${calendarAuditHeaders.join(", ")}. `
+            : ""}${message.paginationComplete ? "All rows in this returned table inspected; no remote pagination detected." : "Pagination or source result cap limits coverage."} Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
       } else if (message.kind === "calendar_preview_finished") {
         if (!calendarPreviewOnly || !job.calendarComplete || Object.keys(message).length !== 1)
           throw new Error("Invalid calendar preview completion");

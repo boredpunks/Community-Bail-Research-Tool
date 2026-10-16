@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
-import { allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
@@ -88,6 +88,17 @@ try {
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
   check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v9");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v4");
+  check(validCalendarAuditHeaders(calendarAuditHeaders));
+  check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
+  check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));
+  const pythonAuditHeaders = JSON.parse(execFileSync("python", ["-c", [
+    "import json, sys",
+    "sys.path.insert(0, 'src/ujs')",
+    "from evidence import CALENDAR_AUDIT_HEADERS",
+    "print(json.dumps(CALENDAR_AUDIT_HEADERS))",
+  ].join("\n")], { encoding: "utf8" })) as string[];
+  check(JSON.stringify(pythonAuditHeaders) === JSON.stringify(calendarAuditHeaders));
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
     verifiedMethod: "playwright-calendar+urllib-pdf-v8" }) === "ACCESS_UNVERIFIED");
   const historicalDiagnostics = { phase: "RESULT", blockedScripts: 0, blockedStylesheets: 0,
@@ -191,7 +202,7 @@ try {
   check(rateState!.adaptiveSpacingMs === 120_000);
   check((await store.select().from(requests)).length === 1);
 
-  for (const [outcome, status] of [["ACCESS_DENIED", 403], ["CHALLENGE", 200], ["REDIRECT", 302], ["TIMEOUT", null], ["INVALID_PDF", 200]] as const) {
+  for (const [outcome, status] of [["ACCESS_DENIED", 403], ["CHALLENGE", 200], ["LOGIN_PROMPT", 200], ["REDIRECT", 302], ["TIMEOUT", null], ["INVALID_PDF", 200]] as const) {
     await reset();
     const job = await createJob(), next = await createJob();
     const grant = await reserve(job);
@@ -551,6 +562,7 @@ print(json.dumps(projections))
   check(calendarPreviewSourceAllowed(previewSource, instant));
   check(!calendarPreviewSourceAllowed({ ...previewSource, activeRequestId: randomUUID() }, instant));
   check(!calendarPreviewSourceAllowed({ ...previewSource, blockedReason: null }, instant));
+  check(!calendarPreviewSourceAllowed({ ...previewSource, latencyWarning: "slow response" }, instant));
   check(!isCalendarPreviewCriteria({ ...calendarPreviewCriteria, extra: true }));
 
   const preparePreview = async (
@@ -608,12 +620,22 @@ print(json.dumps(projections))
   for (const changed of [
     { blockedReason: null }, { blockedReason: "ACCESS_DENIED" }, { blockedReason: "UNCERTAIN_SOURCE_STATE" },
     { pausedUntil: new Date(now0 + 60_000) }, { accessVerifiedAt: instant },
+    { latencyWarning: "prior slow response" },
     { verifiedMethod: integratedSourceMethod }, { collectionApprovedAt: instant },
   ]) {
     preview = await preparePreview({}, changed);
     check(!(await previewReserve(preview.job, preview.permit.id)).allow);
     check((await store.select().from(requests)).length === 0);
   }
+  preview = await preparePreview();
+  const slowGrant = await previewReserve(preview.job, preview.permit.id);
+  assert.ok(slowGrant.allow);
+  time += 20_000;
+  check(!(await response(preview.job, slowGrant.requestId)));
+  const [slowSource] = await store.select().from(sources);
+  check(slowSource!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !!slowSource!.latencyWarning);
+  check(!(await previewReserve(preview.job, preview.permit.id)).allow);
+  check((await store.select().from(requests)).length === 1);
   for (const changed of [
     ...["PREPARED", "APPROVED", "FAILED", "CALENDAR_VALIDATED"].map(state => ({ state })),
     { expectedMethod: integratedSourceMethod }, { approvedAt: null },

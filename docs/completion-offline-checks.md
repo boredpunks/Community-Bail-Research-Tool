@@ -1,5 +1,90 @@
 # Completion work: offline evidence and stop points
 
+## Calendar preview response guards: offline verification
+
+October 16, 2026: the user authorized offline-only response-check changes. The
+calendar preview method identifier is now
+`playwright-calendar-preview-v4`; approvals for preview-v1 through preview-v3 do not authorize it.
+The preview path still uses the current calendar worker, including the v9 asset
+cache and post-completion result-grid wait, rather than a separate legacy
+worker. During the offline-only phase, no source requests, permit preparations,
+approvals, barrier changes or deployments occurred.
+
+The response classifier now requires `text/html` for `/CaseSearch`, a
+JavaScript MIME type for the known script, and `text/css` for the known
+stylesheet. It also fails on recognized login forms/prompts before the response
+is handed back to the page. Only the fixed outcome code and normal request
+ledger metadata are retained; response bodies and content-type values are not
+logged. The worker carries specific supported transport outcomes through to its
+barrier report. Redirect/retry limits, the one-POST rule, eight-request ceiling,
+zero-PDF gate and unchanged source stop remain in place.
+The first calendar-preview response lasting 20 seconds or longer now pauses
+that one-use job, rejects subsequent requests, and retains the global
+`SOURCE_VALIDATION_BARRIER`.
+
+For a validated preview table, the worker now reports only six allowlisted
+column labels that passed the parser's fixed header-prefix checks. It neither
+persists arbitrary source header text nor includes row values in this audit
+event. The normal preview results remain subject to the existing app behavior:
+the UI/API also display and retain calendar rows and the source links for up to
+24 hours.
+
+Actual offline verification:
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+PASS: 512 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+Ran 68 tests
+OK
+
+$ pnpm run typecheck
+Done
+
+$ PORT=5173 BASE_PATH=/ pnpm run build
+Exit status 0
+
+$ git diff --check
+Exit status 0
+```
+
+The build retains its existing non-fatal tooltip sourcemap warning. An isolated
+API-only typecheck first encountered stale generated shared-package declarations;
+the full workspace typecheck rebuilt those declarations and passed without
+changing the stored criteria schema. All parser-reaching calendar timeout
+fixtures still rejected the header-only table as `RESULTS_NOT_VALIDATED`;
+the missing-grid fixture stopped as `CALENDAR_RESULT_LOAD_TIMEOUT`, and all
+three reported `shutdownErrors: []`. These remain loopback-only observations,
+not source proof. The managed API workflow restarted successfully after these
+offline checks and its local `/api/healthz` check returned HTTP 200.
+
+## Approved calendar-only attempt
+
+On October 16, 2026, the user separately approved one
+`playwright-calendar-preview-v4` attempt for October 17–19, 2026, Allegheny - 05,
+office `CP-05-02-Crim`, event `Bail Hearing`, zero PDFs and an eight-slot total
+request cap. The API workflow was paused to release its worker lease and
+restarted after the attempt; its local `/api/healthz` check returned HTTP 200.
+
+Recorded requests (UTC):
+
+| Method | Path | Status/outcome | Duration | Started | Completed |
+| --- | --- | --- | ---: | --- | --- |
+| GET | `/CaseSearch` | 200 / OK | 1,318 ms | 2026-10-16 17:59:54.164 | 2026-10-16 17:59:55.482 |
+| GET | `/resource/css/sitemain.min.css` | 200 / OK | 136 ms | 2026-10-16 18:01:13.840 | 2026-10-16 18:01:13.976 |
+| GET | `/resource/js/sitemain.min.js` | 200 / OK | 261 ms | 2026-10-16 18:02:21.597 | 2026-10-16 18:02:21.858 |
+
+The observed completion-to-next-start gaps were 78.358 seconds and 67.621
+seconds. Three of eight reserved request slots were used. No Search POST, PDF,
+or docket-document request was sent.
+
+The attempt stopped with exact failure code `CALENDAR_FORM_STRUCTURE_CHANGED`.
+The form state was `SUBMISSION_NOT_OBSERVED` (`search form visible=false`), so no
+Search POST occurred. This is not an empty search: no results table was
+validated, no row count is available, and no column headers were observed. The
+job is paused, the permit is recorded as failed, and the global
+`SOURCE_VALIDATION_BARRIER` remains unchanged. No retry or method switch was
+made. No row values or raw response content are included in this record.
+
 ## Final multi-day result handoff correction
 
 Completion checking found two remaining date-handoff defects: the parser

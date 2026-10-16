@@ -3,8 +3,16 @@
 import { validCalendarCriteria } from "./calendar-criteria";
 
 export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v9";
-export const calendarPreviewMethod = "playwright-calendar-preview-v1";
+export const calendarPreviewMethod = "playwright-calendar-preview-v4";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
+export const calendarAuditHeaders = [
+  "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
+] as const;
+
+export function validCalendarAuditHeaders(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.length === calendarAuditHeaders.length
+    && value.every((label, index) => label === calendarAuditHeaders[index]);
+}
 
 type SourceState = {
   blockedReason: string | null;
@@ -36,6 +44,7 @@ export function calendarPreviewSourceAllowed(source: {
   accessVerifiedAt: Date | null;
   verifiedMethod: string | null;
   collectionApprovedAt: Date | null;
+  latencyWarning?: string | null;
   activeRequestId?: string | null;
 }, now = new Date(), allowInFlightWait = false): boolean {
   return source.blockedReason === "SOURCE_VALIDATION_BARRIER"
@@ -43,7 +52,8 @@ export function calendarPreviewSourceAllowed(source: {
     && (!source.pausedUntil || source.pausedUntil <= now)
     && !source.accessVerifiedAt
     && !source.verifiedMethod
-    && !source.collectionApprovedAt;
+    && !source.collectionApprovedAt
+    && !source.latencyWarning;
 }
 
 export function calendarPreviewRequestAllowed(path: unknown, method: unknown): boolean {
@@ -53,7 +63,7 @@ export function calendarPreviewRequestAllowed(path: unknown, method: unknown): b
 }
 
 export const sourceOutcomes = [
-  "OK", "RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "REDIRECT", "HTTP_ERROR",
+  "OK", "RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "LOGIN_PROMPT", "REDIRECT", "HTTP_ERROR",
   "SIZE_LIMIT", "UNSUPPORTED_RESPONSE", "NETWORK_ERROR", "TIMEOUT", "INVALID_PDF",
   "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER", "UNCERTAIN_AFTER_ASSESSMENT",
 ] as const;
@@ -67,6 +77,7 @@ export function validAccountingMessage(message: Record<string, unknown>) {
   if (["SIZE_LIMIT", "UNSUPPORTED_RESPONSE"].includes(outcome)) return true;
   if (outcome === "RATE_LIMIT") return status === 200 || status === 429;
   if (outcome === "ACCESS_DENIED") return [200, 401, 403].includes(Number(status));
+  if (outcome === "LOGIN_PROMPT") return status === 200;
   if (outcome === "REDIRECT") return Number(status) >= 300 && Number(status) < 400;
   if (outcome === "HTTP_ERROR") return status !== 200;
   return status === 200;

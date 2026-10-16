@@ -234,7 +234,9 @@ async function main() {
            ? "Public method/office/date constraints observed; no Search click, remote POST, PDF or discovery proof. Existing source pause and access proof unchanged."
            : "Read-only public form metadata inspected without invoking submission. No Search click, POST, results, or PDFs. Not access proof. Existing source state unchanged; collection remains disabled.")
            : verified ? "Both integrated clients passed within fixed scope and timing; not approval for broader collection."
-          : "Pilot did not pass all document, timing, accounting, completion, and latency checks. No automatic retry or collection enablement." };
+           : calendarOnly && source?.latencyWarning
+             ? "LATENCY_WARNING: preview stopped after a slow response; no further requests authorized, no automatic retry, and SOURCE_VALIDATION_BARRIER remains unchanged."
+             : "Pilot did not pass all document, timing, accounting, completion, and latency checks. No automatic retry or collection enablement." };
       await db.transaction(async (tx) => {
         await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
          await tx.update(discoveryAssessmentsTable).set({ state, completedAt, report }).where(eq(discoveryAssessmentsTable.id, id));

@@ -43,7 +43,7 @@ def allowed(url, method):
         return False
 
 
-def classify_response(status, headers, body, pdf=False):
+def classify_response(status, headers, body, pdf=False, path=None):
     if status == 429:
         return "RATE_LIMIT"
     if status in (401, 403):
@@ -54,7 +54,20 @@ def classify_response(status, headers, body, pdf=False):
         return "HTTP_ERROR"
     if len(body) > 4_000_000:
         return "SIZE_LIMIT"
-    html = "text/html" in headers.get("content-type", "").lower() or body.lstrip().lower().startswith((b"<html", b"<!doctype"))
+    content_type = next(
+        (value for key, value in headers.items() if key.lower() == "content-type"), ""
+    )
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    expected_types = {
+        "/CaseSearch": {"text/html"},
+        "/resource/js/sitemain.min.js": {
+            "application/javascript", "text/javascript",
+        },
+        "/resource/css/sitemain.min.css": {"text/css"},
+    }
+    if path in expected_types and media_type not in expected_types[path]:
+        return "UNSUPPORTED_RESPONSE"
+    html = media_type == "text/html" or body.lstrip().lower().startswith((b"<html", b"<!doctype"))
     if html:
         if re.search(rb"verify you are human|cf-chl-|g-recaptcha|hcaptcha", body, re.I):
             return "CHALLENGE"
@@ -62,6 +75,21 @@ def classify_response(status, headers, body, pdf=False):
             return "RATE_LIMIT"
         if re.search(rb"access denied", body, re.I):
             return "ACCESS_DENIED"
+        if path == "/CaseSearch" and (
+            re.search(rb"<input\b(?=[^>]*\btype\s*=\s*['\"]?password\b)[^>]*>", body, re.I)
+            or re.search(
+                rb"<form\b(?=[^>]*\b(?:action|class|id|name)\s*=\s*['\"][^'\"]*"
+                rb"(?:login|sign[-_ ]?in))[^>]*>",
+                body, re.I,
+            )
+            or re.search(rb"<title\b[^>]*>\s*(?:login|sign\s+in)\b", body, re.I)
+            or re.search(
+                rb"\b(?:please\s+)?(?:log\s+in|sign\s+in)\s+to\s+"
+                rb"(?:continue|access)\b|\bsession\s+(?:has\s+)?expired\b",
+                body, re.I,
+            )
+        ):
+            return "LOGIN_PROMPT"
     if pdf and not body.startswith(b"%PDF-"):
         return "INVALID_PDF"
     return "OK"

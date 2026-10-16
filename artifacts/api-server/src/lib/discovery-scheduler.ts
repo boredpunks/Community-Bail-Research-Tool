@@ -143,6 +143,7 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
   if (!validAccountingMessage(message)) {
     throw new Error("Malformed source response accounting");
   }
+  const calendarOnlyPreview = !!job.assessmentId && isCalendarPreviewCriteria(job.criteria);
   return (context.store ?? db).transaction(async (tx) => {
     const now = context.now?.() ?? new Date();
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
@@ -157,7 +158,8 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     )).orderBy(desc(discoveryRequestsTable.completedAt)).limit(20);
     const health = responseHealth(source, durationMs, recent.flatMap((row) => row.duration === null ? [] : [row.duration]), discoveryPolicy.spacingMs);
     const outcome = String(message.outcome);
-    const block = outcome === "OK" ? health.blockedReason : outcome;
+    const slowCalendarPreview = calendarOnlyPreview && outcome === "OK" && durationMs >= 20_000;
+    const block = outcome === "OK" ? (slowCalendarPreview ? "LATENCY_WARNING" : health.blockedReason) : outcome;
     const throttle = outcome === "RATE_LIMIT";
     await tx.update(discoveryRequestsTable).set({
       outcome, statusCode: message.status as number | null, completedAt: now, durationMs,
@@ -166,7 +168,8 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     // transaction. No competing grant can enter between these operations.
     await tx.update(discoverySourceTable).set({
       activeRequestId: null, lastCompletedAt: now, lastLatencyMs: durationMs,
-      ...health, blockedReason: block ?? source.blockedReason,
+      ...health, blockedReason: slowCalendarPreview && source.blockedReason === "SOURCE_VALIDATION_BARRIER"
+        ? source.blockedReason : block ?? source.blockedReason,
       ...(block ? {
         pausedUntil: throttle ? throttleDeadline(now, discoveryPolicy.cooldownMs, source.throttleCount, message.retryAfter) : null,
         ...(throttle ? {

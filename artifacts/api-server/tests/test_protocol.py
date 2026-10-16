@@ -18,6 +18,37 @@ class ResponseTests(unittest.TestCase):
         self.assertEqual(classify_response(200, {}, b"<html>access denied</html>"), "ACCESS_DENIED")
         self.assertEqual(classify_response(200, {}, b"<html>too many requests</html>"), "RATE_LIMIT")
 
+    def test_calendar_content_types_are_explicit_and_fail_closed(self):
+        self.assertEqual(classify_response(
+            200, {"Content-Type": "text/html; charset=utf-8"}, b"<html></html>",
+            path="/CaseSearch"), "OK")
+        self.assertEqual(classify_response(
+            200, {"content-type": "text/javascript"}, b"/* script */",
+            path="/resource/js/sitemain.min.js"), "OK")
+        self.assertEqual(classify_response(
+            200, {"content-type": "application/javascript"}, b"/* script */",
+            path="/resource/js/sitemain.min.js"), "OK")
+        self.assertEqual(classify_response(
+            200, {"content-type": "text/css; charset=utf-8"}, b"/* styles */",
+            path="/resource/css/sitemain.min.css"), "OK")
+        for path, headers, body in [
+            ("/CaseSearch", {}, b"<html></html>"),
+            ("/CaseSearch", {"content-type": "application/json"}, b"{}"),
+            ("/resource/js/sitemain.min.js", {"content-type": "text/html"}, b"<html></html>"),
+            ("/resource/css/sitemain.min.css", {"content-type": "text/plain"}, b"styles"),
+        ]:
+            self.assertEqual(
+                classify_response(200, headers, body, path=path),
+                "UNSUPPORTED_RESPONSE",
+            )
+
+    def test_calendar_login_prompts_stop_without_retaining_page_content(self):
+        body = b"""<!doctype html><html><title>Sign In</title>
+        <form action="/account/login"><input name="password" type="password"></form></html>"""
+        self.assertEqual(classify_response(
+            200, {"content-type": "text/html"}, body, path="/CaseSearch"),
+            "LOGIN_PROMPT")
+
     def test_pdf_validation(self):
         self.assertEqual(classify_response(200, {}, b"non-document HTTP payload", pdf=True), "INVALID_PDF")
         self.assertEqual(classify_response(200, {}, b"x" * 4_000_001), "SIZE_LIMIT")

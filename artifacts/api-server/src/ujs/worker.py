@@ -153,8 +153,11 @@ async def main(config=None):
                     response = (InspectionBrokerResponse(permission)
                                 if inspection_only else await fetcher())
                     body = await response.body()
-                    outcome = classify_response(response.status, response.headers, body,
-                                                pdf=urlsplit(url).path == "/Report/CpDocketSheet")
+                    outcome = classify_response(
+                        response.status, response.headers, body,
+                        pdf=urlsplit(url).path == "/Report/CpDocketSheet",
+                        path=urlsplit(url).path,
+                    )
                     if outcome != "OK":
                         source_stop_state = outcome
                     emit("response", requestId=permission["requestId"], status=response.status,
@@ -176,8 +179,10 @@ async def main(config=None):
                     return response, body, started
                 except Exception as error:
                     if not stopped:
+                        outcome = "TIMEOUT" if isinstance(error, (TimeoutError, BrowserTimeout)) else "NETWORK_ERROR"
+                        source_stop_state = outcome
                         emit("response", requestId=permission["requestId"], status=None,
-                             outcome="TIMEOUT" if isinstance(error, (TimeoutError, BrowserTimeout)) else "NETWORK_ERROR",
+                             outcome=outcome,
                              retryAfter=None)
                         await read_protocol_line()
                     stopped = True
@@ -422,8 +427,9 @@ async def main(config=None):
                 # No automatic remote page traversal: disclose incomplete coverage.
                 emit("calendar", rows=items, retrievedAt=calendar_time,
                      paginationComplete=not parser.has_remote_pagination and len(items) < 500,
-                     resultCapReached=len(items) >= 500,
-                     blockedAssets=blocked)
+                     resultCapReached=len(items) >= 500, blockedAssets=blocked,
+                     **({"columnHeaders": parser.validated_column_headers}
+                        if calendar_preview_only else {}))
                 if calendar_preview_only:
                     emit("calendar_preview_finished")
                     return
@@ -475,9 +481,18 @@ async def main(config=None):
                 emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=False)
             safe_code = ("CALENDAR_RESULT_LOAD_TIMEOUT"
                          if isinstance(error, BrowserTimeout) and calendar_post_completed
+                         else source_stop_state
+                         if source_stop_state in {
+                             "ACCESS_DENIED", "CHALLENGE", "HTTP_ERROR", "LOGIN_PROMPT",
+                             "NETWORK_ERROR", "RATE_LIMIT", "REDIRECT", "SIZE_LIMIT",
+                             "TIMEOUT", "UNSUPPORTED_RESPONSE",
+                         }
                          else str(error) if isinstance(error, (RuntimeError, ValueError))
                          else type(error).__name__)
             emit("barrier", code=safe_code if safe_code in {
+                "ACCESS_DENIED", "CHALLENGE", "HTTP_ERROR", "LOGIN_PROMPT",
+                "NETWORK_ERROR", "RATE_LIMIT", "REDIRECT", "SIZE_LIMIT",
+                "TIMEOUT", "UNSUPPORTED_RESPONSE",
                 "FILING_FORM_MISSING", "FILING_CONTROL_INVALID", "FILING_CONTROL_AMBIGUOUS",
                 "FILING_WIDGET_LIMIT", "FILING_FORM_ELEMENT_LIMIT", "FILING_OPTION_LIMIT",
                 "FILING_ARIA_REFERENCE_LIMIT", "FILING_GROUP_REFERENCE_LIMIT", "FILING_OFFICE_CODE_LIMIT",

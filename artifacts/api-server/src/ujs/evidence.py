@@ -8,6 +8,10 @@ from urllib.parse import parse_qs, urlsplit
 import pymupdf
 
 DOCKET = re.compile(r"CP-02-CR-\d{7}-\d{4}")
+CALENDAR_AUDIT_HEADERS = [
+    "Docket Number", "Court Type", "Filing Date", "County", "Court Office",
+    "Event Type",
+]
 
 
 def iso_date(text):
@@ -40,6 +44,7 @@ class CalendarResults(HTMLParser):
         self.in_table = self.in_row = self.in_cell = False
         self.table_found = False
         self.headers = []
+        self.validated_column_headers = None
         self.rows = []
         self.has_remote_pagination = False
 
@@ -113,6 +118,9 @@ class CalendarResults(HTMLParser):
                 **date_fields,
                 "eventType": event_type,
             })
+        # Emit only allowlisted public label prefixes, never arbitrary header
+        # text or any cell values, as preview audit metadata.
+        self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
         return result
 
 

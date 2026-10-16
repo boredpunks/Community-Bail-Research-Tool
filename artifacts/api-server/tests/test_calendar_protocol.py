@@ -13,7 +13,7 @@ import calendar_protocol
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 from source_protocol import CALENDAR_ASSETS
 from evidence import calendar_result_state
-from evidence import CalendarResults, validate_event_date
+from evidence import CALENDAR_AUDIT_HEADERS, CalendarResults, validate_event_date
 
 
 SYNTHETIC_HEADER_ONLY_CALENDAR = """<!-- synthetic parser fixture; public headers only, no docket/case rows -->
@@ -70,6 +70,8 @@ class CalendarStructureTests(unittest.TestCase):
         parser.feed(self.html)
         self.assertTrue(parser.table_found)
         self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(parser.validated_column_headers, CALENDAR_AUDIT_HEADERS)
+        self.assertNotIn("Column", parser.validated_column_headers)
         self.assertEqual(calendar_result_state(parser.table_found, [], False),
                          "RESULTS_NOT_VALIDATED")
 
@@ -86,6 +88,7 @@ class CalendarStructureTests(unittest.TestCase):
         parser.feed(self.html.replace("<th>County</th>", "<th>Changed heading</th>"))
         with self.assertRaisesRegex(ValueError, "UNSUPPORTED_CALENDAR_LAYOUT"):
             parser.validated(self.criteria)
+        self.assertIsNone(parser.validated_column_headers)
 
     def test_data_row_without_document_link_is_not_silently_skipped(self):
         parser = CalendarResults()
