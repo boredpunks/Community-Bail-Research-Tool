@@ -62,10 +62,31 @@ operation was added.
 
 ## Verification and limitations
 
-Final command outcomes are recorded below after the combined checks complete.
+Verification outcomes:
+
+- Combined safety command passed: 696 local parent/accounting checks (including
+  concurrent PostgreSQL grants) and all 72 Python tests.
+- The final actual-worker and native-form subset passed all 12 tests after
+  explicitly covering CSS-hidden Search buttons with the browser's visibility
+  property check. This covers initialization, dependent replacement, no-box
+  form containers, no-filter courtroom proof, native backing/submission
+  mismatch, result timeouts and asset-version accounting.
+- Calendar-preview status and retention rendering tests passed for success,
+  validated-empty presentation, partial/incomplete coverage, running, actionable
+  form/protocol failure and expiry, with no case fixtures.
+- Full-workspace typechecking passed. Frontend and API builds passed. The
+  frontend build has a non-blocking tooltip sourcemap warning; no unrelated
+  tooltip change was made.
+- The app's public entry rendered, the local API health endpoint returned 200,
+  and the managed frontend/API workflows started successfully.
+
 The controlled worker fixtures contain only public controls and a header-only
 table, never docket/case records. Parser-reaching fixtures must still finish
 as `RESULTS_NOT_VALIDATED`, not a successful or empty source search.
+No new court request, live permit or signed-in browser data mutation was made.
+The result-state UI was checked by server rendering, not a live source result
+or a new authenticated end-to-end browser run. These results establish local
+behavior, not current source compatibility or usable live results.
 
 The saved-record search, manual source-backed observation and review handlers
 were checked locally: they require workspace authentication but do not consult
@@ -90,7 +111,7 @@ approval is received. The proposal is one current-method calendar preview:
 | Time limits | Bootstrap navigation 600 seconds; visible Search-button readiness 15 seconds; Search click/commit/completion 180 seconds including pacing; each source fetch 45 seconds; result grid 45 seconds after Search POST completion. A response lasting 20 seconds or more stops the preview before another request. |
 | Permit | Existing single-use operator route; approval expires after 24 hours and stale dates/method/scope fail closed. There is no additional whole-session wall-clock deadline; the existing phase, request, freshness and permit-expiry bounds apply. |
 | Retry/stop policy | Zero automatic retries; no method switch, date expansion or remote pagination. Stop on denial, rate limit, challenge, login, redirect, non-OK/unsupported response, slow response, resource/script/unclassified-console failure, initialization/control/submission mismatch, unavailable exact criteria, unsupported or conflicting result layout/date, parent rejection, exhausted budget or unresolved transmission. |
-| Display/retention | Only validated source-order calendar rows: docket identifier, selected office/courtroom scope, event type/date, filing date when present, retrieval provenance and coverage limits. No names or arbitrary case cells. Unsaved results expire under the existing 24-hour retention rule; request/attempt history and fixed diagnostics are preserved. |
+| Display/retention | At most 500 validated source-order calendar rows: docket identifier, selected office/courtroom scope, event type/date, filing date when present, retrieval provenance and coverage limits. A full cap or remote pagination means incomplete coverage. No names or arbitrary case cells. Unsaved results expire under the existing 24-hour retention rule; request/attempt history and fixed diagnostics are preserved. |
 | Barrier | `SOURCE_VALIDATION_BARRIER` remains in place. The existing exceptional operator permit admits only its saved exact calendar scope, without general access proof, collection approval or PDFs. |
 
 A completed calendar preview would be the first usable search milestone, not

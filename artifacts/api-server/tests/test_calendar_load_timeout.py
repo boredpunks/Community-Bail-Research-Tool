@@ -97,7 +97,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         elif hidden_button:
             script_body = """document.addEventListener("DOMContentLoaded", () => {
               const button = document.querySelector("#btnSearch");
-              if (button) button.hidden = true;
+              if (button) button.style.visibility = "hidden";
             });"""
         headers = ["Column"] * 18
         for index, label in {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
