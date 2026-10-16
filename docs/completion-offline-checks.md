@@ -42,14 +42,14 @@ log and current code do not independently prove the absence of all manual
 actions or establish which exception occurred on that historical run.
 Offline reproduction is required before changing the timeout behavior.
 
-## Required stop: first reproduction did not reach Search
+## First attempt: stopped because the fixture did not reach Search
 
 The first loopback fixture failed preflight. It did **not** reproduce the
 October 12 failure and does not disprove the timeout hypothesis. No timeout,
 cache, calendar method, UI or barrier behavior was changed. The new regression
 test currently fails and the full safety suite must not be reported as passing.
-Stop here pending user direction to correct the fixture against the existing
-form validator and rerun; do not weaken that validator.
+Work stopped pending user direction to correct the fixture against the existing
+form validator and rerun, without weakening that validator.
 
 The fixture transport replaces Route.fetch with an ephemeral loopback HTTP
 server before any source DNS/network request. The production pacing calculation
@@ -99,3 +99,62 @@ Complete command logs from this attempt are available in
 for this workspace session. The reproduction excerpt omits only the verbose
 asyncio scheduling diagnostic and repeats the actual failure, not the intended
 timeout. No live request, barrier clearing or permit preparation occurred.
+
+## Corrected fixture: timeout failure mode reproduced
+
+The user approved: “Correct the fixture without weakening validation, then
+rerun.”
+
+The shared inspection fixture has a model input and a verification-token input
+inside each unnamed widget. Calendar preflight correctly treats those multiple
+backing-input candidates as ambiguous. The reproduction now uses a single
+form-level verification token outside the widgets. Only this test fixture and
+its redacted diagnostics changed; production form validation and worker behavior
+remain unchanged.
+
+The revised loopback run reached FORM_READY and completed the Search POST.
+The repeated result stylesheet was fetched, but full-page navigation timed out
+before the repeated script fetch and before CalendarResults.feed was called.
+The worker emitted RESULTS_NOT_VALIDATED followed by UNEXPECTED_RESPONSE.
+There were no form diagnostics. This reproduces the proposed failure mode,
+not conclusive attribution of the historical October 12 exception.
+
+This is the expected **red** result against the old implementation, not a
+passing regression. The eventual passing expectation is that the result parser
+is reached without duplicate asset network requests. The header-only fixture
+must still be rejected as RESULTS_NOT_VALIDATED; it is not an empty-result
+proof. Caching, result-wait changes, honest timeout mapping and calendar v9
+have not yet been implemented.
+
+Actual command and output excerpt (October 16, 2026):
+
+```text
+$ python -m unittest discover -s artifacts/api-server/tests -p 'test_calendar_load_timeout.py' -v
+OFFLINE_REPRODUCTION {"network": [["GET", "/CaseSearch"], ["GET", "/resource/css/sitemain.min.css"], ["GET", "/resource/js/sitemain.min.js"], ["POST", "/CaseSearch"], ["GET", "/resource/css/sitemain.min.css"]], "timeouts": ["BrowserTimeout"], "parserReached": false, "states": ["FORM_READY", "RESULTS_NOT_VALIDATED"], "barriers": ["UNEXPECTED_RESPONSE"], "formDiagnostics": []}
+FAIL
+
+======================================================================
+FAIL: test_search_reaches_parser_without_repeated_asset_network_calls (test_calendar_load_timeout.CalendarLoadTimeoutTests.test_search_reaches_parser_without_repeated_asset_network_calls)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/nix/store/qzc04a3npl70cyyy6flnnrb2ig3kayxm-python3-3.13.11/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/nix/store/qzc04a3npl70cyyy6flnnrb2ig3kayxm-python3-3.13.11/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/runner/workspace/artifacts/api-server/tests/test_calendar_load_timeout.py", line 131, in test_search_reaches_parser_without_repeated_asset_network_calls
+    self.assertFalse(timeouts, "Full-load wait timed out before the result parser")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ['BrowserTimeout'] is not false : Full-load wait timed out before the result parser
+
+----------------------------------------------------------------------
+Ran 1 test in 19.987s
+
+FAILED (failures=1)
+```
+
+The full session log, including verbose asyncio scheduling diagnostics, is
+`/tmp/calendar-timeout-corrected-fixture.log`. The process exited with status 1,
+as expected before the production fix. No full-suite pass is claimed.
+No court traffic, live permit, barrier change or deployment occurred.

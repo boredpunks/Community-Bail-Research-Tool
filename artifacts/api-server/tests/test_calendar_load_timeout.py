@@ -28,6 +28,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         original_submit = worker.submit_calendar_search
         original_feed = CalendarResults.feed
         messages, network, timeouts, parsed = [], [], [], []
+        # The shared inspection fixture deliberately has a verification input
+        # inside every unnamed widget. That makes each widget's backing model
+        # ambiguous to calendar preflight. Keep one normal form-level token,
+        # outside the widgets, rather than weakening the production validator.
+        initial = public_fixture().replace(
+            '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL">', ''
+        ).replace('</form>',
+                  '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></form>')
         headers = ["Column"] * 18
         for index, label in {2: "Docket Number", 3: "Court Type", 6: "Filing Date",
                              9: "County", 10: "Court Office", 14: "Event Type"}.items():
@@ -51,7 +59,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                     await reader.readexactly(length)  # Ephemeral; never retained.
                 network.append((method, urlsplit(target).path))
                 if target == "/CaseSearch":
-                    body = results if method == "POST" else public_fixture()
+                    body = results if method == "POST" else initial
                     content_type = "text/html"
                 elif target == "/resource/js/sitemain.min.js":
                     body, content_type = "/* offline public fixture */", "application/javascript"
@@ -118,6 +126,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         print("\nOFFLINE_REPRODUCTION", json.dumps({
             "network": network, "timeouts": timeouts, "parserReached": bool(parsed),
             "states": states, "barriers": barriers,
+            "formDiagnostics": [row for row in messages if row["kind"] == "calendar_form_diagnostic"],
         }), flush=True)
         self.assertFalse(timeouts, "Full-load wait timed out before the result parser")
         self.assertTrue(parsed, "Result parser must be reached")
