@@ -16,6 +16,7 @@ import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest }
 import { formInspectionMethod, validInspectionMetadata } from "./form-inspection";
 import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from "./coverage-inspection";
 import { filingInspectionMethod, filingPhases, validFilingInventoryMetadata } from "./filing-inspection";
+import { InspectionFetchBroker } from "./inspection-fetch-broker";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -91,6 +92,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     child.once("exit", resolve);
   });
   let finished = false;
+  const inspectionBroker = inspectionOnly ? new InspectionFetchBroker() : null;
   let inspectionPhase: "NONE" | "BEFORE" = "NONE";
   let coveragePhase = 0;
   let filingPhase = 0;
@@ -105,7 +107,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   try {
     const lines = createInterface({ input: child.stdout });
     for await (const line of lines) {
-      if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
+      if (line.length > 6_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (finished) throw new Error("Worker message after completion");
       if (inspectionOnly && !["request", "response", "inspection_metadata",
@@ -123,7 +125,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
             && typeof message.url === "string"
             && new URL(message.url).pathname === "/Report/CpDocketSheet")
           throw new Error("Calendar preview cannot retrieve docket documents");
-        child.stdin.write(JSON.stringify(await grant(job, message.path, message.method, permitId, message.url)) + "\n");
+        const permission = inspectionOnly
+          ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
+            grant(job, requestPath, method, permitId, url))
+          : await grant(job, message.path, message.method, permitId, message.url);
+        child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
       } else if (message.kind === "filing_metadata") {

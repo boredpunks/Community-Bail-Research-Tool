@@ -1,8 +1,8 @@
 """Fail-closed Linux seccomp boundary for the dormant form inspector.
 
-The filter permits AF_UNIX sockets for browser/driver IPC and denies creation
-of every other socket family. It is installed before the worker is exec'd, so
-the worker and all Chromium descendants inherit it.
+The filter denies socket() entirely and permits only AF_UNIX socketpair() for
+browser/driver IPC. It is installed before the worker is exec'd, so the worker
+and all Chromium descendants inherit it.
 """
 import ctypes
 import errno
@@ -70,17 +70,16 @@ def _filter_program():
             _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
         ])
 
-    # socket() and socketpair() are handled separately below; only AF_UNIX is
-    # permitted. On 32-bit x86, socketcall multiplexes all socket operations.
+    # Deny socket() entirely so no process can open a named host Unix socket.
+    # socketpair() is the only permitted socket creation, and only for AF_UNIX.
+    # On 32-bit x86, socketcall multiplexes all socket operations.
     machine = platform.machine().lower()
     if machine in ("i386", "i486", "i586", "i686", "x86"):
         raise RuntimeError("INSPECTION_NETWORK_SANDBOX_UNSUPPORTED_ARCH")
 
     # The syscall numbers are known for the two architectures above.
     instructions.extend([
-        _SockFilter(_BPF_JMP_JEQ_K, 0, 3, socket_syscall),
-        _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARG0),
-        _SockFilter(_BPF_JMP_JEQ_K, 1, 0, _AF_UNIX),
+        _SockFilter(_BPF_JMP_JEQ_K, 0, 1, socket_syscall),
         _SockFilter(_BPF_RET_K, 0, 0, _SECCOMP_RET_ERRNO | errno.EPERM),
         _SockFilter(_BPF_JMP_JEQ_K, 0, 3, socketpair_syscall),
         _SockFilter(_BPF_LD_W_ABS, 0, 0, _SECCOMP_DATA_ARG0),

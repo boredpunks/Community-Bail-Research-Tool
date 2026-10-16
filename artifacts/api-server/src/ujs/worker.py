@@ -18,7 +18,7 @@ from public_http import download
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_shape
 from inspection_safety import (
-    InspectionRequestGate, InspectionResponseStream, fetch_inspection_once,
+    InspectionBrokerResponse, InspectionRequestGate, InspectionRequestRouter,
 )
 from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
@@ -76,7 +76,7 @@ async def main(config=None):
         context = await browser.new_context(service_workers="block", accept_downloads=False)
         context.set_default_timeout(60_000)
 
-        async def retrieve(url, method, fetcher):
+        async def retrieve(url, method, fetcher, *, resource_type=None, headers=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
 
@@ -101,11 +101,15 @@ async def main(config=None):
                     await asyncio.wait_for(asyncio.sleep(pause), timeout=remaining)
                 else:
                     await asyncio.sleep(pause)
-                emit("request", path=urlsplit(url).path, method=method, url=url)
+                if inspection_only:
+                    emit("request", path=urlsplit(url).path, method=method, url=url,
+                         resourceType=resource_type, headers=headers or {})
+                else:
+                    emit("request", path=urlsplit(url).path, method=method, url=url)
                 permission = json.loads(await read_protocol_line())
                 if not permission.get("allow"):
                     stopped = True
-                    raise SourceFailure("REQUEST_NOT_PERMITTED")
+                    raise SourceFailure(str(permission.get("reason") or "REQUEST_NOT_PERMITTED"))
                 if inspection_only and inspection_gate.remaining_seconds() <= 0:
                     stopped = True
                     raise SourceFailure("INSPECTION_SESSION_DEADLINE")
@@ -114,7 +118,36 @@ async def main(config=None):
                 if method == "POST" and urlsplit(url).path == "/CaseSearch":
                     calendar_post_observed = True
                 try:
-                    response = await fetcher()
+                    if inspection_only and permission.get("brokerOutcome"):
+                        outcome = permission["brokerOutcome"]
+                        if outcome not in ("SIZE_LIMIT", "UNSUPPORTED_RESPONSE"):
+                            raise RuntimeError("INSPECTION_BROKER_DIAGNOSTIC_INVALID")
+                        status = permission.get("status")
+                        retry_after = permission.get("retryAfter")
+                        if type(status) is not int or not 100 <= status <= 599:
+                            raise RuntimeError("INSPECTION_BROKER_DIAGNOSTIC_INVALID")
+                        source_stop_state = outcome
+                        emit("response", requestId=permission["requestId"], status=status,
+                             outcome=outcome, retryAfter=retry_after)
+                        acknowledgement = json.loads(await read_protocol_line())
+                        last_completed_clock = clock.time()
+                        stopped = True
+                        if not acknowledgement.get("continue"):
+                            stopped = True
+                        raise SourceFailure(outcome, attempted=True)
+                    if inspection_only and permission.get("transportError"):
+                        outcome = permission["transportError"]
+                        if outcome not in ("TIMEOUT", "NETWORK_ERROR"):
+                            raise RuntimeError("INSPECTION_BROKER_DIAGNOSTIC_INVALID")
+                        source_stop_state = outcome
+                        emit("response", requestId=permission["requestId"], status=None,
+                             outcome=outcome, retryAfter=None)
+                        await read_protocol_line()
+                        last_completed_clock = clock.time()
+                        stopped = True
+                        raise SourceFailure(outcome, attempted=True)
+                    response = (InspectionBrokerResponse(permission)
+                                if inspection_only else await fetcher())
                     body = await response.body()
                     outcome = classify_response(response.status, response.headers, body,
                                                 pdf=urlsplit(url).path == "/Report/CpDocketSheet")
@@ -139,7 +172,7 @@ async def main(config=None):
                         emit("response", requestId=permission["requestId"], status=None,
                              outcome="TIMEOUT" if isinstance(error, (TimeoutError, BrowserTimeout)) else "NETWORK_ERROR",
                              retryAfter=None)
-                        await asyncio.to_thread(sys.stdin.readline)
+                        await read_protocol_line()
                     stopped = True
                     if isinstance(error, SourceFailure):
                         raise
@@ -188,15 +221,14 @@ async def main(config=None):
             try:
                 response, body, _ = await retrieve(
                     request.url, request.method,
-                        lambda: fetch_inspection_once(route, inspection_gate, inspection_stream)
-                    if inspection_only else
-                    route.fetch(max_redirects=0, max_retries=0, timeout=45_000),
+                    (lambda: None) if inspection_only else
+                    (lambda: route.fetch(max_redirects=0, max_retries=0, timeout=45_000)),
+                    resource_type=request.resource_type,
+                    headers=await request.all_headers() if inspection_only else None,
                 )
                 if inspection_only and urlsplit(request.url).path == "/CaseSearch":
                     inspection_gate.declare_document(request.url, body)
-                if inspection_only:
-                    await response.fulfill()
-                else:
+                if not inspection_only:
                     await route.fulfill(response=response)
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
@@ -206,8 +238,7 @@ async def main(config=None):
                 try:
                     await route.abort()
                 except Exception:
-                    # An inspection response may already have been continued
-                    # and failed through CDP's response interception.
+                    # A response may already have been fulfilled or aborted by CDP.
                     pass
 
         if inspection_only:
@@ -218,13 +249,13 @@ async def main(config=None):
                 await websocket.close()
 
             await context.route_web_socket("**/*", block_websocket)
-        await context.route("**/*", handle_route)
         page = await context.new_page()
-        inspection_stream = None
         if inspection_only:
             inspection_cdp = await context.new_cdp_session(page)
-            inspection_stream = InspectionResponseStream(inspection_cdp)
-            await inspection_stream.start()
+            inspection_router = InspectionRequestRouter(inspection_cdp)
+            await inspection_router.start(handle_route)
+        else:
+            await context.route("**/*", handle_route)
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
 
         def note_page_error(_error):

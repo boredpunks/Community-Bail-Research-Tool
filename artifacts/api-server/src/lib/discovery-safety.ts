@@ -57,7 +57,7 @@ export function calendarPreviewRequestAllowed(path: unknown, method: unknown): b
 
 export const sourceOutcomes = [
   "OK", "RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "REDIRECT", "HTTP_ERROR",
-  "SIZE_LIMIT", "NETWORK_ERROR", "TIMEOUT", "INVALID_PDF",
+  "SIZE_LIMIT", "UNSUPPORTED_RESPONSE", "NETWORK_ERROR", "TIMEOUT", "INVALID_PDF",
   "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER", "UNCERTAIN_AFTER_ASSESSMENT",
 ] as const;
 
@@ -67,6 +67,7 @@ export function validAccountingMessage(message: Record<string, unknown>) {
   const status = message.status, outcome = String(message.outcome);
   if (["NETWORK_ERROR", "TIMEOUT"].includes(outcome) || outcome.startsWith("UNCERTAIN_")) return status === null;
   if (!Number.isInteger(status) || Number(status) < 100 || Number(status) > 599) return false;
+  if (["SIZE_LIMIT", "UNSUPPORTED_RESPONSE"].includes(outcome)) return true;
   if (outcome === "RATE_LIMIT") return status === 200 || status === 429;
   if (outcome === "ACCESS_DENIED") return [200, 401, 403].includes(Number(status));
   if (outcome === "REDIRECT") return Number(status) >= 300 && Number(status) < 400;

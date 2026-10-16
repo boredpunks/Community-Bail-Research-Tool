@@ -46,140 +46,148 @@ async def read_bounded_response(read_chunk, *, max_bytes):
         body.extend(chunk)
 
 
-class _StreamedInspectionResponse:
-    def __init__(self, cdp, event, body):
-        self._cdp = cdp
-        self._request_id = event["requestId"]
-        self._status = event["responseStatusCode"]
-        self._status_text = event.get("responseStatusText", "")
-        self._response_headers = event.get("responseHeaders", [])
-        self.headers = {
-            header["name"].lower(): header["value"]
-            for header in self._response_headers
-            if header.get("name")
-        }
-        self.status = self._status
+class InspectionBrokerResponse:
+    """A bounded response delivered by the parent over the private worker pipe."""
+
+    def __init__(self, message):
+        if not isinstance(message, dict) or message.get("allow") is not True:
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+        self.request_id = message.get("requestId")
+        self.status = message.get("status")
+        raw_headers = message.get("headers")
+        raw_body = message.get("body")
+        if (not isinstance(self.request_id, str)
+                or not re.fullmatch(r"[\da-f-]{36}", self.request_id, re.I)
+                or type(self.status) is not int or not 100 <= self.status <= 599
+                or not isinstance(raw_headers, list) or len(raw_headers) > 256
+                or not isinstance(raw_body, str)
+                or len(raw_body) > ((MAX_RESPONSE_BYTES + 2) // 3) * 4):
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+        pairs = []
+        total = 0
+        for pair in raw_headers:
+            if (not isinstance(pair, list) or len(pair) != 2
+                    or not isinstance(pair[0], str) or not isinstance(pair[1], str)
+                    or not pair[0] or len(pair[0]) > 128 or len(pair[1]) > 8192
+                    or any(char in pair[0] + pair[1] for char in "\r\n\0")):
+                raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+            total += len(pair[0]) + len(pair[1])
+            if total > 32_768:
+                raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+            pairs.append((pair[0], pair[1]))
+        try:
+            body = base64.b64decode(raw_body, validate=True)
+        except (ValueError, TypeError) as error:
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID") from error
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+        self.raw_headers = pairs
+        self.headers = {}
+        for name, value in pairs:
+            key = name.lower()
+            if key == "set-cookie":
+                continue
+            if key in self.headers:
+                self.headers[key] += ", " + value
+            else:
+                self.headers[key] = value
         self._body = body
-        self._fulfilled = False
 
     async def body(self):
         return self._body
 
-    async def fulfill(self):
-        await self._cdp.send("Fetch.fulfillRequest", {
-            "requestId": self._request_id,
-            "responseCode": self._status,
-            "responsePhrase": self._status_text,
-            "responseHeaders": self._response_headers,
-            "body": base64.b64encode(self._body).decode("ascii"),
-        })
-        self._fulfilled = True
-
     async def dispose(self):
-        if not self._fulfilled:
-            await self._cdp.send("Fetch.failRequest", {
-                "requestId": self._request_id,
-                "errorReason": "Aborted",
-            })
         self._body = b""
 
 
-class InspectionResponseStream:
-    """Stream Chromium response chunks and fail closed at the configured cap."""
+class _InterceptedRequest:
+    def __init__(self, event):
+        request = event.get("request", {})
+        self.url = request.get("url", "")
+        self.method = request.get("method", "")
+        self.resource_type = str(event.get("resourceType", "")).lower()
+        self._headers = request.get("headers", {})
+        self.headers = self._headers if isinstance(self._headers, dict) else {}
 
-    def __init__(self, cdp, *, max_bytes=MAX_RESPONSE_BYTES,
-                 url_pattern=f"{ORIGIN}/*"):
-        if type(max_bytes) is not int or max_bytes <= 0:
-            raise ValueError("INSPECTION_RESPONSE_SIZE_LIMIT_REQUIRED")
+    async def all_headers(self):
+        if not isinstance(self._headers, dict):
+            return {}
+        return {
+            str(key).lower(): str(value)
+            for key, value in self._headers.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+
+
+class _CDPRoute:
+    def __init__(self, cdp, event):
         self._cdp = cdp
-        self._max_bytes = max_bytes
-        self._url_pattern = url_pattern
-        self._pending: dict[str, asyncio.Future] = {}
+        self._request_id = event.get("requestId")
+        self.request = _InterceptedRequest(event)
+        self._finished = False
 
-    async def start(self):
-        self._cdp.on("Fetch.requestPaused", self._on_response_paused)
-        await self._cdp.send("Fetch.enable", {
-            "patterns": [{
-                "urlPattern": self._url_pattern,
-                "requestStage": "Response",
-            }],
+    async def abort(self):
+        if self._finished:
+            return
+        self._finished = True
+        await self._cdp.send("Fetch.failRequest", {
+            "requestId": self._request_id,
+            "errorReason": "Aborted",
         })
 
-    async def fetch(self, route, *, timeout_ms):
-        if type(timeout_ms) is not int or timeout_ms <= 0:
-            raise TimeoutError("INSPECTION_SESSION_DEADLINE")
-        url = route.request.url
-        if url in self._pending:
-            raise RuntimeError("INSPECTION_DUPLICATE_STREAM_REQUEST")
-        future = asyncio.get_running_loop().create_future()
-        self._pending[url] = future
+    async def fulfill(self, *, response):
+        if self._finished or not isinstance(response, InspectionBrokerResponse):
+            raise RuntimeError("INSPECTION_BROKER_RESPONSE_INVALID")
+        headers = []
+        connection_tokens = set()
+        for name, value in response.raw_headers:
+            if name.lower() == "connection":
+                connection_tokens.update(
+                    token.strip().lower() for token in value.split(",") if token.strip()
+                )
+        hop_by_hop = {
+            "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+            "te", "trailer", "transfer-encoding", "upgrade", "content-length",
+        } | connection_tokens
+        for name, value in response.raw_headers:
+            if name.lower() not in hop_by_hop:
+                headers.append({"name": name, "value": value})
+        headers.append({"name": "Content-Length", "value": str(len(response._body))})
+        await self._cdp.send("Fetch.fulfillRequest", {
+            "requestId": self._request_id,
+            "responseCode": response.status,
+            "responseHeaders": headers,
+            "body": base64.b64encode(response._body).decode("ascii"),
+        })
+        self._finished = True
+
+
+class InspectionRequestRouter:
+    """Pause every browser request and fulfill it only from the parent broker."""
+
+    def __init__(self, cdp):
+        self._cdp = cdp
+        self._handler = None
+
+    async def start(self, handler):
+        self._handler = handler
+        self._cdp.on("Fetch.requestPaused", self._on_request_paused)
+        await self._cdp.send("Fetch.enable", {
+            "patterns": [{"urlPattern": "*", "requestStage": "Request"}],
+        })
+
+    async def _on_request_paused(self, event):
+        route = _CDPRoute(self._cdp, event)
         try:
-            await route.continue_()
-            return await asyncio.wait_for(future, timeout=timeout_ms / 1000)
-        except BaseException:
-            if self._pending.get(url) is future:
-                del self._pending[url]
-            if not future.done():
-                future.cancel()
-            raise
-
-    async def _on_response_paused(self, event):
-        url = event.get("request", {}).get("url")
-        future = self._pending.pop(url, None)
-        if future is None:
-            await self._cdp.send("Fetch.failRequest", {
-                "requestId": event["requestId"],
-                "errorReason": "Aborted",
-            })
-            return
-        if event.get("responseStatusCode") is None:
-            await self._cdp.send("Fetch.failRequest", {
-                "requestId": event["requestId"],
-                "errorReason": "Aborted",
-            })
-            if not future.done():
-                future.set_exception(RuntimeError("INSPECTION_RESPONSE_UNAVAILABLE"))
-            return
-
-        stream_handle = None
-        try:
-            stream = await self._cdp.send("Fetch.takeResponseBodyAsStream", {
-                "requestId": event["requestId"],
-            })
-            stream_handle = stream["stream"]
-
-            async def read_chunk(size):
-                result = await self._cdp.send("IO.read", {
-                    "handle": stream_handle,
-                    "size": size,
-                })
-                data = result.get("data", "")
-                if result.get("base64Encoded"):
-                    return base64.b64decode(data, validate=True)
-                return data.encode("utf-8")
-
-            body = await read_bounded_response(
-                read_chunk, max_bytes=self._max_bytes,
-            )
-            await self._cdp.send("IO.close", {"handle": stream_handle})
-            stream_handle = None
-            if not future.done():
-                future.set_result(_StreamedInspectionResponse(self._cdp, event, body))
-        except BaseException as error:
-            if stream_handle is not None:
-                try:
-                    await self._cdp.send("IO.close", {"handle": stream_handle})
-                except Exception:
-                    pass
+            if self._handler is None:
+                await route.abort()
+            else:
+                await self._handler(route)
+        except Exception:
             try:
-                await self._cdp.send("Fetch.failRequest", {
-                    "requestId": event["requestId"],
-                    "errorReason": "Aborted",
-                })
+                await route.abort()
             except Exception:
                 pass
-            if not future.done():
-                future.set_exception(error)
 
 
 def _valid_declared_asset(raw_url: str, document_url: str) -> str | None:
@@ -289,11 +297,3 @@ class InspectionRequestGate:
             return True
 
 
-async def fetch_inspection_once(route, gate: InspectionRequestGate, response_stream=None):
-    """Fetch only through the bounded stream, never buffering route.fetch()."""
-    timeout_ms = min(FETCH_TIMEOUT_MS, gate.remaining_timeout_ms())
-    if timeout_ms <= 0:
-        raise TimeoutError("INSPECTION_SESSION_DEADLINE")
-    if response_stream is None:
-        raise RuntimeError("INSPECTION_RESPONSE_STREAM_REQUIRED")
-    return await response_stream.fetch(route, timeout_ms=timeout_ms)
