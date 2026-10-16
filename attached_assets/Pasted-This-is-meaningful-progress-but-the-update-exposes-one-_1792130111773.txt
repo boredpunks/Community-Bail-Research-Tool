@@ -1,0 +1,69 @@
+This is meaningful progress, but the update exposes one decision that needs resolving: **where** will the first approved inspection actually run? “No active deployment” should not become an indefinite blocker without establishing whether a deployment is necessary for that execution.
+
+The immediate next step is clear from the report: rerun verification against the merged commit. After that, require a concrete execution-environment decision—not another broad containment task.
+
+## What still needs answering
+
+The report says the worker cannot create non-Unix sockets, while the inspector must eventually fetch approved court resources. It does not explain the complete permitted fetch path: which process makes those requests, how it receives authorization, and where destination, method, path, budget, and response-size limits are enforced.
+
+That is a missing explanation, not proof of a defect. Likewise, visible Unix sockets are an unresolved question—not proof that a usable relay exists.
+
+The deployment requirement also needs precision:
+
+- If the first inspection will run in a deployed worker, verify that deployed environment.
+- If it will run through an operator-controlled workspace process, assess that exact environment and explicitly resolve whether the existing deployment-only gate should be revised.
+- Do not claim workspace evidence establishes production containment, or quietly waive a documented requirement.
+
+## Send this to the agent
+
+> Continue the already-authorized offline work. Do not contact the court, deploy, create a live authorization, or change enablement flags.
+>
+> ### 1. Verify the integrated commit
+>
+> Record current HEAD and working-tree state. Run the full relevant offline safety suite, Python tests, type checks, API build, and whitespace checks against that same integrated revision.
+>
+> Fix failures within the existing scope and rerun affected checks. Report actual commands and results. Do not cite pre-merge test totals as verification of current HEAD.
+>
+> ### 2. Explain the permitted network path
+>
+> Document the actual request flow from inspector to approved response:
+>
+> - Which process initiates the external connection?
+> - Is it inside or outside the seccomp boundary?
+> - How does it receive and validate a request from the inspector?
+> - Where are destination, method, path, declared asset version, request budget, pacing, redirects, retries, and response-byte limits enforced?
+> - Can the inspector invoke that mechanism outside the approved scope?
+>
+> Show this from the implementation and controlled tests. Do not introduce a new architecture unless the existing one cannot satisfy the requirements.
+>
+> ### 3. Resolve the execution environment
+>
+> Identify the intended environment for the first approved inspection: operator workspace or deployed worker.
+>
+> Explain whether an active deployment is technically necessary for that execution or is a requirement inherited from the earlier review. If changing that requirement is appropriate, present the narrow change and its consequences for review; do not silently waive it.
+>
+> Verify containment in the exact proposed execution environment. Limit claims to that environment.
+>
+> ### 4. Resolve the Unix-socket question
+>
+> Identify which non-browser host Unix sockets are accessible to the inspector and whether they provide a usable network-relay or privileged service path.
+>
+> Use narrowly scoped, non-destructive local checks. Do not invoke privileged operations, access unrelated data, or use a relay to contact external services.
+>
+> Where practical, restrict access to unnecessary sockets while preserving required browser IPC. If a potentially material path cannot be assessed or restricted, identify the exact blocker and smallest alternative. Do not treat mere visibility as proof of exploitability or absence of observed traffic as proof of containment.
+>
+> ### 5. Return one decision-ready result
+>
+> Deliver:
+>
+> 1. Post-merge verification results.
+> 2. The permitted request-flow explanation.
+> 3. The proposed execution environment and evidence applicable to it.
+> 4. Remaining concrete blockers, if any.
+> 5. The exact next approval or environment decision needed.
+>
+> Keep the source barrier, historical permits, access-verification fields, and collection approval unchanged. Preserve the October 15 fixture as a regression fixture, but do not treat it as a currently approved live search or silently substitute another date.
+>
+> Do not start another general planning cycle. Finish the verification and produce either an environment-specific readiness case for independent review or a demonstrated blocker with one recommended alternative.
+
+This keeps the pace up without mistaking merged safeguards for a completed search—or making deployment a prerequisite simply because the previous task used that word.
