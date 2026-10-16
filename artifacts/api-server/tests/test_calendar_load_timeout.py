@@ -1,5 +1,6 @@
 """Loopback-only reproduction: public form and header-only table, never cases."""
 import asyncio
+import gc
 import io
 import json
 import sys
@@ -9,13 +10,17 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from playwright.async_api import Route, TimeoutError as BrowserTimeout
+from playwright.async_api import Response, Route, TimeoutError as BrowserTimeout
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import calendar_protocol
 import worker
 from evidence import CalendarResults
 from test_form_inspection import CRITERIA, public_fixture
+from source_protocol import allowed
+
+
+CHANGED_ASSET_VERSION = "fixture_new_version_0001"
 
 
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
@@ -51,7 +56,12 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             results = results.replace('id="caseSearchResultGrid"', 'id="fixtureMissingResult"')
         if changed_version:
             results = results.replace('href="/resource/css/sitemain.min.css"',
-                                      'href="/resource/css/sitemain.min.css?v=fixture_new"')
+                                      f'href="/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}"')
+            # Exercise a valid changed version, not the policy's invalid-token
+            # branch. The production 16–128-character requirement is unchanged.
+            self.assertTrue(allowed(
+                f"https://ujsportal.pacourts.us/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}",
+                "GET"))
 
         async def serve(reader, writer):
             try:
@@ -112,6 +122,19 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         for index in range(8):
             protocol.extend([json.dumps({"allow": True, "requestId": f"offline-{index}"}),
                              json.dumps({"continue": True})])
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        shutdown_errors = []
+
+        def capture_unhandled(loop, context):
+            shutdown_errors.append(type(context.get("exception")).__name__)
+            # Assert on warnings without hiding them from the real test output.
+            if previous_handler:
+                previous_handler(loop, context)
+            else:
+                loop.default_exception_handler(context)
+
+        loop.set_exception_handler(capture_unhandled)
         try:
             with ExitStack() as stack:
                 stack.enter_context(patch.object(Route, "fetch", local_fetch))
@@ -127,11 +150,18 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                                                 100 if missing_grid else 4_000 if changed_version else 1_000))
                 stack.enter_context(patch.object(worker, "submit_calendar_search", observe_submit))
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
+                stack.enter_context(patch.object(Response, "finished",
+                                                side_effect=AssertionError("Use the public requestfinished waiter")))
                 stack.enter_context(patch.object(worker, "download", side_effect=AssertionError("No PDFs")))
                 await worker.main(config)
         finally:
             server.close()
             await server.wait_closed()
+            # Surface any abandoned library tasks after browser/context close,
+            # while our asserting handler is still installed.
+            gc.collect()
+            await asyncio.sleep(0)
+            loop.set_exception_handler(previous_handler)
         states = [row["state"] for row in messages if row["kind"] == "calendar_state"]
         barriers = [row["code"] for row in messages if row["kind"] == "barrier"]
         observations = {
@@ -141,8 +171,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "requestGrants": sum(row["kind"] == "request" for row in messages),
             "responseAccounts": sum(row["kind"] == "response" for row in messages),
             "diagnostics": [row for row in messages if row["kind"] == "calendar_diagnostics"],
+            "shutdownErrors": shutdown_errors,
         }
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
+        self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
         return observations
 
     async def test_search_reaches_parser_without_repeated_asset_network_calls(self):
@@ -175,7 +207,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(observed["timeouts"])
         self.assertTrue(observed["parserReached"])
         self.assertEqual(observed["barriers"], ["RESULTS_NOT_VALIDATED"])
-        self.assertIn(("GET", "/resource/css/sitemain.min.css?v=fixture_new"), observed["network"])
+        self.assertIn(("GET", f"/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}"), observed["network"])
         self.assertEqual(len(observed["network"]), 5)
         self.assertEqual(observed["requestGrants"], 5)
         self.assertEqual(observed["responseAccounts"], 5)

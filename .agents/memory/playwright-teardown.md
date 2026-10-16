@@ -1,17 +1,20 @@
 ---
-name: Playwright teardown warnings
-description: Pinned Python Playwright can emit unhandled Response.finished task errors after successful offline assertions.
+name: Pinned Playwright response completion
+description: Response.finished leaves a target-close task pending; use a pre-registered public completion event on the pinned version.
 ---
 
-The pinned Python Playwright 1.63.0 can emit unhandled `Target closed` errors
-from internal `Response.finished` tasks during context/browser teardown, even
-when the surrounding fixture's assertions succeed. Do not equate passing
-unittest assertions with clean asynchronous shutdown.
+Avoid `Response.finished()` on the pinned Python Playwright 1.63.0 when a
+public, pre-registered request-completion event can establish the same boundary.
+Do not equate passing assertions with clean asynchronous shutdown.
 
-**Why:** Local offline runs showed these internal task errors alongside
-successful parser/cache and timeout-classification assertions.
+**Why:** The installed library starts a target-close task and does not cancel
+it when response completion wins. This emitted unhandled `Target closed`
+errors on teardown even after successful assertions. Public completion-event
+waiters avoided that behavior in the offline checks.
 
-**How to apply:** Check stderr for unhandled task exceptions as well as the
-test result. Resolve and verify lifecycle behavior rather than suppressing
-warnings or calling the run clean. This observation does not establish the
-cause of any historical source failure.
+**How to apply:** Register the public event before triggering the request to
+avoid a fast-response race; bind completion to the intended request. Check
+stderr and unhandled-task assertions, not just the final test status. Do not
+suppress warnings or patch library internals. Recheck the library behavior on
+upgrade rather than assuming the limitation is permanent. This does not
+establish the cause of any historical source failure.

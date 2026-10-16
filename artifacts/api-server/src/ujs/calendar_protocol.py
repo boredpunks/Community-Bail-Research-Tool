@@ -230,15 +230,27 @@ async def select_calendar_preview_controls(page, criteria):
 async def submit_calendar_search(page):
     # Commit, not full load: result-page assets must not consume the submission
     # deadline. This guard still allows the routed POST's pre-request pacing.
-    async with page.expect_navigation(
-        wait_until="commit", timeout=SEARCH_CLICK_TIMEOUT_MS
-    ) as navigation:
-        await page.locator("#btnSearch").click(
-            timeout=SEARCH_CLICK_TIMEOUT_MS, no_wait_after=True)
+    # Register completion before clicking so a fast, fulfilled response cannot
+    # race the listener. Use the public event waiter, not Response.finished():
+    # pinned Playwright leaves the latter's target-close task pending.
+    async with page.expect_event(
+        "requestfinished",
+        predicate=lambda request: (
+            request.method == "POST" and request.is_navigation_request()
+            and request.frame == page.main_frame
+            and request.url == "https://ujsportal.pacourts.us/CaseSearch"
+        ),
+        timeout=SEARCH_CLICK_TIMEOUT_MS,
+    ) as completed:
+        async with page.expect_navigation(
+            wait_until="commit", timeout=SEARCH_CLICK_TIMEOUT_MS
+        ) as navigation:
+            await page.locator("#btnSearch").click(
+                timeout=SEARCH_CLICK_TIMEOUT_MS, no_wait_after=True)
     response = await navigation.value
-    if response is None or response.request.method != "POST":
+    request = await completed.value
+    if response is None or response.request != request:
         raise RuntimeError("SUBMISSION_NOT_OBSERVED")
-    await response.finished()
     # Start the result deadline only after the POST body finishes. No exact
     # source empty marker has been captured, so do not invent one here.
     await page.locator("#caseSearchResultGrid").wait_for(

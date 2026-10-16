@@ -1,5 +1,13 @@
 # Completion work: offline evidence and stop points
 
+**Current offline status:** the v9 timeout/cache regressions and full safety
+suite now pass after the corrections recorded at the end of this document.
+Full-project typechecking and the managed API build passed; API health is 200.
+Earlier failures below are retained as actual before-fix evidence, not current
+pass claims. Selectable search criteria and the later source/PDF milestones
+remain separate unfinished work. No live execution is authorized by these
+offline results.
+
 ## Infrastructure freeze
 
 The parent HTTPS broker, inspection network sandbox/seccomp work and form
@@ -258,3 +266,126 @@ tracebacks and teardown warnings, is `/tmp/calendar-v9-safety.log`.
 This is not a full-suite pass or live-readiness claim. Live inspection,
 the source barrier, source approvals and the paused infrastructure remain
 unchanged.
+
+## Final offline correction and verification
+
+The user approved diagnosing the blocked stylesheet and shutdown warnings,
+then rerunning.
+
+### Causes and corrections
+
+- The changed-version fixture used `fixture_new`, an 11-character token.
+  `allowed_asset_query` correctly requires 16–128 characters. The fixture now
+  uses `fixture_new_version_0001` and asserts that its URL satisfies the
+  unchanged source policy before launching Chromium. No request rule was
+  broadened.
+- Inspection of the pinned Playwright implementation confirmed that
+  `Response.finished()` creates a target-close task but does not cancel it
+  when response completion wins. The calendar helper now registers the public
+  `requestfinished` event before Search, restricted to the main-frame POST to
+  the fixed CaseSearch URL. It also verifies that the completed request belongs
+  to the committed navigation response. The result-grid deadline starts after
+  that completion; no full-page load wait was restored.
+- The local fixtures fail if `Response.finished()` is called, capture and
+  assert on unhandled shutdown exceptions, and still forward such exceptions
+  to the normal loop handler rather than suppressing them.
+
+### Observed regression results
+
+All fixtures are loopback-only, with public form controls and a header-only
+table; they are not real or synthetic case records. The header-only table
+correctly remains unvalidated in every parser-reaching case.
+
+| Fixture | Network requests | Cached asset responses | Parser reached | Expected final code | Shutdown errors |
+| --- | ---: | ---: | --- | --- | --- |
+| Identical bootstrap assets on results | 4 | 2 | Yes | RESULTS_NOT_VALIDATED | None |
+| Missing result grid | 4 | 2 | No | CALENDAR_RESULT_LOAD_TIMEOUT | None |
+| Changed stylesheet version | 5 | 1 | Yes | RESULTS_NOT_VALIDATED | None |
+
+Each network request has one corresponding grant and response-accounting
+message. Cache hits have neither. The ordinary regression's result deadline
+is deliberately shorter than its paced pre-POST wait, demonstrating that the
+result timer does not include that wait.
+
+### Actual command output excerpts — October 16, 2026
+
+```text
+$ pnpm --filter @workspace/api-server run test:safety
+
+> @workspace/api-server@0.0.0 test:safety /home/runner/workspace/artifacts/api-server
+> node ./tests/run-safety.mjs
+
+PASS: 473 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.
+
+----------------------------------------------------------------------
+Ran 65 tests in 84.215s
+
+OK
+```
+
+The command exited 0. Full output, including the three actual
+OFFLINE_REPRODUCTION observations, is in the session log
+`/tmp/calendar-v9-safety-fixed.log`. Every observation reports
+`"shutdownErrors": []`; the complete output contains no `Target closed` or
+`Task exception was never retrieved` messages.
+
+```text
+$ pnpm run typecheck
+
+> workspace@0.0.0 typecheck /home/runner/workspace
+> pnpm run typecheck:libs && pnpm -r --filter "./artifacts/**" --filter "./scripts" --if-present run typecheck
+
+> workspace@0.0.0 typecheck:libs /home/runner/workspace
+> tsc --build
+
+Scope: 4 of 9 workspace projects
+artifacts/api-server typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/community-bail-research typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/mockup-sandbox typecheck$ tsc -p tsconfig.json --noEmit
+scripts typecheck$ tsc -p tsconfig.json --noEmit
+scripts typecheck: Done
+artifacts/api-server typecheck: Done
+artifacts/community-bail-research typecheck: Done
+artifacts/mockup-sandbox typecheck: Done
+```
+
+The full-project command and `git diff --check` exited 0. The typecheck
+session log is `/tmp/calendar-v9-typecheck.log`.
+
+Only the managed API workflow was restarted, once after these code changes.
+Its actual build/start output included:
+
+```text
+> @workspace/api-server@0.0.0 dev /home/runner/workspace/artifacts/api-server
+> export NODE_ENV=development && pnpm run build && pnpm run start
+
+> @workspace/api-server@0.0.0 build /home/runner/workspace/artifacts/api-server
+> node ./build.mjs
+
+⚡ Done in 780ms
+
+> @workspace/api-server@0.0.0 start /home/runner/workspace/artifacts/api-server
+> node --enable-source-maps ./dist/index.mjs
+
+[07:34:12.932] INFO (25500): Server listening
+    port: 8080
+```
+
+The API health check through the development proxy returned:
+
+```text
+{"status":"ok"}
+HTTP 200
+```
+
+This verifies the API build/start and health route, not a live source journey
+or a full frontend build. No dependencies were changed or installed.
+
+### Limits preserved
+
+The inspector remains disabled. The broker, seccomp and sandbox infrastructure
+was not changed. No court requests, source DNS lookups, live permits,
+source-barrier clearing, collection approvals, deployments or invented records
+were part of this correction. Passing these offline checks does not prove a
+live result layout, an empty-result marker, court-client compatibility, the
+reported live office count or deployed readiness.
