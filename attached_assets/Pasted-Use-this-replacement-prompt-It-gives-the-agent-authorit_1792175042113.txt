@@ -1,0 +1,137 @@
+Use this replacement prompt. It gives the agent authority to finish routine offline work without another planning loop, makes usable search the milestone, and preserves a separate approval for live requests.
+
+***
+
+# Priority: get the existing tool usable
+
+The goal is a working, bounded calendar search in the application—not another completed diagnostic task. Accelerate by consolidating diagnosis, implementation, testing, and integration into one execution cycle.
+
+**Deliver** either a repaired workflow ready for one exact live approval, or a precise evidence gap requiring one narrowly scoped observation. Do not return another general plan.
+
+## 1. Keep the objective open
+
+The last approved `playwright-calendar-preview-v4` attempt stopped after three successful GETs with `CALENDAR_FORM_STRUCTURE_CHANGED`, reportedly because the Search form was not visible.
+
+There was no Search POST, validated results table, PDF retrieval, or docket-document retrieval.
+
+The attempt may be complete as an execution record, but the user-facing calendar-search objective is incomplete. Track those separately.
+
+## 2. Proceed with offline implementation now
+
+Use implementation-capable mode. This instruction authorizes routine local diagnosis, code changes, controlled offline tests, integration, and builds within the existing architecture.
+
+Do not ask permission for each ordinary fix or regression test.
+
+It does not authorize court requests, deployment, purchases, destructive changes, changes to approved search criteria, relaxed safeguards, or resetting consumed permits.
+
+If the interface requires me to switch modes, identify that once and provide the exact action needed. Otherwise proceed.
+
+## 3. Diagnose and repair the actual failing path
+
+Inspect the current integrated worker and the failed attempt’s retained evidence.
+
+Determine:
+
+- The exact selector and condition that failed.
+- Whether the check concerns a form container, Search button, filter controls, or another element.
+- Whether it ran before required page initialization.
+- Whether the element was absent, ambiguous, hidden, detached, or associated with the wrong form.
+- Whether a blocked dependency or script failure prevented readiness.
+
+Do not infer that the court changed its form solely from the error-code name.
+
+Pay particular attention to whether requiring a form container to be visible is an incorrect proxy for usable, visible controls and a correctly associated Search button. Prove any repair with the actual worker path and controlled public-form fixtures.
+
+Use explicit, bounded readiness conditions—not arbitrary sleeps or blanket removal of validation.
+
+Preserve checks that establish the intended criteria, form association, permitted action/method, request accounting, and authorization scope.
+
+## 4. Make one integrated repair
+
+In the same work cycle:
+
+1. Correct the demonstrated defect.
+2. Add bounded diagnostics for the remaining plausible failure states.
+3. Test the actual worker path, including initialization and dependent-control replacement where relevant.
+4. Integrate the fix into the calendar-preview route.
+5. Verify that the application can accurately display success, validated zero matches, partial execution, and failure.
+6. Run the relevant regression suites, type checks, and build against the resulting commit.
+
+Reuse existing safeguards. Do not commission another containment review or rebuild accounting unless the repair changes those boundaries or exposes a specific defect.
+
+Version method identifiers when behavior or authorization compatibility requires it—not merely because another task was completed. Keep route, worker, diagnostic, and approval contracts consistent.
+
+## 5. Stop losing the useful failure evidence
+
+Before the worker exits, retain a compact, sanitized diagnostic sufficient to distinguish:
+
+- Missing or ambiguous elements.
+- Present but hidden elements.
+- Initialization timeout.
+- Wrong-form association.
+- Public-control selection or backing-value mismatch.
+- Required-resource or script failure.
+- Parent diagnostic rejection.
+
+Record the first failing phase and relevant bounded state flags. Do not retain credentials, tokens, arbitrary console text, full HTML, screenshots, or case content.
+
+Do not claim fixtures prove the live cause. If the original evidence is insufficient, state exactly what remains unknown.
+
+## 6. Use one live approval gate—not another planning chain
+
+When the integrated repair is ready, present one complete execution proposal.
+
+If existing evidence supports the repair, propose a bounded calendar-preview attempt that can submit Search and display validated calendar results. Do not require a separate inspection merely as ceremony.
+
+If a material uncertainty prevents safe submission, propose the smallest observation that resolves it and explain precisely why it is necessary. Do not repeatedly run speculative search attempts.
+
+The approval proposal must state:
+
+- The exact method and implementation revision.
+- Explicit proposed dates; do not silently replace earlier dates.
+- `CP-05-02-Crim`, Bail Hearing, and the exact courtroom scope, resolving the earlier Courtroom 506 criterion.
+- Zero PDFs and zero docket-document retrieval.
+- The proposed total request ceiling, accounting for assets and failed or uncertain transmissions.
+- Exact spacing, time limits, stop conditions, and retry policy.
+- What calendar information will be displayed or retained.
+- Which source barrier remains in place and how this one-use route operates without broadly clearing it.
+
+Reuse the previously approved eight-request ceiling where it still fits the actual request inventory. If it does not, explain the necessary change before requesting approval.
+
+Do not contact the court or create or consume a live permit until the separate approval is received through the applicable mechanism.
+
+## 7. Finish the user-visible workflow
+
+After a separately approved execution:
+
+- Verify the actual submitted criteria.
+- Display validated calendar results in the app.
+- Report zero matches only when a source-backed empty-result condition is validated.
+- Preserve authorized partial results if execution stops.
+- Show actionable failure details, not just an internal code.
+- Distinguish calendar success from PDF access, bail-data extraction, and collection approval.
+- Do not automatically advance into document retrieval or broader collection.
+
+A successful calendar preview is the first usable milestone, not proof that the entire research pipeline is complete.
+
+## 8. Keep useful existing features available
+
+The court-source block must not unnecessarily disable existing saved-record search, manual source-backed observations, or review features.
+
+Verify those existing paths locally where relevant. Do not add a new import system or bypass source controls as a workaround.
+
+## 9. Report outcomes, not activity
+
+Return only:
+
+1. Defect found—or exact remaining evidence gap.
+2. Fix integrated and commit.
+3. Verification performed and limitations.
+4. What the user can use now.
+5. The single next approval or decision needed.
+
+Do not create more planning tasks, unrelated parser work, broad refactors, or optional features. Do not equate passing test totals with live readiness.
+
+Start with the failing form-readiness check and carry the work through integration and verification before returning.
+
+---

@@ -1,8 +1,10 @@
 """Calendar preflight and pacing helpers; never retain form/cookie contents."""
 import math
+from playwright.async_api import TimeoutError as BrowserTimeout
 from source_protocol import CALENDAR_ASSETS
 
 SEARCH_CLICK_TIMEOUT_MS = 180_000
+CALENDAR_FORM_READY_TIMEOUT_MS = 15_000
 CALENDAR_RESULT_TIMEOUT_MS = 45_000
 
 
@@ -26,15 +28,24 @@ def expected_optional_console_error(kind, text, location_url, blocked_optional_u
                          "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT"))
 
 
-PUBLIC_CONTROLS = ("SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE",
-                   "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE")
+PUBLIC_CONTROLS = ("SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT",
+                   "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE")
 CONTROL_REASONS = ("MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
                    "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
                    "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
-                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED")
+                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN",
+                   "EMPTY", "FIELD_LIMIT", "OUTSIDE_SOURCE_RANGE")
 SUBMITTED_REASONS = ("SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH")
 FORM_REASONS = {"CALENDAR_CONTROL_STATE_MISMATCH": CONTROL_REASONS,
-                "CALENDAR_SUBMITTED_VALUES_MISMATCH": SUBMITTED_REASONS}
+                "CALENDAR_SUBMITTED_VALUES_MISMATCH": SUBMITTED_REASONS,
+                "CALENDAR_FORM_MISSING": ("MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM"),
+                "CALENDAR_FORM_INITIALIZATION_TIMEOUT": (
+                    "MISSING", "CONTROL_AMBIGUOUS", "WRONG_FORM", "DISABLED", "HIDDEN"),
+                "CALENDAR_FORM_STRUCTURE_CHANGED": ("MISSING", "EMPTY", "FIELD_LIMIT"),
+                "CRITERIA_NOT_AVAILABLE_ON_SOURCE": (
+                    "OPTION_MISSING", "OPTION_DISABLED", "OUTSIDE_SOURCE_RANGE")}
+FORM_DIAGNOSTIC_PHASES = (
+    "INITIALIZATION", "CONTROL_SELECTION", "DATE_ENTRY", "FINAL_VALIDATION", "SUBMISSION")
 
 
 class CalendarFormFailure(RuntimeError):
@@ -45,19 +56,69 @@ class CalendarFormFailure(RuntimeError):
         self.failures = failures or [{"code": code, "control": control, "reason": reason}]
 
 
-async def calendar_form_field_shape(page):
-    """Keep only ordered field names, never values, tokens, or request bodies."""
+async def wait_for_calendar_search_button(page):
+    """Wait for the usable Search button, not visibility of its containing form."""
+    try:
+        await page.wait_for_function("""() => {
+          const buttons = [...document.querySelectorAll("#btnSearch")];
+          return buttons.length === 1 && !!buttons[0].form
+            && !buttons[0].matches(":disabled") && buttons[0].checkVisibility();
+        }""", timeout=CALENDAR_FORM_READY_TIMEOUT_MS)
+    except BrowserTimeout as error:
+        state = await page.evaluate("""() => {
+          const buttons = [...document.querySelectorAll("#btnSearch")];
+          const button = buttons.length === 1 ? buttons[0] : null;
+          return {
+            count: Math.min(buttons.length, 2),
+            visible: button ? button.checkVisibility() : false,
+            enabled: button ? !button.matches(":disabled") : false,
+            associated: button ? !!button.form : false,
+          };
+        }""")
+        if state["count"] == 0:
+            reason = "MISSING"
+        elif state["count"] > 1:
+            reason = "CONTROL_AMBIGUOUS"
+        elif not state["associated"]:
+            reason = "WRONG_FORM"
+        elif not state["enabled"]:
+            reason = "DISABLED"
+        else:
+            reason = "HIDDEN"
+        raise CalendarFormFailure(
+            "CALENDAR_FORM_INITIALIZATION_TIMEOUT", "SEARCH_BUTTON", reason) from error
+
+
+async def calendar_search_button_visible(page):
+    """Return an observed visibility flag without leaking DOM content."""
+    try:
+        return await page.evaluate("""() => {
+          const buttons = [...document.querySelectorAll("#btnSearch")];
+          return buttons.length === 1 && buttons[0].checkVisibility();
+        }""")
+    except Exception:
+        return False
+
+
+async def calendar_form_field_count(page):
+    """Bound successful controls without retaining names, tokens, or values."""
     result = await page.evaluate("""() => {
       const form = document.querySelector("#btnSearch")?.form;
       if (!form) return null;
-      return [...new FormData(form).keys()].map(name =>
-        /token|password|secret|session|cookie|captcha|verification|auth/i.test(name)
-          ? "<sensitive>" : name);
+      let count = 0;
+      for (const _entry of new FormData(form)) {
+        count += 1;
+        if (count > 128) return count;
+      }
+      return count;
     }""")
-    if (not isinstance(result, list) or not 1 <= len(result) <= 128
-            or any(not isinstance(name, str) or len(name) > 128 for name in result)):
-        raise RuntimeError("CALENDAR_FORM_STRUCTURE_CHANGED")
-    return tuple(result)
+    if result is None:
+        raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "MISSING")
+    if not isinstance(result, int) or result < 1:
+        raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "EMPTY")
+    if result > 128:
+        raise CalendarFormFailure("CALENDAR_FORM_STRUCTURE_CHANGED", "FORM", "FIELD_LIMIT")
+    return result
 
 
 FORM_CHECK = """({expected}) => {
