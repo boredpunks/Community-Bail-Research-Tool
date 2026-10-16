@@ -313,3 +313,34 @@ messages**.
   unknown amount is not zero. Eligible observations are saved pending review only.
 - Keep the global source barrier and all prior failed permits unchanged.
 - This is a **new approval decision**, not use of the old remaining balance.
+
+### Verification and prepared decision
+
+Repair commits: `616b3a1` and `9441e0b`. The latter additionally enforces literal
+string enums (no array/string coercion) in parent diagnostic acceptance.
+
+- Final parent safety checks: **782 passed**, including PostgreSQL concurrent
+  grants and rejection of unsafe/extra/coerced diagnostic fields.
+- Full Python regression: **92 passed**, 228.333 seconds.
+- **13 actual post-submission worker diagnostics** passed the parent wire
+  validator and redaction checks, including console/runtime stops and missing
+  result structures. Transport was loopback-substituted; no live errors were
+  reproduced or attributed.
+- API/frontend typechecks and builds passed; packaged diagnostic import smoke
+  passed. The API restarted cleanly, health returned HTTP 200, and the public
+  app screenshot remained healthy. No signed-in browser-flow test is claimed.
+- Historical execution remains **10/30 requests, 0/5 documents**. That historical
+  balance is not execution authority.
+
+Fresh permit **`5c2f3e14-d3ac-4060-a64b-3a6bdcf128cd`**, prepared
+**2026-10-16 21:24:34 UTC**, is **PREPARED**, not approved or started, with no
+job, approval timestamp or expiry yet. It binds
+`playwright-calendar+urllib-pdf-v12-bounded-506-v2` to the exact scope above.
+Preparation made no source requests. The source retains
+`SOURCE_VALIDATION_BARRIER`, no active request, no access proof and no global
+collection approval. The failed prior permit is not reused.
+
+The pending user decision authorizes, if affirmative, **one** run of this permit
+only, with all stated ceilings and stop conditions. No decision has been
+recorded or executed by this repair. The calendar→validated dockets→documents→
+identity validation→bail extraction→pending-review objective remains open.
