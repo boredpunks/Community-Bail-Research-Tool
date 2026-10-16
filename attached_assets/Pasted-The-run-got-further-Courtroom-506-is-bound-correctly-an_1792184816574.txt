@@ -1,0 +1,71 @@
+The run got further: Courtroom 506 is bound correctly and Search was submitted. But the same diagnostic weakness has recurred—console-error counts stopped the workflow without preserving enough information to explain why.
+
+The next fix should make that stop **diagnosable**, not simply allow another attempt or ignore console errors.
+
+## Send this to the agent
+
+> Finish the post-submission diagnostic repair before requesting more live access. Do not repeat the unchanged attempt.
+>
+> ### 1. Identify exactly what stopped validation
+>
+> Inspect the current worker and `docs/bounded-engine-execution.md`.
+>
+> Report:
+>
+> - Which function stopped execution on the three console errors.
+> - Whether the submitted response arrived and was inspected.
+> - Whether result validation ran at all.
+> - Whether the errors were associated with required resources, deliberately blocked optional resources, application execution, or an unknown origin.
+> - Which of those facts are established and which cannot be recovered.
+>
+> Do not describe the console errors as the cause of search failure unless the evidence supports that. They are currently the reason our validator stopped.
+>
+> ### 2. Repair the diagnostics and validation policy together
+>
+> Counts alone are insufficient. Implement bounded, redacted diagnostics that distinguish:
+>
+> - JavaScript exceptions.
+> - Required-resource failures.
+> - Errors associated with resources deliberately blocked by this session.
+> - Other console errors.
+> - Unknown or unsafe-to-classify messages.
+>
+> Perform classification in memory. Retain only safe categories, phases, bounded counts, allowlisted resource aliases, and structural metadata. Do not persist arbitrary console text, query strings, tokens, credentials, or case content.
+>
+> Do not blanket-ignore console errors or add a broad message whitelist.
+>
+> Review whether every console error must immediately prevent read-only inspection of the already-loaded response. Where safe, collect sanitized response and result-structure diagnostics before stopping, without further source requests or accepting unvalidated records.
+>
+> A proven optional-resource error must not be treated as a required-script failure. An unknown error must not become evidence that results are valid.
+>
+> ### 3. Test the actual post-submission path
+>
+> Add regression coverage for:
+>
+> - Intentionally aborted optional resources.
+> - Required-script failures.
+> - Runtime exceptions.
+> - Unrelated and unclassified console errors.
+> - Returned search forms.
+> - Missing or malformed result structures.
+> - Diagnostic sanitization and parent acceptance.
+>
+> Use permitted fixtures and existing source-backed artifacts. Do not invent docket records or claim fixtures reproduce the live errors.
+>
+> Integrate the repair and run relevant checks against the resulting commit. Keep the completed courtroom binding intact.
+>
+> ### 4. Prepare one decision-ready next execution
+>
+> After the repair, present a fresh exact-scope approval for the calendar-to-document run. Do not reuse the failed permit or treat the unused 20 requests as continuing permission.
+>
+> Preserve the intended criteria and state the exact dates, total request ceiling, maximum five documents, pacing, and stop conditions. Explain any proposed scope change.
+>
+> The next execution must retain enough sanitized evidence to explain a repeated stop—not merely another error count.
+>
+> ### Deliverable
+>
+> Return the integrated fix, what the retained evidence actually establishes, and the single fresh approval needed.
+>
+> Keep the calendar-search and docket/bail-extraction objective open. No source requests are authorized by this diagnostic-repair instruction.
+
+This is not a reason to restart the architecture. It is a focused repair to the post-submission gate and its evidence collection.
