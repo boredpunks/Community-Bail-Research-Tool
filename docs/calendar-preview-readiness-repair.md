@@ -118,3 +118,44 @@ A completed calendar preview would be the first usable search milestone, not
 proof of PDF access, bail extraction, eligibility, release, custody or readiness
 for broader collection. Any original-evidence uncertainty that recurs must be
 reported using the new bounded diagnostics, not followed by speculative retries.
+
+## Separately approved v5 execution — October 16, 2026
+
+The user approved the exact no-courtroom-filter scope above. The permit was
+created, approved and consumed once. A first CLI invocation was rejected by
+the managed worker lease before any job or source request; the persisted permit
+remained unused. After temporarily stopping the managed worker, the approved
+runner acquired the lease. The API was restored while that runner held the
+lease; its background worker waited rather than interfering.
+
+The attempt made three successful HTTP 200 GETs: CaseSearch, its required CSS
+and its required JavaScript. Completion-to-next-start intervals were 72.253 and
+83.859 seconds. All responses completed in under two seconds. No Search POST,
+PDF, docket document or calendar row was produced.
+
+Both required assets loaded; there were no blocked required resources, script
+errors or unclassified console errors. Search-button visibility was observed
+as true. The precise stop was:
+
+`CONTROL_SELECTION: CALENDAR_CONTROL_STATE_MISMATCH: COURT_ROOM / MISSING`.
+
+This establishes only that `select[name="CourtRoomID"]` did not resolve after
+the approved public criteria selections. It does not establish whether the
+actual courtroom filter is absent, differently named, or represented by an
+unnamed select and backing input. The v5 guard assumed this native named select
+without source-backed proof; fixture success did not establish that assumption.
+Removing the guard or treating the missing selector as proof of no filter
+would silently weaken exact-scope validation.
+
+The attempt is failed/paused, not a zero-match search. Its permit remains
+consumed. `SOURCE_VALIDATION_BARRIER` and the lack of collection approval remain
+unchanged, with no request in flight. The web API is running and its health
+endpoint returned 200.
+
+**Remaining evidence gap:** one bounded observation of the public courtroom
+filter after Calendar Event / Allegheny - 05 / CP-05-02-Crim / Bail Hearing:
+whether the filter exists, its public native-control association and empty
+no-filter submitted binding. Existing coverage metadata does not include this
+information. This needs a separately approved read-only source observation
+(bootstrap GETs only, no Search POST or documents), not another speculative
+search attempt. No such additional observation has been authorized or run.

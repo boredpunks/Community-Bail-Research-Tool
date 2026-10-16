@@ -227,3 +227,15 @@ would make the proposed exact scope ambiguous.
 **How to apply:** Explicitly disclose courtroom scope in live approval. For a
 no-filter search, prove the source's no-filter state and exact empty submitted
 binding before Search; do not silently keep or reset a selected room.
+
+The presumed native named courtroom select is not source-backed proof.
+
+**Why:** An exact-client calendar attempt reached the approved public selections
+with loaded required assets and a visible Search button, but the presumed named
+courtroom selector matched nothing. Retained coverage evidence does not
+identify the actual courtroom widget or establish that no filter exists.
+
+**How to apply:** Do not equate a missing selector with no courtroom restriction,
+and do not require that guessed native shape as if observed. Obtain bounded
+public control/association evidence before changing the courtroom binding.
+Do not repeat a consumed search attempt to discover that information.
