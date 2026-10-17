@@ -784,7 +784,12 @@ print(json.dumps(projections))
       },
     });
 
-  const boundedCriteria = makeBoundedEngineCriteria("2026-10-16", "2026-10-22");
+  // The operator factory checks the real Eastern date; scheduler fixtures below
+  // deliberately use their injected October 16 clock, not today's wall clock.
+  const factoryDay = easternToday();
+  const boundedCriteria = { ...makeBoundedEngineCriteria(factoryDay, factoryDay),
+    startDate: "2026-10-16", endDate: "2026-10-22" };
+  assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
   for (const change of [{ courtRoom: "" }, { courtRoom: "Courtroom 507" }, { recordCap: 6 },
     { requestCap: 13 }, { endDate: "2026-10-23" }, { calendarPreviewOnly: false }, { eventType: "ANY" }])

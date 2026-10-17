@@ -1,5 +1,12 @@
 # Offline review: unknown calendar resource errors
 
+Status update: the user subsequently authorized implementation and a fresh
+bounded live execution. The diagnostic-only recommendations below are now
+integrated in repair commit `a3b4c99`; see
+[the execution ledger](bounded-engine-execution.md) for verification and run
+outcomes. This review's authority/outcome section describes the earlier review
+only, not current readiness or execution permission.
+
 ## Authority and outcome
 
 The user authorized **review offline, with no court requests**. This review

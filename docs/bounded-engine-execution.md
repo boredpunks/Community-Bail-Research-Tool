@@ -188,10 +188,11 @@ Prepared engine permit: `d540c718-5720-4ae7-83e6-9c8cac0e7c93`.
   controls and native bindings passed final validation. No presumed room selector.
 - Bootstrap/READY had zero blocked required resources, page errors or
   unclassified console errors; two proven optional-abort console errors.
-- After the POST: zero blocked required resources/page errors, **three
+- At the RESULT-phase checkpoint after the POST completed: zero blocked required resources/page errors, **three
   unclassified console errors**, four proven optional-abort errors, two cached
   asset responses. `CALENDAR_CONSOLE_ERROR` stopped processing at the existing
-  pre-parser gate.
+  pre-parser gate. **Correction:** this checkpoint does not establish when the
+  three errors occurred; RESULT began before the paced POST transmission.
 - No results were validated. This is **not** a validated empty search. No
   calendar row, docket document, extraction or pending observation was obtained.
 - Retained diagnostics contain counts only. Error messages and locations were
@@ -468,3 +469,64 @@ These findings identify diagnostic gaps, not the live errors' exact cause.
 No application behavior or validation exemption changed; no new permit or
 execution was prepared. Source requests remain seven for the revised scope,
 and the source barrier remains intact.
+
+## Integrated provenance and transport-timing repair
+
+The user explicitly directed implementation of both review findings without
+another planning/permission loop, and authorized one fresh bounded end-to-end
+execution. Their authorization fixes Allegheny - 05 / CP-05-02-Crim /
+Bail Hearing / Courtroom 506 and permits the earliest supported window starting
+on the New York execution date, up to seven inclusive days, maximum five distinct
+documents in validated returned order, and maximum 30 aggregate transmitted
+requests subject to stricter operator limits. It is not permission to reuse a
+failed permit, retry failed/uncertain transmissions, clear the global barrier,
+change clients or bypass validation.
+
+Integrated repair commit: **`a3b4c99`**.
+
+- Diagnostic envelope v2 adds fixed location classes independent of transmission
+  permission, observed resource types, fixed route decisions, exact in-memory
+  request correlation, session-local ordinal IDs, request-start phase/stage,
+  event stage, fixed failure subtypes, read-only state and bounded event order.
+- The request registry retains at most 128 entries in memory, never emitted
+  URLs, URL hashes, credentials, query strings, headers or case content.
+  All requestfailed resource types are represented, with UNKNOWN fallback.
+- Unique, ambiguous, absent and overflow matches remain distinct. An ambiguous
+  request identity never becomes a fabricated unique match. Repeated optional
+  resources remain exempt only when the original exact signature/session-URL
+  proof holds and **every** matching candidate is a session-optional abort.
+  Mixed/unknown matches are not exempt. This does not broaden the two recognized
+  optional abort signatures or the source allowlist.
+- Lifecycle milestones distinguish Search armed, actual transport attempt,
+  response handle received, body read, parent acknowledgment, observed browser
+  fulfillment, passive inspection, parser start and result acceptance/rejection.
+  READ_ONLY is recorded separately. Sequence ordering is observation ordering,
+  not asserted browser causality or proof an uncertain request reached the wire.
+- Unknown pre-transmission errors block further browser transport as well as
+  acceptance, and can emit a diagnostic even when no POST was attempted.
+  Unknown request failures remain fail-closed. No new request is made to inspect
+  a diagnostic, and no result is accepted because its structure looks plausible.
+- Group/count/event/registry overflow remains explicit and blocks acceptance.
+  Reserved sequence space preserves bounded terminal/in-flight milestones after
+  observation overflow.
+- Strict parent validation checks exact keys, literal enums, ordinals, bounds,
+  group uniqueness, milestone prerequisites/order, transport/inspection/parser
+  consistency and optional proof metadata before retaining the envelope.
+- Current methods are `playwright-calendar+urllib-pdf-v13`,
+  `playwright-calendar-preview-v8`, and
+  `playwright-calendar+urllib-pdf-v13-bounded-506-v3`.
+  Frozen observation/INSPECT behavior and completed historical permits remain.
+
+The historical three errors were observed at a post-completion checkpoint but
+**were not established to occur after the response**. The earlier phase-only
+record cannot recover that timing or the errors' exact causes. Current lifecycle
+metadata must not be retroactively imputed to those failed attempts.
+
+The fresh proposed execution window is **October 17–23, 2026**, inclusive
+(New York execution date October 17). A new exact-date binding observation is
+required before the fresh engine permit; both are covered by the user's current
+execution authorization. Existing controls structurally cap the observation at
+three GETs and the engine at three distinct bootstrap GET paths, one Search POST
+and five distinct document attempts: **at most 12 combined requests**, within
+the authorized 30 and existing stricter per-job caps. Stop after either failed
+stage; unused budget is not authority for another attempt.

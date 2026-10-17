@@ -12,6 +12,21 @@ stage, create a fresh permit and continue without another conversational approva
 After a consumed failed live attempt, diagnose offline and obtain fresh approval
 before another source attempt.
 
+During the completion effort, implement authorized routine offline repairs,
+tests, builds and integration without another review/proposal or permission
+loop. Once those prerequisites pass, execute within a current exact live
+authorization using the existing controls. If a mandatory gate needs the user's
+interaction, present that exact gate, not a proposal to prepare it.
+
+**Why:** The user explicitly said “End the planning loop. Execute the authorized
+work” after repeated reviews/follow-up proposals, and clarified that the goal is
+live calendar-to-docket-to-bail retrieval, not diagnostics alone.
+
+**How to apply:** Deliver integrated verified work and actual results or a
+demonstrated blocker. Preserve all method/date/budget/permit and source-stop
+boundaries. Never convert a failed consumed run or unused budget into retry
+authority; routine offline work needs no repeated approval within this scope.
+
 **Why:** The user explicitly authorized execution of the complete bounded engine,
 not repeated proposals, while forbidding global barrier removal and automatic
 retries.
