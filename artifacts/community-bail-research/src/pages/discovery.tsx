@@ -23,6 +23,7 @@ import {
 import { Shell, PageHead } from '@/components/shell';
 import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-retention';
 import { CalendarPreviewStatus } from '@/components/calendar-preview-status';
+import { CalendarResponseReview } from '@/components/calendar-response-review';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
 const POLL_MS = 3000;
@@ -490,6 +491,11 @@ export default function Discovery() {
                 {!isCalendarPreview ? <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p> : <p className="hint mt-2">A preview cannot be resumed; interrupted or failed previews keep their partial history and require a new explicitly approved search.</p>}
                 {ctlMsg ? <p className="mt-2" role="status" data-testid="text-control-message">{ctlMsg}</p> : null}
               </div>
+
+              {(() => {
+                const review = report.data?.events.find((event) => event.kind === 'CALENDAR_RESULT_REVIEW');
+                return review ? <CalendarResponseReview message={review.message} /> : null;
+              })()}
 
               {isCalendarPreview ? (
                 <section className="panel mb-6" data-testid="section-calendar-preview-results">

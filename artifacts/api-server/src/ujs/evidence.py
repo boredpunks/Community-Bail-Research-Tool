@@ -47,6 +47,9 @@ class CalendarResults(HTMLParser):
         self.validated_column_headers = None
         self.rows = []
         self.has_remote_pagination = False
+        self.validated_row_count = 0
+        self.scope_validated = False
+        self.dates_validated = False
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -118,6 +121,10 @@ class CalendarResults(HTMLParser):
                 **date_fields,
                 "eventType": event_type,
             })
+        if self.rows:
+            self.validated_row_count = len(self.rows)
+            self.scope_validated = True
+            self.dates_validated = True
         # Emit only allowlisted public label prefixes, never arbitrary header
         # text or any cell values, as preview audit metadata.
         self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)

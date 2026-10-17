@@ -79,12 +79,21 @@ try {
   check(calendarDiagnosticRejection("raw-source-text") === null);
   check(calendarDiagnosticRejection("Invalid calendar response diagnostic") === "PARENT_REJECTED_CALENDAR_RESPONSE_DIAGNOSTIC");
   const responseDiagnostic = {
-    kind: "calendar_response_diagnostic", version: 2, phase: "RESULT",
+    kind: "calendar_response_diagnostic", version: 3, phase: "RESULT",
     submissionObserved: true, responseCompleted: true, inspectionStatus: "OBSERVED",
     structure: { bodyPresent: true, searchButtonCount: 1, searchFormPresent: true,
       resultTableCount: 1, headerCellCount: 18, expectedHeaders: true, dataRowCount: 0,
       documentLinkCount: 0, countsCapped: false },
-    parserAttempted: false, parserOutcome: "NOT_RUN", stopGate: "CALENDAR_CONSOLE_ERROR",
+    parserAttempted: false, parserOutcome: "NOT_RUN",
+    criteriaValidation: "INTERCEPTED_POST_BODY_MATCHED",
+    transportIntegrity: { status: "COMPLETE", requiredAssetsLoaded: true,
+      requestFailureObserved: false, blockedDuringInspection: 0 },
+    consoleDiagnostics: { status: "UNCLASSIFIED_CONSOLE_ERRORS", consoleErrors: 1,
+      runtimeExceptions: 0, provenOptionalErrors: 0 },
+    resultValidation: { outcome: "NOT_RUN", observedRows: 0, validatedRows: 0,
+      validatedDockets: 0, documentLinks: "NOT_CHECKED", scope: "NOT_CHECKED",
+      dates: "NOT_CHECKED", explicitEmptyResult: "NOT_CAPTURED" },
+    documentEligibility: "BLOCKED_CONSOLE", stopGate: "CALENDAR_CONSOLE_ERROR",
     classifications: [{ category: "UNKNOWN_OR_UNSAFE", phase: "RESULT", alias: "UNKNOWN",
       signal: "UNCLASSIFIED", count: 1, location: "MISSING", match: "NONE", ordinal: 0,
       resource: "UNKNOWN", decision: "UNKNOWN", requestPhase: "UNKNOWN", requestStage: "UNKNOWN",
@@ -97,7 +106,7 @@ try {
   check(validCalendarResponseDiagnostic(responseDiagnostic));
   for (const change of [
     { text: "not permitted" }, { rawHtml: "not permitted" }, { phase: "arbitrary" },
-    { version: 1 }, { parserAttempted: true }, { responseCompleted: false },
+    { version: 1 }, { version: 2 }, { parserAttempted: true }, { responseCompleted: false },
     { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
     { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
     { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
@@ -130,6 +139,11 @@ try {
     { classifications: [{ ...responseDiagnostic.classifications[0], count: 2 }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], readOnly: "true" }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], stage: "AFTER_SEARCH_PROVED" }] },
+    { documentEligibility: "ELIGIBLE" },
+    { consoleDiagnostics: { ...responseDiagnostic.consoleDiagnostics, status: "CLEAN" } },
+    { transportIntegrity: { ...responseDiagnostic.transportIntegrity, status: "COMPLETE",
+      requestFailureObserved: true } },
+    { resultValidation: { ...responseDiagnostic.resultValidation, outcome: "VALIDATED_NONEMPTY" } },
   ]) check(!validCalendarResponseDiagnostic({ ...responseDiagnostic, ...change }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));

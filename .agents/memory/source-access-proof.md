@@ -276,3 +276,15 @@ attempt. A missing guessed selector does not establish that 506 is unsupported.
 **How to apply:** Discover the actual public label/form association, prove the
 available 506 option and native binding, and ask only if changing the criterion
 is necessary. General retrieval authority is not permission to broaden it.
+
+Avoid enrolling the same browser request through both a context-wide request
+listener and its route handler.
+
+**Why:** In offline response-diagnostic tests, registering through both paths
+created duplicate provenance candidates and made exact request correlation
+ambiguous.
+
+**How to apply:** Let the route handler register each request identity once.
+Attach request-failure observation to each page (including newly opened pages)
+without adding a second context-wide request-registration path; test that
+response diagnostics retain unique request matches.

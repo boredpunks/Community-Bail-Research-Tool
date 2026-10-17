@@ -1,6 +1,7 @@
 """Calendar preflight and pacing helpers; never retain form/cookie contents."""
 import math
 import asyncio
+import re
 from playwright.async_api import TimeoutError as BrowserTimeout
 from source_protocol import CALENDAR_ASSETS
 
@@ -162,6 +163,7 @@ FORM_CHECK = """({expected}) => {
   if (!form.checkValidity()) return "SOURCE_FORM_VALIDATION";
   const data = new FormData(form);
   const failures = [];
+  const verifiedFields = [];
   const fail = (code, control, reason) => failures.push({code, control, reason});
   for (const [selector, value, name, containerSelector] of expected) {
     const controls = [...document.querySelectorAll(selector)];
@@ -205,8 +207,9 @@ FORM_CHECK = """({expected}) => {
     if (submitted.length !== 1 || submitted[0] !== value)
       fail("CALENDAR_SUBMITTED_VALUES_MISMATCH", name,
         submitted.length !== 1 ? "SUBMITTED_COUNT_MISMATCH" : "SUBMITTED_VALUE_MISMATCH");
+    else verifiedFields.push({name: submittedControl.name, value: submitted[0]});
   }
-  return failures.length ? {failures} : "OK";
+  return failures.length ? {failures} : {verifiedFields};
 }"""
 
 def valid_form_failure(value):
@@ -239,8 +242,22 @@ async def validate_calendar_form(page, criteria, selected_values=None):
                 and len({failure["control"] for failure in failures}) == len(failures)):
             first = failures[0]
             raise CalendarFormFailure(first["code"], first["control"], first["reason"], failures)
+        fields = result.get("verifiedFields")
+        if (set(result) == {"verifiedFields"} and isinstance(fields, list)
+                and len(fields) == len(expected)
+                and all(isinstance(field, dict) and set(field) == {"name", "value"}
+                        and isinstance(field["name"], str) and 1 <= len(field["name"]) <= 128
+                        and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,127}", field["name"])
+                        and not re.search(r"token|password|secret|session|cookie|captcha|verification|auth",
+                                          field["name"], re.I)
+                        and isinstance(field["value"], str)
+                        for field in fields)
+                and len({field["name"] for field in fields}) == len(fields)
+                and all(field["value"] == spec[1]
+                        for field, spec in zip(fields, expected, strict=True))):
+            return tuple((field["name"], field["value"]) for field in fields)
         raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
-    if result != "OK":
+    if not isinstance(result, dict):
         raise RuntimeError(result if isinstance(result, str) and result.startswith(
             ("CALENDAR_", "SOURCE_FORM_", "UNSUPPORTED_CALENDAR_")) else "CALENDAR_PREFLIGHT_FAILED")
 
@@ -294,16 +311,27 @@ async def validate_bound_calendar_form(page, criteria, selected_values):
     from courtroom_observation import PROBE
     # Keep the frozen inspection validator intact. Check other fields with its
     # existing native FormData checks, then rediscover and validate the room.
-    await validate_calendar_form(
+    submitted_fields = await validate_calendar_form(
         page, {k: v for k, v in criteria.items() if k != "courtRoom"},
         {k: v for k, v in selected_values.items() if k != "courtRoom"})
-    state = await page.evaluate(PROBE, {"select506": False})
+    state = await page.evaluate(PROBE, {"select506": False, "includeSubmissionField": True})
     if (criteria["courtRoom"] != "Courtroom 506" or not isinstance(state, dict)
             or "error" in state or state["labels"] != 1 or state["controls"] != 1
             or not all(state[k] for k in ("enabled", "sameForm", "room506Enabled",
                                           "room506Selected", "nativeMatches"))
             or state["busy"] or state["room506Options"] != 1 or state["namedBindings"] != 1):
         raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "BACKING_VALUE_MISMATCH")
+    binding = state.get("submittedBinding") if isinstance(state, dict) else None
+    if (not isinstance(binding, dict) or set(binding) != {"name", "value"}
+            or not isinstance(binding["name"], str) or not re.fullmatch(
+                r"[A-Za-z][A-Za-z0-9_.-]{0,127}", binding["name"])
+            or re.search(r"token|password|secret|session|cookie|captcha|verification|auth",
+                         binding["name"], re.I)
+            or not isinstance(binding["value"], str)
+            or len({name for name, _ in submitted_fields} | {binding["name"]})
+               != len(submitted_fields) + 1):
+        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "BACKING_VALUE_MISMATCH")
+    return submitted_fields + ((binding["name"], binding["value"]),)
 
 
 async def select_calendar_preview_controls(page, criteria):

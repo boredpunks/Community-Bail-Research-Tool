@@ -10,7 +10,7 @@ import random
 import re
 import shutil
 import sys
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
@@ -26,6 +26,22 @@ from network_sandbox import require_default_deny_active, verify_inspection_runti
 
 def emit(kind, **values):
     print(json.dumps({"kind": kind, **values}), flush=True)
+
+
+def submitted_calendar_payload_matches(request, expected_fields):
+    """Compare only approved public filters; never retain or emit the POST body."""
+    try:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        body = request.post_data
+        if (content_type != "application/x-www-form-urlencoded"
+                or not isinstance(body, str) or len(body) > 1_000_000
+                or not expected_fields or len(expected_fields) > 8):
+            return False
+        pairs = parse_qsl(body, keep_blank_values=True, max_num_fields=128, errors="strict")
+        return all([value for field, value in pairs if field == name] == [expected]
+                   for name, expected in expected_fields)
+    except Exception:
+        return False
 
 
 class SourceFailure(RuntimeError):
@@ -95,6 +111,18 @@ async def main(config=None):
     response_inspection_attempted = False
     response_parser_attempted = False
     response_parser_outcome = "NOT_RUN"
+    response_result_validation = {
+        "outcome": "NOT_RUN", "observedRows": 0, "validatedRows": 0,
+        "validatedDockets": 0, "documentLinks": "NOT_CHECKED",
+        "scope": "NOT_CHECKED", "dates": "NOT_CHECKED",
+        "explicitEmptyResult": "NOT_CAPTURED",
+    }
+    calendar_has_remote_pagination = False
+    calendar_validated_headers = None
+    criteria_validation = "NOT_VERIFIED"
+    response_diagnostic_emitted = False
+    expected_calendar_post_fields = None
+    submission_payload_rejected = False
     post_response_read_only = False
     blocked_during_inspection = 0
     async with async_playwright() as playwright:
@@ -259,6 +287,7 @@ async def main(config=None):
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
             nonlocal inspection_error
             nonlocal cached_responses, blocked_during_inspection
+            nonlocal criteria_validation, submission_payload_rejected
             request = route.request
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
@@ -294,12 +323,26 @@ async def main(config=None):
             if (request.method == "POST" and urlsplit(request.url).path == "/CaseSearch"
                     and request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                     != "application/x-www-form-urlencoded"):
+                if response_recorder:
+                    submission_payload_rejected = True
+                    criteria_validation = "NOT_VERIFIED"
                 blocked += 1
                 blocked_requests += 1
                 if response_recorder:
                     response_recorder.decide(request, "POLICY_ABORT")
                 await route.fulfill(status=400, content_type="text/plain", body="")
                 return
+            if (response_recorder and request.method == "POST"
+                    and urlsplit(request.url).path == "/CaseSearch"):
+                if not submitted_calendar_payload_matches(request, expected_calendar_post_fields):
+                    submission_payload_rejected = True
+                    criteria_validation = "NOT_VERIFIED"
+                    blocked += 1
+                    blocked_requests += 1
+                    response_recorder.decide(request, "POLICY_ABORT")
+                    await route.abort()
+                    return
+                criteria_validation = "INTERCEPTED_POST_BODY_MATCHED"
             try:
                 cacheable = (not (inspection_only or coverage_only or filing_inspection_only)
                              and request.method == "GET"
@@ -403,14 +446,24 @@ async def main(config=None):
                         response_recorder.mark("READ_ONLY")
                 # Retain category counts only, never text, source URLs or tokens.
 
-        page.on("pageerror", note_page_error)
-        page.on("console", note_console)
-        if response_recorder:
-            page.on("request", lambda request: response_recorder.register(
-                request, request.url, request.resource_type, diagnostic_phase))
-            page.on("requestfailed", lambda request: response_recorder.resource_failure(
-                request.url, request.resource_type, blocked_optional_urls, diagnostic_phase,
-                key=request, text=request.failure))
+        observed_pages = set()
+
+        def observe_page(target):
+            key = id(target)
+            if key in observed_pages:
+                return
+            observed_pages.add(key)
+            target.on("pageerror", note_page_error)
+            target.on("console", note_console)
+            if response_recorder:
+                target.on("request", lambda request: response_recorder.register(
+                    request, request.url, request.resource_type, diagnostic_phase))
+                target.on("requestfailed", lambda request: response_recorder.resource_failure(
+                    request.url, request.resource_type, blocked_optional_urls, diagnostic_phase,
+                    key=request, text=request.failure))
+
+        observe_page(page)
+        context.on("page", observe_page)
 
         def calendar_diagnostics(phase):
             emit("calendar_diagnostics", phase=phase, blockedScripts=blocked_scripts,
@@ -445,7 +498,7 @@ async def main(config=None):
             # the separately authorized sequential path only after validation.
             post_response_read_only = True
             response_recorder.mark("READ_ONLY")
-            if stopped or not calendar_post_observed or not calendar_post_completed or lock.locked():
+            if not calendar_post_observed or not calendar_post_completed or lock.locked():
                 return
             try:
                 response_recorder.mark("INSPECTION")
@@ -456,8 +509,108 @@ async def main(config=None):
                 response_inspection_status = "UNAVAILABLE"
                 response_structure = None
 
+        async def validate_loaded_response():
+            nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
+            nonlocal items, calendar_has_remote_pagination, calendar_validated_headers
+            if (not response_recorder or response_parser_attempted
+                    or not calendar_post_observed or not calendar_post_completed
+                    or response_inspection_status != "OBSERVED"
+                    or response_structure["countsCapped"] or response_recorder.overflow):
+                return
+            response_parser_attempted = True
+            response_recorder.mark("PARSER_STARTED")
+            parser = CalendarResults()
+            try:
+                markup = await page.content()
+                if len(markup) > 2_000_000:
+                    raise ValueError("CALENDAR_RESPONSE_LIMIT")
+                parser.feed(markup)
+                if len(parser.rows) != response_structure["dataRowCount"]:
+                    raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
+                parsed_items = parser.validated(criteria)
+            except Exception as error:
+                response_parser_outcome = parser_outcome(error)
+                response_result_validation = {
+                    "outcome": response_parser_outcome,
+                    "observedRows": response_structure["dataRowCount"],
+                    "validatedRows": 0, "validatedDockets": 0,
+                    "documentLinks": "REJECTED", "scope": "REJECTED",
+                    "dates": "REJECTED", "explicitEmptyResult": "NOT_CAPTURED",
+                }
+                response_recorder.mark("PARSER_REJECTED")
+                items = []
+            else:
+                response_parser_outcome = "CANDIDATE_NONEMPTY" if parsed_items else "NO_EMPTY_PROOF"
+                response_result_validation = {
+                    "outcome": "VALIDATED_NONEMPTY" if parsed_items else "EMPTY_NOT_PROVEN",
+                    "observedRows": response_structure["dataRowCount"],
+                    "validatedRows": parser.validated_row_count,
+                    "validatedDockets": len(parsed_items),
+                    "documentLinks": "ALL_VALID" if parsed_items else "NO_ROWS",
+                    "scope": "ALL_ROWS_MATCH" if parser.scope_validated else "NO_ROWS",
+                    "dates": "ALL_WITHIN_REQUEST" if parser.dates_validated else "NO_ROWS",
+                    "explicitEmptyResult": "NOT_CAPTURED",
+                }
+                if parsed_items:
+                    response_recorder.mark("PARSER_ACCEPTED")
+                else:
+                    response_recorder.mark("PARSER_REJECTED")
+                calendar_has_remote_pagination = parser.has_remote_pagination
+                calendar_validated_headers = parser.validated_column_headers
+                items = parsed_items
+            finally:
+                # Do not retain response markup, row cells, links, docket IDs,
+                # or URLs in the diagnostic path.
+                parser.rows.clear()
+                parser.headers.clear()
+                del parser
+
+        def response_transport_status():
+            if stopped or not calendar_post_completed:
+                return "SOURCE_STOPPED" if stopped else "RESPONSE_INCOMPLETE"
+            if response_recorder and response_recorder.overflow:
+                return "DIAGNOSTIC_OVERFLOW"
+            if blocked_scripts or blocked_stylesheets or blocked_requests:
+                return "REQUIRED_RESOURCE_FAILURE"
+            if not set(CALENDAR_ASSETS).issubset(loaded_assets):
+                return "REQUIRED_ASSET_MISSING"
+            if response_recorder and response_recorder.blocking_resource_failure:
+                return "UNCLASSIFIED_REQUEST_FAILURE"
+            return "COMPLETE"
+
+        def response_console_status():
+            runtime = page_errors > 0
+            other = console_errors > 0
+            if runtime and other:
+                return "MIXED"
+            if runtime:
+                return "RUNTIME_EXCEPTIONS"
+            if other:
+                return "UNCLASSIFIED_CONSOLE_ERRORS"
+            if optional_console_errors:
+                return "PROVEN_OPTIONAL_ONLY"
+            return "CLEAN"
+
+        def response_eligibility(transport, console):
+            if (response_recorder and response_recorder.overflow
+                    or response_inspection_status != "OBSERVED"
+                    or response_structure and response_structure.get("countsCapped")):
+                return "BLOCKED_INTEGRITY"
+            if criteria_validation != "INTERCEPTED_POST_BODY_MATCHED":
+                return "BLOCKED_CRITERIA"
+            if transport != "COMPLETE":
+                return "BLOCKED_TRANSPORT"
+            if console in ("UNCLASSIFIED_CONSOLE_ERRORS", "RUNTIME_EXCEPTIONS", "MIXED"):
+                return "BLOCKED_CONSOLE"
+            if response_result_validation["outcome"] != "VALIDATED_NONEMPTY":
+                return "BLOCKED_RESULT"
+            return "ELIGIBLE"
+
         def response_diagnostic():
+            nonlocal response_diagnostic_emitted
             if not response_recorder or not (calendar_post_observed or response_recorder.groups):
+                return
+            if response_diagnostic_emitted:
                 return
             gate = ("SOURCE_STOPPED" if stopped else calendar_asset_barrier(
                 loaded_assets, blocked_scripts, blocked_stylesheets, blocked_requests, page_errors, console_errors))
@@ -466,13 +619,26 @@ async def main(config=None):
             if not gate and (response_inspection_status != "OBSERVED"
                              or response_structure["countsCapped"] or response_recorder.overflow):
                 gate = "CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE"
-            emit("calendar_response_diagnostic", version=2, phase="RESULT",
+            transport = response_transport_status()
+            console = response_console_status()
+            eligibility = response_eligibility(transport, console)
+            emit("calendar_response_diagnostic", version=3, phase="RESULT",
                  submissionObserved=calendar_post_observed, responseCompleted=calendar_post_completed,
                  inspectionStatus=response_inspection_status, structure=response_structure,
                  parserAttempted=response_parser_attempted, parserOutcome=response_parser_outcome,
+                 criteriaValidation=criteria_validation,
+                 transportIntegrity={"status": transport,
+                     "requiredAssetsLoaded": set(CALENDAR_ASSETS).issubset(loaded_assets),
+                     "requestFailureObserved": bool(response_recorder.blocking_resource_failure),
+                     "blockedDuringInspection": blocked_during_inspection},
+                 consoleDiagnostics={"status": console, "consoleErrors": console_errors,
+                     "runtimeExceptions": page_errors, "provenOptionalErrors": optional_console_errors},
+                 resultValidation=response_result_validation,
+                 documentEligibility=eligibility,
                  stopGate=gate or "NONE", classifications=response_recorder.snapshot(),
                  classificationOverflow=response_recorder.overflow, blockedDuringInspection=blocked_during_inspection,
                  eventSequence=response_recorder.sequence, milestones=response_recorder.milestones)
+            response_diagnostic_emitted = True
 
         try:
             items = config["pendingItems"]
@@ -556,7 +722,9 @@ async def main(config=None):
                 # owner, action, method and submitted backing values instead.
                 await calendar_form_field_count(page)
                 from calendar_protocol import validate_bound_calendar_form
-                await validate_bound_calendar_form(page, criteria, preview_values)
+                expected_calendar_post_fields = await validate_bound_calendar_form(
+                    page, criteria, preview_values)
+                criteria_validation = "PRE_SUBMISSION_FORMDATA_MATCHED"
                 calendar_preflight("READY")
                 emit("calendar_state", state="FORM_READY", formVisible=await page.locator("#btnSearch").is_visible())
                 diagnostic_phase = "RESULT"
@@ -565,43 +733,44 @@ async def main(config=None):
                 response_recorder.mark("SEARCH_ARMED")
                 await submit_calendar_search(page)
                 await inspect_loaded_response()
-                calendar_preflight("RESULT")
+                await validate_loaded_response()
                 if not calendar_post_observed:
                     raise RuntimeError("SUBMISSION_NOT_OBSERVED")
                 if not calendar_post_completed:
                     raise RuntimeError("UNEXPECTED_RESPONSE")
-                if (response_inspection_status != "OBSERVED" or response_structure["countsCapped"]
-                        or response_recorder.overflow):
-                    raise RuntimeError("CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE")
-                if response_structure["resultTableCount"] != 1:
-                    raise RuntimeError("RESULTS_NOT_VALIDATED")
-                parser = CalendarResults()
-                response_parser_attempted = True
-                response_recorder.mark("PARSER_STARTED")
-                parser.feed(await page.content())
-                try:
-                    items = parser.validated(criteria)
-                except ValueError as error:
-                    response_parser_outcome = parser_outcome(error)
-                    response_recorder.mark("PARSER_REJECTED")
+                response_diagnostic()
+                eligibility = response_eligibility(
+                    response_transport_status(), response_console_status())
+                if eligibility != "ELIGIBLE":
                     emit("calendar_state", state="RESULTS_NOT_VALIDATED",
-                         formVisible=await page.locator("#btnSearch").is_visible())
-                    raise RuntimeError(str(error)) from error
-                response_parser_outcome = "CANDIDATE_NONEMPTY" if items else "NO_EMPTY_PROOF"
-                calendar_preflight("RESULT")
-                state = calendar_result_state(parser.table_found, items or [], explicit_empty_state=False)
+                         formVisible=await calendar_search_button_visible(page))
+                    items = []
+                    raise RuntimeError({
+                        "BLOCKED_INTEGRITY": "CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE",
+                        "BLOCKED_CRITERIA": "CALENDAR_SUBMITTED_VALUES_MISMATCH",
+                        "BLOCKED_TRANSPORT": (
+                            "CALENDAR_UNCLASSIFIED_RESOURCE_FAILURE"
+                            if response_transport_status() == "UNCLASSIFIED_REQUEST_FAILURE"
+                            else "CALENDAR_REQUIRED_RESOURCE_BLOCKED"),
+                        "BLOCKED_CONSOLE": "CALENDAR_CONSOLE_ERROR",
+                        "BLOCKED_RESULT": (
+                            response_parser_outcome if response_parser_outcome not in
+                            ("CANDIDATE_NONEMPTY", "NO_EMPTY_PROOF", "NOT_RUN")
+                            else "RESULTS_NOT_VALIDATED"),
+                    }[eligibility])
+                state = calendar_result_state(
+                    response_structure["resultTableCount"] == 1,
+                    items or [], explicit_empty_state=False)
                 emit("calendar_state", state=state,
                      formVisible=await page.locator("#btnSearch").is_visible())
                 if state not in ("RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"):
-                    response_recorder.mark("PARSER_REJECTED")
                     raise RuntimeError("RESULTS_NOT_VALIDATED")
-                response_recorder.mark("PARSER_ACCEPTED")
                 response_diagnostic()
                 # No automatic remote page traversal: disclose incomplete coverage.
                 emit("calendar", rows=items, retrievedAt=calendar_time,
-                     paginationComplete=not parser.has_remote_pagination and len(items) < 500,
+                     paginationComplete=not calendar_has_remote_pagination and len(items) < 500,
                      resultCapReached=len(items) >= 500, blockedAssets=blocked,
-                     **({"columnHeaders": parser.validated_column_headers}
+                     **({"columnHeaders": calendar_validated_headers}
                         if calendar_preview_only else {}))
                 if calendar_preview_only:
                     emit("calendar_preview_finished")
@@ -638,19 +807,17 @@ async def main(config=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
-            if response_recorder and response_parser_attempted and not any(
-                    m["name"] in ("PARSER_ACCEPTED", "PARSER_REJECTED") for m in response_recorder.milestones):
-                response_recorder.mark("PARSER_REJECTED")
-            if response_parser_attempted and response_parser_outcome == "NOT_RUN":
-                response_parser_outcome = "PARSER_ERROR"
-                response_recorder.mark("PARSER_REJECTED")
             if response_recorder and (calendar_post_observed or response_recorder.groups):
                 await inspect_loaded_response()
+                await validate_loaded_response()
                 response_diagnostic()
             calendar_diagnostics(diagnostic_phase)
             if isinstance(error, CalendarFormFailure):
                 for failure in error.failures:
                     emit("calendar_form_diagnostic", **failure, phase=form_phase)
+            if submission_payload_rejected:
+                emit("calendar_form_diagnostic", code="CALENDAR_SUBMITTED_VALUES_MISMATCH",
+                     control="FORM", reason="SUBMITTED_VALUE_MISMATCH", phase="SUBMISSION")
             form_visible = await calendar_search_button_visible(page)
             if source_stop_state == "ACCESS_DENIED":
                 emit("calendar_state", state="ACCESS_DENIED", formVisible=form_visible)
@@ -662,7 +829,8 @@ async def main(config=None):
                 emit("calendar_state", state="RESULTS_NOT_VALIDATED", formVisible=form_visible)
             else:
                 emit("calendar_state", state="UNEXPECTED_RESPONSE", formVisible=form_visible)
-            safe_code = ("CALENDAR_RESULT_LOAD_TIMEOUT"
+            safe_code = ("CALENDAR_SUBMITTED_VALUES_MISMATCH" if submission_payload_rejected
+                         else "CALENDAR_RESULT_LOAD_TIMEOUT"
                          if isinstance(error, BrowserTimeout) and calendar_post_completed
                          else source_stop_state
                          if source_stop_state in {

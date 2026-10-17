@@ -10,7 +10,7 @@ STABLE_SECONDS = 0.5
 
 # Field names/IDs and option values are used ephemerally for association/readback.
 # None are returned. No private widget APIs, source text, HTML or tokens emitted.
-PROBE = r"""({select506}) => {
+PROBE = r"""({select506, includeSubmissionField}) => {
   const buttons = [...document.querySelectorAll("#btnSearch")];
   const form = buttons.length === 1 ? buttons[0].form : null;
   if (!form) return {error: "COURTROOM_OBSERVATION_FORM_MISSING"};
@@ -95,6 +95,8 @@ PROBE = r"""({select506}) => {
     const entries = new FormData(form).getAll(backing[0].name);
     snapshot.nativeMatches = entries.length === 1 && entries[0] === select.value
       && backing[0].value === select.value;
+    if (includeSubmissionField && snapshot.nativeMatches)
+      snapshot.submittedBinding = {name: backing[0].name, value: entries[0]};
   }
   return snapshot;
 }"""

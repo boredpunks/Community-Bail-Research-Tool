@@ -213,6 +213,23 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (diagnosticOnly || !validCalendarResponseDiagnostic(message))
           throw new Error("Invalid calendar response diagnostic");
         await discoveryEvent(job, "CALENDAR_RESPONSE_DIAGNOSTIC", JSON.stringify(message));
+        const transport = message.transportIntegrity as {
+          status: string; requiredAssetsLoaded: boolean; requestFailureObserved: boolean;
+          blockedDuringInspection: number;
+        };
+        const console = message.consoleDiagnostics as {
+          status: string; consoleErrors: number; runtimeExceptions: number; provenOptionalErrors: number;
+        };
+        const result = message.resultValidation as {
+          outcome: string; observedRows: number; validatedRows: number; validatedDockets: number;
+          documentLinks: string; scope: string; dates: string; explicitEmptyResult: string;
+        };
+        await discoveryEvent(job, "CALENDAR_RESULT_REVIEW", [
+          `Transport/resource integrity: ${transport.status}; required assets loaded=${transport.requiredAssetsLoaded}; request failure observed=${transport.requestFailureObserved}; requests blocked during read-only inspection=${transport.blockedDuringInspection}.`,
+          `Console/runtime diagnostics: ${console.status}; unclassified console errors=${console.consoleErrors}; runtime exceptions=${console.runtimeExceptions}; proven optional aborts=${console.provenOptionalErrors}.`,
+          `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
+          `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
+        ].join("|"));
       } else if (message.kind === "calendar") {
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];

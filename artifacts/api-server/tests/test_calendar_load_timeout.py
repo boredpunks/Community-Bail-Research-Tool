@@ -92,6 +92,11 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             script_body = """document.addEventListener("DOMContentLoaded", () =>
               document.querySelector("#btnSearch").addEventListener("click", () =>
                 console.error("REDACTION_SENTINEL")));"""
+        elif post_case == "mutated_post":
+            script_body = """document.addEventListener("DOMContentLoaded", () =>
+              document.querySelector("#btnSearch").addEventListener("click", () => {
+                document.querySelector('input[name="CalendarEventStartDate"]').value = "2026-10-05";
+              }));"""
         if initialize_button:
             script_body = """document.addEventListener("DOMContentLoaded", () => {
               const button = document.querySelector("#btnSearch");
@@ -132,6 +137,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 'src="/resource/js/sitemain.min.js?v=fixture_required_failure_0001"')
         elif post_case == "runtime_exception":
             results = '<script>throw new Error("REDACTION_SENTINEL");</script>' + results
+        elif post_case == "frame_console":
+            results = ('<iframe srcdoc="&lt;script&gt;console.error(&quot;'
+                       'REDACTION_SENTINEL&quot;)&lt;/script&gt;"></iframe>' + results)
         elif post_case == "other_console":
             results = '<script>console.error("REDACTION_SENTINEL token=private-fixture");</script>' + results
         elif post_case == "unclassified_console":
@@ -280,7 +288,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 for row in observations["responseDiagnostics"]:
                     output.write(json.dumps(row) + "\n")
         for row in observations["responseDiagnostics"]:
-            self.assertEqual(row["version"], 2)
+            self.assertEqual(row["version"], 3)
             serialized = json.dumps(row)
             for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
                 self.assertNotIn(private, serialized)
@@ -300,6 +308,18 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                             for r in d["classifications"]))
         self.assertFalse(o["checkpointEmitted"])
 
+    async def test_mutated_post_payload_is_aborted_before_source_transmission(self):
+        o = await self.run_fixture(post_case="mutated_post")
+        self.assertNotIn(("POST", "/CaseSearch"), o["network"])
+        self.assertFalse(o["checkpointEmitted"])
+        self.assertTrue(o["responseDiagnostics"])
+        diagnostic = o["responseDiagnostics"][-1]
+        self.assertFalse(diagnostic["submissionObserved"])
+        self.assertEqual(diagnostic["criteriaValidation"], "NOT_VERIFIED")
+        self.assertEqual(diagnostic["documentEligibility"], "BLOCKED_INTEGRITY")
+        self.assertTrue(any(row["code"] == "CALENDAR_SUBMITTED_VALUES_MISMATCH"
+                            for row in o["formDiagnostics"]))
+
     async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
         o = await self.run_fixture(post_case="optional_abort")
         d = o["responseDiagnostics"][-1]
@@ -314,30 +334,40 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_post_required_script_failure_is_not_optional_or_safe_to_inspect(self):
         o = await self.run_fixture(post_case="required_script")
         d = o["responseDiagnostics"][-1]
-        self.assertFalse(o["parserReached"])
+        self.assertTrue(o["parserReached"])
         self.assertTrue(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" and r["alias"] == "MAIN_SCRIPT"
                             for r in d["classifications"]))
-        self.assertEqual(d["inspectionStatus"], "NOT_SAFE")
+        self.assertEqual(d["inspectionStatus"], "OBSERVED")
+        self.assertEqual(d["resultValidation"]["outcome"], "EMPTY_NOT_PROVEN")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_TRANSPORT")
         self.assertEqual(d["stopGate"], "SOURCE_STOPPED")
         self.assertFalse(o["checkpointEmitted"])
 
     async def test_post_runtime_exception_still_collects_passive_structure_then_stops(self):
         o = await self.run_fixture(post_case="runtime_exception")
         d = o["responseDiagnostics"][-1]
-        self.assertFalse(o["parserReached"])
+        self.assertTrue(o["parserReached"])
         self.assertEqual(d["stopGate"], "CALENDAR_SCRIPT_ERROR")
         self.assertEqual(d["inspectionStatus"], "OBSERVED")
         self.assertTrue(d["structure"]["expectedHeaders"])
+        self.assertEqual(d["resultValidation"]["outcome"], "EMPTY_NOT_PROVEN")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_CONSOLE")
         self.assertTrue(any(r["category"] == "JAVASCRIPT_EXCEPTION" for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(o["checkpointEmitted"])
 
-    async def test_post_other_console_still_collects_structure_without_accepting_records(self):
+    async def test_post_other_console_still_validates_only_bounded_result_facts(self):
         o = await self.run_fixture(post_case="other_console")
         d = o["responseDiagnostics"][-1]
-        self.assertFalse(o["parserReached"])
+        self.assertTrue(o["parserReached"])
         self.assertEqual(d["stopGate"], "CALENDAR_CONSOLE_ERROR")
         self.assertEqual(d["inspectionStatus"], "OBSERVED")
+        self.assertEqual(d["criteriaValidation"], "INTERCEPTED_POST_BODY_MATCHED")
+        self.assertEqual(d["transportIntegrity"]["status"], "COMPLETE")
+        self.assertEqual(d["consoleDiagnostics"]["status"], "UNCLASSIFIED_CONSOLE_ERRORS")
+        self.assertEqual(d["resultValidation"]["outcome"], "EMPTY_NOT_PROVEN")
+        self.assertEqual(d["resultValidation"]["explicitEmptyResult"], "NOT_CAPTURED")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_CONSOLE")
         self.assertTrue(any(r["category"] == "OTHER_CONSOLE_ERROR" and r["phase"] == "RESULT"
                             for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
@@ -346,16 +376,26 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(marks["POST_ATTEMPT"], marks["RESPONSE_RECEIVED"])
         self.assertLess(marks["RESPONSE_RECEIVED"], marks["RESPONSE_BODY_READ"])
         self.assertLess(marks["RESPONSE_BODY_READ"], marks["POST_ACKNOWLEDGED"])
-        self.assertNotIn("PARSER_STARTED", marks)
+        self.assertLess(marks["PARSER_STARTED"], marks["PARSER_REJECTED"])
         self.assertTrue(any(r["firstSequence"] > marks["POST_ACKNOWLEDGED"]
                             for r in d["classifications"] if r["category"] == "OTHER_CONSOLE_ERROR"))
 
     async def test_post_unknown_origin_is_redacted_not_a_result_proof(self):
         o = await self.run_fixture(post_case="unclassified_console")
         d = o["responseDiagnostics"][-1]
-        self.assertFalse(o["parserReached"])
+        self.assertTrue(o["parserReached"])
         self.assertEqual(d["stopGate"], "CALENDAR_CONSOLE_ERROR")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_CONSOLE")
         self.assertTrue(any(r["category"] == "UNKNOWN_OR_UNSAFE" for r in d["classifications"]))
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_result_frame_console_error_is_observed_without_unblocking_documents(self):
+        o = await self.run_fixture(post_case="frame_console")
+        d = o["responseDiagnostics"][-1]
+        self.assertTrue(o["parserReached"])
+        self.assertEqual(d["consoleDiagnostics"]["status"], "UNCLASSIFIED_CONSOLE_ERRORS")
+        self.assertEqual(d["resultValidation"]["outcome"], "EMPTY_NOT_PROVEN")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_CONSOLE")
         self.assertFalse(o["checkpointEmitted"])
 
     async def test_console_stop_aborts_new_browser_data_requests_without_another_grant(self):
@@ -369,11 +409,12 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_returned_form_has_structural_diagnostics_without_claiming_zero(self):
         o = await self.run_fixture(post_case="returned_form")
         d = o["responseDiagnostics"][-1]
-        self.assertFalse(o["parserReached"])
+        self.assertTrue(o["parserReached"])
         self.assertTrue(d["responseCompleted"])
         self.assertTrue(d["structure"]["searchFormPresent"])
         self.assertEqual(d["structure"]["resultTableCount"], 0)
-        self.assertEqual(d["parserOutcome"], "NOT_RUN")
+        self.assertEqual(d["parserOutcome"], "MISSING_TABLE")
+        self.assertEqual(d["resultValidation"]["outcome"], "MISSING_TABLE")
         self.assertFalse(o["checkpointEmitted"])
         self.assertNotIn("EMPTY_RESULTS_VALIDATED", o["states"])
 
@@ -404,7 +445,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_result_grid_reports_honest_post_search_timeout(self):
         observed = await self.run_fixture(missing_grid=True)
         self.assertEqual(observed["timeouts"], ["BrowserTimeout"])
-        self.assertFalse(observed["parserReached"])
+        self.assertTrue(observed["parserReached"])
         self.assertIn("RESULTS_NOT_VALIDATED", observed["states"])
         self.assertEqual(observed["barriers"], ["CALENDAR_RESULT_LOAD_TIMEOUT"])
         self.assertEqual(observed["requestGrants"], 4)

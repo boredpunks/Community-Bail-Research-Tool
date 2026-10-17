@@ -15,6 +15,14 @@ const resources = ["document", "script", "stylesheet", "image", "font", "media",
 const decisions = ["UNKNOWN", "OPTIONAL_ABORT", "POLICY_ABORT", "READ_ONLY_STOP", "CACHE", "FETCH_ATTEMPT"];
 const failures = ["UNKNOWN", "NET_FAILED", "NET_ABORTED", "NET_BLOCKED_CLIENT", "DNS", "CONNECT",
   "TIMEOUT", "HTTP_DENIED", "HTTP_RATE_LIMIT", "HTTP_CLIENT", "HTTP_SERVER", "HTTP_OTHER", "OTHER"];
+const transportStatuses = ["RESPONSE_INCOMPLETE", "SOURCE_STOPPED", "REQUIRED_RESOURCE_FAILURE",
+  "REQUIRED_ASSET_MISSING", "UNCLASSIFIED_REQUEST_FAILURE", "DIAGNOSTIC_OVERFLOW", "COMPLETE"];
+const consoleStatuses = ["CLEAN", "PROVEN_OPTIONAL_ONLY", "UNCLASSIFIED_CONSOLE_ERRORS",
+  "RUNTIME_EXCEPTIONS", "MIXED"];
+const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "EMPTY_NOT_PROVEN", "MISSING_TABLE",
+  "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED", "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
+const eligibilityStates = ["BLOCKED_INTEGRITY", "BLOCKED_CRITERIA", "BLOCKED_TRANSPORT",
+  "BLOCKED_CONSOLE", "BLOCKED_RESULT", "ELIGIBLE"];
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const keys = (v: Record<string, unknown>, expected: string[]) =>
   Object.keys(v).sort().join() === [...expected].sort().join();
@@ -22,9 +30,10 @@ const count = (v: unknown, max: number) => Number.isSafeInteger(v) && Number(v) 
 const oneOf = (v: unknown, values: string[]) => typeof v === "string" && values.includes(v);
 export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   if (!keys(m, ["kind", "version", "phase", "submissionObserved", "responseCompleted",
-    "inspectionStatus", "structure", "parserAttempted", "parserOutcome", "stopGate",
+    "inspectionStatus", "structure", "parserAttempted", "parserOutcome", "criteriaValidation",
+    "transportIntegrity", "consoleDiagnostics", "resultValidation", "documentEligibility", "stopGate",
     "classifications", "classificationOverflow", "blockedDuringInspection", "eventSequence", "milestones"])
-    || m.kind !== "calendar_response_diagnostic" || m.version !== 2 || m.phase !== "RESULT"
+    || m.kind !== "calendar_response_diagnostic" || m.version !== 3 || m.phase !== "RESULT"
     || !["submissionObserved", "responseCompleted", "parserAttempted", "classificationOverflow"]
       .every(k => typeof m[k] === "boolean")
     || !count(m.blockedDuringInspection, 10_000) || !count(m.eventSequence, 10_000)
@@ -66,6 +75,91 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       || !count(s.documentLinkCount, 1000)
       || s.expectedHeaders && s.resultTableCount !== 1) return false;
   } else if (m.structure !== null) return false;
+  const transport = m.transportIntegrity;
+  const console = m.consoleDiagnostics;
+  const result = m.resultValidation;
+  if (!object(transport) || !keys(transport, [
+    "status", "requiredAssetsLoaded", "requestFailureObserved", "blockedDuringInspection"])
+    || !oneOf(transport.status, transportStatuses)
+    || typeof transport.requiredAssetsLoaded !== "boolean"
+    || typeof transport.requestFailureObserved !== "boolean"
+    || !count(transport.blockedDuringInspection, 10_000)
+    || transport.blockedDuringInspection !== m.blockedDuringInspection
+    || !object(console) || !keys(console, [
+      "status", "consoleErrors", "runtimeExceptions", "provenOptionalErrors"])
+    || !oneOf(console.status, consoleStatuses)
+    || !count(console.consoleErrors, 10_000)
+    || !count(console.runtimeExceptions, 10_000)
+    || !count(console.provenOptionalErrors, 10_000)
+    || !object(result) || !keys(result, [
+      "outcome", "observedRows", "validatedRows", "validatedDockets",
+      "documentLinks", "scope", "dates", "explicitEmptyResult"])
+    || !oneOf(result.outcome, resultOutcomes)
+    || !count(result.observedRows, 1000) || !count(result.validatedRows, 1000)
+    || !count(result.validatedDockets, 1000)
+    || Number(result.validatedRows) > Number(result.observedRows)
+    || !oneOf(result.documentLinks, ["NOT_CHECKED", "NO_ROWS", "ALL_VALID", "REJECTED"])
+    || !oneOf(result.scope, ["NOT_CHECKED", "NO_ROWS", "ALL_ROWS_MATCH", "REJECTED"])
+    || !oneOf(result.dates, ["NOT_CHECKED", "NO_ROWS", "ALL_WITHIN_REQUEST", "REJECTED"])
+    || result.explicitEmptyResult !== "NOT_CAPTURED"
+    || !oneOf(m.criteriaValidation, [
+      "NOT_VERIFIED", "PRE_SUBMISSION_FORMDATA_MATCHED", "INTERCEPTED_POST_BODY_MATCHED"])
+    || !oneOf(m.documentEligibility, eligibilityStates)) return false;
+  const runtime = Number(console.runtimeExceptions);
+  const consoleErrors = Number(console.consoleErrors);
+  const optionalErrors = Number(console.provenOptionalErrors);
+  const validatedRows = Number(result.validatedRows);
+  const validatedDockets = Number(result.validatedDockets);
+  const observedRows = Number(result.observedRows);
+  const structureRows = object(m.structure) ? Number(m.structure.dataRowCount) : -1;
+  if ((console.status === "CLEAN" && (runtime || consoleErrors || optionalErrors))
+    || (console.status === "PROVEN_OPTIONAL_ONLY" && (!optionalErrors || runtime || consoleErrors))
+    || (console.status === "UNCLASSIFIED_CONSOLE_ERRORS" && (!consoleErrors || runtime))
+    || (console.status === "RUNTIME_EXCEPTIONS" && (!runtime || consoleErrors))
+    || (console.status === "MIXED" && (!runtime || !consoleErrors))) return false;
+  if (m.parserAttempted) {
+    if (result.outcome === "NOT_RUN"
+      || observedRows !== (m.inspectionStatus === "OBSERVED" ? structureRows : -1))
+      return false;
+    if (result.outcome === "VALIDATED_NONEMPTY"
+      && (m.parserOutcome !== "CANDIDATE_NONEMPTY" || validatedRows < 1
+        || validatedDockets < 1 || result.documentLinks !== "ALL_VALID"
+        || result.scope !== "ALL_ROWS_MATCH" || result.dates !== "ALL_WITHIN_REQUEST"))
+      return false;
+    if (result.outcome === "EMPTY_NOT_PROVEN"
+      && (m.parserOutcome !== "NO_EMPTY_PROOF" || observedRows !== 0
+        || validatedRows !== 0 || validatedDockets !== 0
+        || result.documentLinks !== "NO_ROWS" || result.scope !== "NO_ROWS" || result.dates !== "NO_ROWS"))
+      return false;
+    if (["MISSING_TABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED",
+      "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"].includes(String(result.outcome))
+      && (m.parserOutcome !== result.outcome || validatedRows !== 0
+        || validatedDockets !== 0 || result.documentLinks !== "REJECTED"
+        || result.scope !== "REJECTED" || result.dates !== "REJECTED")) return false;
+  } else if (result.outcome !== "NOT_RUN" || result.observedRows !== 0
+    || result.validatedRows !== 0 || result.validatedDockets !== 0
+    || result.documentLinks !== "NOT_CHECKED" || result.scope !== "NOT_CHECKED"
+    || result.dates !== "NOT_CHECKED") return false;
+  if (m.documentEligibility === "ELIGIBLE"
+    && (!m.responseCompleted || !m.parserAttempted
+      || m.criteriaValidation !== "INTERCEPTED_POST_BODY_MATCHED"
+      || transport.status !== "COMPLETE" || !transport.requiredAssetsLoaded
+      || transport.requestFailureObserved || m.classificationOverflow
+      || !["CLEAN", "PROVEN_OPTIONAL_ONLY"].includes(String(console.status))
+      || runtime || consoleErrors || result.outcome !== "VALIDATED_NONEMPTY"
+      || validatedRows < 1)) return false;
+  if (m.documentEligibility !== "ELIGIBLE"
+    && m.documentEligibility === "BLOCKED_CONSOLE" && !runtime && !consoleErrors) return false;
+  if (m.documentEligibility !== "ELIGIBLE"
+    && m.documentEligibility === "BLOCKED_TRANSPORT" && transport.status === "COMPLETE") return false;
+  if (m.documentEligibility !== "ELIGIBLE"
+    && m.documentEligibility === "BLOCKED_CRITERIA"
+    && m.criteriaValidation === "INTERCEPTED_POST_BODY_MATCHED") return false;
+  if (m.documentEligibility !== "ELIGIBLE"
+    && m.documentEligibility === "BLOCKED_RESULT" && result.outcome === "VALIDATED_NONEMPTY") return false;
+  if (transport.status === "COMPLETE"
+    && (!m.responseCompleted || !transport.requiredAssetsLoaded || transport.requestFailureObserved))
+    return false;
   const seen = new Set<string>();
   for (const row of m.classifications) {
     if (!object(row) || !keys(row, ["category", "phase", "alias", "signal", "count",

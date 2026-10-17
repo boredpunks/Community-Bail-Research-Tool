@@ -187,11 +187,13 @@ class CalendarDiagnosticRecorder:
             p["resource"] = resource_type
         optional = (alias == "BLOCKED_OPTIONAL" and resource_type in ("image", "font", "media")
                     and p["match"] == "UNIQUE" and p["decision"] == "OPTIONAL_ABORT")
+        locally_blocked = p["decision"] in ("POLICY_ABORT", "READ_ONLY_STOP")
         category = ("BLOCKED_OPTIONAL_RESOURCE_ERROR" if optional else
                     "REQUIRED_RESOURCE_FAILURE" if alias in REQUIRED else "UNKNOWN_OR_UNSAFE")
-        if not optional:
+        if not optional and not locally_blocked:
             self.blocking_resource_failure = True
-        self.add(category, phase, alias, "REQUEST_FAILED", p, failure_class(text, status))
+        self.add(category, phase, alias, "REQUEST_FAILED", p,
+                 "UNKNOWN" if locally_blocked else failure_class(text, status))
 
     def snapshot(self):
         return list(self.groups.values())
@@ -237,6 +239,7 @@ RESPONSE_STRUCTURE = r"""() => {
     const raw = links[i].getAttribute("href") || "";
     if (raw.length <= 2048 && raw.startsWith("/Report/CpDocketSheet?")) out.documentLinkCount++;
   }
+  if ((document.documentElement?.outerHTML?.length ?? 0) > 2000000) out.countsCapped = true;
   return out;
 }"""
 
@@ -249,4 +252,6 @@ def parser_outcome(error):
         "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT": "IDENTITY_OR_SCOPE_REJECTED",
         "UNSUPPORTED_EVENT_DATE_LAYOUT": "DATE_REJECTED",
         "CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW": "DATE_REJECTED",
+        "CALENDAR_RESPONSE_LIMIT": "PARSER_ERROR",
+        "CALENDAR_STRUCTURE_MISMATCH": "PARSER_ERROR",
     }.get(str(error), "PARSER_ERROR")

@@ -53,7 +53,7 @@ class RedactedDiagnosticTests(unittest.TestCase):
             r = CalendarDiagnosticRecorder()
             url = "https://invalid.test/REDACTION_SENTINEL?token=private"
             r.register("request", url, resource, "READY")
-            r.decide("request", "POLICY_ABORT")
+            r.decide("request", "FETCH_ATTEMPT")
             r.mark("SEARCH_ARMED")
             r.resource_failure(url, resource, set(), "RESULT", key="request", text="net::ERR_NAME_NOT_RESOLVED")
             row = r.snapshot()[0]
@@ -61,11 +61,22 @@ class RedactedDiagnosticTests(unittest.TestCase):
             self.assertEqual(row["requestPhase"], "READY")
             self.assertEqual(row["requestStage"], "BEFORE_SEARCH")
             self.assertEqual(row["stage"], "SEARCH_ARMED")
-            self.assertEqual(row["decision"], "POLICY_ABORT")
+            self.assertEqual(row["decision"], "FETCH_ATTEMPT")
             self.assertEqual(row["failure"], "DNS")
             self.assertTrue(r.blocking_resource_failure)
             self.assertNotIn("REDACTION_SENTINEL", json.dumps(r.snapshot()))
             self.assertNotIn("private", json.dumps(r.snapshot()))
+
+    def test_locally_aborted_request_is_not_reported_as_source_transport_failure(self):
+        r = CalendarDiagnosticRecorder()
+        url = "https://ujsportal.pacourts.us/CaseSearch"
+        r.register("request", url, "document", "RESULT")
+        r.decide("request", "POLICY_ABORT")
+        r.resource_failure(url, "document", set(), "RESULT", key="request", text="net::ERR_FAILED")
+        row = r.snapshot()[0]
+        self.assertEqual(row["decision"], "POLICY_ABORT")
+        self.assertEqual(row["failure"], "UNKNOWN")
+        self.assertFalse(r.blocking_resource_failure)
 
     def test_ambiguous_urls_are_not_reclassified_optional(self):
         r = CalendarDiagnosticRecorder()
