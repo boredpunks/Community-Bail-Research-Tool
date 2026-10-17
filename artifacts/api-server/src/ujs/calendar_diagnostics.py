@@ -7,6 +7,52 @@ from calendar_protocol import expected_optional_console_error
 MAX_COUNT = 10_000
 MAX_GROUPS = 32
 REQUIRED = {"MAIN_SCRIPT", "MAIN_STYLESHEET"}
+RESOURCE_TYPES = {"document", "script", "stylesheet", "image", "font", "media",
+                  "xhr", "fetch", "eventsource", "websocket", "manifest", "texttrack", "other"}
+STAGES = ("BEFORE_SEARCH", "SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEIVED",
+          "RESPONSE_BODY_READ", "POST_ACKNOWLEDGED", "DOCUMENT_FULFILLED",
+          "INSPECTION", "PARSER_STARTED", "PARSER_ACCEPTED", "PARSER_REJECTED")
+MILESTONES = set(STAGES[1:]) | {"READ_ONLY"}
+
+
+def location_class(url):
+    """Diagnostic shape only; never a request permission or retained URL."""
+    if url is None or url == "":
+        return "MISSING"
+    if not isinstance(url, str) or len(url) > 2048:
+        return "INVALID"
+    try:
+        p = urlsplit(url)
+        if not p.scheme or p.username or p.password or any(ord(c) < 32 for c in url):
+            return "INVALID"
+        if p.scheme not in ("http", "https"):
+            return "NON_HTTP"
+        if not p.hostname:
+            return "INVALID"
+        if p.scheme == "https" and p.hostname == "ujsportal.pacourts.us" and p.port in (None, 443):
+            return "SOURCE_ASSET_PATH" if p.path in (
+                "/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css") else "SOURCE_OTHER"
+        return "EXTERNAL_HTTP"
+    except (TypeError, ValueError):
+        return "INVALID"
+
+
+def failure_class(text=None, status=None):
+    if type(status) is int:
+        if status in (401, 403):
+            return "HTTP_DENIED"
+        if status == 429:
+            return "HTTP_RATE_LIMIT"
+        return "HTTP_CLIENT" if 400 <= status < 500 else "HTTP_SERVER" if 500 <= status < 600 else "HTTP_OTHER"
+    if not isinstance(text, str) or len(text) > 2048:
+        return "UNKNOWN"
+    match = re.fullmatch(r"(?:Failed to load resource: )?(?:net::)?(ERR_[A-Z_]{1,64})", text)
+    if match:
+        return {"ERR_FAILED": "NET_FAILED", "ERR_ABORTED": "NET_ABORTED",
+                "ERR_BLOCKED_BY_CLIENT": "NET_BLOCKED_CLIENT", "ERR_NAME_NOT_RESOLVED": "DNS",
+                "ERR_CONNECTION_REFUSED": "CONNECT", "ERR_TIMED_OUT": "TIMEOUT"}.get(match[1], "OTHER")
+    match = re.fullmatch(r"Failed to load resource: the server responded with a status of ([1-5][0-9]{2}) \([A-Za-z ]{1,64}\)", text)
+    return failure_class(status=int(match[1])) if match else "UNKNOWN"
 
 
 def resource_alias(url, blocked_optional):
@@ -29,22 +75,88 @@ class CalendarDiagnosticRecorder:
     def __init__(self):
         self.groups = {}
         self.overflow = False
+        self.requests = {}  # Exact URLs and object keys are session memory ONLY.
+        self.sequence = 0
+        self.stage = "BEFORE_SEARCH"
+        self.read_only = False
+        self.milestones = []
+        self.blocking_resource_failure = False
 
-    def add(self, category, phase, alias, signal):
-        key = (category, phase, alias, signal)
+    def tick(self):
+        if self.sequence >= MAX_COUNT:
+            self.overflow = True
+        self.sequence = min(MAX_COUNT, self.sequence + 1)
+        return self.sequence
+
+    def mark(self, name):
+        if name not in MILESTONES:
+            raise ValueError("Invalid diagnostic milestone")
+        if any(row["name"] == name for row in self.milestones):
+            return
+        self.milestones.append({"name": name, "sequence": self.tick()})
+        if name == "READ_ONLY":
+            self.read_only = True
+        elif STAGES.index(name) > STAGES.index(self.stage):
+            self.stage = name
+
+    def register(self, key, url, resource_type, phase):
+        if key in self.requests:
+            return
+        if len(self.requests) >= 128 or not isinstance(url, str) or len(url) > 2048:
+            self.overflow = True
+            return
+        self.tick()
+        self.requests[key] = dict(url=url, ordinal=len(self.requests) + 1,
+            resource=resource_type if resource_type in RESOURCE_TYPES else "UNKNOWN",
+            requestPhase=phase, requestStage=self.stage, decision="UNKNOWN")
+
+    def decide(self, key, decision):
+        if key in self.requests:
+            self.requests[key]["decision"] = decision
+
+    def provenance(self, url, key=None):
+        matches = ([self.requests[key]] if key in self.requests else
+                   [r for r in self.requests.values() if r["url"] == url])
+        state = "UNIQUE" if len(matches) == 1 else "AMBIGUOUS" if matches else "OVERFLOW" if self.overflow else "NONE"
+        r = matches[0] if state == "UNIQUE" else {}
+        return dict(location=location_class(url), match=state, ordinal=r.get("ordinal", 0),
+                    resource=r.get("resource", "UNKNOWN"), decision=r.get("decision", "UNKNOWN"),
+                    requestPhase=r.get("requestPhase", "UNKNOWN"), requestStage=r.get("requestStage", "UNKNOWN"),
+                    stage=self.stage, readOnly=self.read_only)
+
+    def add(self, category, phase, alias, signal, provenance=None, failure="UNKNOWN"):
+        # Reserve sequence space for in-flight completion and terminal evidence.
+        if self.sequence >= MAX_COUNT - 256:
+            self.overflow = True
+            return
+        p = provenance or self.provenance(None)
+        fields = dict(category=category, phase=phase, alias=alias, signal=signal, **p, failure=failure)
+        key = tuple(fields.items())
+        sequence = self.tick()
         if key not in self.groups and len(self.groups) >= MAX_GROUPS:
             self.overflow = True
             return
-        count = self.groups.get(key, 0)
-        if count >= MAX_COUNT:
+        row = self.groups.setdefault(key, dict(**fields, count=0, firstSequence=sequence, lastSequence=sequence))
+        if row["count"] >= MAX_COUNT:
             self.overflow = True
-        self.groups[key] = min(MAX_COUNT, count + 1)
+        row["count"] = min(MAX_COUNT, row["count"] + 1)
+        row["lastSequence"] = sequence
 
     def console(self, kind, text, url, blocked_optional, phase):
         if kind != "error":
             return False
         alias = resource_alias(url, blocked_optional)
-        optional = expected_optional_console_error(kind, text, url, blocked_optional)
+        p = self.provenance(url)
+        matches = [r for r in self.requests.values() if r["url"] == url]
+        optional = (expected_optional_console_error(kind, text, url, blocked_optional)
+                    and bool(matches) and all(r["decision"] == "OPTIONAL_ABORT"
+                        and r["resource"] in ("image", "font", "media") for r in matches))
+        if optional and p["match"] == "AMBIGUOUS":
+            # Request identity remains ambiguous, but every exact candidate has
+            # the same proven session-optional abort. No mixed/unknown exemption.
+            p["decision"] = "OPTIONAL_ABORT"
+            types = {r["resource"] for r in matches}
+            p["resource"] = next(iter(types)) if len(types) == 1 else "UNKNOWN"
         if optional:
             category, signal = "BLOCKED_OPTIONAL_RESOURCE_ERROR", "RESOURCE_ABORT"
         elif (not isinstance(text, str) or len(text) > 2048
@@ -58,24 +170,31 @@ class CalendarDiagnosticRecorder:
             category = ("REQUIRED_RESOURCE_FAILURE" if resource_error and alias in REQUIRED
                         else "OTHER_CONSOLE_ERROR" if alias in REQUIRED | {"MAIN_DOCUMENT", "BLOCKED_OPTIONAL"}
                         else "UNKNOWN_OR_UNSAFE")
-        self.add(category, phase, alias, signal)
+        if (p["match"] == "OVERFLOW" or p["match"] == "AMBIGUOUS"
+                and alias in ("OTHER", "UNKNOWN", "BLOCKED_OPTIONAL")) and not optional:
+            category = "UNKNOWN_OR_UNSAFE"
+        self.add(category, phase, alias, signal, p, failure_class(text))
         return optional
 
     def exception(self, phase):
         # No exception message, stack, filenames or arbitrary JS properties read.
         self.add("JAVASCRIPT_EXCEPTION", phase, "UNKNOWN", "SCRIPT_EXCEPTION")
 
-    def resource_failure(self, url, resource_type, blocked_optional, phase):
+    def resource_failure(self, url, resource_type, blocked_optional, phase, key=None, text=None, status=None):
         alias = resource_alias(url, blocked_optional)
-        if alias == "BLOCKED_OPTIONAL" and resource_type in ("image", "font", "media"):
-            self.add("BLOCKED_OPTIONAL_RESOURCE_ERROR", phase, alias, "REQUEST_FAILED")
-        elif resource_type in ("script", "stylesheet"):
-            self.add("REQUIRED_RESOURCE_FAILURE" if alias in REQUIRED else "UNKNOWN_OR_UNSAFE",
-                     phase, alias, "REQUEST_FAILED")
+        p = self.provenance(url, key)
+        if p["resource"] == "UNKNOWN" and resource_type in RESOURCE_TYPES:
+            p["resource"] = resource_type
+        optional = (alias == "BLOCKED_OPTIONAL" and resource_type in ("image", "font", "media")
+                    and p["match"] == "UNIQUE" and p["decision"] == "OPTIONAL_ABORT")
+        category = ("BLOCKED_OPTIONAL_RESOURCE_ERROR" if optional else
+                    "REQUIRED_RESOURCE_FAILURE" if alias in REQUIRED else "UNKNOWN_OR_UNSAFE")
+        if not optional:
+            self.blocking_resource_failure = True
+        self.add(category, phase, alias, "REQUEST_FAILED", p, failure_class(text, status))
 
     def snapshot(self):
-        return [dict(category=k[0], phase=k[1], alias=k[2], signal=k[3], count=v)
-                for k, v in sorted(self.groups.items())]
+        return list(self.groups.values())
 
 
 # Passive structural projection only. No labels/cells/links/HTML returned, no

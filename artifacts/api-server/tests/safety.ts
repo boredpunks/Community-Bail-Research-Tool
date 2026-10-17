@@ -79,19 +79,25 @@ try {
   check(calendarDiagnosticRejection("raw-source-text") === null);
   check(calendarDiagnosticRejection("Invalid calendar response diagnostic") === "PARENT_REJECTED_CALENDAR_RESPONSE_DIAGNOSTIC");
   const responseDiagnostic = {
-    kind: "calendar_response_diagnostic", version: 1, phase: "RESULT",
+    kind: "calendar_response_diagnostic", version: 2, phase: "RESULT",
     submissionObserved: true, responseCompleted: true, inspectionStatus: "OBSERVED",
     structure: { bodyPresent: true, searchButtonCount: 1, searchFormPresent: true,
       resultTableCount: 1, headerCellCount: 18, expectedHeaders: true, dataRowCount: 0,
       documentLinkCount: 0, countsCapped: false },
     parserAttempted: false, parserOutcome: "NOT_RUN", stopGate: "CALENDAR_CONSOLE_ERROR",
     classifications: [{ category: "UNKNOWN_OR_UNSAFE", phase: "RESULT", alias: "UNKNOWN",
-      signal: "UNCLASSIFIED", count: 3 }], classificationOverflow: false, blockedDuringInspection: 0,
+      signal: "UNCLASSIFIED", count: 1, location: "MISSING", match: "NONE", ordinal: 0,
+      resource: "UNKNOWN", decision: "UNKNOWN", requestPhase: "UNKNOWN", requestStage: "UNKNOWN",
+      stage: "DOCUMENT_FULFILLED", readOnly: false, failure: "UNKNOWN", firstSequence: 7, lastSequence: 7 }],
+    classificationOverflow: false, blockedDuringInspection: 0, eventSequence: 9,
+    milestones: ["SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEIVED", "RESPONSE_BODY_READ",
+      "POST_ACKNOWLEDGED", "DOCUMENT_FULFILLED", "READ_ONLY", "INSPECTION"]
+      .map((name, i) => ({ name, sequence: i < 6 ? i + 1 : i + 2 })),
   };
   check(validCalendarResponseDiagnostic(responseDiagnostic));
   for (const change of [
     { text: "not permitted" }, { rawHtml: "not permitted" }, { phase: "arbitrary" },
-    { version: 2 }, { parserAttempted: true }, { responseCompleted: false },
+    { version: 1 }, { parserAttempted: true }, { responseCompleted: false },
     { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
     { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
     { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
@@ -109,6 +115,21 @@ try {
     { classifications: [{ ...responseDiagnostic.classifications[0], alias: ["UNKNOWN"] }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], phase: ["RESULT"] }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], signal: ["UNCLASSIFIED"] }] },
+    { eventSequence: 10001 }, { eventSequence: "9" },
+    { milestones: [{ name: "POST_ACKNOWLEDGED", sequence: 1 }] },
+    { milestones: [{ name: "SEARCH_ARMED", sequence: 0 }] },
+    { milestones: [...responseDiagnostic.milestones, { name: "INSPECTION", sequence: 10 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], location: ["MISSING"] }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], resource: "private-resource" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], failure: "raw-private-text" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], ordinal: 129 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], ordinal: 1 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], match: "UNIQUE" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], firstSequence: 10 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], lastSequence: 6 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], count: 2 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], readOnly: "true" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], stage: "AFTER_SEARCH_PROVED" }] },
   ]) check(!validCalendarResponseDiagnostic({ ...responseDiagnostic, ...change }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, kind: "unknown" }));
   check(!validCalendarFormDiagnostic({ ...formDiagnostic, html: "untrusted" }));
@@ -126,8 +147,8 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v12");
-  check(calendarPreviewMethod === "playwright-calendar-preview-v7");
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v13");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v8");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
   check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));

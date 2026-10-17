@@ -88,6 +88,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
               });
             </script>"""
         script_body = "/* offline public fixture */"
+        if post_case == "pre_post_console":
+            script_body = """document.addEventListener("DOMContentLoaded", () =>
+              document.querySelector("#btnSearch").addEventListener("click", () =>
+                console.error("REDACTION_SENTINEL")));"""
         if initialize_button:
             script_body = """document.addEventListener("DOMContentLoaded", () => {
               const button = document.querySelector("#btnSearch");
@@ -276,12 +280,25 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 for row in observations["responseDiagnostics"]:
                     output.write(json.dumps(row) + "\n")
         for row in observations["responseDiagnostics"]:
+            self.assertEqual(row["version"], 2)
             serialized = json.dumps(row)
             for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
                 self.assertNotIn(private, serialized)
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
         self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
         return observations
+
+    async def test_before_post_error_is_not_reported_as_after_response_and_prevents_transmission(self):
+        o = await self.run_fixture(post_case="pre_post_console")
+        d = o["responseDiagnostics"][-1]
+        self.assertEqual(o["requestGrants"], 3)
+        self.assertFalse(d["submissionObserved"])
+        self.assertFalse(d["responseCompleted"])
+        self.assertFalse(d["parserAttempted"])
+        self.assertNotIn("POST_ATTEMPT", [m["name"] for m in d["milestones"]])
+        self.assertTrue(any(r["stage"] == "SEARCH_ARMED" and r["requestStage"] == "BEFORE_SEARCH"
+                            for r in d["classifications"]))
+        self.assertFalse(o["checkpointEmitted"])
 
     async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
         o = await self.run_fixture(post_case="optional_abort")
@@ -325,6 +342,13 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                             for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(o["checkpointEmitted"])
+        marks = {m["name"]: m["sequence"] for m in d["milestones"]}
+        self.assertLess(marks["POST_ATTEMPT"], marks["RESPONSE_RECEIVED"])
+        self.assertLess(marks["RESPONSE_RECEIVED"], marks["RESPONSE_BODY_READ"])
+        self.assertLess(marks["RESPONSE_BODY_READ"], marks["POST_ACKNOWLEDGED"])
+        self.assertNotIn("PARSER_STARTED", marks)
+        self.assertTrue(any(r["firstSequence"] > marks["POST_ACKNOWLEDGED"]
+                            for r in d["classifications"] if r["category"] == "OTHER_CONSOLE_ERROR"))
 
     async def test_post_unknown_origin_is_redacted_not_a_result_proof(self):
         o = await self.run_fixture(post_case="unclassified_console")
