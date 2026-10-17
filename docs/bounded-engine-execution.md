@@ -402,3 +402,56 @@ nine engine requests**, maximum five document attempts. No automatic retry,
 new observation, scope expansion, historical-date substitution, general access
 proof or global collection enablement is authorized. The engine outcome remains
 pending; no successful calendar, document or extraction result is claimed here.
+
+### Revised execution outcome — stopped with retained structural evidence
+
+Engine permit `d64aea6b-b096-40d4-8d9c-f5f666330933` finished **FAILED**;
+job `3c7d9763-68d9-4777-aef1-19bcec299add` is **PAUSED** with
+`calendarComplete=false`. All four engine transmissions received HTTP 200 and
+were accounted OK: three bootstrap GETs and one Search POST. This is a
+**validation stop**, not a transport failure or proven source-search failure.
+
+The combined revised execution used **7/12 requests**, **0/5 documents**:
+three successful observation GETs plus four engine requests. All six consecutive
+completion-to-next-start intervals, including the stage boundary, were within
+the required pacing range: **60.012–81.136 seconds**. There are no failed
+transport outcomes, active requests, cooldown, access proof, collection
+approval or latency warning. `SOURCE_VALIDATION_BARRIER` remains unchanged.
+
+The new `CALENDAR_RESPONSE_DIAGNOSTIC` was accepted and retained by the parent:
+
+- Submission observed and POST response completed.
+- Passive inspection **OBSERVED**, no count/classifier overflow.
+- Body present; Search button count 1; search form present.
+- Exactly one result table; **19 header cells**; the bounded expected-header
+  checks matched; **one non-header presentation row**; **zero recognized
+  docket-document links**. These are structural facts, not a case count or a
+  validated empty result.
+- **Parser not attempted**, outcome `NOT_RUN`.
+- Stop gate **`CALENDAR_CONSOLE_ERROR`**.
+- Three RESULT-phase errors were classified **UNKNOWN_OR_UNSAFE**,
+  alias **OTHER**, signal **RESOURCE_LOAD_ERROR**. Their association with a known
+  required resource or an exact deliberately aborted optional URL was not
+  established. No arbitrary error text, URL or query string was retained;
+  their exact resource identities cannot be recovered from this envelope.
+- Proven optional errors remained separate: READY console-abort count 2,
+  RESULT console-abort count 2; optional `requestfailed` counts were READY 2 and
+  RESULT 5. Console and requestfailed observations can overlap and are not
+  distinct-request or distinct-error totals.
+- Three browser requests were blocked during the read-only phase.
+  No blocked required scripts, stylesheets or document/data requests and no
+  page exceptions were recorded. The counts do not establish that those three
+  blocks correspond to the three unclassified console errors.
+
+`calendar_preflight("RESULT")` still correctly stopped before
+`CalendarResults.feed()` / `validated()`. Unlike the preceding attempt, passive
+response/result structure was inspected first and retained without further
+source transmissions. Unknown console errors were **not** treated as proof of
+valid results or ignored. No source-backed calendar items, PDFs, bail extraction
+or pending records resulted; no save operation was needed.
+
+**No retry or new permit was executed.** The remaining five requests do not
+authorize another attempt. The intended calendar→dockets→identity-validated
+documents→bail extraction→pending-review objective remains open. The next work
+must be offline diagnosis; any subsequent live execution requires a new exact
+approval after that work, not reuse of this failed permit.
