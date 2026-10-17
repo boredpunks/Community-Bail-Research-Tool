@@ -455,3 +455,16 @@ authorize another attempt. The intended calendar→dockets→identity-validated
 documents→bail extraction→pending-review objective remains open. The next work
 must be offline diagnosis; any subsequent live execution requires a new exact
 approval after that work, not reuse of this failed permit.
+
+### Authorized offline classification review
+
+The user then authorized review **offline, with no court requests**.
+See [the offline resource-error review](unknown-resource-offline-review.md).
+Twenty pure guarded classifier probes confirmed location-taxonomy collisions,
+omitted unmatched requestfailed resource types and loss of failure subtype.
+Static control-flow review also established that `RESULT` begins before the
+paced POST attempt, so that label does not establish post-response timing.
+These findings identify diagnostic gaps, not the live errors' exact cause.
+No application behavior or validation exemption changed; no new permit or
+execution was prepared. Source requests remain seven for the revised scope,
+and the source barrier remains intact.

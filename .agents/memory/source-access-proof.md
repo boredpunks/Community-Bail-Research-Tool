@@ -47,6 +47,19 @@ session provenance. Never inspect through a transport/access stop or convert a
 header-only/returned form into an empty-result claim. Diagnostic repair itself
 does not authorize a new source attempt; obtain one fresh exact-scope approval.
 
+Treat stage labels as workflow context, not event chronology or source causality.
+
+**Why:** Offline review found that the result stage includes the paced wait
+before a Search attempt. A console observation labeled RESULT can therefore
+come from an earlier document or pre-transmission period; the retained label
+alone cannot establish association with the submitted response.
+
+**How to apply:** In run reports, distinguish independently observed response
+completion from error timing. Require transport-relative lifecycle evidence
+and bounded exact request correlation before asserting a relationship. An
+unknown or ambiguous match remains unknown; never merge different URLs to
+create optional-abort proof.
+
 Use fixed public control labels and reason categories for form validation failures, not a single generic mismatch code.
 
 **Why:** Once bundle loading and optional aborts were distinguished, a live run stopped on a control mismatch; no retained evidence identified which field was missing, disabled, unassociated or changed. That prevented offline diagnosis despite a correctly stopped request stream.
