@@ -151,6 +151,12 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             results = initial
         elif post_case == "malformed_headers":
             results = results.replace("Docket Number", "Unrecognized public header")
+        elif post_case == "pre_post_wait_error":
+            initial += """<script>
+              document.querySelector("#btnSearch").form.addEventListener("submit", () => {
+                setTimeout(() => console.error("REDACTION_SENTINEL"), 50);
+              });
+            </script>"""
 
         async def serve(reader, writer):
             try:
@@ -288,7 +294,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 for row in observations["responseDiagnostics"]:
                     output.write(json.dumps(row) + "\n")
         for row in observations["responseDiagnostics"]:
-            self.assertEqual(row["version"], 3)
+            self.assertEqual(row["version"], 4)
             serialized = json.dumps(row)
             for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
                 self.assertNotIn(private, serialized)
@@ -330,6 +336,44 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(o["checkpointEmitted"])
+        lifecycle = d["lifecycle"]
+        self.assertEqual(lifecycle["browserRequestStartState"], "BEFORE_POST_ATTEMPT")
+        for milestone in (
+            "browserRequestStarted", "postAttemptStarted", "responseAcknowledged",
+            "browserFulfilled", "readOnlyInspection",
+        ):
+            self.assertTrue(lifecycle[milestone])
+        self.assertFalse(lifecycle["orderOverflow"])
+        orders = [
+            lifecycle["browserRequestStartOrder"],
+            lifecycle["postAttemptOrder"],
+            lifecycle["responseAcknowledgedOrder"],
+            lifecycle["browserFulfilledOrder"],
+            lifecycle["readOnlyInspectionOrder"],
+        ]
+        self.assertTrue(all(type(order) is int for order in orders))
+        self.assertEqual(orders, sorted(orders))
+
+    async def test_console_error_during_protected_pre_post_wait_is_marked_before_attempt(self):
+        o = await self.run_fixture(post_case="pre_post_wait_error")
+        d = o["responseDiagnostics"][-1]
+        row = next(r for r in d["classifications"]
+                   if r["signal"] == "CONSOLE_ERROR")
+        lifecycle = d["lifecycle"]
+        self.assertEqual(row["phase"], "RESULT")
+        self.assertEqual(row["eventState"], "BEFORE_POST_ATTEMPT")
+        self.assertEqual(row["requestStartState"], "NOT_ASSOCIATED")
+        self.assertTrue(lifecycle["browserRequestStarted"])
+        self.assertEqual(lifecycle["browserRequestStartState"], "BEFORE_POST_ATTEMPT")
+        self.assertFalse(lifecycle["postAttemptStarted"])
+        self.assertIsNone(lifecycle["postAttemptOrder"])
+        self.assertFalse(lifecycle["responseAcknowledged"])
+        self.assertFalse(lifecycle["browserFulfilled"])
+        self.assertFalse(lifecycle["readOnlyInspection"])
+        self.assertFalse(d["submissionObserved"])
+        self.assertEqual(o["requestGrants"], 3)
+        self.assertFalse(any(method == "POST" for method, _path in o["network"]))
+        self.assertGreater(row["firstEventOrder"], lifecycle["browserRequestStartOrder"])
 
     async def test_post_required_script_failure_is_not_optional_or_safe_to_inspect(self):
         o = await self.run_fixture(post_case="required_script")

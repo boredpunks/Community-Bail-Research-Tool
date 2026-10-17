@@ -1,11 +1,14 @@
 """Bounded in-memory classification; never return console text or source URLs."""
 import re
+import weakref
 from urllib.parse import urlsplit
 from source_protocol import allowed
 from calendar_protocol import expected_optional_console_error
 
 MAX_COUNT = 10_000
 MAX_GROUPS = 32
+MAX_LOCAL_ORDER = 10_000
+MAX_REQUEST_STARTS = 10_000
 REQUIRED = {"MAIN_SCRIPT", "MAIN_STYLESHEET"}
 RESOURCE_TYPES = {"document", "script", "stylesheet", "image", "font", "media",
                   "xhr", "fetch", "eventsource", "websocket", "manifest", "texttrack", "other"}
@@ -13,6 +16,14 @@ STAGES = ("BEFORE_SEARCH", "SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEIVED",
           "RESPONSE_BODY_READ", "POST_ACKNOWLEDGED", "DOCUMENT_FULFILLED",
           "INSPECTION", "PARSER_STARTED", "PARSER_ACCEPTED", "PARSER_REJECTED")
 MILESTONES = set(STAGES[1:]) | {"READ_ONLY"}
+LIFECYCLE_STATES = (
+    "BEFORE_POST_ATTEMPT",
+    "POST_ATTEMPT_IN_PROGRESS",
+    "RESPONSE_ACKNOWLEDGED",
+    "BROWSER_FULFILLED",
+    "READ_ONLY_INSPECTION",
+)
+LIFECYCLE_RANK = {state: index for index, state in enumerate(LIFECYCLE_STATES)}
 
 
 def location_class(url):
@@ -124,25 +135,40 @@ class CalendarDiagnosticRecorder:
                     requestPhase=r.get("requestPhase", "UNKNOWN"), requestStage=r.get("requestStage", "UNKNOWN"),
                     stage=self.stage, readOnly=self.read_only)
 
-    def add(self, category, phase, alias, signal, provenance=None, failure="UNKNOWN"):
+    def add(self, category, phase, alias, signal, provenance=None, failure="UNKNOWN",
+            event_state="BEFORE_POST_ATTEMPT", request_start_state="NOT_ASSOCIATED",
+            event_order=None, request_start_order=None):
         # Reserve sequence space for in-flight completion and terminal evidence.
         if self.sequence >= MAX_COUNT - 256:
             self.overflow = True
             return
         p = provenance or self.provenance(None)
-        fields = dict(category=category, phase=phase, alias=alias, signal=signal, **p, failure=failure)
+        fields = dict(category=category, phase=phase, alias=alias, signal=signal, **p,
+                      failure=failure, eventState=event_state,
+                      requestStartState=request_start_state)
         key = tuple(fields.items())
         sequence = self.tick()
         if key not in self.groups and len(self.groups) >= MAX_GROUPS:
             self.overflow = True
             return
-        row = self.groups.setdefault(key, dict(**fields, count=0, firstSequence=sequence, lastSequence=sequence))
+        row = self.groups.setdefault(key, dict(**fields, count=0, firstSequence=sequence,
+            lastSequence=sequence, firstEventOrder=None, lastEventOrder=None,
+            firstRequestStartOrder=None, lastRequestStartOrder=None))
         if row["count"] >= MAX_COUNT:
             self.overflow = True
         row["count"] = min(MAX_COUNT, row["count"] + 1)
         row["lastSequence"] = sequence
+        for value, first, last in (
+            (event_order, "firstEventOrder", "lastEventOrder"),
+            (request_start_order, "firstRequestStartOrder", "lastRequestStartOrder"),
+        ):
+            if value is None:
+                continue
+            row[first] = value if row[first] is None else min(row[first], value)
+            row[last] = value if row[last] is None else max(row[last], value)
 
-    def console(self, kind, text, url, blocked_optional, phase):
+    def console(self, kind, text, url, blocked_optional, phase,
+                event_state="BEFORE_POST_ATTEMPT", event_order=None):
         if kind != "error":
             return False
         alias = resource_alias(url, blocked_optional)
@@ -173,14 +199,19 @@ class CalendarDiagnosticRecorder:
         if (p["match"] == "OVERFLOW" or p["match"] == "AMBIGUOUS"
                 and alias in ("OTHER", "UNKNOWN", "BLOCKED_OPTIONAL")) and not optional:
             category = "UNKNOWN_OR_UNSAFE"
-        self.add(category, phase, alias, signal, p, failure_class(text))
+        self.add(category, phase, alias, signal, p, failure_class(text),
+                 event_state=event_state, event_order=event_order)
         return optional
 
-    def exception(self, phase):
+    def exception(self, phase, event_state="BEFORE_POST_ATTEMPT", event_order=None):
         # No exception message, stack, filenames or arbitrary JS properties read.
-        self.add("JAVASCRIPT_EXCEPTION", phase, "UNKNOWN", "SCRIPT_EXCEPTION")
+        self.add("JAVASCRIPT_EXCEPTION", phase, "UNKNOWN", "SCRIPT_EXCEPTION",
+                 event_state=event_state, event_order=event_order)
 
-    def resource_failure(self, url, resource_type, blocked_optional, phase, key=None, text=None, status=None):
+    def resource_failure(self, url, resource_type, blocked_optional, phase, key=None,
+                         text=None, status=None, event_state="BEFORE_POST_ATTEMPT",
+                         event_order=None, request_start_state="UNAVAILABLE",
+                         request_start_order=None):
         alias = resource_alias(url, blocked_optional)
         p = self.provenance(url, key)
         if p["resource"] == "UNKNOWN" and resource_type in RESOURCE_TYPES:
@@ -193,7 +224,9 @@ class CalendarDiagnosticRecorder:
         if not optional and not locally_blocked:
             self.blocking_resource_failure = True
         self.add(category, phase, alias, "REQUEST_FAILED", p,
-                 "UNKNOWN" if locally_blocked else failure_class(text, status))
+                 "UNKNOWN" if locally_blocked else failure_class(text, status),
+                 event_state=event_state, request_start_state=request_start_state,
+                 event_order=event_order, request_start_order=request_start_order)
 
     def snapshot(self):
         return list(self.groups.values())
@@ -255,3 +288,47 @@ def parser_outcome(error):
         "CALENDAR_RESPONSE_LIMIT": "PARSER_ERROR",
         "CALENDAR_STRUCTURE_MISMATCH": "PARSER_ERROR",
     }.get(str(error), "PARSER_ERROR")
+
+
+class CalendarLifecycle:
+    """Bounded local lifecycle state and ephemeral request-start observations."""
+
+    def __init__(self):
+        self.state = "BEFORE_POST_ATTEMPT"
+        self.order = 0
+        self.order_overflow = False
+        self.request_starts = weakref.WeakKeyDictionary()
+
+    def advance(self, state):
+        if state not in LIFECYCLE_STATES:
+            raise ValueError("CALENDAR_LIFECYCLE_STATE_INVALID")
+        if LIFECYCLE_RANK[state] >= LIFECYCLE_RANK[self.state]:
+            self.state = state
+
+    def _next_order(self):
+        if self.order >= MAX_LOCAL_ORDER:
+            self.order_overflow = True
+            return None
+        self.order += 1
+        return self.order
+
+    def request_started(self, request):
+        state = self.state
+        order = self._next_order()
+        try:
+            if len(self.request_starts) >= MAX_REQUEST_STARTS:
+                self.order_overflow = True
+                return state, order
+            self.request_starts[request] = (state, order)
+        except TypeError:
+            self.order_overflow = True
+        return state, order
+
+    def request_start(self, request):
+        try:
+            return self.request_starts.get(request, ("UNAVAILABLE", None))
+        except TypeError:
+            return "UNAVAILABLE", None
+
+    def event_order(self):
+        return self._next_order()

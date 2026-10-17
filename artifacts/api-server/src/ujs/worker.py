@@ -100,12 +100,27 @@ async def main(config=None):
     form_phase = "INITIALIZATION"
     calendar_post_observed = False
     calendar_post_completed = False
+    calendar_search_request_started = False
+    calendar_search_request_start_state = None
+    calendar_search_request_start_order = None
+    calendar_post_attempt_started = False
+    calendar_post_attempt_order = None
+    calendar_response_acknowledged = False
+    calendar_response_acknowledged_order = None
+    calendar_browser_fulfilled = False
+    calendar_browser_fulfilled_order = None
+    calendar_read_only_inspection = False
+    calendar_read_only_inspection_order = None
     submission_armed = False
     source_stop_state = None
     response_recorder = None
+    calendar_lifecycle = None
     if not (inspection_only or config.get("coverageOnly") or config.get("filingInspectionOnly")):
-        from calendar_diagnostics import CalendarDiagnosticRecorder, RESPONSE_STRUCTURE, parser_outcome
+        from calendar_diagnostics import (
+            CalendarDiagnosticRecorder, CalendarLifecycle, RESPONSE_STRUCTURE, parser_outcome,
+        )
         response_recorder = CalendarDiagnosticRecorder()
+        calendar_lifecycle = CalendarLifecycle()
     response_structure = None
     response_inspection_status = "NOT_SAFE"
     response_inspection_attempted = False
@@ -139,6 +154,8 @@ async def main(config=None):
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
+            nonlocal calendar_post_attempt_started, calendar_post_attempt_order
+            nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
 
             async def read_protocol_line():
                 reader = (asyncio.to_thread(read_inspection_protocol_line, sys.stdin)
@@ -191,6 +208,10 @@ async def main(config=None):
                 started = datetime.now(timezone.utc).isoformat()
                 if method == "POST" and urlsplit(url).path == "/CaseSearch":
                     calendar_post_observed = True
+                    calendar_post_attempt_started = True
+                    if calendar_lifecycle:
+                        calendar_lifecycle.advance("POST_ATTEMPT_IN_PROGRESS")
+                        calendar_post_attempt_order = calendar_lifecycle.event_order()
                 try:
                     if inspection_only and permission.get("brokerOutcome"):
                         outcome = permission["brokerOutcome"]
@@ -242,10 +263,19 @@ async def main(config=None):
                         source_stop_state = outcome
                         if response_recorder:
                             response_recorder.resource_failure(url, resource_type, blocked_optional_urls,
-                                diagnostic_phase, key=tracked_key, status=response.status)
+                                diagnostic_phase, key=tracked_key, status=response.status,
+                                event_state=calendar_lifecycle.state,
+                                event_order=calendar_lifecycle.event_order(),
+                                request_start_state=calendar_lifecycle.request_start(tracked_key)[0],
+                                request_start_order=calendar_lifecycle.request_start(tracked_key)[1])
                     emit("response", requestId=permission["requestId"], status=response.status,
                          outcome=outcome, retryAfter=response.headers.get("retry-after"))
                     acknowledgement = json.loads(await read_protocol_line())
+                    if method == "POST" and urlsplit(url).path == "/CaseSearch":
+                        calendar_response_acknowledged = True
+                        if calendar_lifecycle:
+                            calendar_lifecycle.advance("RESPONSE_ACKNOWLEDGED")
+                            calendar_response_acknowledged_order = calendar_lifecycle.event_order()
                     last_completed_clock = clock.time()
                     if not acknowledgement.get("continue"):
                         stopped = True
@@ -267,12 +297,22 @@ async def main(config=None):
                         outcome = "TIMEOUT" if isinstance(error, (TimeoutError, BrowserTimeout)) else "NETWORK_ERROR"
                         if response_recorder:
                             response_recorder.resource_failure(url, resource_type, blocked_optional_urls,
-                                diagnostic_phase, key=tracked_key, text="ERR_TIMED_OUT" if outcome == "TIMEOUT" else None)
+                                diagnostic_phase, key=tracked_key,
+                                text="ERR_TIMED_OUT" if outcome == "TIMEOUT" else None,
+                                event_state=calendar_lifecycle.state,
+                                event_order=calendar_lifecycle.event_order(),
+                                request_start_state=calendar_lifecycle.request_start(tracked_key)[0],
+                                request_start_order=calendar_lifecycle.request_start(tracked_key)[1])
                         source_stop_state = outcome
                         emit("response", requestId=permission["requestId"], status=None,
                              outcome=outcome,
                              retryAfter=None)
                         await read_protocol_line()
+                        if method == "POST" and urlsplit(url).path == "/CaseSearch":
+                            calendar_response_acknowledged = True
+                            if calendar_lifecycle:
+                                calendar_lifecycle.advance("RESPONSE_ACKNOWLEDGED")
+                                calendar_response_acknowledged_order = calendar_lifecycle.event_order()
                     stopped = True
                     if isinstance(error, SourceFailure):
                         raise
@@ -288,6 +328,7 @@ async def main(config=None):
             nonlocal inspection_error
             nonlocal cached_responses, blocked_during_inspection
             nonlocal criteria_validation, submission_payload_rejected
+            nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
             request = route.request
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
@@ -382,6 +423,11 @@ async def main(config=None):
                 await route.fulfill(response=response)
                 if response_recorder and request.method == "POST":
                     response_recorder.mark("DOCUMENT_FULFILLED")
+                if (request.method == "POST" and urlsplit(request.url).path == "/CaseSearch"
+                        and calendar_lifecycle):
+                    calendar_browser_fulfilled = True
+                    calendar_lifecycle.advance("BROWSER_FULFILLED")
+                    calendar_browser_fulfilled_order = calendar_lifecycle.event_order()
                 if urlsplit(request.url).path in CALENDAR_ASSETS:
                     loaded_assets.add(urlsplit(request.url).path)
                     if cacheable and not calendar_post_observed and len(asset_cache) < 2:
@@ -422,19 +468,38 @@ async def main(config=None):
             await context.route("**/*", handle_route)
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
 
+        def note_request_started(request):
+            nonlocal calendar_search_request_started
+            nonlocal calendar_search_request_start_state, calendar_search_request_start_order
+            request_start_state = "UNAVAILABLE"
+            request_start_order = None
+            if calendar_lifecycle:
+                request_start_state, request_start_order = calendar_lifecycle.request_started(request)
+            if response_recorder:
+                response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
+            if request.method == "POST" and urlsplit(request.url).path == "/CaseSearch":
+                calendar_search_request_started = True
+                calendar_search_request_start_state = request_start_state
+                calendar_search_request_start_order = request_start_order
+
         def note_page_error(_error):
             nonlocal page_errors, post_response_read_only
             page_errors = min(10_000, page_errors + 1)  # Never log source messages.
             if response_recorder:
-                response_recorder.exception(diagnostic_phase)
+                response_recorder.exception(
+                    diagnostic_phase, event_state=calendar_lifecycle.state,
+                    event_order=calendar_lifecycle.event_order())
                 post_response_read_only = True
                 response_recorder.mark("READ_ONLY")
 
         def note_console(message):
             nonlocal console_errors, optional_console_errors, post_response_read_only
             if message.type == "error":
+                event_state = calendar_lifecycle.state if calendar_lifecycle else "BEFORE_POST_ATTEMPT"
                 optional = (response_recorder.console(message.type, message.text,
-                    message.location.get("url"), blocked_optional_urls, diagnostic_phase)
+                    message.location.get("url"), blocked_optional_urls, diagnostic_phase,
+                    event_state=event_state,
+                    event_order=calendar_lifecycle.event_order() if calendar_lifecycle else None)
                     if response_recorder else expected_optional_console_error(
                         message.type, message.text, message.location.get("url"), blocked_optional_urls))
                 if optional:
@@ -456,11 +521,18 @@ async def main(config=None):
             target.on("pageerror", note_page_error)
             target.on("console", note_console)
             if response_recorder:
-                target.on("request", lambda request: response_recorder.register(
-                    request, request.url, request.resource_type, diagnostic_phase))
-                target.on("requestfailed", lambda request: response_recorder.resource_failure(
-                    request.url, request.resource_type, blocked_optional_urls, diagnostic_phase,
-                    key=request, text=request.failure))
+                target.on("request", note_request_started)
+
+                def note_request_failed(request):
+                    request_start_state, request_start_order = calendar_lifecycle.request_start(request)
+                    response_recorder.resource_failure(
+                        request.url, request.resource_type, blocked_optional_urls, diagnostic_phase,
+                        key=request, text=request.failure, event_state=calendar_lifecycle.state,
+                        event_order=calendar_lifecycle.event_order(),
+                        request_start_state=request_start_state,
+                        request_start_order=request_start_order)
+
+                target.on("requestfailed", note_request_failed)
 
         observe_page(page)
         context.on("page", observe_page)
@@ -491,12 +563,17 @@ async def main(config=None):
         async def inspect_loaded_response():
             nonlocal post_response_read_only, response_structure, response_inspection_status
             nonlocal response_inspection_attempted
+            nonlocal calendar_read_only_inspection, calendar_read_only_inspection_order
             if not response_recorder or response_inspection_attempted:
                 return
             response_inspection_attempted = True
             # All subsequent browser retrieval is local or aborted. PDFs use
             # the separately authorized sequential path only after validation.
             post_response_read_only = True
+            if calendar_search_request_started and calendar_post_observed:
+                calendar_read_only_inspection = True
+                calendar_lifecycle.advance("READ_ONLY_INSPECTION")
+                calendar_read_only_inspection_order = calendar_lifecycle.event_order()
             response_recorder.mark("READ_ONLY")
             if not calendar_post_observed or not calendar_post_completed or lock.locked():
                 return
@@ -608,7 +685,7 @@ async def main(config=None):
 
         def response_diagnostic():
             nonlocal response_diagnostic_emitted
-            if not response_recorder or not (calendar_post_observed or response_recorder.groups):
+            if not response_recorder or not (calendar_search_request_started or response_recorder.groups):
                 return
             if response_diagnostic_emitted:
                 return
@@ -622,7 +699,7 @@ async def main(config=None):
             transport = response_transport_status()
             console = response_console_status()
             eligibility = response_eligibility(transport, console)
-            emit("calendar_response_diagnostic", version=3, phase="RESULT",
+            emit("calendar_response_diagnostic", version=4, phase="RESULT",
                  submissionObserved=calendar_post_observed, responseCompleted=calendar_post_completed,
                  inspectionStatus=response_inspection_status, structure=response_structure,
                  parserAttempted=response_parser_attempted, parserOutcome=response_parser_outcome,
@@ -637,7 +714,21 @@ async def main(config=None):
                  documentEligibility=eligibility,
                  stopGate=gate or "NONE", classifications=response_recorder.snapshot(),
                  classificationOverflow=response_recorder.overflow, blockedDuringInspection=blocked_during_inspection,
-                 eventSequence=response_recorder.sequence, milestones=response_recorder.milestones)
+                  eventSequence=response_recorder.sequence, milestones=response_recorder.milestones,
+                  lifecycle={
+                      "browserRequestStarted": calendar_search_request_started,
+                      "browserRequestStartState": calendar_search_request_start_state,
+                      "browserRequestStartOrder": calendar_search_request_start_order,
+                      "postAttemptStarted": calendar_post_attempt_started,
+                      "postAttemptOrder": calendar_post_attempt_order,
+                      "responseAcknowledged": calendar_response_acknowledged,
+                      "responseAcknowledgedOrder": calendar_response_acknowledged_order,
+                      "browserFulfilled": calendar_browser_fulfilled,
+                      "browserFulfilledOrder": calendar_browser_fulfilled_order,
+                      "readOnlyInspection": calendar_read_only_inspection,
+                      "readOnlyInspectionOrder": calendar_read_only_inspection_order,
+                      "orderOverflow": calendar_lifecycle.order_overflow,
+                  })
             response_diagnostic_emitted = True
 
         try:
@@ -807,8 +898,9 @@ async def main(config=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
-            if response_recorder and (calendar_post_observed or response_recorder.groups):
-                await inspect_loaded_response()
+            if response_recorder and (calendar_search_request_started or response_recorder.groups):
+                if calendar_post_observed:
+                    await inspect_loaded_response()
                 await validate_loaded_response()
                 response_diagnostic()
             calendar_diagnostics(diagnostic_phase)

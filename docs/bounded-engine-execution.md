@@ -282,17 +282,18 @@ or extraction was established.
   disabled/frozen inspection paths, broker/sandbox protections, transport
   clients, pacing, quotas, source barrier and consumed permit histories remain.
 
-Current methods: `playwright-calendar-preview-v7`,
-`playwright-calendar+urllib-pdf-v12`, and
-`playwright-calendar+urllib-pdf-v12-bounded-506-v2`.
-The packaged worker imports the new diagnostic module before source access.
+Current methods: `playwright-calendar-preview-v8`,
+`playwright-calendar+urllib-pdf-v13`, and
+`playwright-calendar+urllib-pdf-v13-bounded-506-v3`.
+The packaged worker imports the version-4 lifecycle diagnostics before source access.
 
 Regression coverage uses only public-form/header-only fixtures and loopback
 transport substitution, never synthetic docket/case records. Cases include
 deliberate optional aborts, required-script HTTP failure, page exceptions,
-other/unknown-origin console errors, returned forms, missing grids, malformed
-headers, post-stop data requests, sanitization and actual-worker/parent wire
-acceptance. These fixtures **do not reproduce or explain the historical live
+other/unknown-origin console errors, errors during the protected pre-POST wait,
+late prior-document failures, returned forms, missing grids, malformed headers,
+post-stop data requests, sanitization and actual-worker/parent wire acceptance.
+These fixtures **do not reproduce or explain the historical live
 messages**.
 
 ### Proposed fresh execution (not approved or run)

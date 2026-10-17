@@ -4,7 +4,10 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
-from calendar_diagnostics import CalendarDiagnosticRecorder, resource_alias, location_class, failure_class, RESOURCE_TYPES
+from calendar_diagnostics import (
+    CalendarDiagnosticRecorder, CalendarLifecycle, failure_class, location_class,
+    resource_alias, RESOURCE_TYPES,
+)
 
 
 class RedactedDiagnosticTests(unittest.TestCase):
@@ -128,3 +131,42 @@ class RedactedDiagnosticTests(unittest.TestCase):
         self.assertEqual(failure_class(status=403), "HTTP_DENIED")
         self.assertEqual(failure_class(status=429), "HTTP_RATE_LIMIT")
         self.assertEqual(failure_class(status=503), "HTTP_SERVER")
+
+    def test_pre_post_wait_error_has_event_state_without_inventing_request_cause(self):
+        lifecycle = CalendarLifecycle()
+        recorder = CalendarDiagnosticRecorder()
+        event_order = lifecycle.event_order()
+        recorder.console("error", "REDACTION_SENTINEL", None, set(), "RESULT",
+                         event_state=lifecycle.state, event_order=event_order)
+        row = recorder.snapshot()[0]
+        self.assertEqual(row["eventState"], "BEFORE_POST_ATTEMPT")
+        self.assertEqual(row["requestStartState"], "NOT_ASSOCIATED")
+        self.assertIsNone(row["firstRequestStartOrder"])
+        self.assertEqual(row["firstEventOrder"], event_order)
+        self.assertNotIn("REDACTION_SENTINEL", json.dumps(row))
+
+    def test_late_previous_document_failure_keeps_request_start_separate_from_event_state(self):
+        class Request:
+            pass
+
+        lifecycle = CalendarLifecycle()
+        recorder = CalendarDiagnosticRecorder()
+        previous_document_request = Request()
+        url = "https://invalid.test/REDACTION_SENTINEL?token=private"
+        lifecycle.request_started(previous_document_request)
+        recorder.register(previous_document_request, url, "script", "READY")
+        request_start_state, request_start_order = lifecycle.request_start(previous_document_request)
+        for state in ("POST_ATTEMPT_IN_PROGRESS", "RESPONSE_ACKNOWLEDGED",
+                      "BROWSER_FULFILLED", "READ_ONLY_INSPECTION"):
+            lifecycle.advance(state)
+        event_order = lifecycle.event_order()
+        recorder.resource_failure(
+            url, "script", set(), "RESULT", key=previous_document_request,
+            text="net::ERR_FAILED", event_state=lifecycle.state, event_order=event_order,
+            request_start_state=request_start_state, request_start_order=request_start_order)
+        row = recorder.snapshot()[0]
+        self.assertEqual(row["requestStartState"], "BEFORE_POST_ATTEMPT")
+        self.assertEqual(row["eventState"], "READ_ONLY_INSPECTION")
+        self.assertLess(row["firstRequestStartOrder"], row["firstEventOrder"])
+        self.assertNotIn("REDACTION_SENTINEL", json.dumps(row))
+        self.assertNotIn("invalid.test", json.dumps(row))

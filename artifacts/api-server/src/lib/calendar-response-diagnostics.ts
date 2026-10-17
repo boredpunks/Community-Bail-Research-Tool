@@ -23,6 +23,33 @@ const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "EMPTY_NOT_PROVEN", "MI
   "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED", "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
 const eligibilityStates = ["BLOCKED_INTEGRITY", "BLOCKED_CRITERIA", "BLOCKED_TRANSPORT",
   "BLOCKED_CONSOLE", "BLOCKED_RESULT", "ELIGIBLE"];
+const lifecycleStates = ["BEFORE_POST_ATTEMPT", "POST_ATTEMPT_IN_PROGRESS",
+  "RESPONSE_ACKNOWLEDGED", "BROWSER_FULFILLED", "READ_ONLY_INSPECTION"];
+const requestStartStates = [...lifecycleStates, "NOT_ASSOCIATED", "UNAVAILABLE"];
+const lifecycleKeys = ["browserRequestStarted", "browserRequestStartState", "browserRequestStartOrder",
+  "postAttemptStarted", "postAttemptOrder", "responseAcknowledged", "responseAcknowledgedOrder",
+  "browserFulfilled", "browserFulfilledOrder", "readOnlyInspection", "readOnlyInspectionOrder",
+  "orderOverflow"];
+const lifecycleMilestones = [
+  ["browserRequestStarted", "browserRequestStartOrder"],
+  ["postAttemptStarted", "postAttemptOrder"],
+  ["responseAcknowledged", "responseAcknowledgedOrder"],
+  ["browserFulfilled", "browserFulfilledOrder"],
+  ["readOnlyInspection", "readOnlyInspectionOrder"],
+] as const;
+const stateMilestone: Record<string, string> = {
+  POST_ATTEMPT_IN_PROGRESS: "postAttemptOrder",
+  RESPONSE_ACKNOWLEDGED: "responseAcknowledgedOrder",
+  BROWSER_FULFILLED: "browserFulfilledOrder",
+  READ_ONLY_INSPECTION: "readOnlyInspectionOrder",
+};
+const stateFlag: Record<string, string> = {
+  POST_ATTEMPT_IN_PROGRESS: "postAttemptStarted",
+  RESPONSE_ACKNOWLEDGED: "responseAcknowledged",
+  BROWSER_FULFILLED: "browserFulfilled",
+  READ_ONLY_INSPECTION: "readOnlyInspection",
+};
+const maxLocalOrder = 10_000;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const keys = (v: Record<string, unknown>, expected: string[]) =>
   Object.keys(v).sort().join() === [...expected].sort().join();
@@ -32,15 +59,50 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   if (!keys(m, ["kind", "version", "phase", "submissionObserved", "responseCompleted",
     "inspectionStatus", "structure", "parserAttempted", "parserOutcome", "criteriaValidation",
     "transportIntegrity", "consoleDiagnostics", "resultValidation", "documentEligibility", "stopGate",
-    "classifications", "classificationOverflow", "blockedDuringInspection", "eventSequence", "milestones"])
-    || m.kind !== "calendar_response_diagnostic" || m.version !== 3 || m.phase !== "RESULT"
+    "classifications", "classificationOverflow", "blockedDuringInspection", "eventSequence", "milestones",
+    "lifecycle"])
+    || m.kind !== "calendar_response_diagnostic" || m.version !== 4 || m.phase !== "RESULT"
     || !["submissionObserved", "responseCompleted", "parserAttempted", "classificationOverflow"]
       .every(k => typeof m[k] === "boolean")
     || !count(m.blockedDuringInspection, 10_000) || !count(m.eventSequence, 10_000)
     || !oneOf(m.inspectionStatus, ["OBSERVED", "NOT_SAFE", "UNAVAILABLE"])
     || !oneOf(m.parserOutcome, outcomes) || !oneOf(m.stopGate, gates)
     || !Array.isArray(m.classifications) || m.classifications.length > 32
-    || !Array.isArray(m.milestones) || m.milestones.length > 16) return false;
+    || !Array.isArray(m.milestones) || m.milestones.length > 16
+    || !object(m.lifecycle) || !keys(m.lifecycle, lifecycleKeys)
+    || !["browserRequestStarted", "postAttemptStarted", "responseAcknowledged",
+      "browserFulfilled", "readOnlyInspection", "orderOverflow"]
+      .every(k => typeof (m.lifecycle as Record<string, unknown>)[k] === "boolean")) return false;
+  const lifecycle = m.lifecycle as Record<string, unknown>;
+  const orderOverflow = lifecycle.orderOverflow as boolean;
+  const validOrderPair = (first: unknown, last: unknown, allowOverflow: boolean) =>
+    first === null && last === null ? allowOverflow
+      : count(first, maxLocalOrder) && Number(first) > 0
+        && count(last, maxLocalOrder) && Number(last) >= Number(first);
+  const validBrowserStart = lifecycle.browserRequestStarted
+    ? oneOf(lifecycle.browserRequestStartState, lifecycleStates)
+      && validOrderPair(lifecycle.browserRequestStartOrder,
+        lifecycle.browserRequestStartOrder, orderOverflow)
+    : lifecycle.browserRequestStartState === null && lifecycle.browserRequestStartOrder === null;
+  if (!validBrowserStart
+    || lifecycle.postAttemptStarted !== m.submissionObserved
+    || lifecycle.postAttemptStarted && !lifecycle.browserRequestStarted
+    || lifecycle.responseAcknowledged && !lifecycle.postAttemptStarted
+    || lifecycle.browserFulfilled && !lifecycle.responseAcknowledged
+    || lifecycle.readOnlyInspection && !lifecycle.postAttemptStarted
+    || m.responseCompleted && !lifecycle.responseAcknowledged) return false;
+  const validMilestones = lifecycleMilestones.every(([flag, order]) =>
+    lifecycle[flag] === true
+      ? lifecycle[order] === null ? orderOverflow
+        : count(lifecycle[order], maxLocalOrder) && Number(lifecycle[order]) > 0
+      : lifecycle[order] === null);
+  if (!validMilestones) return false;
+  const orderedMilestones = lifecycleMilestones
+    .map(([, key]) => lifecycle[key])
+    .filter((value): value is number => typeof value === "number");
+  if (orderedMilestones.some((value, index) =>
+    index > 0 && orderedMilestones[index - 1]! > value)) return false;
+  if (lifecycle.browserFulfilled && !m.responseCompleted) return false;
   const marks = new Map<string, number>();
   let previous = 0;
   for (const mark of m.milestones) {
@@ -60,6 +122,7 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     || m.responseCompleted !== marks.has("POST_ACKNOWLEDGED")
     || m.parserAttempted !== marks.has("PARSER_STARTED")
     || m.inspectionStatus === "OBSERVED" && !marks.has("INSPECTION")
+    || m.inspectionStatus === "OBSERVED" && !lifecycle.readOnlyInspection
     || marks.has("PARSER_ACCEPTED") && (marks.has("PARSER_REJECTED") || m.parserOutcome !== "CANDIDATE_NONEMPTY")) return false;
   if (m.responseCompleted && !m.submissionObserved
     || m.parserAttempted !== (m.parserOutcome !== "NOT_RUN")
@@ -164,7 +227,9 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   for (const row of m.classifications) {
     if (!object(row) || !keys(row, ["category", "phase", "alias", "signal", "count",
       "location", "match", "ordinal", "resource", "decision", "requestPhase", "requestStage",
-      "stage", "readOnly", "failure", "firstSequence", "lastSequence"])
+      "stage", "readOnly", "failure", "firstSequence", "lastSequence", "eventState",
+      "requestStartState", "firstEventOrder", "lastEventOrder",
+      "firstRequestStartOrder", "lastRequestStartOrder"])
       || !oneOf(row.category, categories) || !oneOf(row.phase, ["READY", "RESULT"])
       || !oneOf(row.alias, aliases) || !oneOf(row.signal, signals)
       || !count(row.count, 10_000) || row.count === 0
@@ -176,6 +241,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       || !count(row.firstSequence, Number(m.eventSequence)) || !count(row.lastSequence, Number(m.eventSequence))
       || Number(row.firstSequence) < 1 || Number(row.lastSequence) < Number(row.firstSequence)
       || Number(row.count) > Number(row.lastSequence) - Number(row.firstSequence) + 1
+      || !oneOf(row.eventState, lifecycleStates) || !oneOf(row.requestStartState, requestStartStates)
+      || !validOrderPair(row.firstEventOrder, row.lastEventOrder, orderOverflow)
       || row.match === "UNIQUE" && (row.ordinal === 0 || row.requestPhase === "UNKNOWN" || row.requestStage === "UNKNOWN")
       || row.match !== "UNIQUE" && (row.ordinal !== 0
         || row.decision !== "UNKNOWN" && !(row.match === "AMBIGUOUS"
@@ -188,7 +255,29 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       || row.category === "JAVASCRIPT_EXCEPTION" && (row.alias !== "UNKNOWN" || row.signal !== "SCRIPT_EXCEPTION")
       || row.category === "REQUIRED_RESOURCE_FAILURE" && !oneOf(row.alias, ["MAIN_SCRIPT", "MAIN_STYLESHEET"]))
       return false;
-    const { count: _count, firstSequence: _first, lastSequence: _last, ...group } = row;
+    const noAssociatedStart = row.requestStartState === "NOT_ASSOCIATED"
+      || row.requestStartState === "UNAVAILABLE";
+    if (noAssociatedStart
+      ? row.firstRequestStartOrder !== null || row.lastRequestStartOrder !== null
+      : !validOrderPair(row.firstRequestStartOrder, row.lastRequestStartOrder, orderOverflow)) return false;
+    if (!noAssociatedStart && row.firstRequestStartOrder !== null && row.firstEventOrder !== null
+      && (Number(row.firstRequestStartOrder) > Number(row.firstEventOrder)
+        || Number(row.lastRequestStartOrder) > Number(row.lastEventOrder))) return false;
+    const eventMilestone = stateMilestone[String(row.eventState)];
+    const requestMilestone = stateMilestone[String(row.requestStartState)];
+    const eventFlag = stateFlag[String(row.eventState)];
+    const requestFlag = stateFlag[String(row.requestStartState)];
+    if (eventFlag && lifecycle[eventFlag] !== true
+      || requestFlag && lifecycle[requestFlag] !== true) return false;
+    if (eventMilestone && typeof lifecycle[eventMilestone] === "number"
+      && row.firstEventOrder !== null
+      && Number(lifecycle[eventMilestone]) > Number(row.firstEventOrder)) return false;
+    if (requestMilestone && typeof lifecycle[requestMilestone] === "number"
+      && typeof row.firstRequestStartOrder === "number"
+      && Number(lifecycle[requestMilestone]) > Number(row.firstRequestStartOrder)) return false;
+    const { count: _count, firstSequence: _first, lastSequence: _last,
+      firstEventOrder: _eventFirst, lastEventOrder: _eventLast,
+      firstRequestStartOrder: _requestFirst, lastRequestStartOrder: _requestLast, ...group } = row;
     const key = JSON.stringify(Object.keys(group).sort().map(k => [k, group[k]]));
     if (seen.has(key)) return false;
     seen.add(key);

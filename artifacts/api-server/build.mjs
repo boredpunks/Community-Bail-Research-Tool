@@ -129,7 +129,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   // Check the actual packaged import path, without launching a browser/network.
   // Source-only tests cannot detect an omitted dynamically imported module.
   const smoke = spawnSync("python", ["-c",
-    "from worker import main; from courtroom_observation import observe; from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form; from calendar_diagnostics import CalendarDiagnosticRecorder, RESPONSE_STRUCTURE"], {
+    "from worker import main; from courtroom_observation import observe; from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form; from calendar_diagnostics import CalendarDiagnosticRecorder, CalendarLifecycle, RESPONSE_STRUCTURE"], {
     cwd: path.join(distDir, "ujs"), stdio: "inherit",
   });
   if (smoke.status !== 0) throw new Error("Packaged Python worker import verification failed.");

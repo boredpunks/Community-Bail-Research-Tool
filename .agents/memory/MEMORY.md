@@ -8,3 +8,4 @@
 - [Inspector network boundary](inspection-network-boundary.md) — Workspace-first review, Unix datagram relay pitfalls, and a separate deployed-readiness gate.
 - [Calendar-only operator approval](calendar-only-operator-approval.md) — Building a one-use gate is not run approval; retain the global barrier and exclude PDFs.
 - [Playwright completion](playwright-teardown.md) — Pinned Response.finished leaves a target-close task pending; prefer pre-registered public completion events.
+- [Pre-POST fixture ordering](pre-post-wait-ordering.md) — A zero-delay form-submit timer can fire before the routed Search request event; assert local sequence bounds in wait tests.

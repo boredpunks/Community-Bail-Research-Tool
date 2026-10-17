@@ -2,8 +2,8 @@
 // either retrieval method invalidates prior proof and requires fresh approval.
 import { validCalendarCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v13";
-export const calendarPreviewMethod = "playwright-calendar-preview-v8";
+export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v14";
+export const calendarPreviewMethod = "playwright-calendar-preview-v9";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",

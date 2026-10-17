@@ -79,7 +79,7 @@ try {
   check(calendarDiagnosticRejection("raw-source-text") === null);
   check(calendarDiagnosticRejection("Invalid calendar response diagnostic") === "PARENT_REJECTED_CALENDAR_RESPONSE_DIAGNOSTIC");
   const responseDiagnostic = {
-    kind: "calendar_response_diagnostic", version: 3, phase: "RESULT",
+    kind: "calendar_response_diagnostic", version: 4, phase: "RESULT",
     submissionObserved: true, responseCompleted: true, inspectionStatus: "OBSERVED",
     structure: { bodyPresent: true, searchButtonCount: 1, searchFormPresent: true,
       resultTableCount: 1, headerCellCount: 18, expectedHeaders: true, dataRowCount: 0,
@@ -97,16 +97,47 @@ try {
     classifications: [{ category: "UNKNOWN_OR_UNSAFE", phase: "RESULT", alias: "UNKNOWN",
       signal: "UNCLASSIFIED", count: 1, location: "MISSING", match: "NONE", ordinal: 0,
       resource: "UNKNOWN", decision: "UNKNOWN", requestPhase: "UNKNOWN", requestStage: "UNKNOWN",
-      stage: "DOCUMENT_FULFILLED", readOnly: false, failure: "UNKNOWN", firstSequence: 7, lastSequence: 7 }],
+      stage: "DOCUMENT_FULFILLED", readOnly: false, failure: "UNKNOWN",
+      eventState: "READ_ONLY_INSPECTION", requestStartState: "NOT_ASSOCIATED",
+      firstEventOrder: 7, lastEventOrder: 7, firstRequestStartOrder: null, lastRequestStartOrder: null,
+      firstSequence: 7, lastSequence: 7 }],
     classificationOverflow: false, blockedDuringInspection: 0, eventSequence: 9,
     milestones: ["SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEIVED", "RESPONSE_BODY_READ",
       "POST_ACKNOWLEDGED", "DOCUMENT_FULFILLED", "READ_ONLY", "INSPECTION"]
       .map((name, i) => ({ name, sequence: i < 6 ? i + 1 : i + 2 })),
+    lifecycle: { browserRequestStarted: true, browserRequestStartState: "BEFORE_POST_ATTEMPT",
+      browserRequestStartOrder: 1, postAttemptStarted: true, postAttemptOrder: 2,
+      responseAcknowledged: true, responseAcknowledgedOrder: 3,
+      browserFulfilled: true, browserFulfilledOrder: 4,
+      readOnlyInspection: true, readOnlyInspectionOrder: 5, orderOverflow: false },
   };
   check(validCalendarResponseDiagnostic(responseDiagnostic));
+  const prePostDiagnostic = {
+    ...responseDiagnostic,
+    submissionObserved: false, responseCompleted: false,
+    inspectionStatus: "NOT_SAFE", structure: null,
+    transportIntegrity: { status: "SOURCE_STOPPED", requiredAssetsLoaded: true,
+      requestFailureObserved: false, blockedDuringInspection: 0 },
+    consoleDiagnostics: { status: "UNCLASSIFIED_CONSOLE_ERRORS", consoleErrors: 1,
+      runtimeExceptions: 0, provenOptionalErrors: 0 },
+    documentEligibility: "BLOCKED_INTEGRITY", stopGate: "SOURCE_STOPPED",
+    classifications: [{ ...responseDiagnostic.classifications[0],
+      category: "OTHER_CONSOLE_ERROR", alias: "MAIN_DOCUMENT", signal: "CONSOLE_ERROR",
+      stage: "SEARCH_ARMED", readOnly: true, eventState: "BEFORE_POST_ATTEMPT",
+      requestStartState: "NOT_ASSOCIATED", firstEventOrder: 2, lastEventOrder: 2,
+      firstSequence: 3, lastSequence: 3 }],
+    eventSequence: 4,
+    milestones: [{ name: "SEARCH_ARMED", sequence: 1 }, { name: "READ_ONLY", sequence: 4 }],
+    lifecycle: { browserRequestStarted: true, browserRequestStartState: "BEFORE_POST_ATTEMPT",
+      browserRequestStartOrder: 1, postAttemptStarted: false, postAttemptOrder: null,
+      responseAcknowledged: false, responseAcknowledgedOrder: null,
+      browserFulfilled: false, browserFulfilledOrder: null,
+      readOnlyInspection: false, readOnlyInspectionOrder: null, orderOverflow: false },
+  };
+  check(validCalendarResponseDiagnostic(prePostDiagnostic));
   for (const change of [
     { text: "not permitted" }, { rawHtml: "not permitted" }, { phase: "arbitrary" },
-    { version: 1 }, { version: 2 }, { parserAttempted: true }, { responseCompleted: false },
+    { version: 1 }, { version: 2 }, { version: 3 }, { parserAttempted: true }, { responseCompleted: false },
     { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
     { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
     { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
@@ -139,6 +170,18 @@ try {
     { classifications: [{ ...responseDiagnostic.classifications[0], count: 2 }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], readOnly: "true" }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], stage: "AFTER_SEARCH_PROVED" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], eventState: "RESULT" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], requestStartState: "POST" }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], firstEventOrder: 10001 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], firstRequestStartOrder: 2 }] },
+    { classifications: [{ ...responseDiagnostic.classifications[0], requestStartState: "BEFORE_POST_ATTEMPT",
+      firstRequestStartOrder: 8, lastRequestStartOrder: 7 }] },
+    { lifecycle: { ...responseDiagnostic.lifecycle, postAttemptStarted: false } },
+    { lifecycle: { ...responseDiagnostic.lifecycle, browserRequestStarted: "true" } },
+    { lifecycle: { ...responseDiagnostic.lifecycle, rawUrl: "https://invalid.test/" } },
+    { lifecycle: { ...responseDiagnostic.lifecycle, postAttemptOrder: 10001 } },
+    { lifecycle: { ...responseDiagnostic.lifecycle, responseAcknowledgedOrder: 1 } },
+    { lifecycle: { ...responseDiagnostic.lifecycle, browserRequestStartState: "RESULT" } },
     { documentEligibility: "ELIGIBLE" },
     { consoleDiagnostics: { ...responseDiagnostic.consoleDiagnostics, status: "CLEAN" } },
     { transportIntegrity: { ...responseDiagnostic.transportIntegrity, status: "COMPLETE",
@@ -161,8 +204,8 @@ try {
   }
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v13");
-  check(calendarPreviewMethod === "playwright-calendar-preview-v8");
+  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v14");
+  check(calendarPreviewMethod === "playwright-calendar-preview-v9");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
   check(!validCalendarAuditHeaders(["Docket Number", "raw or private content"]));
@@ -803,10 +846,13 @@ print(json.dumps(projections))
   const factoryDay = easternToday();
   const boundedCriteria = { ...makeBoundedEngineCriteria(factoryDay, factoryDay),
     startDate: "2026-10-16", endDate: "2026-10-22" };
+  const outsideBoundedEnd = new Date(`${boundedCriteria.endDate}T00:00:00.000Z`);
+  outsideBoundedEnd.setUTCDate(outsideBoundedEnd.getUTCDate() + 1);
+  const outsideBoundedEndDate = outsideBoundedEnd.toISOString().slice(0, 10);
   assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
   for (const change of [{ courtRoom: "" }, { courtRoom: "Courtroom 507" }, { recordCap: 6 },
-    { requestCap: 13 }, { endDate: "2026-10-23" }, { calendarPreviewOnly: false }, { eventType: "ANY" }])
+    { requestCap: 13 }, { endDate: outsideBoundedEndDate }, { calendarPreviewOnly: false }, { eventType: "ANY" }])
     check(!validBoundedEngineCriteria({ ...boundedCriteria, ...change }));
   const prepareBounded = async (
     changedCriteria: Partial<typeof criteria> = {},

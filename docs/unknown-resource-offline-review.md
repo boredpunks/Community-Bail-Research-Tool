@@ -9,7 +9,7 @@ only, not current readiness or execution permission.
 
 ## Authority and outcome
 
-The user authorized **review offline, with no court requests**. This review
+The user authorized **review offline, with no court requests**. The review
 inspected the retained sanitized diagnostic, classifier, route/error callbacks,
 strict parent contract and existing tests. It changed no application code,
 resource allowlist, classification exemption, validation gate, method version,
@@ -96,7 +96,8 @@ plus one of two demonstrated abort signatures. A different network code or an
 HTTP error at the same registered URL remained non-exempt in local probes.
 Do not broaden that rule to make the latest attempt pass.
 
-## Recommended next change — diagnostics only, not implemented
+
+## Diagnostics-only follow-up status
 
 Keep transmission permission checks and the fail-closed decision unchanged.
 Extend only bounded, redacted metadata:
@@ -112,11 +113,16 @@ Extend only bounded, redacted metadata:
    unique/multiple/no-match/overflow states. Record requestfailed observations
    for all known resource types, including an UNKNOWN bucket. Do not emit URL
    hashes or normalize different URLs into a claimed exact optional match.
-3. **Record lifecycle independently from phase.** Preserve fixed observations
-   such as before POST attempt, POST attempt in progress, response acknowledged,
-   browser fulfillment and read-only inspection; retain request-start and
-   event-time states separately. A bounded local sequence can establish order
-   without retaining source content. These are observed states, not causal proof.
+ 3. **Record lifecycle independently from phase — implemented.** Version 4 keeps
+   `READY`/`RESULT` unchanged and records whether Playwright observed the Search
+   request, the worker entered its POST attempt after the protected wait, the
+   parent acknowledged the worker's response report, the browser route was
+   fulfilled, and read-only mode began. Each error group retains a fixed event
+   state separately from the associated failed request's start state; console and page errors remain
+   explicitly unassociated. Capped local-order ranges and an overflow flag
+   replace timestamps and request identifiers. A Playwright request event or
+   local attempt label does not prove wire transmission, and separate event and
+   request states do not establish causation.
 4. **Retain a fixed failure subtype.** Recognize only explicitly defined network
    or HTTP-status classes, with OTHER/UNKNOWN fallback. A subtype is diagnostic
    evidence, never an exemption or source-origin assertion.
@@ -128,14 +134,14 @@ Do not add source requests, inspection modes, permit types or retries.
 
 ### Verification required before any future execution proposal
 
-Add pure and loopback-only tests for all collapsed location classes, different
-query formats, repeated/ambiguous exact matches, all request resource types,
-errors before/during/after POST, optional aborts versus unrelated failures,
-registry overflow and ordering bounds. Test secret/sentinel redaction and
-strict parent rejection of extra/coerced/unbounded fields. Preserve packaging
-smoke checks and frozen observation/INSPECT behavior.
+Pure and loopback-only tests cover fixed location classes, query formats,
+repeated/ambiguous exact matches and request resource types. Lifecycle tests
+cover an error during the protected pre-POST wait, a late failure whose request
+started before the attempt, ordering bounds, secret/sentinel redaction and the
+strict version-4 parent contract. Preserve packaging smoke checks and frozen
+observation/INSPECT behavior.
 
-Any eventual implementation must version the diagnostic contract and affected
+The lifecycle implementation versions the strict diagnostic contract and
 calendar method fingerprints consistently. A completed offline patch or passing
 fixture is not source access proof and does not authorize a live attempt.
 The consumed failed permit and unused request balance remain unusable.
