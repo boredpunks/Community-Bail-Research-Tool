@@ -1,0 +1,61 @@
+Stop making console classification a prerequisite for inspecting the already-received response.
+
+The three unmatched NET_FAILED observations remain unresolved. Do not whitelist them, classify them as optional without evidence, or claim the court denied access.
+
+Implement the following as one integrated repair:
+
+1. Separate diagnostics from result inspection
+
+After an otherwise authorized Search response arrives, run bounded, read-only structural and calendar-result validation even when unclassified console observations exist.
+
+This inspection must not initiate additional network traffic, follow document links, save observations, or declare execution successful.
+
+Produce separate findings for:
+
+Transport and resource integrity.
+
+Console/runtime diagnostics.
+
+Response structure and calendar-result validation.
+
+Eligibility to continue to document retrieval.
+
+A console error must not erase the evidence needed to determine what the server returned.
+
+2. Preserve strict acceptance criteria
+
+Do not turn this into “ignore console errors and continue.”
+
+Validate the response using the existing source-backed criteria: expected scope where observable, supported result structure, docket/link validity, date bounds, and explicit empty-result evidence.
+
+If errors leave required script execution, submitted criteria, or result integrity uncertain, report the structural findings but keep downstream retrieval blocked.
+
+If you propose treating a particular class of console observation as nonfatal, justify that policy with tests and evidence. Do not change it merely to obtain a successful run.
+
+3. Fix the correlation blind spot
+
+Inspect the current evidence and request instrumentation to determine why court-origin console locations have no registered request match.
+
+Check coverage of blocked requests, response-document resource references, frames, URL resolution, event ordering, and request-registration timing. These are hypotheses to investigate, not established causes.
+
+Use bounded, session-local correlation in memory. Retain sanitized categories and identifiers—not raw sensitive URLs or console text.
+
+Do not fetch unmatched locations just to identify them.
+
+4. Use existing evidence before contacting the court
+
+Determine whether any permitted retained artifact can be inspected or replayed offline. If the response was not retained, say so; do not imply that the historical page can now be parsed.
+
+Test the actual worker so that a response with unclassified console observations still produces a separate structural-validation report.
+
+Integrate the repair, run relevant checks, and report the resulting commit.
+
+5. Move toward extraction without another planning loop
+
+Finish all offline work first. Then present the mandatory fresh execution approval, if required, for the bounded calendar-to-document run—not another proposal to investigate whether you should prepare it.
+
+Do not reuse the consumed authorization or automatically repeat the failed attempt. Preserve pacing, request budgets, source barriers, identity checks, and pending-review rules.
+
+The next live execution must be able to explain what the returned page contains even if the console observations recur. It must not stop with only another error count.
+
+Return the integrated fix and either the exact execution approval needed or a demonstrated blocker.
