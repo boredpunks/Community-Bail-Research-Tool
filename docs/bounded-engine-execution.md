@@ -344,3 +344,36 @@ The pending user decision authorizes, if affirmative, **one** run of this permit
 only, with all stated ceilings and stop conditions. No decision has been
 recorded or executed by this repair. The calendar→validated dockets→documents→
 identity validation→bail extraction→pending-review objective remains open.
+
+## Revised date approval — October 17, 2026
+
+The user explicitly approved **2026-10-17 through 2026-10-22**, inclusive,
+with the same court/event/room, **12 total source requests**, at most five
+documents, original pacing and mandatory stop conditions. The earlier prepared
+October 16–22 permit is stale, remains unused, and is not approved or modified.
+No past-date check or binding-evidence check is bypassed.
+
+The revised window requires new date-matched courtroom binding evidence under
+the existing exact-date gate. The execution allocation remains within the
+single approved aggregate ceiling:
+
+1. One Courtroom 506 observation: at most **three GETs**, no Search or documents.
+2. Only after successful `BOUND_506` / `INSPECTED` evidence, one fresh bounded
+   engine permit for October 17–22: at most **nine possible transmissions** under
+   the existing per-path restrictions (three distinct bootstrap GET paths,
+   one Search POST, and at most five distinct document GETs).
+
+Although the engine permit's unchanged stored request cap is 12, its existing
+scheduler additionally prohibits repeated bootstrap paths and repeated Search
+submission. Its allowed request set therefore caps this run at nine requests.
+Together the two stages cannot exceed **3 + 9 = 12** granted requests, including
+failed/uncertain attempts. No budget, allowlist, validation rule, binding proof,
+transport method, retry policy or global source barrier is changed. No extra
+observation, engine retry or follow-on permit is authorized after a failed stage.
+
+Observation permit **`7e9edad2-1204-49f2-a0ee-5de760d79542`**, method
+`playwright-public-courtroom-observation-v2`, was approved and started under this
+revised scope. Its job is **`08860dcf-cf75-4038-9e59-98dfd85008de`**, started
+**2026-10-17 21:05:14 UTC**. The pilot owns the advisory lease; the API workflow
+was restarted only after the permit became `ATTEMPTED`. No engine permit is
+prepared or run until the new observation succeeds.
