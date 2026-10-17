@@ -377,3 +377,28 @@ revised scope. Its job is **`08860dcf-cf75-4038-9e59-98dfd85008de`**, started
 **2026-10-17 21:05:14 UTC**. The pilot owns the advisory lease; the API workflow
 was restarted only after the permit became `ATTEMPTED`. No engine permit is
 prepared or run until the new observation succeeds.
+
+The observation completed **2026-10-17 21:08:19 UTC** as **INSPECTED** /
+**BOUND_506**: three accounted successful GETs, no failed requests, no Search,
+no documents and no records. Sanitized evidence established one public label,
+one enabled same-form control, 104 options, one enabled/selected Courtroom 506
+option, one named backing binding and stable native agreement. The initial
+control was disabled with zero options before the intended criteria were set;
+it became enabled/populated under those criteria. This proves current room
+binding only, not results or document/bail access.
+
+Following that successful prerequisite, fresh engine permit
+**`d64aea6b-b096-40d4-8d9c-f5f666330933`**, method
+`playwright-calendar+urllib-pdf-v12-bounded-506-v2`, was prepared and approved
+under the user's revised authorization, without another conversational approval.
+Its exact dates are October 17–22; all other scope and safeguards are unchanged.
+It became **ATTEMPTED** with job
+**`3c7d9763-68d9-4777-aef1-19bcec299add`** at
+**2026-10-17 21:08:55 UTC**. The API workflow was restored only after the pilot
+acquired the lease and the permit became `ATTEMPTED`.
+
+The combined allocation is now **three completed binding requests plus at most
+nine engine requests**, maximum five document attempts. No automatic retry,
+new observation, scope expansion, historical-date substitution, general access
+proof or global collection enablement is authorized. The engine outcome remains
+pending; no successful calendar, document or extraction result is claimed here.
