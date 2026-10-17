@@ -1,0 +1,67 @@
+End the planning loop. Execute the authorized work.
+You have repeatedly returned reviews and proposed follow-ups instead of completing the implementation already requested. That cycle ends here.
+
+Deliver the integrated repair and move the engine toward an actual calendar-to-docket-to-bail result. Do not return another proposal to begin work.
+
+Standing offline authority
+Implement both findings from docs/unknown-resource-offline-review.md now:
+
+Resource provenance and complete request-failure classification/correlation.
+
+Accurate timing tied to actual Search transmission, response receipt, and result validation.
+
+Complete code changes, regression tests, integration, documentation corrections, type checks, and builds in one execution cycle.
+
+Do not ask permission to edit, test, build, or integrate routine changes within this scope. Do not split these fixes into more approval-dependent planning tasks.
+
+If Plan mode prevents implementation, identify the exact interface action I must take once. Do not produce another review in place of implementation.
+
+Preserve the purpose
+These diagnostics exist to unblock a functioning engine:
+
+Calendar search → validated results → docket-document retrieval → docket identity verification → bail extraction → evidence-backed display and pending review.
+
+Do not expand diagnostics into a separate research project. Do not reopen settled architecture or safeguards unless you demonstrate a defect that affects this execution path.
+
+Keep unknown failures represented, preserve sanitized evidence, and correct the unsupported historical claim that the three errors necessarily occurred after the response.
+
+Use the existing retrieval authority correctly
+My objective remains live retrieval and a functional engine—not diagnostics alone.
+
+Apply existing user authorization only where it remains valid for the actual method, criteria, dates, budgets, and permit state. Never reset or reuse a consumed permit, silently change scope, or bypass a mandatory approval.
+
+If fresh live approval is required, finish every independent offline prerequisite first. Then present one complete, exact approval request through the applicable mechanism. Do not ask whether you should prepare it.
+
+Include calendar search and bounded docket-document retrieval in that request wherever the existing gates support them. Do not propose another zero-document milestone unless a specific unresolved condition makes it necessary.
+
+No more activity-only completion
+A review document, higher test count, method-version bump, or safely stopped attempt is not completion of the research objective.
+
+Your next substantive response must be one of:
+
+A. Implemented and verified
+Integrated commit.
+
+Fixes delivered.
+
+Actual verification results and remaining limitations.
+
+The single exact approval needed to execute the bounded end-to-end run.
+
+B. Blocked by a specific external requirement
+The exact operation that cannot proceed.
+
+Evidence establishing the blocker.
+
+Work already completed.
+
+One recommended resolution.
+
+The precise action or decision required from me.
+
+“The follow-ups have not started,” “I propose another task,” and “shall I proceed?” are not acceptable substitutes for execution.
+
+Do not fabricate readiness or success to satisfy this instruction. Stop for genuine access restrictions, safety failures, or consequential decisions—not routine implementation choices.
+
+Start implementing now. Continue until the offline repair is integrated and verified or a demonstrated external blocker prevents further progress.
+
