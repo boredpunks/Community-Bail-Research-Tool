@@ -1,0 +1,129 @@
+{
+  "scope": {
+    "county": "Allegheny - 05",
+    "courtOffice": "CP-05-02-Crim",
+    "eventType": "Bail Hearing",
+    "courtRoom": "Courtroom 506",
+    "executionTimeZone": "America/New_York",
+    "startDate": "2026-10-17",
+    "endDate": "2026-10-23"
+  },
+  "binding": {
+    "permit": "844f024f-db53-4aed-825e-3a24b29daf5b",
+    "job": "bede838f-782d-4a72-997a-01d4e572a285",
+    "method": "playwright-public-courtroom-observation-v2",
+    "state": "INSPECTED",
+    "outcome": "BOUND_506",
+    "requests": 3,
+    "failures": 0,
+    "stable": true
+  },
+  "engine": {
+    "permit": "26883590-f1b8-4b57-a382-dedd3c0e6640",
+    "job": "639e7a04-c4fb-4f71-b06c-065eb4f999e8",
+    "method": "playwright-calendar+urllib-pdf-v13-bounded-506-v3",
+    "permitState": "FAILED",
+    "jobStatus": "PAUSED",
+    "requests": 4,
+    "calendarComplete": false,
+    "retainedItems": 0,
+    "documentRequests": 0,
+    "savedObservations": 0
+  },
+  "diagnostic": {
+    "version": 2,
+    "submissionObserved": true,
+    "responseCompleted": true,
+    "inspectionStatus": "OBSERVED",
+    "parserAttempted": false,
+    "parserOutcome": "NOT_RUN",
+    "stopGate": "CALENDAR_CONSOLE_ERROR",
+    "classificationOverflow": false,
+    "blockedDuringInspection": 3,
+    "eventSequence": 35,
+    "milestones": [
+      {"name": "SEARCH_ARMED", "sequence": 10},
+      {"name": "POST_ATTEMPT", "sequence": 12},
+      {"name": "RESPONSE_RECEIVED", "sequence": 13},
+      {"name": "RESPONSE_BODY_READ", "sequence": 14},
+      {"name": "POST_ACKNOWLEDGED", "sequence": 15},
+      {"name": "DOCUMENT_FULFILLED", "sequence": 16},
+      {"name": "READ_ONLY", "sequence": 25},
+      {"name": "INSPECTION", "sequence": 35}
+    ],
+    "structure": {
+      "bodyPresent": true,
+      "searchButtonCount": 1,
+      "searchFormPresent": true,
+      "resultTableCount": 1,
+      "headerCellCount": 19,
+      "expectedHeaders": true,
+      "dataRowCount": 1,
+      "documentLinkCount": 0,
+      "countsCapped": false
+    },
+    "unknownGroups": [
+      {
+        "category": "UNKNOWN_OR_UNSAFE",
+        "phase": "RESULT",
+        "alias": "OTHER",
+        "signal": "RESOURCE_LOAD_ERROR",
+        "location": "SOURCE_OTHER",
+        "match": "NONE",
+        "ordinal": 0,
+        "resource": "UNKNOWN",
+        "decision": "UNKNOWN",
+        "requestPhase": "UNKNOWN",
+        "requestStage": "UNKNOWN",
+        "stage": "DOCUMENT_FULFILLED",
+        "readOnly": false,
+        "failure": "NET_FAILED",
+        "count": 1,
+        "firstSequence": 24,
+        "lastSequence": 24
+      },
+      {
+        "category": "UNKNOWN_OR_UNSAFE",
+        "phase": "RESULT",
+        "alias": "OTHER",
+        "signal": "RESOURCE_LOAD_ERROR",
+        "location": "SOURCE_OTHER",
+        "match": "NONE",
+        "ordinal": 0,
+        "resource": "UNKNOWN",
+        "decision": "UNKNOWN",
+        "requestPhase": "UNKNOWN",
+        "requestStage": "UNKNOWN",
+        "stage": "DOCUMENT_FULFILLED",
+        "readOnly": true,
+        "failure": "NET_FAILED",
+        "count": 2,
+        "firstSequence": 31,
+        "lastSequence": 34
+      }
+    ]
+  },
+  "accounting": {
+    "accountedSourceRequests": 7,
+    "allHttp200": true,
+    "allAccountedOk": true,
+    "minimumCompletionGapSeconds": 61.146,
+    "maximumCompletionGapSeconds": 87.535,
+    "overlappingRequests": 0,
+    "activeJobs": 0,
+    "activeSourceRequest": false,
+    "sourceBarrier": "SOURCE_VALIDATION_BARRIER",
+    "accessVerified": false,
+    "collectionApproved": false,
+    "automaticRetries": 0
+  },
+  "limitations": [
+    "The three console observations have no exact request-registry match. Their resource types and route decisions remain unknown.",
+    "NET_FAILED is a recognized console signature, not independent proof of network origin or court denial.",
+    "Three observations do not establish three distinct resources.",
+    "The seven request records are fully accounted OK; unmatched console observations do not independently establish additional or uncertain transmissions.",
+    "The one presentation row and zero recognized links do not establish cases or a validated empty calendar.",
+    "The new run establishes observed post-fulfillment timing; historical phase-only diagnostics cannot inherit that timing.",
+    "The failed consumed permit and unused request budget do not authorize another source attempt."
+  ]
+}

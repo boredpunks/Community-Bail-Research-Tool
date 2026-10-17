@@ -530,3 +530,99 @@ three GETs and the engine at three distinct bootstrap GET paths, one Search POST
 and five distinct document attempts: **at most 12 combined requests**, within
 the authorized 30 and existing stricter per-job caps. Stop after either failed
 stage; unused budget is not authority for another attempt.
+
+### Repair verification
+
+- API and frontend TypeScript checks: passed.
+- API production package/build and frontend production build: passed. The
+  frontend build retained its existing non-fatal tooltip sourcemap warning.
+- Actual concurrent-PostgreSQL parent safety checks: **798 passed**.
+- Python protocol/loopback tests: **98 passed** in 239.287 seconds.
+- Strict parent ingestion/redaction: **14 actual-worker diagnostics passed**,
+  including the newly covered pre-transmission error. No source requests or
+  fabricated case/docket records were used in these tests.
+- The initial aggregate test command discovered an unrelated stale wall-clock
+  dependency in a scheduler fixture: it passed October 16 through an operator
+  constructor that checks the real current date, October 17. The fixture now
+  separately checks that constructor against today's Eastern date and retains
+  its deliberate injected October 16 scheduler clock. The parent checks were
+  rerun independently and all 798 passed; the already-passing Python and wire
+  checks were not redundantly rerun.
+- API restarted cleanly; `/api/healthz` returned HTTP 200 / `{"status":"ok"}`.
+  Public app screenshot rendered correctly with connected Vite and no runtime
+  error. No authentication or frontend workflow was materially changed.
+
+### Fresh authorized October 17–23 execution
+
+One-use observation permit `844f024f-db53-4aed-825e-3a24b29daf5b`,
+job `bede838f-782d-4a72-997a-01d4e572a285`, completed **INSPECTED**:
+three transmitted/accounted requests, zero failures, stable **BOUND_506**.
+The source exposed 104 options after approved criteria selection, exactly one
+enabled Courtroom 506 option, one named binding and native/UI agreement.
+This is exact-date binding evidence, not calendar results or PDF access proof.
+
+Under the same current user authorization, new engine permit
+`26883590-f1b8-4b57-a382-dedd3c0e6640`, job
+`639e7a04-c4fb-4f71-b06c-065eb4f999e8`, was prepared, explicitly approved
+through the operator control and started. No consumed historical permit was
+reset or reused. Method: `playwright-calendar+urllib-pdf-v13-bounded-506-v3`.
+The API workflow was stopped for each worker lease handoff and restarted after
+the corresponding permit reached ATTEMPTED. Global barrier preserved.
+
+#### Final outcome: calendar validation blocked
+
+The engine permit is **FAILED**, job **PAUSED**. It completed three bootstrap
+GETs and one Search POST, all **HTTP 200 / accounted OK**, then stopped at
+`CALENDAR_CONSOLE_ERROR`. No document request, retained calendar item, extraction
+or pending-observation save occurred. This is **not** an end-to-end research
+success and **not** a validated empty calendar.
+
+The new v2 evidence resolves timing for **this attempt**:
+
+| Observation | Sequence |
+| --- | ---: |
+| Search armed | 10 |
+| POST transport attempt | 12 |
+| Response handle received / body read | 13 / 14 |
+| Parent acknowledgment | 15 |
+| Browser fulfillment observed | 16 |
+| First unmatched console error | 24 |
+| Read-only protection | 25 |
+| Remaining unmatched console errors | 31–34 |
+| Passive structural inspection | 35 |
+
+Three observations match the fixed `NET_FAILED` console signature, with
+`SOURCE_OTHER` locations and **NONE** exact request matches. Their request type,
+decision and start stage remain **UNKNOWN**; no source-backed optional-abort
+exemption exists. The recorder separately captured the proven image aborts;
+counts and coincident timing do not correlate the unmatched observations with
+those known requests. `NET_FAILED` here is signature evidence, not proof the
+court denied a request or that the console message originated in the network.
+
+The parser remained **NOT_RUN**. Passive inspection observed one expected-header
+table, 19 header cells, one presentation row and zero recognized document links.
+These structural counts do not establish case records, zero matches or why the
+errors occurred. No case/docket record has been fabricated.
+
+Read-only database accounting after completion confirms:
+
+- **7 accounted fresh source requests**: three binding GETs plus four engine
+  requests. All recorded transmissions are HTTP 200 / accounted OK, with no
+  recorded failed/uncertain transmission or overlap. Unmatched console
+  observations do not independently establish additional source transmissions.
+- Completion-to-next-start gaps **61.146–87.535 seconds**, within the existing
+  pacing.
+- Zero document requests and retained items; no observations saved.
+- Zero active jobs, no active source request, no access proof or collection
+  approval; `SOURCE_VALIDATION_BARRIER` intact.
+- No automatic retry, scope/date substitution or consumed-permit reuse.
+
+Sanitized retained evidence is in
+[`evidence/calendar-execution-2026-10-17.json`](evidence/calendar-execution-2026-10-17.json).
+The exact blocker is unresolved attribution of the three unmatched console
+errors at the mandatory pre-parser gate. Continuing to docket retrieval would
+require validated calendar results; accepting this table or relabeling the errors
+optional would bypass that gate. The recommended resolution is source-backed
+identification/correlation of those unmatched locations before changing any
+exemption. Additional budget or approval alone does not resolve the failure.
+No new source attempt is prepared or requested on an unchanged failing condition.

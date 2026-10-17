@@ -35,7 +35,7 @@ try {
             .some(value => line.includes(value)))
           throw new Error("Unsafe content in actual-worker diagnostic.");
       }
-      console.log("PASS: parent accepted " + lines.length + " actual post-submission worker diagnostics; redaction checked.");
+      console.log("PASS: parent accepted " + lines.length + " actual calendar worker diagnostics, including pre-transmission; redaction checked.");
     `, resolveDir: process.cwd(), sourcefile: "wire-check.ts" },
     outfile: wire, bundle: true, platform: "node", format: "esm",
   });
