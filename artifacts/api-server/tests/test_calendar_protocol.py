@@ -222,6 +222,28 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn(("ScheduledEventsOnly", "1"), fields)
                 self.assertEqual(outbound, [])
 
+                # The same end-to-end blank-filter validation must work with
+                # bounded public grouping and a UI-only native select. Field
+                # names are fixture identities, never assumed by discovery.
+                grouped_markup = markup.replace(
+                    '<label for="room">Room</label>',
+                    '<div><label>Room</label>').replace(
+                    '<select id="room" name="CourtRoomID">',
+                    '<select id="room">').replace(
+                    '<div id="CalendarEventType-Control">',
+                    '<input type="hidden" name="FixtureRoomBinding" value=""></div>'
+                    '<div id="CalendarEventType-Control">')
+                await page.set_content(grouped_markup)
+                selected = await select_bound_calendar_controls(page, criteria)
+                fields = await validate_bound_calendar_form(page, criteria, selected)
+                self.assertIn(("FixtureRoomBinding", ""), fields)
+                self.assertNotIn("CourtRoomID", dict(fields))
+                await page.locator('input[name="FixtureRoomBinding"]').evaluate(
+                    "el => el.value = 'not-blank'")
+                with self.assertRaises(CalendarFormFailure) as failure:
+                    await validate_bound_calendar_form(page, criteria, selected)
+                self.assertEqual(failure.exception.reason, "BACKING_VALUE_MISMATCH")
+
                 await page.set_content(markup.replace(' checked>', '>'))
                 selected = await select_bound_calendar_controls(page, criteria)
                 with self.assertRaises(CalendarFormFailure) as failure:

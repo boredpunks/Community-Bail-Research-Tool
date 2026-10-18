@@ -4,6 +4,7 @@ import asyncio
 import re
 from playwright.async_api import TimeoutError as BrowserTimeout
 from source_protocol import CALENDAR_ASSETS
+from room_discovery import PUBLIC_ROOM_HELPERS
 
 SEARCH_CLICK_TIMEOUT_MS = 180_000
 CALENDAR_FORM_READY_TIMEOUT_MS = 15_000
@@ -36,7 +37,8 @@ PUBLIC_CONTROLS = ("SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT",
 CONTROL_REASONS = ("MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
                    "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
                    "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
-                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN")
+                   "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN",
+                   "ASSOCIATION_UNPROVEN", "SUBMITTED_FIELD_MISSING", "DISCOVERY_LIMIT")
 SUBMITTED_REASONS = ("SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH")
 FORM_REASONS = {"CALENDAR_CONTROL_STATE_MISMATCH": CONTROL_REASONS,
                 "CALENDAR_SUBMITTED_VALUES_MISMATCH": SUBMITTED_REASONS,
@@ -346,44 +348,56 @@ async def validate_bound_calendar_form(page, criteria, selected_values):
 
 
 async def validate_unfiltered_room_and_schedule(page):
-    result = await page.evaluate("""() => {
-      const form = document.querySelector("#btnSearch")?.form;
-      if (!form) return {control: "COURT_ROOM", reason: "WRONG_FORM"};
-      const normalize = label => label.textContent.replace(/[:\\s]+$/g, "").trim();
+    result = await page.evaluate("() => {" + PUBLIC_ROOM_HELPERS + r"""
+      const buttons = [...document.querySelectorAll("#btnSearch")];
+      const form = buttons.length === 1 ? buttons[0].form : null;
+      if (!form) return {control: "COURT_ROOM",
+        reason: buttons.length > 1 ? "CONTROL_AMBIGUOUS" : "MISSING"};
+      const discovered = discoverPublicRoom(form);
+      if (discovered.limit) return {control: "COURT_ROOM", reason: "DISCOVERY_LIMIT"};
+      if (discovered.reason) return {control: "COURT_ROOM", reason: discovered.reason};
+      const select = discovered.select;
+      if (select.matches(":disabled")) return {control: "COURT_ROOM", reason: "DISABLED"};
+      if (!select.getClientRects().length) return {control: "COURT_ROOM", reason: "HIDDEN"};
+      const blank = [...select.options].filter(option => option.value === "");
+      if (blank.length !== 1) return {control: "COURT_ROOM",
+        reason: blank.length ? "OPTION_AMBIGUOUS" : "OPTION_MISSING"};
+      if (blank[0].disabled || blank[0].closest("optgroup")?.disabled)
+        return {control: "COURT_ROOM", reason: "OPTION_DISABLED"};
+      if (select.multiple || select.value !== "" || select.selectedOptions.length !== 1
+          || select.selectedOptions[0] !== blank[0])
+        return {control: "COURT_ROOM", reason: "NO_FILTER_NOT_SELECTED"};
+      const room = publicRoomBinding(form, select, discovered.group);
+      if (room.reason) return {control: "COURT_ROOM", reason: room.reason};
+      const normalize = label => label.textContent.replace(/[:\s]+$/g, "").trim();
       const oneLabel = text => {
-        const matches = [...form.querySelectorAll("label")].filter(label => normalize(label) === text);
+        const matches = [...document.querySelectorAll("label")].filter(label =>
+          (form.contains(label) || label.control?.form === form) && normalize(label) === text);
         return matches.length === 1 ? matches[0] : null;
       };
-      const inspect = (labelText, expected, controlName) => {
+      const inspect = (labelText, controlName) => {
         const label = oneLabel(labelText);
         if (!label) return {control: controlName, reason: "MISSING"};
         const control = label.control;
-        if (!control || control.form !== form) return {control: controlName, reason: "WRONG_FORM"};
+        if (!control) return {control: controlName, reason: "ASSOCIATION_UNPROVEN"};
+        if (control.form !== form) return {control: controlName, reason: "WRONG_FORM"};
         if (control.matches(":disabled")) return {control: controlName, reason: "DISABLED"};
         if (!label.getClientRects().length || !control.getClientRects().length)
           return {control: controlName, reason: "HIDDEN"};
-        if (expected === "ROOM") {
-          if (control.tagName !== "SELECT") return {control: controlName, reason: "VALUE_MISMATCH"};
-          const blank = [...control.options].filter(option => option.value === "");
-          if (blank.length !== 1) return {control: controlName, reason: blank.length ? "OPTION_AMBIGUOUS" : "OPTION_MISSING"};
-          if (blank[0].disabled) return {control: controlName, reason: "OPTION_DISABLED"};
-          if (control.value !== "" || control.selectedOptions.length !== 1
-              || control.selectedOptions[0] !== blank[0]) return {control: controlName, reason: "NO_FILTER_NOT_SELECTED"};
-        } else if (control.type !== "checkbox" || !control.checked) {
+        if (control.type !== "checkbox" || !control.checked) {
           return {control: controlName, reason: "VALUE_MISMATCH"};
         }
         if (!control.name || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(control.name)
             || /token|password|secret|session|cookie|captcha|verification|auth/i.test(control.name))
           return {control: controlName, reason: "UNNAMED"};
-        const value = expected === "ROOM" ? "" : control.value;
+        const value = control.value;
         const values = new FormData(form).getAll(control.name);
+        if (!values.length) return {control: controlName, reason: "SUBMITTED_FIELD_MISSING"};
         if (values.length !== 1 || values[0] !== value)
           return {control: controlName, reason: "BACKING_VALUE_MISMATCH"};
         return {name: control.name, value};
       };
-      const room = inspect("Room", "ROOM", "COURT_ROOM");
-      if (room.reason) return room;
-      const schedule = inspect("Scheduled Events Only", "CHECKED", "SCHEDULED_EVENTS_ONLY");
+      const schedule = inspect("Scheduled Events Only", "SCHEDULED_EVENTS_ONLY");
       if (schedule.reason) return schedule;
       if (room.name === schedule.name) return {control: "SCHEDULED_EVENTS_ONLY", reason: "BACKING_CONTROL_AMBIGUOUS"};
       return {bindings: [
