@@ -17,7 +17,8 @@ import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage
 import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
-import { boundedEngineMethod, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../lib/bounded-engine";
+import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
+  makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../lib/bounded-engine";
 import { candidateEligible, observationValues } from "../lib/discovery-candidates";
 import { resultsDeadline } from "../lib/discovery-safety";
 import { coverageMethod, courtroomObservationMethod, makeCourtroomObservationCriteria,
@@ -44,26 +45,16 @@ async function main() {
       if (!source || !calendarPreviewSourceAllowed(source)) throw new Error("Unchanged source barrier and idle source required.");
       const [active] = await tx.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
       if (active) throw new Error("Another discovery job is active.");
-      const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.expectedMethod, boundedEngineMethod));
+      const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.stage, "BOUNDED_ENGINE"));
       if (prior.some(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate))
         throw new Error("A bounded engine permit already exists for this scope; no reuse or automatic retry.");
-      const observations = await tx.select().from(discoveryAssessmentsTable).where(and(
-        eq(discoveryAssessmentsTable.expectedMethod, courtroomObservationMethod),
-        eq(discoveryAssessmentsTable.state, "INSPECTED")));
-      const proof = observations.find(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate);
-      if (!proof?.jobId) throw new Error("Matching completed courtroom observation required.");
-      const evidence = await tx.select().from(discoveryEventsTable).where(and(
-        eq(discoveryEventsTable.jobId, proof.jobId), eq(discoveryEventsTable.kind, "COURTROOM_METADATA")));
-      if (evidence.length !== 1) throw new Error("Unique sanitized binding evidence required.");
-      const metadata = JSON.parse(evidence[0]!.message);
-      if (!validCourtroomObservationMetadata(metadata) || metadata.outcome !== "BOUND_506")
-        throw new Error("Courtroom 506 binding was not established.");
       const [created] = await tx.insert(discoveryAssessmentsTable).values({
         stage: "BOUNDED_ENGINE", expectedMethod: boundedEngineMethod, criteria,
       }).returning();
       return created!;
     });
-    console.log(JSON.stringify({ ...row, notice: "Prepared without traffic. One exact calendar search and at most five distinct documents / 12 total requests. Barrier preserved; no collection enablement or retries." }));
+    console.log(JSON.stringify({ ...row, observationRequestCap: 3,
+      notice: "Prepared without traffic. One approved run observes Courtroom 506 in the same browser session before Search. Observation and engine share one persisted 12-request ceiling; at most five distinct docket documents. Barrier preserved; no collection enablement or retries." }));
     return;
   }
   if (command === "prepare-courtroom-observation") {
@@ -323,7 +314,7 @@ async function main() {
       const ordered = [...requests].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
       const timingValid = ordered.every((request, index) => !index || !!ordered[index - 1]!.completedAt
         && request.startedAt.getTime() >= ordered[index - 1]!.completedAt!.getTime() + discoveryPolicy.spacingMs);
-       const [assessment] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
+        const [assessment] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
        const inspection = diagnostic(assessment?.stage ?? "");
        const calendarOnly = assessment?.stage === "CALENDAR_ONLY";
        const inspectRequestCountValid = assessment?.stage === "INSPECT"
@@ -342,8 +333,20 @@ async function main() {
          && items.every((item) => item.provenance.extractionOutcome === "UNPROCESSED")
          && failures === 0 && timingValid && !!source && calendarPreviewSourceAllowed(source)
          && !source.latencyWarning;
-        const bounded = assessment?.stage === "BOUNDED_ENGINE";
+         const bounded = assessment?.stage === "BOUNDED_ENGINE";
+         const courtroomEvidence = bounded && job.assessmentId
+           ? await db.select().from(discoveryEventsTable).where(and(
+             eq(discoveryEventsTable.jobId, job.id), eq(discoveryEventsTable.kind, "COURTROOM_METADATA")))
+           : [];
+         const courtroomMetadata = courtroomEvidence.length === 1
+           ? JSON.parse(courtroomEvidence[0]!.message) as Record<string, unknown> : null;
+         const observationRequests = courtroomEvidence.length === 1
+           ? requests.filter(request => request.startedAt <= courtroomEvidence[0]!.createdAt).length : 0;
+         const observationValidated = !!courtroomMetadata
+           && validCourtroomObservationMetadata(courtroomMetadata)
+           && boundedObservationCanContinue(courtroomMetadata.outcome, observationRequests);
         const boundedComplete = bounded && validBoundedEngineCriteria(assessment.criteria)
+           && observationValidated
           && current?.status === "COMPLETED" && current.calendarComplete && failures === 0 && timingValid
           && requests.length > 0 && requests.length <= assessment.criteria.requestCap
           && requests.filter(r => r.path === "/CaseSearch" && r.method === "POST").length === 1
@@ -358,7 +361,7 @@ async function main() {
         const state = boundedComplete ? "BOUNDED_COMPLETED" : inspected ? "INSPECTED" : calendarValidated ? "CALENDAR_VALIDATED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
           reason: boundedComplete
-            ? `Bounded exact Courtroom 506 engine run completed: ${items.length} validated calendar row(s), ${validDocuments} identity-validated processed document(s). Evidence remains unreviewed. Source barrier unchanged; no global access proof or collection approval.`
+             ? `Bounded exact Courtroom 506 engine run completed: in-session observation used ${observationRequests} request(s); ${boundedEngineRequestsRemaining(requests.length)} request(s) remained when the run ended (12 total maximum). ${items.length} validated calendar row(s), ${validDocuments} identity-validated processed document(s). Evidence remains unreviewed. Source barrier unchanged; no global access proof or collection approval.`
             : calendarValidated
            ? `One approved Calendar Event search completed with ${items.length} validated calendar row(s). No PDFs, bail extraction, or collection approval. SOURCE_VALIDATION_BARRIER remains unchanged.`
            : inspected ? (assessment?.expectedMethod === courtroomObservationMethod

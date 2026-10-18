@@ -68,6 +68,7 @@ async def main(config=None):
     inspection_gate = InspectionRequestGate() if inspection_only else None
     calendar_preview_only = config.get("calendarPreviewOnly") is True
     courtroom_observation_only = config.get("courtroomObservationOnly") is True
+    bounded_engine_observation = config.get("boundedEngineObservation") is True
     if courtroom_observation_only and (
             config.get("coverageOnly") is not True
             or criteria.get("courtOffice") != "CP-05-02-Crim"
@@ -76,8 +77,16 @@ async def main(config=None):
             or criteria.get("requestCap") != 3 or criteria.get("recordCap") != 1):
         emit("barrier", code="COURTROOM_OBSERVATION_SCOPE_INVALID")
         return
+    if bounded_engine_observation and (
+            criteria.get("courtOffice") != "CP-05-02-Crim"
+            or criteria.get("eventType") != "Bail Hearing"
+            or criteria.get("courtRoom") != "Courtroom 506"
+            or criteria.get("requestCap") != 12 or criteria.get("recordCap") != 5
+            or criteria.get("calendarPreviewOnly") is True):
+        emit("barrier", code="BOUNDED_ENGINE_SCOPE_INVALID")
+        return
     courtroom_observer = None
-    if courtroom_observation_only:
+    if courtroom_observation_only or bounded_engine_observation:
         # A packaging failure must be discovered before any source request.
         try:
             from courtroom_observation import observe as courtroom_observer
@@ -87,6 +96,7 @@ async def main(config=None):
     lock = asyncio.Lock()
     stopped = False
     requests = 0
+    bounded_observation_complete = False
     blocked = 0
     calendar_time = None
     last_completed_clock = None
@@ -153,6 +163,7 @@ async def main(config=None):
 
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
+            nonlocal bounded_observation_complete
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
             nonlocal calendar_post_attempt_started, calendar_post_attempt_order
             nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
@@ -172,6 +183,8 @@ async def main(config=None):
                         or (post_response_read_only or response_recorder and response_recorder.overflow)
                         and resource_type is not None):
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
+                if bounded_engine_observation and not bounded_observation_complete and requests >= 3:
+                    raise SourceFailure("COURTROOM_OBSERVATION_REQUEST_LIMIT")
                 clock = asyncio.get_running_loop()
                 pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
                 if inspection_only:
@@ -815,6 +828,16 @@ async def main(config=None):
                 from calendar_protocol import validate_bound_calendar_form
                 expected_calendar_post_fields = await validate_bound_calendar_form(
                     page, criteria, preview_values)
+                if bounded_engine_observation:
+                    observation = await courtroom_observer(
+                        page, emit, criteria, lambda: inspection_error is None, controls_prevalidated=True)
+                    if observation.get("outcome") != "BOUND_506":
+                        emit("bounded_engine_stopped", code="COURTROOM_BINDING_NOT_ESTABLISHED")
+                        return
+                    if requests > 3:
+                        emit("bounded_engine_stopped", code="COURTROOM_OBSERVATION_REQUEST_LIMIT")
+                        return
+                    bounded_observation_complete = True
                 criteria_validation = "PRE_SUBMISSION_FORMDATA_MATCHED"
                 calendar_preflight("READY")
                 emit("calendar_state", state="FORM_READY", formVisible=await page.locator("#btnSearch").is_visible())
@@ -898,6 +921,10 @@ async def main(config=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
+            if (bounded_engine_observation and isinstance(error, SourceFailure)
+                    and error.outcome == "COURTROOM_OBSERVATION_REQUEST_LIMIT"):
+                emit("bounded_engine_stopped", code="COURTROOM_OBSERVATION_REQUEST_LIMIT")
+                return
             if response_recorder and (calendar_search_request_started or response_recorder.groups):
                 if calendar_post_observed:
                     await inspect_loaded_response()

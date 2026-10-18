@@ -6,7 +6,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
-import { boundedEngineMethod, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
+import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
+  boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
 import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
@@ -851,6 +852,19 @@ print(json.dumps(projections))
   const outsideBoundedEndDate = outsideBoundedEnd.toISOString().slice(0, 10);
   assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
+  check(boundedEngineRequestsRemaining(0) === 12);
+  check(boundedEngineRequestsRemaining(3) === 9);
+  check(boundedEngineRequestsRemaining(11) === 1);
+  check(boundedEngineRequestsRemaining(12) === 0);
+  check(boundedEngineRequestsRemaining(13) === 0);
+  check(boundedObservationCanContinue("BOUND_506", 1));
+  check(boundedObservationCanContinue("BOUND_506", 3));
+  check(!boundedObservationCanContinue("BINDING_UNPROVEN", 1));
+  check(!boundedObservationCanContinue("BOUND_506", 4));
+  check(boundedObservationRequestAllowed(false, 0, "/CaseSearch", "GET"));
+  check(!boundedObservationRequestAllowed(false, 0, "/CaseSearch", "POST"));
+  check(!boundedObservationRequestAllowed(false, 3, "/CaseSearch", "GET"));
+  check(boundedObservationRequestAllowed(true, 12, "/Report/CpDocketSheet", "GET"));
   for (const change of [{ courtRoom: "" }, { courtRoom: "Courtroom 507" }, { recordCap: 6 },
     { requestCap: 13 }, { endDate: outsideBoundedEndDate }, { calendarPreviewOnly: false }, { eventType: "ANY" }])
     check(!validBoundedEngineCriteria({ ...boundedCriteria, ...change }));
@@ -880,6 +894,90 @@ print(json.dumps(projections))
   assert.ok(boundedPost.allow);
   check(await response(bounded.job, boundedPost.requestId));
   check(!(await previewReserve(bounded.job, bounded.permit.id, "POST")).allow);
+
+  // Three in-session bootstrap requests and the later Search share this job's
+  // persisted counter; no second permit contributes a fresh allowance.
+  bounded = await prepareBounded();
+  const boundedPath = (path: string) => {
+    const urls: Record<string, string> = {
+      "/CaseSearch": requestUrl,
+      "/resource/js/sitemain.min.js": "https://ujsportal.pacourts.us/resource/js/sitemain.min.js",
+      "/resource/css/sitemain.min.css": "https://ujsportal.pacourts.us/resource/css/sitemain.min.css",
+    };
+    return reserveSourceRequest(bounded.job, path, "GET", bounded.permit.id, urls[path], () => false, context);
+  };
+  const firstConcurrentPath = boundedPath("/CaseSearch");
+  const secondConcurrentPath = boundedPath("/CaseSearch");
+  const concurrentSleepContext = {
+    ...context,
+    sleep: async (ms: number) => {
+      if (ms === 1_000) await new Promise(resolve => setTimeout(resolve, 2));
+      else time += ms;
+    },
+  };
+  const concurrentGets = [
+    reserveSourceRequest(bounded.job, "/CaseSearch", "GET", bounded.permit.id,
+      requestUrl, () => false, concurrentSleepContext),
+    reserveSourceRequest(bounded.job, "/CaseSearch", "GET", bounded.permit.id,
+      requestUrl, () => false, concurrentSleepContext),
+  ];
+  const admitted = await Promise.race(concurrentGets);
+  assert.ok(admitted.allow);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const inFlightRows = await store.select().from(requests);
+  check(inFlightRows.length === 1 && inFlightRows[0]!.outcome === "IN_FLIGHT");
+  check(await response(bounded.job, admitted.requestId));
+  const concurrentOutcomes = await Promise.all(concurrentGets);
+  check(concurrentOutcomes.filter(result => result.allow).length === 1);
+  check(concurrentOutcomes.filter(result => !result.allow).length === 1);
+  for (const path of ["/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"]) {
+    const grant = await boundedPath(path);
+    assert.ok(grant.allow);
+    check(await response(bounded.job, grant.requestId));
+  }
+  const [observedJob] = await store.select().from(jobs).where(eq(jobs.id, bounded.job.id));
+  check(observedJob!.requestsUsed === 3);
+  check(boundedObservationCanContinue("BOUND_506", observedJob!.requestsUsed));
+  check(boundedEngineRequestsRemaining(observedJob!.requestsUsed) === 9);
+  const continuedSearch = await previewReserve(bounded.job, bounded.permit.id, "POST");
+  assert.ok(continuedSearch.allow);
+  check(await response(bounded.job, continuedSearch.requestId));
+  const [searchedJob] = await store.select().from(jobs).where(eq(jobs.id, bounded.job.id));
+  check(searchedJob!.requestsUsed === 4 && boundedEngineRequestsRemaining(searchedJob!.requestsUsed) === 8);
+
+  // A failed observation or interruption cannot open Search or reset consumed
+  // slots. The single-use permit remains consumed at the observation boundary.
+  bounded = await prepareBounded();
+  const interruptedGrant = await previewReserve(bounded.job, bounded.permit.id);
+  assert.ok(interruptedGrant.allow);
+  check(await response(bounded.job, interruptedGrant.requestId));
+  await store.update(pilots).set({ state: "FAILED" }).where(eq(pilots.id, bounded.permit.id));
+  await store.update(jobs).set({ status: "PAUSED" }).where(eq(jobs.id, bounded.job.id));
+  check(!boundedObservationCanContinue("BINDING_UNPROVEN", 1));
+  check(!boundedObservationRequestAllowed(false, 1, "/CaseSearch", "POST"));
+  check(!(await previewReserve(bounded.job, bounded.permit.id, "POST")).allow);
+  const [interruptedJob] = await store.select().from(jobs).where(eq(jobs.id, bounded.job.id));
+  check(interruptedJob!.requestsUsed === 1);
+  check((await store.select().from(requests)).length === 1);
+
+  // The shared persisted ceiling stops admission at twelve without creating a
+  // thirteenth transmission row.
+  bounded = await prepareBounded();
+  await store.update(jobs).set({ requestsUsed: 12 }).where(eq(jobs.id, bounded.job.id));
+  const exhaustedGrant = await previewReserve(bounded.job, bounded.permit.id);
+  check(!exhaustedGrant.allow && "reason" in exhaustedGrant && exhaustedGrant.reason === "JOB_REQUEST_LIMIT");
+  check((await store.select().from(requests)).length === 0);
+
+  // An uncertain observation transmission retains its consumed slot and source
+  // stop; it is not retried or refunded.
+  bounded = await prepareBounded();
+  const uncertainGrant = await previewReserve(bounded.job, bounded.permit.id);
+  assert.ok(uncertainGrant.allow);
+  check(!(await response(bounded.job, uncertainGrant.requestId, "NETWORK_ERROR", null)));
+  const [uncertainJob] = await store.select().from(jobs).where(eq(jobs.id, bounded.job.id));
+  check(uncertainJob!.requestsUsed === 1 && boundedEngineRequestsRemaining(uncertainJob!.requestsUsed) === 11);
+  check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
+
   const [boundedSource] = await store.select().from(sources);
   check(boundedSource!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !boundedSource!.accessVerifiedAt
     && !boundedSource!.collectionApprovedAt);

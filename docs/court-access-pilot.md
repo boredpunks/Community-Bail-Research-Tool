@@ -60,6 +60,33 @@ validation, including on duplicate rows. Parsing failures retain bounded reason
 codes. The v2 approval prompt was dismissed; neither it nor its prepared record
 authorizes a later method. Current protections remain in force.
 
+## Combined Courtroom 506 execution
+
+The bounded October 18–23, 2026 execution uses one `BOUNDED_ENGINE` permit and
+one discovery job. The existing worker first binds and reads back Allegheny - 05,
+`CP-05-02-Crim`, Bail Hearing, Courtroom 506, and the exact dates. It then proves
+the Courtroom 506 public-control/native-submission binding in that same loaded
+browser page before it can submit Search. It does not reload the form between
+observation and Search.
+
+Every transmitted request from page bootstrap through successful room-binding
+observation counts toward both ceilings: no more than three requests before
+observation completes and no more than 12 requests total for the whole job.
+After observation, the engine has only the actual remainder of those 12 slots;
+there is no separately reserved nine-request engine allowance. The same persisted
+job counter and request history cover observation, Search, required assets, and
+documents. At most five distinct docket documents may be requested. Existing
+spacing, one-request concurrency, source barriers, stop conditions and no-retry
+rules remain unchanged. A failed observation cannot submit Search. An interrupted
+or failed permit is consumed; it cannot resume or replenish its allowance.
+
+The former prerequisite for a *separate, already completed* observation with
+matching dates is not necessary: observation now occurs after the exact date
+controls have been validated in the same session that will submit Search. The
+date window remains exact and mandatory in the permit, form readback, POST-body
+check, and returned-result validation. This integrates the observation gate; it
+does not remove it or allow evidence from another date window to unlock Search.
+
 After the failed v3 attempt, offline browser tests showed that intentionally
 aborted optional images produce console errors too. v4 categorizes an error as
 expected optional-resource noise only when its source URL exactly matches an
@@ -104,6 +131,9 @@ Build with `pnpm --filter @workspace/api-server run build`. Commands below use
 
 - `prepare --stage SINGLE --start YYYY-MM-DD --end YYYY-MM-DD --requests N`:
   store PREPARED scope only; no source requests.
+- `prepare-bounded-engine --start YYYY-MM-DD --end YYYY-MM-DD`: prepare the
+  combined Courtroom 506 observation and engine permit without traffic. One
+  subsequent approval covers the shared 12-request/5-document ceiling.
 - `approve --id UUID --user-approved`: only **after separate user approval** for
   that precise stage and scope. Permit expires after 24 hours. Current protected
   caps are checked; exceeding them requires separate operator-budget approval.

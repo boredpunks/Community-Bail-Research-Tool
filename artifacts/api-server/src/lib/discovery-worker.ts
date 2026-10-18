@@ -21,7 +21,8 @@ import { InspectionFetchBroker } from "./inspection-fetch-broker";
 import { validCalendarRowDates } from "./calendar-criteria";
 import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtroomObservationCriteria,
   validCourtroomObservationMetadata } from "./courtroom-observation";
-import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
+import { boundedEngineMethod, boundedObservationCanContinue, boundedObservationRequestAllowed,
+  validBoundedEngineCriteria } from "./bounded-engine";
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +71,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const filingInspectionOnly = permit?.stage === "FILING_INSPECT" && permit.expectedMethod === filingInspectionMethod;
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
   const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
+  const boundedEngine = permit?.stage === "BOUNDED_ENGINE" && permit.expectedMethod === boundedEngineMethod;
   if (permit?.stage === "CALENDAR_ONLY"
       && (!calendarOnlyPermit || !calendarPreviewOnly || !isCalendarPreviewCriteria(job.criteria))) {
     throw new Error("Invalid calendar-only operator permit scope");
@@ -117,11 +119,14 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   let inspectionPhase: "NONE" | "BEFORE" = "NONE";
   let coveragePhase = 0;
   let filingPhase = 0;
+  let boundedObservationRequests = 0;
+  let boundedObservationSeen = false;
+  let boundedObservationComplete = false;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
-    calendarPreviewOnly, courtroomObservationOnly,
+     calendarPreviewOnly, courtroomObservationOnly, boundedEngineObservation: boundedEngine,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
@@ -143,6 +148,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         throw new Error("Filing inspection cannot emit collection results");
       if (message.kind === "request") {
         if (diagnosticOnly && (inspectionPhase !== "NONE" || coveragePhase > 0 || filingPhase > 0)) throw new Error("Inspection transmission after bootstrap");
+        if (boundedEngine && !boundedObservationRequestAllowed(
+          boundedObservationComplete, boundedObservationRequests, message.path, message.method)) {
+          child.stdin.write(JSON.stringify({ allow: false, reason: "COURTROOM_OBSERVATION_REQUEST_LIMIT" }) + "\n");
+          continue;
+        }
         if (calendarPreviewOnly && message.method === "GET"
             && typeof message.url === "string"
             && new URL(message.url).pathname === "/Report/CpDocketSheet")
@@ -151,6 +161,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
             grant(job, requestPath, method, permitId, url))
           : await grant(job, message.path, message.method, permitId, message.url);
+        if (boundedEngine && !boundedObservationComplete && permission.allow) boundedObservationRequests++;
         child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
@@ -166,10 +177,20 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           throw new Error("Incomplete filing inspection");
         finished = true;
       } else if (message.kind === "courtroom_metadata") {
-        if (!courtroomObservationOnly || coveragePhase !== 0 || !validCourtroomObservationMetadata(message))
+        const boundedObservation = boundedEngine && !boundedObservationSeen;
+        if ((!courtroomObservationOnly && !boundedObservation)
+          || courtroomObservationOnly && coveragePhase !== 0 || !validCourtroomObservationMetadata(message))
           throw new Error("Invalid courtroom observation metadata");
-        coveragePhase++;
+        if (boundedObservation) {
+          boundedObservationSeen = true;
+          boundedObservationComplete = boundedObservationCanContinue(message.outcome, boundedObservationRequests);
+        } else coveragePhase++;
         await discoveryEvent(job, "COURTROOM_METADATA", JSON.stringify(message));
+      } else if (message.kind === "bounded_engine_stopped") {
+        if (!boundedEngine || !["COURTROOM_BINDING_NOT_ESTABLISHED", "COURTROOM_OBSERVATION_REQUEST_LIMIT"].includes(String(message.code))
+          || job.calendarComplete) throw new Error("Invalid bounded engine stop");
+        await pause(job, `${String(message.code)}: no Search or document request was authorized.`);
+        finished = true;
       } else if (message.kind === "coverage_metadata") {
         if (!coverageOnly || courtroomObservationOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
           throw new Error("Invalid coverage metadata");
@@ -210,7 +231,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
           `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}; network requests=${message.networkRequests ?? "not reported"}, cached asset responses=${message.cachedResponses ?? "not reported"}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar_response_diagnostic") {
-        if (diagnosticOnly || !validCalendarResponseDiagnostic(message))
+        if (diagnosticOnly || boundedEngine && !boundedObservationComplete || !validCalendarResponseDiagnostic(message))
           throw new Error("Invalid calendar response diagnostic");
         await discoveryEvent(job, "CALENDAR_RESPONSE_DIAGNOSTIC", JSON.stringify(message));
         const transport = message.transportIntegrity as {
@@ -231,6 +252,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
       } else if (message.kind === "calendar") {
+        if (boundedEngine && !boundedObservationComplete) throw new Error("Courtroom observation gate missing before Search results");
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
         if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"

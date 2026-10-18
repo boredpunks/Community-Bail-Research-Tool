@@ -102,7 +102,7 @@ PROBE = r"""({select506, includeSubmissionField}) => {
 }"""
 
 
-async def observe(page, emit, criteria, is_clean=lambda: True):
+async def observe(page, emit, criteria, is_clean=lambda: True, controls_prevalidated=False):
     async def probe(select=False):
         value = await page.evaluate(PROBE, {"select506": select})
         if isinstance(value, dict) and value.get("error") in {
@@ -113,15 +113,16 @@ async def observe(page, emit, criteria, is_clean=lambda: True):
 
     await wait_for_calendar_search_button(page)
     initial = await probe()
-    # Preserve the user's intended room, but discover it separately from public
-    # labels. Never pass it into the legacy assumed-field-name selector.
-    public_criteria = {key: value for key, value in criteria.items() if key != "courtRoom"}
-    await select_calendar_preview_controls(page, public_criteria)
+    if not controls_prevalidated:
+        # Preserve the user's intended room, but discover it separately from public
+        # labels. Never pass it into the legacy assumed-field-name selector.
+        public_criteria = {key: value for key, value in criteria.items() if key != "courtRoom"}
+        await select_calendar_preview_controls(page, public_criteria)
     deadline = time.monotonic() + LOCAL_TIMEOUT_SECONDS
     started = time.monotonic()
-    after_criteria = None
+    after_criteria = initial if controls_prevalidated else None
     after_selection = None
-    selected = False
+    selected = controls_prevalidated
     previous = None
     stable_since = time.monotonic()
     stable = False
@@ -171,6 +172,8 @@ async def observe(page, emit, criteria, is_clean=lambda: True):
     if not is_clean():
         raise RuntimeError("COVERAGE_UNEXPECTED_LOCAL_REQUEST")
     await calendar_form_field_count(page)
-    emit("courtroom_metadata", phase="OBSERVED", initial=initial, afterCriteria=after_criteria,
-         afterSelection=after_selection, outcome=outcome,
-         waitMs=min(15_000, int((time.monotonic() - started) * 1000)), stable=stable)
+    metadata = {"kind": "courtroom_metadata", "phase": "OBSERVED", "initial": initial,
+                "afterCriteria": after_criteria, "afterSelection": after_selection, "outcome": outcome,
+                "waitMs": min(15_000, int((time.monotonic() - started) * 1000)), "stable": stable}
+    emit("courtroom_metadata", **{key: value for key, value in metadata.items() if key != "kind"})
+    return metadata
