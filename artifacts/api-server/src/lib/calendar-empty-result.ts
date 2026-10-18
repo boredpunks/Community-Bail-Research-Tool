@@ -1,6 +1,15 @@
 import { isExplicitEmptyCalendarLayout } from "./calendar-layout";
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
 
+/** Accept only the expected ordered state transition for a validated empty search. */
+export function validatedEmptyResultStateMessage(stateMessages: unknown): string | null {
+  if (!Array.isArray(stateMessages) || stateMessages.length !== 2) return null;
+  const [formReady, terminal] = stateMessages;
+  if (typeof formReady !== "string" || !formReady.startsWith("FORM_READY;")
+    || typeof terminal !== "string" || !terminal.startsWith("EMPTY_RESULTS_VALIDATED;")) return null;
+  return terminal;
+}
+
 /** Cross-check the parser's empty marker against the retained layout and result diagnostics. */
 export function isValidatedExplicitEmptyResult(
   layout: unknown, diagnostic: unknown, stateMessage: unknown,

@@ -19,7 +19,7 @@ import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
 import { boundedEngineMethod, boundedEngineRequestCap, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../lib/bounded-engine";
-import { isValidatedExplicitEmptyResult } from "../lib/calendar-empty-result";
+import { isValidatedExplicitEmptyResult, validatedEmptyResultStateMessage } from "../lib/calendar-empty-result";
 import { candidateEligible, observationValues } from "../lib/discovery-candidates";
 import { resultsDeadline } from "../lib/discovery-safety";
 import { coverageMethod, courtroomObservationMethod, makeCourtroomObservationCriteria,
@@ -365,15 +365,17 @@ async function main() {
            : [];
          const layoutEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_LAYOUT");
          const responseEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_RESPONSE_DIAGNOSTIC");
-         const emptyStateEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_STATE");
+          const emptyStateEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_STATE")
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+          const emptyStateMessage = validatedEmptyResultStateMessage(emptyStateEvidence.map(event => event.message));
          const validatedEmptyResult = items.length === 0 && layoutEvidence.length === 1
-           && responseEvidence.length === 1 && emptyStateEvidence.length === 1
+            && responseEvidence.length === 1 && emptyStateMessage !== null
            && (() => {
              try {
                return isValidatedExplicitEmptyResult(
                  JSON.parse(layoutEvidence[0]!.message),
                  JSON.parse(responseEvidence[0]!.message),
-                 emptyStateEvidence[0]!.message,
+                  emptyStateMessage,
                );
              } catch {
                return false;

@@ -6,7 +6,7 @@ import { discoveryPolicy } from "./discovery";
 import { calendarPreviewSourceAllowed } from "./discovery-safety";
 import { boundedEngineMethod, boundedObservationCanContinue, validBoundedEngineCriteria } from "./bounded-engine";
 import { validCourtroomObservationMetadata } from "./courtroom-observation";
-import { isValidatedExplicitEmptyResult } from "./calendar-empty-result";
+import { isValidatedExplicitEmptyResult, validatedEmptyResultStateMessage } from "./calendar-empty-result";
 
 /** Report an attempted delegated run without creating global access proof. */
 export async function finishBoundedRun(jobId: string, permitId: string, store = db) {
@@ -29,15 +29,17 @@ export async function finishBoundedRun(jobId: string, permitId: string, store = 
   const metadata = observations.length === 1 ? JSON.parse(observations[0]!.message) as Record<string, unknown> : null;
   const layouts = history.filter(e => e.kind === "CALENDAR_LAYOUT");
   const responseDiagnostics = history.filter(e => e.kind === "CALENDAR_RESPONSE_DIAGNOSTIC");
-  const calendarStates = history.filter(e => e.kind === "CALENDAR_STATE");
+  const calendarStates = history.filter(e => e.kind === "CALENDAR_STATE")
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const emptyStateMessage = validatedEmptyResultStateMessage(calendarStates.map(e => e.message));
   const validatedEmpty = found.length === 0 && layouts.length === 1
-    && responseDiagnostics.length === 1 && calendarStates.length === 1
+    && responseDiagnostics.length === 1 && emptyStateMessage !== null
     && (() => {
       try {
         return isValidatedExplicitEmptyResult(
           JSON.parse(layouts[0]!.message),
           JSON.parse(responseDiagnostics[0]!.message),
-          calendarStates[0]!.message,
+          emptyStateMessage,
         );
       } catch {
         return false;

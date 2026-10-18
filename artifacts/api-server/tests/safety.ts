@@ -267,7 +267,10 @@ try {
   for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
     await pool.query(`CREATE TABLE ${namespace}.${name} (LIKE public.${name} INCLUDING ALL)`);
   }
-  await boundedLaunchChecks(store);
+  await boundedLaunchChecks(store, {
+    layout: explicitEmptyLayout,
+    diagnostic: validatedEmptyDiagnostic,
+  });
   await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
