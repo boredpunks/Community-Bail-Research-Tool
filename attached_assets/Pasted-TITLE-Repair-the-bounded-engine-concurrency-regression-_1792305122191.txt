@@ -1,0 +1,507 @@
+TITLE: Repair the bounded-engine concurrency regression and verify the offline safety suite
+
+MODE: IMPROVE
+
+REPOSITORY:
+https://github.com/boredpunks/Community-Bail-Research-Tool
+
+TARGET BRANCH:
+main
+
+EXPECTED BASE COMMIT:
+1155ab85b3af1de71ceb3b91910d168774dea6d7
+
+AUTHORIZED CHANGE:
+Make one coherent, local improvement to the bounded-engine concurrency safety test. You may edit the minimum set of test files necessary to remove the orphaned request reservations and make the regression test deterministic.
+
+Do not modify GitHub directly unless the surrounding Replit environment already performs its ordinary project synchronization. Do not create a pull request, issue, release, deployment, or other external resource.
+
+PRIMARY OUTCOME:
+Fix the concurrent request-admission regression test so that it starts exactly two controlled reservation attempts, accounts for every promise it starts, proves that no more than one request is in flight, and verifies that the competing attempt is rejected after the admitted request completes.
+
+IMPORTANT SAFETY BOUNDARIES:
+- Do not run the live court-access pilot.
+- Do not contact ujsportal.pacourts.us.
+- Do not initiate any court Search submission.
+- Do not retrieve calendars, docket sheets, case records, or documents.
+- Do not use production data or credentials.
+- Do not weaken request caps, record caps, source barriers, authorization gates, retention rules, or validation.
+- Do not modify production scheduler behavior unless a reproducible production defect is independently established. The known defect is in the test setup.
+- Do not add arbitrary sleeps to disguise the race.
+- Do not remove relevant assertions merely to obtain a passing suite.
+- Do not perform unrelated cleanup, refactoring, dependency upgrades, formatting, or documentation changes.
+
+CURRENT EVIDENCE
+
+File:
+artifacts/api-server/tests/safety.ts
+
+The bounded-engine concurrency section currently contains these two statements:
+
+```ts
+const firstConcurrentPath = boundedPath("/CaseSearch");
+const secondConcurrentPath = boundedPath("/CaseSearch");
+```
+
+Neither promise is awaited, returned, cancelled, or otherwise accounted for.
+
+Immediately afterward, the test creates the actual controlled pair:
+
+```ts
+const concurrentGets = [
+  reserveSourceRequest(
+    bounded.job,
+    "/CaseSearch",
+    "GET",
+    bounded.permit.id,
+    requestUrl,
+    () => false,
+    concurrentSleepContext,
+  ),
+  reserveSourceRequest(
+    bounded.job,
+    "/CaseSearch",
+    "GET",
+    bounded.permit.id,
+    requestUrl,
+    () => false,
+    concurrentSleepContext,
+  ),
+];
+```
+
+Therefore, the test starts four reservation operations while observing and awaiting only two of them. The first two operations can continue asynchronously, contend for the same source lock, enter scheduler wait loops, consume a reservation, or reject after test teardown. That can make the safety run nondeterministic and can invalidate the intended assertion that exactly one of the two controlled operations receives a grant.
+
+The production scheduler already serializes admission through a source row lock, checks the persisted in-flight request, waits outside the transaction, re-enters the transaction, and rejects a repeated bounded-engine bootstrap path after it has already been attempted. Preserve that behavior unless runtime evidence establishes a separate production defect.
+
+REQUIRED FIRST STEPS
+
+1. Record repository state:
+
+```bash
+git rev-parse HEAD
+git status --short
+git branch --show-current
+```
+
+2. Confirm that HEAD is the expected base commit.
+
+If HEAD differs:
+- Do not reset or overwrite the workspace.
+- Inspect the current version of the affected test.
+- Determine whether the orphaned statements are still present.
+- If the defect has already been fixed, do not reapply it; report the current state and verify the existing correction.
+- If overlapping uncommitted edits exist in the affected block, stop before overwriting them and report the conflict.
+
+3. Inspect these files before editing:
+
+```text
+artifacts/api-server/tests/safety.ts
+artifacts/api-server/src/lib/discovery-scheduler.ts
+artifacts/api-server/tests/run-safety.mjs
+artifacts/api-server/package.json
+package.json
+```
+
+4. Confirm that the safety runner prohibits external HTTP from the TypeScript safety test and that no requested command invokes the live pilot.
+
+ROOT CAUSE
+
+This is a test-lifecycle defect, not currently an established production scheduler defect.
+
+The concurrency test creates two unused reservation promises:
+
+```ts
+const firstConcurrentPath = boundedPath("/CaseSearch");
+const secondConcurrentPath = boundedPath("/CaseSearch");
+```
+
+It then creates a second pair for the same path and awaits only that second pair. Calling an async function starts execution immediately; assigning its promise without awaiting it does not make it inert.
+
+The two orphaned operations may:
+- Acquire the source slot before the intended operations.
+- Add unexpected request rows.
+- Change `requestsUsed`.
+- Enter a polling loop.
+- Reject after the disposable schema or connection pool is removed.
+- Cause an unhandled rejection.
+- Make `Promise.race(concurrentGets)` observe behavior influenced by requests outside `concurrentGets`.
+
+MINIMUM REQUIRED PATCH
+
+Remove the two orphaned calls completely.
+
+Delete:
+
+```ts
+const firstConcurrentPath = boundedPath("/CaseSearch");
+const secondConcurrentPath = boundedPath("/CaseSearch");
+```
+
+Keep one explicitly tracked pair of concurrent requests.
+
+The corrected section should be structurally equivalent to the following:
+
+```ts
+const boundedPath = (path: string) => {
+  const urls: Record<string, string> = {
+    "/CaseSearch": requestUrl,
+    "/resource/js/sitemain.min.js":
+      "[https://ujsportal.pacourts.us/resource/js/sitemain.min.js](https://ujsportal.pacourts.us/resource/js/sitemain.min.js)",
+    "/resource/css/sitemain.min.css":
+      "[https://ujsportal.pacourts.us/resource/css/sitemain.min.css](https://ujsportal.pacourts.us/resource/css/sitemain.min.css)",
+  };
+
+  return reserveSourceRequest(
+    bounded.job,
+    path,
+    "GET",
+    bounded.permit.id,
+    urls[path],
+    () => false,
+    context,
+  );
+};
+
+const concurrentSleepContext = {
+  ...context,
+  sleep: async (ms: number) => {
+    if (ms === 1_000) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    } else {
+      time += ms;
+    }
+  },
+};
+
+const concurrentGets = [
+  reserveSourceRequest(
+    bounded.job,
+    "/CaseSearch",
+    "GET",
+    bounded.permit.id,
+    requestUrl,
+    () => false,
+    concurrentSleepContext,
+  ),
+  reserveSourceRequest(
+    bounded.job,
+    "/CaseSearch",
+    "GET",
+    bounded.permit.id,
+    requestUrl,
+    () => false,
+    concurrentSleepContext,
+  ),
+];
+
+const admitted = await Promise.race(concurrentGets);
+assert.ok(admitted.allow);
+
+await new Promise((resolve) => setTimeout(resolve, 10));
+
+const inFlightRows = await store.select().from(requests);
+check(
+  inFlightRows.length === 1 &&
+    inFlightRows!.outcome === "IN_FLIGHT",
+);
+
+check(await response(bounded.job, admitted.requestId));
+
+const concurrentOutcomes = await Promise.all(concurrentGets);
+check(
+  concurrentOutcomes.filter((result) => result.allow).length === 1,
+);
+check(
+  concurrentOutcomes.filter((result) => !result.allow).length === 1,
+);
+```
+
+Use the repository’s existing formatting style. Do not replace the surrounding test wholesale if removing two lines is sufficient.
+
+OPTIONAL ASSERTION HARDENING
+
+If it can be added without altering production code or making the test timing-dependent, add assertions that make the intended lifecycle explicit.
+
+Immediately before accounting the admitted request, verify:
+- Exactly one request row exists.
+- Its outcome is `IN_FLIGHT`.
+- The job’s `requestsUsed` value is exactly 1.
+
+After accounting and awaiting both controlled promises, verify:
+- Exactly one result has `allow === true`.
+- Exactly one result has `allow === false`.
+- Exactly one request row exists for that job and path.
+- No second request row was inserted.
+- The successful request is no longer `IN_FLIGHT`.
+- The job’s request count remains 1 at this point.
+
+A suitable version, adapted to the repository’s types, would be:
+
+```ts
+const [jobDuringContention] = await store
+  .select()
+  .from(jobs)
+  .where(eq(jobs.id, bounded.job.id));
+
+check(jobDuringContention!.requestsUsed === 1);
+
+check(await response(bounded.job, admitted.requestId));
+
+const concurrentOutcomes = await Promise.all(concurrentGets);
+const allowedOutcomes = concurrentOutcomes.filter(
+  (result) => result.allow,
+);
+const deniedOutcomes = concurrentOutcomes.filter(
+  (result) => !result.allow,
+);
+
+check(allowedOutcomes.length === 1);
+check(deniedOutcomes.length === 1);
+
+const pathRows = await store
+  .select()
+  .from(requests)
+  .where(eq(requests.jobId, bounded.job.id));
+
+check(
+  pathRows.length === 1 &&
+    pathRows!.path === "/CaseSearch" &&
+    pathRows!.method === "GET" &&
+    pathRows!.outcome !== "IN_FLIGHT",
+);
+
+const [jobAfterContention] = await store
+  .select()
+  .from(jobs)
+  .where(eq(jobs.id, bounded.job.id));
+
+check(jobAfterContention!.requestsUsed === 1);
+```
+
+Do not force this exact code if it conflicts with current repository types or imports. Preserve the same test intent with the smallest coherent implementation.
+
+Do not assert a particular denial reason unless the scheduler contract explicitly guarantees it. The important invariant is one admitted transmission, one denied competing attempt, one persisted request row, and one consumed request slot.
+
+PROMISE-LIFECYCLE REQUIREMENT
+
+After the patch, every invocation of `reserveSourceRequest` in this concurrency block must be one of the following:
+- Awaited directly.
+- Stored in `concurrentGets` and subsequently awaited through `Promise.race` and `Promise.all`.
+- Explicitly returned to an awaited caller.
+
+There must be no fire-and-forget reservation promise.
+
+Search the affected test for similar accidental calls:
+
+```bash
+rg -n \
+  'reserveSourceRequest|boundedPath\(' \
+  artifacts/api-server/tests/safety.ts
+```
+
+Only fix an additional instance if it is the same root cause and necessary for this one improvement. Report unrelated findings instead of expanding scope.
+
+DO NOT CHANGE THESE PRODUCTION CONTROLS
+
+Preserve all existing behavior in:
+
+```text
+artifacts/api-server/src/lib/discovery-scheduler.ts
+artifacts/api-server/src/lib/bounded-engine.ts
+artifacts/api-server/src/ujs/worker.py
+artifacts/api-server/src/ujs/courtroom_observation.py
+```
+
+In particular, do not change:
+- Source-to-job-to-permit lock ordering.
+- One-in-flight source enforcement.
+- Request accounting.
+- Three-request observation boundary.
+- Twelve-request bounded-engine cap.
+- Five-record cap.
+- One Search POST limit.
+- Duplicate bootstrap-path rejection.
+- Calendar validation before document access.
+- Restart uncertainty handling.
+- Source-validation barrier behavior.
+- Explicit permit matching.
+- Courtroom 506 binding requirements.
+- No-retry handling for uncertain transmissions.
+
+Do not add mocks that bypass the PostgreSQL concurrency behavior. This regression test is intentionally exercising real row locking and the database one-in-flight constraint in an isolated schema.
+
+INSTALLATION
+
+The repository requires pnpm. Do not use npm or Yarn.
+
+Run:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+If dependencies are already installed and the frozen install would be unnecessarily destructive, first inspect the lockfile and workspace state. Do not regenerate the lockfile.
+
+No dependency or lockfile changes are expected for this patch.
+
+VERIFICATION ORDER
+
+Run the narrowest useful static checks first, followed by the complete offline safety runner.
+
+1. Review the edited block:
+
+```bash
+git diff --check
+git diff -- artifacts/api-server/tests/safety.ts
+```
+
+2. Run API-server typechecking:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+3. Run root typechecking:
+
+```bash
+pnpm typecheck
+```
+
+4. Run the offline safety suite:
+
+```bash
+pnpm --filter @workspace/api-server test:safety
+```
+
+The safety command:
+- Builds the worker package.
+- Bundles and executes `tests/safety.ts`.
+- Runs the Python unit tests.
+- Validates captured worker diagnostics.
+- Uses a disposable PostgreSQL schema.
+- Must not make court traffic or use case fixtures.
+
+DATABASE PREREQUISITE
+
+The safety suite requires access to the project’s configured PostgreSQL database because the concurrency checks exercise real row locking in a disposable schema.
+
+Before running it:
+- Confirm the configured database is an authorized development/test database.
+- Do not point the suite at production.
+- Confirm the connection can create and drop a disposable schema.
+- Never print or expose the database URL or credentials.
+
+If the database is unavailable:
+- Complete the code correction.
+- Run all checks that do not require the database.
+- Report `test:safety` as blocked, not passed.
+- State the exact missing prerequisite.
+- Do not replace the real concurrency test with an in-memory mock merely to obtain a green result.
+
+EXPECTED RESULT
+
+A successful safety run should terminate normally and report the offline checks as passing. It should not hang after printing results, produce unhandled promise rejections, leave requests polling, or fail during schema/pool teardown.
+
+No external court requests are permitted. If any attempted command would contact the court portal, stop and report it instead of running it.
+
+DIFF REVIEW
+
+Before finishing, inspect:
+
+```bash
+git status --short
+git diff --stat
+git diff
+```
+
+The expected candidate diff is limited to:
+
+```text
+artifacts/api-server/tests/safety.ts
+```
+
+Expected substantive change:
+- Remove the two orphaned `boundedPath("/CaseSearch")` calls.
+- Optionally strengthen assertions for the same concurrency lifecycle.
+
+Unexpected changes that must not be included:
+- Production scheduler modifications.
+- Request-limit changes.
+- Worker behavior changes.
+- Generated build output.
+- Lockfile updates.
+- Dependency changes.
+- Database migrations.
+- Documentation rewrites.
+- Formatting changes outside the affected block.
+
+ACCEPTANCE CRITERIA
+
+The improvement is accepted only if all applicable criteria are met:
+
+1. The concurrency block starts exactly two `/CaseSearch` GET reservation promises.
+2. Both promises are retained and awaited.
+3. No reservation promise is abandoned.
+4. Exactly one request becomes `IN_FLIGHT`.
+5. The admitted request is accounted before the waiting request resolves.
+6. Exactly one controlled result is allowed.
+7. Exactly one controlled result is denied.
+8. Exactly one request row is created for the concurrent `/CaseSearch` attempt.
+9. Exactly one request slot is consumed by that attempt.
+10. The later two asset GETs still bring the observation total to three.
+11. The Search POST still becomes request four only after successful observation.
+12. Typechecking passes.
+13. The complete offline safety suite passes, or any environmental blocker is accurately reported.
+14. No live court traffic occurs.
+15. The final diff contains no unrelated changes.
+
+FAILURE HANDLING
+
+If verification fails:
+- Do not weaken the assertions.
+- Do not increase sleep durations repeatedly to conceal nondeterminism.
+- Identify whether the failure existed at baseline, was caused by the patch, or reflects a real scheduler defect.
+- Capture the command, exit status, and concise error.
+- If production scheduler changes appear necessary, stop and request expanded authorization before editing it.
+- Leave the workspace in a reviewable state.
+- Do not claim success when verification is incomplete.
+
+FINAL REPORT
+
+Return a concise but complete implementation report containing:
+
+1. Repository state:
+   - Branch.
+   - Starting commit.
+   - Initial working-tree status.
+   - Any pre-existing changes.
+
+2. Root cause:
+   - Explain that two async reservations were started without being tracked or awaited.
+   - Explain how they could interfere with the two intended concurrent operations.
+
+3. Changes:
+   - Exact files changed.
+   - Exact statements removed.
+   - Any lifecycle assertions added.
+
+4. Verification:
+   - Every command executed.
+   - Pass, fail, or blocked status.
+   - Relevant output summaries.
+   - Confirmation that no court traffic occurred.
+
+5. Diff review:
+   - Changed-file list.
+   - Confirmation that production scheduler and worker files were unchanged.
+   - Confirmation that no dependency, lockfile, migration, or generated-output changes occurred.
+
+6. Remaining uncertainty:
+   - Any test that could not run.
+   - Any required database or environment prerequisite.
+   - Any unrelated issue discovered but intentionally deferred.
+
+7. Final disposition:
+   - `Requested outcome achieved` only if the patch is applied and all available acceptance checks pass.
+   - Otherwise use `Partial progress`, `Blocked`, or `Attempt abandoned`.
