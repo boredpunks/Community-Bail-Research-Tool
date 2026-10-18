@@ -59,10 +59,54 @@ function amountMatches(it: DiscoveryItem, boundCents: number): boolean {
   return it.provenance.entries.some((e) => isMonetaryTotal(e) && (e.amountCents as number) < boundCents);
 }
 
-function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
+function documentStatus(it: DiscoveryItem, calendarOnly: boolean): string {
+  const outcome = it.provenance.extractionOutcome;
+  if (outcome === 'RETRIEVAL_FAILED') return 'Retrieval failed';
+  if (outcome === 'IDENTITY_MISMATCH') return it.sourceRetrievedAt ? 'Retrieved; docket identity did not match' : 'Docket identity did not match';
+  if (outcome === 'UNREADABLE') return 'Document could not be read';
+  if (outcome === 'UNSUPPORTED_LAYOUT') return 'Extraction layout unsupported';
+  if (outcome === 'EXTRACTED' || outcome === 'MISSING_BAIL_SECTION') {
+    return it.sourceRetrievedAt ? 'Retrieved' : 'Evidence present; retrieval time not recorded';
+  }
+  if (it.sourceRetrievedAt) return 'Retrieved';
+  if (calendarOnly) return 'Not requested in calendar-only mode';
+  return 'Not retrieved yet';
+}
+
+function extractionStatus(it: DiscoveryItem): string {
+  switch (it.provenance.extractionOutcome) {
+    case 'UNPROCESSED': return 'Not run';
+    case 'EXTRACTED': return 'Bail entries extracted';
+    case 'MISSING_BAIL_SECTION': return 'No bail section found';
+    case 'UNREADABLE': return 'Unreadable';
+    case 'UNSUPPORTED_LAYOUT': return 'Unsupported layout';
+    case 'IDENTITY_MISMATCH': return 'Identity mismatch; not eligible';
+    case 'RETRIEVAL_FAILED': return 'Not available';
+  }
+}
+
+function calendarCoverage(job: {
+  calendarComplete: boolean;
+  paginationComplete: boolean;
+  resultCapReached: boolean;
+  requestsUsed: number;
+  criteria: { requestCap: number };
+}): string {
+  if (!job.calendarComplete) {
+    return job.requestsUsed >= job.criteria.requestCap
+      ? 'Stopped at the request budget before calendar validation; coverage is unknown.'
+      : 'No validated calendar response yet; coverage is unknown.';
+  }
+  if (job.resultCapReached) return 'Stopped at the source result cap; additional docket rows may exist.';
+  if (!job.paginationComplete) return 'Additional pages were detected; only the returned page was inspected.';
+  return 'All rows in the returned page were inspected; no additional page was detected. This does not cover other dates or query scopes.';
+}
+
+function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect, calendarOnly }: {
   jobId: string; it: DiscoveryItem; saving: boolean; err: string | null;
   onSave: (itemId: string, entryIndex: number | null) => void;
   selected: boolean; onSelect: (itemId: string, checked: boolean) => void;
+  calendarOnly: boolean;
 }) {
   const p = it.provenance;
   const saved = it.savedObservations.length > 0;
@@ -80,7 +124,8 @@ function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
         {saved
           ? <span className="tag text-primary" data-testid={`status-saved-${it.id}`}>Saved: {it.savedObservations.length} observation{it.savedObservations.length === 1 ? '' : 's'}</span>
           : <span className="tag text-warning" data-testid={`status-pending-${it.id}`}>Not yet saved</span>}
-        <span className="tag">{p.extractionOutcome}</span>
+        <span className="tag" data-testid={`text-document-status-${it.id}`}>Document: {documentStatus(it, calendarOnly)}</span>
+        <span className="tag" data-testid={`text-extraction-status-${it.id}`}>Extraction: {extractionStatus(it)}</span>
       </div>
       <p className="hint mt-2">
         Event {p.eventType}, {p.eventDate ?? 'date not recorded'}; filed {p.filingDate ?? 'not recorded'}; {p.courtOffice}. Posted entry state: <strong>{p.postedEntryState}</strong>
@@ -89,7 +134,7 @@ function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
       {p.entries.length === 0 ? (
         <div className="mt-3 border border-dashed border-border rounded p-3">
           <p className="font-semibold">No bail entries extracted.</p>
-          <p className="hint">Extraction outcome: {p.extractionOutcome}. {it.detail ?? ''}</p>
+          <p className="hint">Extraction outcome: {extractionStatus(it)}. {it.detail ?? ''}</p>
           {p.extractionOutcome === 'MISSING_BAIL_SECTION' ? (
             savedFor(it, null)
               ? <p className="mt-2 font-semibold" data-testid={`status-entry-${it.id}-none`}>Saved as UNKNOWN: {VERIF[savedFor(it, null)!.reviewStatus]}</p>
@@ -346,8 +391,28 @@ export default function Discovery() {
           <div className="space-y-2">
             <p>Prior demonstrated result coverage: <span className="mono font-semibold">CP-05-02-Crim</span> (Common Pleas), <span className="mono font-semibold">Bail Hearing</span>. This is not fresh exact-client access proof.</p>
             <p className="hint">Magisterial District Court (MDJ) searches are not implemented. Preliminary Arraignment is selectable for bounded validation but remains unproven end to end; nothing is substituted for it. History before {pol.minimumDate} is not covered.</p>
-            <p className="hint" data-testid="text-coverage">{pol.coverageNote}</p>
-            <p className="hint">Current pacing: at least {pol.currentSpacingMs / 1000} seconds after each response finishes, concurrency {pol.concurrency}, automatic retries {pol.automaticRetries}. Protected maxima: {pol.maxRecordCap} processed dockets, {pol.maxRequestCap} requests per job. These safeguards cannot guarantee access or prevent rate limits.</p>
+            <div className="grid gap-3 md:grid-cols-2" data-testid="scope-boundaries">
+              <section className="border border-border rounded p-3" data-testid="source-restrictions">
+                <h3 className="mono font-semibold">Source restrictions</h3>
+                <p className="hint mt-1">The live court form controls which office, event and dates it accepts. Availability is rechecked for each request; unavailable criteria stop without substitution. Calendar access does not prove docket-PDF access.</p>
+              </section>
+              <section className="border border-border rounded p-3" data-testid="application-limitations">
+                <h3 className="mono font-semibold">Application limitations</h3>
+                <p className="hint mt-1">Filing-date/MDJ search is not implemented. Remote calendar pages are not traversed. Calendar-only preview retains validated rows without documents; bail extraction is limited to supported document layouts and does not establish custody, an operative order, completeness or freshness.</p>
+              </section>
+              <section className="border border-border rounded p-3" data-testid="operator-policy">
+                <h3 className="mono font-semibold">Operator policy</h3>
+                <p className="hint mt-1">At least {pol.currentSpacingMs / 1000} seconds between completed responses; concurrency {pol.concurrency}; automatic retries {pol.automaticRetries}; up to {pol.maxRecordCap} documents and {pol.maxRequestCap} requests per job. Rolling hourly/daily quotas also apply. These are local safeguards, not published court limits.</p>
+              </section>
+              <section className="border border-border rounded p-3" data-testid="pilot-authorization-limits">
+                <h3 className="mono font-semibold">Pilot authorization</h3>
+                <p className="hint mt-1">Only the exact, separately approved permit shown below authorizes a pilot run. It cannot override a source-wide stop, change criteria or budget, or be reused after consumption.</p>
+              </section>
+            </div>
+            <details className="border border-border rounded p-3" data-testid="details-coverage-notes">
+              <summary className="mono cursor-pointer font-semibold">Detailed coverage and access notes</summary>
+              <p className="hint mt-2">{pol.coverageNote}</p>
+            </details>
             <p className="mono text-sm" data-testid="text-rolling-budgets">Rolling hour: {pol.hourlyRequestsUsed}/{pol.hourlyRequestCap} requests. Rolling day: {pol.dailyRequestsUsed}/{pol.dailyRequestCap}. Required assets, failed attempts and uncertain transmissions all count.</p>
             <p className="hint" data-testid="text-access-proof">Exact-client proof: {pol.accessVerifiedAt ? `${pol.verifiedMethod}, ${formatInstant(pol.accessVerifiedAt)}` : 'Not verified'}. Broader collection approval: {pol.collectionApprovedAt ? formatInstant(pol.collectionApprovedAt) : 'Not approved'}.</p>
             <p className="hint">Request in flight: {pol.requestInFlight ? 'yes; no next request can start' : 'no'}. Last response duration: {pol.lastLatencyMs === null ? 'not measured' : `${(pol.lastLatencyMs / 1000).toFixed(1)} seconds`}. Throttles observed: {pol.throttleCount}.</p>
@@ -356,7 +421,7 @@ export default function Discovery() {
             {pol.pausedUntil && Date.parse(pol.pausedUntil) > Date.now() ? <p className="errbox" role="status">Source cooldown until {formatInstant(pol.pausedUntil)}. No new requests permitted before then.</p> : null}
             {!pol.collectionEnabled ? <p className="errbox" role="status">Collection is paused source-wide: {pol.blockedReason}. No new court requests will start. Access denial requires operator assessment, not an automatic retry.</p> : null}
             <section className="border border-border rounded p-3" data-testid="bounded-scope-panel">
-              <h3 className="mono font-semibold">Approved workspace search</h3>
+              <h3 className="mono font-semibold">Pilot authorization — exact approved scope</h3>
               <p className="hint">An operator must separately approve and delegate an exact scope. This panel cannot approve source access, change criteria, reset permits, or enable broader collection. The shared workspace password identifies this workspace, not individual volunteers.</p>
               {assessments.isError ? <p className="errbox">Approved scopes could not be loaded.</p> : assessments.isLoading ? <p className="hint">Loading scopes…</p> : !assessments.data?.length ? <p className="hint">No search scope has been delegated to this workspace.</p> : assessments.data.map(pilot => (
                 <div key={pilot.id} className="mt-3 border-t border-border pt-3">
@@ -389,8 +454,8 @@ export default function Discovery() {
               {launchError ? <p className="errbox mt-2" role="alert">{launchError}</p> : null}
             </section>
             <details className="border border-border rounded p-3" data-testid="details-pilot-status">
-              <summary className="mono cursor-pointer font-semibold">Staged verification: preparation is not approval</summary>
-              <p className="hint mt-2">Separate approvals are required for one identity-checked PDF, then 3, then 10 at a separate time. Each stage includes the exact browser calendar client and public HTTP PDF client, calendar overhead and fixed dates/budgets. The 10-document stage exceeds current protected limits and needs separate budget approval. Passing a pilot does not enable collection or start the 100-match sample.</p>
+              <summary className="mono cursor-pointer font-semibold">Minimum positive-path gate — broad collection is deferred</summary>
+              <p className="hint mt-2">The next proof is one source-backed calendar result followed through an identity-matched docket document, supported bail text and page references, then a pending observation. Exhaustive pagination and larger samples are deferred until this basic path works. Any changed office, event, courtroom, date or source method must be presented as an exact scope for approval.</p>
               {assessments.isError ? <p className="errbox mt-2">Pilot status could not be loaded.</p> : assessments.isLoading ? <p className="hint">Loading pilot status…</p> : !assessments.data?.length ? <p className="hint mt-2">No scoped pilot prepared or approved. No court request authorized by this implementation.</p> : <ul className="mt-2 space-y-2">{assessments.data.map((pilot) => <li key={pilot.id} className="hint"><strong>{pilot.stage}: {pilot.state}</strong> — {pilot.criteria.startDate} to {pilot.criteria.endDate}; {pilot.criteria.recordCap} documents, {pilot.criteria.requestCap} total requests. {pilot.report?.reason ?? 'No completed access report.'}</li>)}</ul>}
             </details>
           </div>
@@ -420,7 +485,7 @@ export default function Discovery() {
         <h2 className="mono text-xl font-bold mb-2">Calendar Event preview</h2>
         <p className="hint mb-4">
           One explicitly started Calendar Event search using the office, event and dates selected above.
-          This preview retains only validated calendar result rows. It does not request docket PDFs, extract bail evidence, or save candidates.
+          This preview retains validated calendar result rows independently of docket-PDF availability. It does not request PDFs, extract bail evidence, or save candidates.
           The shared source approval and request limiter still apply. While the source barrier is active, this button stays disabled.
           A separately approved one-use operator permit is limited to its saved exact criteria, without clearing the barrier or enabling PDFs.
         </p>
@@ -435,6 +500,7 @@ export default function Discovery() {
 
       <form onSubmit={submit} className="panel mb-8" aria-label="Start a discovery job" data-testid="form-job">
         <h2 className="mono text-xl font-bold mb-3">What are you looking for?</h2>
+        <p className="hint mb-3">In an authorized full bail-discovery job, each validated calendar row is processed in source order through docket retrieval and identity checking, within the fixed record and request caps. A failed or unsupported document remains a per-docket status; it does not erase the calendar row.</p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div><label className="lbl" htmlFor="d-match-bound">Maximum bail amount (dollars)</label>
             <input id="d-match-bound" inputMode="decimal" className="field" disabled={!collectMonetary} value={collectBound} onChange={(e) => setCollectBound(e.target.value)} data-testid="input-collection-bound" /></div>
@@ -519,9 +585,10 @@ export default function Discovery() {
                     <div key={l} className="border border-border rounded p-2"><dt className="mono text-sm">{l}</dt><dd className="mono text-lg font-bold">{v}</dd></div>
                   ))}
                 </dl>
+                <p className="hint mt-3" data-testid="calendar-coverage"><strong>Calendar coverage:</strong> {calendarCoverage(job)}</p>
                 {!isCalendarPreview ? <ul className="hint mt-3 list-disc pl-5">
                   <li>Calendar table: {job.calendarComplete ? 'a returned calendar table was validated. This does not prove every docket in the window was listed.' : 'not validated; the calendar may not have been read, so results can be missing.'}</li>
-                  <li>Pagination: {job.paginationComplete ? 'complete for the pages read' : 'incomplete; more results may exist'}.</li>
+                  <li>Pagination: {job.resultCapReached ? 'stopped at the source result cap; more results may exist' : job.paginationComplete ? 'no additional page detected; all rows in the returned page were inspected' : 'additional pages detected; only the returned page was inspected'}.</li>
                   <li>Source result cap: {job.resultCapReached ? 'reached; the source stopped returning results, so more dockets may exist' : 'not reached'}.</li>
                   <li>Local processing cap ({job.criteria.recordCap} records): {localCapReached ? `reached with ${job.unprocessed} discovered docket${job.unprocessed === 1 ? '' : 's'} left unprocessed` : 'not reached with unprocessed work remaining'}.</li>
                 </ul> : <p className="hint mt-3">Preview results are calendar rows only. A validated table does not establish that every event or docket in the date window was listed. No docket PDF is fetched from this screen.</p>}
@@ -542,7 +609,7 @@ export default function Discovery() {
               {isCalendarPreview ? (
                 <section className="panel mb-6" data-testid="section-calendar-preview-results">
                   <h3 className="mono font-bold mb-2">Calendar rows only</h3>
-                  <p className="hint mb-3">These are source-linked rows retained from the validated calendar table. Dockets are shown as plain text here; this preview has no document links, bail extraction, or candidate-saving controls.</p>
+                  <p className="hint mb-3">These are source-linked rows retained from the validated calendar table. Document retrieval and bail extraction have their own status columns; this preview makes no PDF request and offers no candidate-saving controls.</p>
                   <CalendarPreviewStatus job={job} retainedRows={items.length} events={report.data?.events ?? []} />
                   {items.length > 0 ? (
                     <div className="overflow-x-auto" data-testid="calendar-preview-table-wrap">
@@ -556,6 +623,8 @@ export default function Discovery() {
                           <th scope="col" className="p-2">Event type</th>
                           <th scope="col" className="p-2">Event date</th>
                           <th scope="col" className="p-2">Filing date</th>
+                          <th scope="col" className="p-2">Docket document</th>
+                          <th scope="col" className="p-2">Bail extraction</th>
                         </tr></thead>
                         <tbody>
                           {items.map((item) => (
@@ -567,6 +636,8 @@ export default function Discovery() {
                               <td className="p-2">{item.provenance.eventType}</td>
                               <td className="p-2">{item.provenance.eventDate ?? 'Not recorded'}</td>
                               <td className="p-2">{item.provenance.filingDate ?? 'Not recorded'}</td>
+                              <td className="p-2">{documentStatus(item, true)}</td>
+                              <td className="p-2">{extractionStatus(item)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -618,7 +689,7 @@ export default function Discovery() {
                     <caption className="text-left mono font-bold mb-2">Results summary ({matching.length} row{matching.length === 1 ? '' : 's'}, source order)</caption>
                     <thead className="mono"><tr className="border-b-2 border-border">
                       <th scope="col" className="p-2">Pos.</th><th scope="col" className="p-2">Docket</th><th scope="col" className="p-2">Court</th><th scope="col" className="p-2">Event date</th>
-                      <th scope="col" className="p-2">Bail entries</th><th scope="col" className="p-2">Posted state</th><th scope="col" className="p-2">Extraction</th><th scope="col" className="p-2">Verification</th><th scope="col" className="p-2">Evidence</th>
+                      <th scope="col" className="p-2">Bail entries</th><th scope="col" className="p-2">Docket document</th><th scope="col" className="p-2">Posted state</th><th scope="col" className="p-2">Bail extraction</th><th scope="col" className="p-2">Verification</th><th scope="col" className="p-2">Evidence</th>
                     </tr></thead>
                     <tbody>
                       {matching.map((it) => (
@@ -629,8 +700,9 @@ export default function Discovery() {
                           <td className="p-2">{it.provenance.eventDate ?? 'Not recorded'}</td>
                           <td className="p-2">{it.provenance.entries.length === 0 ? <span className="hint">None extracted</span> : (
                             <ol className="space-y-1">{it.provenance.entries.map((e, i) => <li key={i}>{CATEGORY_LABEL[e.bailCategory]}{e.financialBasis ? ` / ${BASIS_LABEL[e.financialBasis]}` : ''}: <span className="mono">{amountText(e)}</span></li>)}</ol>)}</td>
+                          <td className="p-2">{documentStatus(it, false)}</td>
                           <td className="p-2">{it.provenance.postedEntryState}</td>
-                          <td className="p-2">{it.provenance.extractionOutcome}</td>
+                          <td className="p-2">{extractionStatus(it)}</td>
                           <td className="p-2">{it.savedObservations.length === 0 ? 'Not saved' : (
                             <ul className="space-y-1">{it.savedObservations.map((o) => <li key={o.recordId}>{o.entryIndex == null ? 'No bail section' : `Entry ${o.entryIndex + 1}`}: {VERIF[o.reviewStatus]}</li>)}</ul>)}</td>
                           <td className="p-2"><a className="underline text-primary" href={`#item-${it.id}`}>Details</a><br /><a className="underline text-primary" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">Source docket</a></td>
@@ -657,6 +729,7 @@ export default function Discovery() {
                 <ul className="space-y-4">
                   {matching.map((it) => (
                     <ItemRow key={it.id} jobId={selected} it={it} saving={save.isPending} onSave={doSave} err={saveErr?.id === it.id ? saveErr.msg : null}
+                      calendarOnly={isCalendarPreview}
                       selected={selectedCandidateIds.includes(it.id)} onSelect={toggleCandidate} />
                   ))}
                 </ul>
