@@ -12,13 +12,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
 
-  const nextPath = new URLSearchParams(window.location.search).get('next');
-  const destination = nextPath?.startsWith('/')
-    && !nextPath.startsWith('//')
-    && !nextPath.includes('\\')
-    && !nextPath.startsWith('/sign-in')
-    ? nextPath
-    : '/menu';
+  const destination = '/menu';
 
   async function enter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
