@@ -26,3 +26,9 @@ Request GitHub reconnection immediately when authenticated access fails while co
 **Why:** The user explicitly corrected postponing the reconnection action.
 
 **How to apply:** Fetch and inspect the exact published commit once access is restored, preserve newer local work, and continue implementation without another planning handoff.
+
+When the Replit GitHub connection is already active but HTTPS pushes still reject authentication, rerun `gh auth setup-git --hostname github.com` before retrying Git. Do not ask for or paste credentials.
+
+**Why:** After a workspace restart, Git selected a stale HTTPS credential even though the Replit-managed GitHub connection was active; setting up the GitHub CLI credential helper restored push access.
+
+**How to apply:** Confirm the GitHub integration is active, run the setup command, then retry the intended push once. Do not change repository visibility or remote URLs to work around authentication.
