@@ -12,7 +12,7 @@ import {
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { documentLocations } from "./document-locations";
-import { validCalendarLayout } from "./calendar-layout";
+import { isExplicitEmptyCalendarLayout, validCalendarLayout } from "./calendar-layout";
 import { finishBoundedRun } from "./bounded-report";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
@@ -125,6 +125,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   let boundedObservationRequests = 0;
   let boundedObservationSeen = false;
   let boundedObservationComplete = false;
+  let explicitEmptyLayoutSeen = false;
+  let explicitEmptyDiagnosticSeen = false;
+  let calendarLayoutSeen = false;
+  let calendarResponseDiagnosticSeen = false;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
@@ -223,6 +227,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           || !(typeof message.formVisible === "boolean" || message.formVisible === null)) {
           throw new Error("Invalid calendar state evidence");
         }
+        if (message.state === "EMPTY_RESULTS_VALIDATED"
+          && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen))
+          throw new Error("Explicit empty-result status lacks matching validated source evidence");
         await discoveryEvent(job, "CALENDAR_STATE",
           `${String(message.state)}; Search button visible=${message.formVisible === null ? "not observed" : message.formVisible}. No form values, row identifiers, or response content retained.`);
       } else if (message.kind === "calendar_form_diagnostic") {
@@ -234,8 +241,22 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
           `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}; network requests=${message.networkRequests ?? "not reported"}, cached asset responses=${message.cachedResponses ?? "not reported"}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar_response_diagnostic") {
-        if (diagnosticOnly || boundedEngine && !boundedObservationComplete || !validCalendarResponseDiagnostic(message))
+        if (diagnosticOnly || boundedEngine && !boundedObservationComplete
+          || calendarResponseDiagnosticSeen || !validCalendarResponseDiagnostic(message))
           throw new Error("Invalid calendar response diagnostic");
+        calendarResponseDiagnosticSeen = true;
+        if (message.documentEligibility === "VALIDATED_EMPTY") {
+          const result = message.resultValidation as Record<string, unknown>;
+          const structure = message.structure as Record<string, unknown>;
+          if (!explicitEmptyLayoutSeen || result.outcome !== "VALIDATED_EMPTY"
+            || result.explicitEmptyResult !== "SOURCE_STATUS_MARKER")
+            throw new Error("Empty-result diagnostic lacks the observed source status row");
+          if (structure.resultTableCount !== 1 || structure.headerCellCount !== 19
+            || structure.dataRowCount !== 1 || structure.documentLinkCount !== 0
+            || structure.expectedHeaders !== true || structure.countsCapped !== false)
+            throw new Error("Empty-result diagnostic conflicts with the observed table structure");
+          explicitEmptyDiagnosticSeen = true;
+        }
         await discoveryEvent(job, "CALENDAR_RESPONSE_DIAGNOSTIC", JSON.stringify(message));
         const transport = message.transportIntegrity as {
           status: string; requiredAssetsLoaded: boolean; requestFailureObserved: boolean;
@@ -255,7 +276,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
       } else if (message.kind === "calendar_layout") {
-        if (diagnosticOnly || !validCalendarLayout(message)) throw new Error("Invalid calendar layout projection");
+        if (diagnosticOnly || calendarLayoutSeen || !validCalendarLayout(message))
+          throw new Error("Invalid calendar layout projection");
+        calendarLayoutSeen = true;
+        explicitEmptyLayoutSeen = isExplicitEmptyCalendarLayout(message);
         await discoveryEvent(job, "CALENDAR_LAYOUT", JSON.stringify(message));
       } else if (message.kind === "calendar") {
         if (boundedEngine && !boundedObservationComplete) throw new Error("Courtroom observation gate missing before Search results");
@@ -263,6 +287,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
         if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"
           || !Number.isFinite(Date.parse(message.retrievedAt))
+          || rows.length === 0 && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen)
           || calendarPreviewOnly && !validCalendarAuditHeaders(message.columnHeaders)) {
           throw new Error("Invalid calendar checkpoint");
         }

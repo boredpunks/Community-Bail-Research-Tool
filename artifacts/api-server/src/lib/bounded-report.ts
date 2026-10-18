@@ -6,6 +6,7 @@ import { discoveryPolicy } from "./discovery";
 import { calendarPreviewSourceAllowed } from "./discovery-safety";
 import { boundedEngineMethod, boundedObservationCanContinue, validBoundedEngineCriteria } from "./bounded-engine";
 import { validCourtroomObservationMetadata } from "./courtroom-observation";
+import { isValidatedExplicitEmptyResult } from "./calendar-empty-result";
 
 /** Report an attempted delegated run without creating global access proof. */
 export async function finishBoundedRun(jobId: string, permitId: string, store = db) {
@@ -26,6 +27,22 @@ export async function finishBoundedRun(jobId: string, permitId: string, store = 
     && (!i || row.startedAt.getTime() >= ordered[i - 1]!.completedAt!.getTime() + discoveryPolicy.spacingMs));
   const observations = history.filter(e => e.kind === "COURTROOM_METADATA");
   const metadata = observations.length === 1 ? JSON.parse(observations[0]!.message) as Record<string, unknown> : null;
+  const layouts = history.filter(e => e.kind === "CALENDAR_LAYOUT");
+  const responseDiagnostics = history.filter(e => e.kind === "CALENDAR_RESPONSE_DIAGNOSTIC");
+  const calendarStates = history.filter(e => e.kind === "CALENDAR_STATE");
+  const validatedEmpty = found.length === 0 && layouts.length === 1
+    && responseDiagnostics.length === 1 && calendarStates.length === 1
+    && (() => {
+      try {
+        return isValidatedExplicitEmptyResult(
+          JSON.parse(layouts[0]!.message),
+          JSON.parse(responseDiagnostics[0]!.message),
+          calendarStates[0]!.message,
+        );
+      } catch {
+        return false;
+      }
+    })();
   const observedRequests = observations.length === 1
     ? ordered.filter(r => r.startedAt <= observations[0]!.createdAt).length : 0;
   const validDocuments = found.filter(item => ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)).length;
@@ -35,14 +52,17 @@ export async function finishBoundedRun(jobId: string, permitId: string, store = 
     && timing && ordered.length > 0 && ordered.length <= permit.criteria.requestCap
     && ordered.filter(r => r.method === "POST" && r.path === "/CaseSearch").length === 1
     && ordered.filter(r => r.path === "/Report/CpDocketSheet").length <= 5
-    && validDocuments > 0 && !!sourceRows[0] && calendarPreviewSourceAllowed(sourceRows[0]);
+    && (validDocuments > 0 || validatedEmpty)
+    && !!sourceRows[0] && calendarPreviewSourceAllowed(sourceRows[0]);
   const diagnostic = history.find(e => e.kind === "CALENDAR_RESPONSE_DIAGNOSTIC");
   const summary = diagnostic ? JSON.parse(diagnostic.message) as Record<string, unknown> : null;
   const report = {
     requests: ordered.length, validDocuments,
     failures: ordered.filter(r => r.outcome !== "OK").length,
     reason: passed
-      ? `Scoped run completed with ${validDocuments} identity-checked documents. Evidence is unreviewed; no custody or operative-order claim. Global source barrier unchanged.`
+      ? validatedEmpty
+        ? "Scoped run completed with the source's validated explicit no-results status for the exact search. No docket document was eligible; bail extraction and pending save were not applicable. Global source barrier unchanged."
+        : `Scoped run completed with ${validDocuments} identity-checked documents. Evidence is unreviewed; no custody or operative-order claim. Global source barrier unchanged.`
       : `Scoped workflow not demonstrated. Parser: ${String(summary?.parserOutcome ?? "NOT_RUN")}; document eligibility: ${String(summary?.documentEligibility ?? "NOT_ESTABLISHED")}; stop gate: ${String(summary?.stopGate ?? "NOT_RECORDED")}. ${validDocuments} valid documents. No automatic retry or collection enablement.`,
   };
   await store.update(permits).set({ state: passed ? "BOUNDED_COMPLETED" : "FAILED", completedAt: new Date(), report })

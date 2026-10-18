@@ -51,6 +51,7 @@ class CalendarResults(HTMLParser):
         self.validated_row_count = 0
         self.scope_validated = False
         self.dates_validated = False
+        self.explicit_empty_state = False
         self._table_depth = 0
         self._result_depth = None
         self._table_count = 0
@@ -186,6 +187,25 @@ class CalendarResults(HTMLParser):
         if any(len(self.headers) <= i or not self.headers[i].startswith(label)
                for i, label in expected.items()):
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
+        # A single, exact source status row is an explicit empty result only
+        # when it spans the demonstrated 19-column grid and contains no
+        # docket, link, or interactive control. Unknown/presentation rows
+        # remain rejected rather than being silently skipped.
+        if len(self.rows) == 1 and len(self._row_observations) == 1:
+            row = self._row_observations[0]
+            links = row["links"]
+            if (self._presentation_rows == 1 and row["shape"] == "PRESENTATION_SHAPED" and row["cells"] == 1
+                    and row["spanTotal"] == len(self.headers) == 19
+                    and row["statusLabel"] in {
+                        "NO_RECORDS_FOUND", "NO_RESULTS_FOUND", "NO_DATA_AVAILABLE",
+                        "NO_MATCHING_RECORDS",
+                    }
+                    and row["interactive"] == 0 and not row["docketShapedCell"]
+                    and not any(links.values()) and not self._malformed):
+                self.explicit_empty_state = True
+                self.validated_row_count = 1
+                self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
+                return []
         result, seen = [], set()
         for cells, link in self.rows:
             if not link:

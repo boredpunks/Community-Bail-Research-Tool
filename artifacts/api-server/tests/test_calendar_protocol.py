@@ -14,6 +14,7 @@ from calendar_protocol import response_pause, validate_calendar_form, submit_cal
 from source_protocol import CALENDAR_ASSETS
 from evidence import calendar_result_state
 from evidence import CALENDAR_AUDIT_HEADERS, CalendarResults, validate_event_date
+from worker import valid_bounded_engine_scope
 
 
 SYNTHETIC_HEADER_ONLY_CALENDAR = """<!-- synthetic parser fixture; public headers only, no docket/case rows -->
@@ -52,6 +53,20 @@ class FormDiagnosticProtocolTests(unittest.IsolatedAsyncioTestCase):
             await validate_calendar_form(page, criteria)
         self.assertEqual(error.exception.failures, [failure, second])
         self.assertEqual(str(error.exception), "CALENDAR_CONTROL_STATE_MISMATCH")
+
+
+class BoundedEngineScopeTests(unittest.TestCase):
+    def test_fresh_permit_budget_is_allowed_without_exceeding_aggregate_ceiling(self):
+        criteria = {
+            "courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
+            "courtRoom": "Courtroom 506", "recordCap": 5,
+            "calendarPreviewOnly": False,
+        }
+        self.assertTrue(valid_bounded_engine_scope({**criteria, "requestCap": 8}))
+        self.assertTrue(valid_bounded_engine_scope({**criteria, "requestCap": 12}))
+        self.assertFalse(valid_bounded_engine_scope({**criteria, "requestCap": 7}))
+        self.assertFalse(valid_bounded_engine_scope({**criteria, "requestCap": 13}))
+        self.assertFalse(valid_bounded_engine_scope({**criteria, "requestCap": True}))
 
 
 class CalendarStructureTests(unittest.TestCase):

@@ -33,7 +33,7 @@ The global `SOURCE_VALIDATION_BARRIER` must stay in place. Passing tests,
 preparing a permit, logging in, or successfully launching a job is not source
 proof or permission to retry.
 
-The bounded method is `playwright-calendar+urllib-pdf-v14-bounded-506-v6`.
+The bounded method is `playwright-calendar+urllib-pdf-v14-bounded-506-v7`.
 It uses the existing exact-client calendar and sequential public PDF clients.
 Optional browser images are served a local transparent SVG without source
 transmission. Required scripts/styles, unknown console errors, runtime
@@ -78,8 +78,18 @@ Do not increase stored budgets or hide old jobs merely to make responses validat
 `CALENDAR_LAYOUT` is a separately validated, bounded structural projection:
 row/cell/span counts, fixed status categories and link representation counts.
 It contains no arbitrary source text, URLs, docket identifiers, names, query
-values or tokens. Presentation-shaped rows and familiar status wording are
-**not** accepted as validated empty results. Unsupported rows/links still stop.
+values or tokens. The retained October 18, 2026 observation showed one 19-column
+presentation row labelled `NO_RESULTS_FOUND`, with no docket-shaped cell,
+interactive control or link. Only a single presentation row spanning the full
+19-column grid with one allowlisted exact empty-status label, no links, no
+interactive elements, and clean transport/console diagnostics can validate an
+explicit empty result. Unknown or mixed rows and unsupported links still stop;
+an empty list alone is never zero-match proof.
+
+The bounded scope has a twelve-request aggregate ceiling across superseded
+permits for the same dates. Preparation counts every prior ledger request for
+those dates and caps the fresh permit at the remaining budget; it cannot reset
+or refill requests consumed by a failed attempt.
 
 The existing document path requires calendar criteria/result eligibility,
 an allowlisted source-provided link, matching PDF court/docket identity, and

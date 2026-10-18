@@ -44,6 +44,18 @@ def submitted_calendar_payload_matches(request, expected_fields):
         return False
 
 
+def valid_bounded_engine_scope(criteria):
+    request_cap = criteria.get("requestCap")
+    return (
+        criteria.get("courtOffice") == "CP-05-02-Crim"
+        and criteria.get("eventType") == "Bail Hearing"
+        and criteria.get("courtRoom") == "Courtroom 506"
+        and type(request_cap) is int and 8 <= request_cap <= 12
+        and criteria.get("recordCap") == 5
+        and criteria.get("calendarPreviewOnly") is not True
+    )
+
+
 class SourceFailure(RuntimeError):
     def __init__(self, outcome, attempted=False):
         super().__init__(outcome)
@@ -77,12 +89,7 @@ async def main(config=None):
             or criteria.get("requestCap") != 3 or criteria.get("recordCap") != 1):
         emit("barrier", code="COURTROOM_OBSERVATION_SCOPE_INVALID")
         return
-    if bounded_engine_observation and (
-            criteria.get("courtOffice") != "CP-05-02-Crim"
-            or criteria.get("eventType") != "Bail Hearing"
-            or criteria.get("courtRoom") != "Courtroom 506"
-            or criteria.get("requestCap") != 12 or criteria.get("recordCap") != 5
-            or criteria.get("calendarPreviewOnly") is True):
+    if bounded_engine_observation and not valid_bounded_engine_scope(criteria):
         emit("barrier", code="BOUNDED_ENGINE_SCOPE_INVALID")
         return
     courtroom_observer = None
@@ -137,6 +144,7 @@ async def main(config=None):
     response_inspection_attempted = False
     response_parser_attempted = False
     response_parser_outcome = "NOT_RUN"
+    calendar_explicit_empty = False
     response_result_validation = {
         "outcome": "NOT_RUN", "observedRows": 0, "validatedRows": 0,
         "validatedDockets": 0, "documentLinks": "NOT_CHECKED",
@@ -624,6 +632,7 @@ async def main(config=None):
         async def validate_loaded_response():
             nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
             nonlocal items, calendar_has_remote_pagination, calendar_validated_headers
+            nonlocal calendar_explicit_empty
             if (not response_recorder or response_parser_attempted
                     or not calendar_post_observed or not calendar_post_completed
                     or response_inspection_status != "OBSERVED"
@@ -652,18 +661,24 @@ async def main(config=None):
                 response_recorder.mark("PARSER_REJECTED")
                 items = []
             else:
-                response_parser_outcome = "CANDIDATE_NONEMPTY" if parsed_items else "NO_EMPTY_PROOF"
+                calendar_explicit_empty = parser.explicit_empty_state
+                response_parser_outcome = (
+                    "CANDIDATE_NONEMPTY" if parsed_items
+                    else "EXPLICIT_EMPTY_RESULT" if calendar_explicit_empty
+                    else "NO_EMPTY_PROOF"
+                )
                 response_result_validation = {
-                    "outcome": "VALIDATED_NONEMPTY" if parsed_items else "EMPTY_NOT_PROVEN",
+                    "outcome": "VALIDATED_NONEMPTY" if parsed_items
+                    else "VALIDATED_EMPTY" if calendar_explicit_empty else "EMPTY_NOT_PROVEN",
                     "observedRows": response_structure["dataRowCount"],
                     "validatedRows": parser.validated_row_count,
                     "validatedDockets": len(parsed_items),
                     "documentLinks": "ALL_VALID" if parsed_items else "NO_ROWS",
                     "scope": "ALL_ROWS_MATCH" if parser.scope_validated else "NO_ROWS",
                     "dates": "ALL_WITHIN_REQUEST" if parser.dates_validated else "NO_ROWS",
-                    "explicitEmptyResult": "NOT_CAPTURED",
+                    "explicitEmptyResult": "SOURCE_STATUS_MARKER" if calendar_explicit_empty else "NOT_CAPTURED",
                 }
-                if parsed_items:
+                if parsed_items or calendar_explicit_empty:
                     response_recorder.mark("PARSER_ACCEPTED")
                 else:
                     response_recorder.mark("PARSER_REJECTED")
@@ -717,6 +732,8 @@ async def main(config=None):
                 return "BLOCKED_TRANSPORT"
             if console in ("UNCLASSIFIED_CONSOLE_ERRORS", "RUNTIME_EXCEPTIONS", "MIXED"):
                 return "BLOCKED_CONSOLE"
+            if response_result_validation["outcome"] == "VALIDATED_EMPTY":
+                return "VALIDATED_EMPTY"
             if response_result_validation["outcome"] != "VALIDATED_NONEMPTY":
                 return "BLOCKED_RESULT"
             return "ELIGIBLE"
@@ -888,7 +905,7 @@ async def main(config=None):
                 response_diagnostic()
                 eligibility = response_eligibility(
                     response_transport_status(), response_console_status())
-                if eligibility != "ELIGIBLE":
+                if eligibility not in ("ELIGIBLE", "VALIDATED_EMPTY"):
                     emit("calendar_state", state="RESULTS_NOT_VALIDATED",
                          formVisible=await calendar_search_button_visible(page))
                     items = []
@@ -902,12 +919,12 @@ async def main(config=None):
                         "BLOCKED_CONSOLE": "CALENDAR_CONSOLE_ERROR",
                         "BLOCKED_RESULT": (
                             response_parser_outcome if response_parser_outcome not in
-                            ("CANDIDATE_NONEMPTY", "NO_EMPTY_PROOF", "NOT_RUN")
+                            ("CANDIDATE_NONEMPTY", "EXPLICIT_EMPTY_RESULT", "NO_EMPTY_PROOF", "NOT_RUN")
                             else "RESULTS_NOT_VALIDATED"),
                     }[eligibility])
                 state = calendar_result_state(
                     response_structure["resultTableCount"] == 1,
-                    items or [], explicit_empty_state=False)
+                    items or [], explicit_empty_state=calendar_explicit_empty)
                 emit("calendar_state", state=state,
                      formVisible=await page.locator("#btnSearch").is_visible())
                 if state not in ("RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"):

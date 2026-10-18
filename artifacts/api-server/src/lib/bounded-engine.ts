@@ -2,7 +2,7 @@ import { actualDate, easternToday } from "./calendar-criteria";
 import { integratedSourceMethod } from "./discovery-safety";
 
 // A scoped assessment, never collection enablement or global access proof.
-export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v6`;
+export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v7`;
 export const boundedEngineRequestCap = 12;
 export const boundedEngineObservationRequestCap = 3;
 const keys = ["courtOffice", "courtRoom", "eventType", "startDate", "endDate", "recordCap", "requestCap"];
@@ -21,9 +21,10 @@ export function boundedObservationRequestAllowed(
     && ["/CaseSearch", "/resource/css/sitemain.min.css", "/resource/js/sitemain.min.js"].includes(String(path));
 }
 
-export function boundedEngineRequestsRemaining(requestsUsed: number) {
-  return Number.isSafeInteger(requestsUsed) && requestsUsed >= 0 && requestsUsed <= boundedEngineRequestCap
-    ? boundedEngineRequestCap - requestsUsed : 0;
+export function boundedEngineRequestsRemaining(requestsUsed: number, requestCap = boundedEngineRequestCap) {
+  return Number.isSafeInteger(requestCap) && requestCap >= 1 && requestCap <= boundedEngineRequestCap
+    && Number.isSafeInteger(requestsUsed) && requestsUsed >= 0 && requestsUsed <= requestCap
+    ? requestCap - requestsUsed : 0;
 }
 
 export function validBoundedEngineCriteria(value: unknown): boolean {
@@ -31,14 +32,15 @@ export function validBoundedEngineCriteria(value: unknown): boolean {
   const c = value as Record<string, unknown>;
   return Object.keys(c).sort().join() === [...keys].sort().join()
     && c.courtOffice === "CP-05-02-Crim" && c.courtRoom === "Courtroom 506"
-    && c.eventType === "Bail Hearing" && c.recordCap === 5 && c.requestCap === boundedEngineRequestCap
+    && c.eventType === "Bail Hearing" && c.recordCap === 5
+    && Number.isSafeInteger(c.requestCap) && Number(c.requestCap) >= 1 && Number(c.requestCap) <= boundedEngineRequestCap
     && actualDate(c.startDate) && actualDate(c.endDate) && c.endDate >= c.startDate
     && Date.parse(c.endDate) - Date.parse(c.startDate) <= 6 * 86_400_000;
 }
-export function makeBoundedEngineCriteria(startDate: unknown, endDate: unknown) {
+export function makeBoundedEngineCriteria(startDate: unknown, endDate: unknown, requestCap: unknown = boundedEngineRequestCap) {
   const criteria = { courtOffice: "CP-05-02-Crim" as const, courtRoom: "Courtroom 506",
     eventType: "Bail Hearing" as const, startDate: String(startDate ?? ""), endDate: String(endDate ?? ""),
-    recordCap: 5, requestCap: 12 };
+    recordCap: 5, requestCap: Number(requestCap) };
   if (!validBoundedEngineCriteria(criteria) || criteria.startDate < easternToday())
     throw new Error("Bounded engine requires exact Courtroom 506 criteria and today/future dates, at most seven days.");
   return criteria;

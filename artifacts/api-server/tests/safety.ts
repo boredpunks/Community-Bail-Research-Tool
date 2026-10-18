@@ -13,6 +13,7 @@ import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDat
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
 import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
+import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
@@ -117,6 +118,65 @@ try {
       readOnlyInspection: true, readOnlyInspectionOrder: 5, orderOverflow: false },
   };
   check(validCalendarResponseDiagnostic(responseDiagnostic));
+  const validatedEmptyDiagnostic = {
+    ...responseDiagnostic,
+    parserAttempted: true,
+    parserOutcome: "EXPLICIT_EMPTY_RESULT",
+    consoleDiagnostics: {
+      status: "CLEAN", consoleErrors: 0, runtimeExceptions: 0, provenOptionalErrors: 0,
+    },
+    classifications: [],
+    stopGate: "NONE",
+    structure: { ...responseDiagnostic.structure, headerCellCount: 19, dataRowCount: 1 },
+    resultValidation: {
+      ...responseDiagnostic.resultValidation,
+      outcome: "VALIDATED_EMPTY",
+      observedRows: 1,
+      validatedRows: 1,
+      documentLinks: "NO_ROWS",
+      scope: "NO_ROWS",
+      dates: "NO_ROWS",
+      explicitEmptyResult: "SOURCE_STATUS_MARKER",
+    },
+    documentEligibility: "VALIDATED_EMPTY",
+    eventSequence: 11,
+    milestones: [...responseDiagnostic.milestones,
+      { name: "PARSER_STARTED", sequence: 10 },
+      { name: "PARSER_ACCEPTED", sequence: 11 }],
+  };
+  check(validCalendarResponseDiagnostic(validatedEmptyDiagnostic));
+  const explicitEmptyLayout = {
+    kind: "calendar_layout", version: 1, resultTables: 1, headerRows: 1, nonHeaderRows: 1,
+    presentationRows: 1, recognizedDocumentLinks: 0, overflow: false, malformed: false,
+    complete: true, rowsOmitted: false, rows: [{
+      shape: "PRESENTATION_SHAPED", cells: 1, spanTotal: 19, docketShapedCell: false,
+      statusLabel: "NO_RESULTS_FOUND", interactive: 0,
+      links: { relativeDocket: 0, absoluteSourceDocket: 0, other: 0, identityMatched: 0, strictQuery: 0 },
+    }],
+  };
+  check(isValidatedExplicitEmptyResult(
+    explicitEmptyLayout, validatedEmptyDiagnostic, "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    explicitEmptyLayout, validatedEmptyDiagnostic, "RESULTS_NOT_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    { ...explicitEmptyLayout, rows: [{ ...explicitEmptyLayout.rows[0], statusLabel: "OTHER" }] },
+    validatedEmptyDiagnostic, "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    explicitEmptyLayout,
+    { ...validatedEmptyDiagnostic, structure: { ...validatedEmptyDiagnostic.structure, headerCellCount: 18 } },
+    "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!validCalendarResponseDiagnostic({
+    ...validatedEmptyDiagnostic,
+    resultValidation: { ...validatedEmptyDiagnostic.resultValidation, explicitEmptyResult: "NOT_CAPTURED" },
+  }));
+  check(!validCalendarResponseDiagnostic({
+    ...validatedEmptyDiagnostic,
+    documentEligibility: "BLOCKED_RESULT",
+  }));
   const prePostDiagnostic = {
     ...responseDiagnostic,
     submissionObserved: false, responseCompleted: false,
@@ -858,11 +918,19 @@ print(json.dumps(projections))
   const outsideBoundedEndDate = outsideBoundedEnd.toISOString().slice(0, 10);
   assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
+  const remainingScopeCriteria = makeBoundedEngineCriteria(factoryDay, factoryDay, 8);
+  check(validBoundedEngineCriteria(remainingScopeCriteria));
+  check(remainingScopeCriteria.requestCap === 8);
+  assert.throws(() => makeBoundedEngineCriteria(factoryDay, factoryDay, 0));
+  assert.throws(() => makeBoundedEngineCriteria(factoryDay, factoryDay, 13));
   check(boundedEngineRequestsRemaining(0) === 12);
   check(boundedEngineRequestsRemaining(3) === 9);
   check(boundedEngineRequestsRemaining(11) === 1);
   check(boundedEngineRequestsRemaining(12) === 0);
   check(boundedEngineRequestsRemaining(13) === 0);
+  check(boundedEngineRequestsRemaining(4, 8) === 4);
+  check(boundedEngineRequestsRemaining(8, 8) === 0);
+  check(boundedEngineRequestsRemaining(9, 8) === 0);
   check(boundedObservationCanContinue("BOUND_506", 1));
   check(boundedObservationCanContinue("BOUND_506", 3));
   check(!boundedObservationCanContinue("BINDING_UNPROVEN", 1));

@@ -1,4 +1,4 @@
-- [No fabricated records](no-fabricated-records.md) — Never create synthetic docket or case records in this product.
+- [No fabricated or inferred records](no-fabricated-records.md) — No synthetic case data or zero-match claims from an empty parsed list.
 - [Date-only response validation](date-only-response-validation.md) — Generated Zod date coercion can change calendar-date output; validate without replacing the response payload.
 - [Discovery-method choice](calendar-first-discovery.md) — Users choose filing dates or exact calendar events; never substitute methods, courts or dates after failure.
 - [Paced collection](paced-collection.md) — Support slow, resumable automation for useful research scale; a small access-check budget is not a permanent product limit.

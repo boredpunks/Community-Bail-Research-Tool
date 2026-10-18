@@ -17,8 +17,9 @@ import { coverageInspectionMethod, validCoverageMetadata } from "../lib/coverage
 import { filingInspectionMethod, validFilingMetadata } from "../lib/filing-inspection";
 import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { clearSourceValidationBarrier } from "../lib/discovery-barrier";
-import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
+import { boundedEngineMethod, boundedEngineRequestCap, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../lib/bounded-engine";
+import { isValidatedExplicitEmptyResult } from "../lib/calendar-empty-result";
 import { candidateEligible, observationValues } from "../lib/discovery-candidates";
 import { resultsDeadline } from "../lib/discovery-safety";
 import { coverageMethod, courtroomObservationMethod, makeCourtroomObservationCriteria,
@@ -39,26 +40,38 @@ const flag = (key: string) => args.includes(`--${key}`);
 
 async function main() {
   if (command === "prepare-bounded-engine") {
-    const criteria = makeBoundedEngineCriteria(value("start"), value("end"));
+    const requestedScope = makeBoundedEngineCriteria(value("start"), value("end"));
     const row = await db.transaction(async tx => {
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       if (!source || !calendarPreviewSourceAllowed(source)) throw new Error("Unchanged source barrier and idle source required.");
       const [active] = await tx.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
       if (active) throw new Error("Another discovery job is active.");
       const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.stage, "BOUNDED_ENGINE"));
-      const sameScope = prior.filter(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate);
+      const sameScope = prior.filter(p => p.criteria.startDate === requestedScope.startDate && p.criteria.endDate === requestedScope.endDate);
       if (sameScope.length && (!value("supersedes")
         || !sameScope.some(p => p.id === value("supersedes") && p.state === "FAILED")
         || sameScope.some(p => ["PREPARED", "APPROVED", "ATTEMPTED"].includes(p.state))))
         throw new Error("This scope needs an explicitly superseded failed permit and fresh separate approval; no reuse or automatic retry.");
+      const previousJobIds = sameScope.flatMap(permit => permit.jobId ? [permit.jobId] : []);
+      const previousRequests = previousJobIds.length
+        ? await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+          .where(inArray(discoveryRequestsTable.jobId, previousJobIds))
+        : [];
+      const remainingRequests = boundedEngineRequestCap - previousRequests.length;
+      const requestedCap = value("requests") === undefined
+        ? remainingRequests : Number(value("requests"));
+      if (!Number.isSafeInteger(requestedCap) || requestedCap < 1 || requestedCap > remainingRequests)
+        throw new Error(`The exact scope has ${remainingRequests} source request(s) remaining under its ${boundedEngineRequestCap}-request aggregate ceiling; no permit was prepared.`);
+      const criteria = makeBoundedEngineCriteria(requestedScope.startDate, requestedScope.endDate, requestedCap);
       const [created] = await tx.insert(discoveryAssessmentsTable).values({
         stage: "BOUNDED_ENGINE", expectedMethod: boundedEngineMethod, criteria,
         executionOwnerId: flag("delegate-workspace") ? WORKSPACE_OWNER_ID : null,
       }).returning();
       return created!;
     });
-    console.log(JSON.stringify({ ...row, observationRequestCap: 3,
-      notice: "Prepared without traffic. One approved run observes Courtroom 506 in the same browser session before Search. Observation and engine share one persisted 12-request ceiling; at most five distinct docket documents. Barrier preserved; no collection enablement or retries." }));
+    console.log(JSON.stringify({ ...row, aggregateRequestCeiling: boundedEngineRequestCap,
+      requestBudgetRemaining: row.criteria.requestCap, observationRequestCap: 3,
+      notice: "Prepared without traffic. This fresh permit's cap is limited to the remaining aggregate budget across prior permits for these exact dates. One approved run observes Courtroom 506 in the same browser session before Search; up to five distinct docket documents, subject to the saved request cap. Barrier preserved; no collection enablement or retries." }));
     return;
   }
   if (command === "prepare-courtroom-observation") {
@@ -351,6 +364,27 @@ async function main() {
          const observationValidated = !!courtroomMetadata
            && validCourtroomObservationMetadata(courtroomMetadata)
            && boundedObservationCanContinue(courtroomMetadata.outcome, observationRequests);
+         const emptyEvidence = bounded
+           ? await db.select().from(discoveryEventsTable).where(and(
+             eq(discoveryEventsTable.jobId, job.id),
+             inArray(discoveryEventsTable.kind, ["CALENDAR_LAYOUT", "CALENDAR_RESPONSE_DIAGNOSTIC", "CALENDAR_STATE"])))
+           : [];
+         const layoutEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_LAYOUT");
+         const responseEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_RESPONSE_DIAGNOSTIC");
+         const emptyStateEvidence = emptyEvidence.filter(event => event.kind === "CALENDAR_STATE");
+         const validatedEmptyResult = items.length === 0 && layoutEvidence.length === 1
+           && responseEvidence.length === 1 && emptyStateEvidence.length === 1
+           && (() => {
+             try {
+               return isValidatedExplicitEmptyResult(
+                 JSON.parse(layoutEvidence[0]!.message),
+                 JSON.parse(responseEvidence[0]!.message),
+                 emptyStateEvidence[0]!.message,
+               );
+             } catch {
+               return false;
+             }
+           })();
         const boundedComplete = bounded && validBoundedEngineCriteria(assessment.criteria)
            && observationValidated
           && current?.status === "COMPLETED" && current.calendarComplete && failures === 0 && timingValid
@@ -358,6 +392,7 @@ async function main() {
           && requests.filter(r => r.path === "/CaseSearch" && r.method === "POST").length === 1
           && requests.filter(r => r.path === "/Report/CpDocketSheet").length <= 5
           && requests.every(r => r.durationMs !== null && r.durationMs < 20_000)
+          && (validDocuments > 0 || validatedEmptyResult)
           && !!source && calendarPreviewSourceAllowed(source);
         const verified = !bounded && !inspection && !calendarOnly && current?.status === "COMPLETED" && current.calendarComplete
         && validDocuments === job.criteria.recordCap && failures === 0 && requests.length > 0 && timingValid
@@ -367,7 +402,9 @@ async function main() {
         const state = boundedComplete ? "BOUNDED_COMPLETED" : inspected ? "INSPECTED" : calendarValidated ? "CALENDAR_VALIDATED" : verified ? "VERIFIED" : "FAILED";
        const report = { requests: requests.length, validDocuments, failures,
           reason: boundedComplete
-             ? `Bounded exact Courtroom 506 engine run completed: in-session observation used ${observationRequests} request(s); ${boundedEngineRequestsRemaining(requests.length)} request(s) remained when the run ended (12 total maximum). ${items.length} validated calendar row(s), ${validDocuments} identity-validated processed document(s). Evidence remains unreviewed. Source barrier unchanged; no global access proof or collection approval.`
+             ? validatedEmptyResult
+               ? `Bounded exact Courtroom 506 search completed with the source's validated explicit no-results status. In-session observation used ${observationRequests} request(s); ${boundedEngineRequestsRemaining(requests.length, assessment.criteria.requestCap)} request(s) remained in this permit (12-request aggregate ceiling). No docket documents were eligible; extraction and pending save were not applicable. Source barrier unchanged; no global access proof or collection approval.`
+               : `Bounded exact Courtroom 506 engine run completed: in-session observation used ${observationRequests} request(s); ${boundedEngineRequestsRemaining(requests.length, assessment.criteria.requestCap)} request(s) remained in this permit (12-request aggregate ceiling). ${items.length} validated calendar row(s), ${validDocuments} identity-validated processed document(s). Evidence remains unreviewed. Source barrier unchanged; no global access proof or collection approval.`
             : calendarValidated
            ? `One approved Calendar Event search completed with ${items.length} validated calendar row(s). No PDFs, bail extraction, or collection approval. SOURCE_VALIDATION_BARRIER remains unchanged.`
            : inspected ? (assessment?.expectedMethod === courtroomObservationMethod

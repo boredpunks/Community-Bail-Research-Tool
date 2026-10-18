@@ -203,6 +203,8 @@ export default function Discovery() {
   });
   const job = report.data?.job;
   const isCalendarPreview = job?.criteria.calendarPreviewOnly === true;
+  const explicitEmptyResultValidated = report.data?.events.some((event) =>
+    event.kind === 'CALENDAR_STATE' && event.message.startsWith('EMPTY_RESULTS_VALIDATED;')) ?? false;
 
   const boundCents = parseDollarsToCents(bound);
   const filtering = filterOn && boundCents != null;
@@ -640,7 +642,15 @@ export default function Discovery() {
               ) : null}
 
               {items.length === 0 && job.resultsExpiredAt ? null : items.length === 0 ? (
-                <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-items">{active ? 'No dockets found yet.' : sourceFailed ? 'No records were retrieved: the source failed or requests failed. This says nothing about whether dockets exist.' : !job.calendarComplete ? 'No records were retrieved and the calendar table was not validated, so this may be a barrier rather than an empty calendar.' : 'The validated calendar table returned no matching dockets for this window and event.'}</p>
+                <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-items">{active
+                  ? 'No dockets found yet.'
+                  : explicitEmptyResultValidated
+                    ? 'The source returned its explicit no-results status for these exact search criteria. No docket documents were eligible for retrieval, so bail extraction and pending saves were not applicable.'
+                    : sourceFailed
+                      ? 'No records were retrieved: the source failed or requests failed. This says nothing about whether dockets exist.'
+                      : !job.calendarComplete
+                        ? 'No records were retrieved and the calendar table was not validated, so this may be a barrier rather than an empty calendar.'
+                        : 'No validated docket rows were retained. Review the response validation details; an empty result list alone does not establish zero matches.'}</p>
               ) : matching.length === 0 ? (
                 <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-matches">No rows match the current filter. Turn it off to see every row.</p>
               ) : (

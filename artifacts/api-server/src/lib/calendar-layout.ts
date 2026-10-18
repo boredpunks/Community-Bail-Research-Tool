@@ -19,3 +19,20 @@ export function validCalendarLayout(value: Record<string, unknown>) {
     && keys(row.links, ["relativeDocket", "absoluteSourceDocket", "other", "identityMatched", "strictQuery"])
     && Object.values(row.links).every(v => count(v, 128)));
 }
+
+/** Exact sanitized contract needed before accepting an explicit empty result. */
+export function isExplicitEmptyCalendarLayout(value: Record<string, unknown>) {
+  const rows = value.rows;
+  if (!validCalendarLayout(value) || value.resultTables !== 1 || value.headerRows !== 1
+    || value.nonHeaderRows !== 1 || value.presentationRows !== 1
+    || value.recognizedDocumentLinks !== 0 || value.overflow || value.malformed
+    || !value.complete || value.rowsOmitted || !Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0] as Record<string, unknown>;
+  const links = row.links as Record<string, unknown>;
+  return row.shape === "PRESENTATION_SHAPED" && row.cells === 1 && row.spanTotal === 19
+    && !row.docketShapedCell
+    && ["NO_RECORDS_FOUND", "NO_RESULTS_FOUND", "NO_DATA_AVAILABLE", "NO_MATCHING_RECORDS"]
+      .includes(String(row.statusLabel))
+    && row.interactive === 0
+    && Object.values(links).every(count => count === 0);
+}

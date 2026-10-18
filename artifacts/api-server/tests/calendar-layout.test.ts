@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validCalendarLayout } from "../src/lib/calendar-layout";
+import { isExplicitEmptyCalendarLayout, validCalendarLayout } from "../src/lib/calendar-layout";
 const observation = {
   kind: "calendar_layout", version: 1, resultTables: 1, headerRows: 1, nonHeaderRows: 1,
   presentationRows: 1, recognizedDocumentLinks: 0, overflow: false, malformed: false,
@@ -10,6 +10,15 @@ const observation = {
   }],
 };
 assert(validCalendarLayout(observation));
+assert(isExplicitEmptyCalendarLayout(observation));
+for (const value of [
+  { ...observation, rows: [{ ...observation.rows[0]!, statusLabel: "OTHER" }] },
+  { ...observation, recognizedDocumentLinks: 1 },
+  { ...observation, malformed: true },
+  { ...observation, rows: [{ ...observation.rows[0]!, interactive: 1 }] },
+  { ...observation, rows: [{ ...observation.rows[0]!, spanTotal: 18 }] },
+  { ...observation, rows: [{ ...observation.rows[0]!, links: { ...observation.rows[0]!.links, other: 1 } }] },
+]) assert(!isExplicitEmptyCalendarLayout(value));
 for (const value of [
   { ...observation, html: "PRIVATE_SENTINEL" },
   { ...observation, rows: Array(9).fill(observation.rows[0]) },

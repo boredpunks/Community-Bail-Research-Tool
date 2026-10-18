@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
-from evidence import CalendarResults
+from evidence import CalendarResults, calendar_result_state
 
 
 class ContractObservation(unittest.TestCase):
@@ -34,3 +34,51 @@ class ContractObservation(unittest.TestCase):
         self.assertTrue(observation["rowsOmitted"])
         self.assertEqual(observation["rows"][0]["statusLabel"], "OTHER")
         self.assertNotIn("SENTINEL", json.dumps(observation))
+
+    def test_exact_source_empty_status_validates_without_becoming_a_docket(self):
+        headers = ["Column"] * 19
+        for index, label in {
+            2: "Docket Number", 3: "Court Type", 6: "Filing Date",
+            9: "County", 10: "Court Office", 14: "Event Type",
+        }.items():
+            headers[index] = label
+        table = '<table id="caseSearchResultGrid"><tr>' + "".join(
+            f"<th>{header}</th>" for header in headers
+        ) + '</tr><tr><td colspan="19">No results found</td></tr></table>'
+        parser = CalendarResults()
+        parser.feed(table)
+        rows = parser.validated({
+            "eventType": "Bail Hearing", "courtOffice": "CP-05-02-Crim",
+            "startDate": "2026-10-18", "endDate": "2026-10-23",
+        })
+        self.assertEqual(rows, [])
+        self.assertTrue(parser.explicit_empty_state)
+        self.assertEqual(parser.validated_row_count, 1)
+        self.assertEqual(calendar_result_state(True, rows, parser.explicit_empty_state),
+                         "EMPTY_RESULTS_VALIDATED")
+
+    def test_unknown_or_mixed_presentation_rows_are_not_silently_skipped(self):
+        headers = ["Column"] * 19
+        for index, label in {
+            2: "Docket Number", 3: "Court Type", 6: "Filing Date",
+            9: "County", 10: "Court Office", 14: "Event Type",
+        }.items():
+            headers[index] = label
+        prefix = '<table id="caseSearchResultGrid"><tr>' + "".join(
+            f"<th>{header}</th>" for header in headers
+        ) + "</tr>"
+        criteria = {
+            "eventType": "Bail Hearing", "courtOffice": "CP-05-02-Crim",
+            "startDate": "2026-10-18", "endDate": "2026-10-23",
+        }
+        for rows in (
+            '<tr><td colspan="19">No case records currently available</td></tr>',
+            '<tr><td colspan="19">No results found</td></tr>'
+            '<tr><td colspan="19">Other notice</td></tr>',
+            '<tr><td colspan="19"><a href="/unverified">No results found</a></td></tr>',
+        ):
+            parser = CalendarResults()
+            parser.feed(prefix + rows + "</table>")
+            with self.assertRaises(ValueError):
+                parser.validated(criteria)
+            self.assertFalse(parser.explicit_empty_state)
