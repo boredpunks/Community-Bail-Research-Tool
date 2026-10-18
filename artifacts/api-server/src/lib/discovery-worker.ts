@@ -6,7 +6,8 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
-  allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, isCalendarPreviewCriteria,
+  allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod,
+  calendarPreviewRequestAllowed, isCalendarPreviewCriteria,
   validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
 } from "./discovery-safety";
@@ -160,9 +161,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           child.stdin.write(JSON.stringify({ allow: false, reason: "COURTROOM_OBSERVATION_REQUEST_LIMIT" }) + "\n");
           continue;
         }
-        if (calendarPreviewOnly && message.method === "GET"
-            && typeof message.url === "string"
-            && new URL(message.url).pathname === "/Report/CpDocketSheet")
+        if (calendarPreviewOnly && !calendarPreviewRequestAllowed(message.path, message.method))
           throw new Error("Calendar preview cannot retrieve docket documents");
         const permission = inspectionOnly
           ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
@@ -284,7 +283,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
       } else if (message.kind === "calendar") {
         if (boundedEngine && !boundedObservationComplete) throw new Error("Courtroom observation gate missing before Search results");
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
-        const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
+        const rows = message.rows as {
+          docketNumber: string; position: number; sourceUrl: string; eventDate: string | null;
+          filingDate: string | null; eventType: string; courtOffice: string;
+          courtType: "MDJ" | "COMMON_PLEAS" | "UNSUPPORTED";
+        }[];
         if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"
           || !Number.isFinite(Date.parse(message.retrievedAt))
           || rows.length === 0 && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen)
@@ -293,20 +296,30 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         }
         await db.transaction(async (tx) => {
           for (const row of rows) {
-            if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
-              || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
+            const docketType = /^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "COMMON_PLEAS"
+              : /^MJ-05\d{3}-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "MDJ" : null;
+            if (!validCalendarDocketLink(row.sourceUrl, row.docketNumber)
+              || !["MDJ", "COMMON_PLEAS", "UNSUPPORTED"].includes(row.courtType)
+              || docketType !== null && row.courtType !== "UNSUPPORTED" && row.courtType !== docketType
+              || typeof row.courtOffice !== "string" || !row.courtOffice.trim()
+              || row.courtOffice.length > 80 || /[\u0000-\u001f\u007f]/.test(row.courtOffice)
               || !Number.isSafeInteger(row.position) || row.position < 0
-               || !validCalendarRowDates(row, job.criteria, calendarPreviewOnly || permit?.stage === "BOUNDED_ENGINE")
+               || !validCalendarRowDates(row, job.criteria,
+                 (calendarPreviewOnly || permit?.stage === "BOUNDED_ENGINE")
+                   && !(job.criteria.courtOffice === "ANY" && job.criteria.eventType === "ANY"
+                     && job.criteria.courtRoom === "ANY"))
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
               || job.criteria.eventType !== "ANY" && row.eventType !== job.criteria.eventType)
               throw new Error("Calendar identity conflict");
+            const { courtOffice, courtType, ...itemRow } = row;
             await tx.insert(discoveryItemsTable).values({
-              jobId: job.id, ownerId: job.ownerId, ...row,
+              jobId: job.id, ownerId: job.ownerId, ...itemRow,
               provenance: {
                 calendarUrl: "https://ujsportal.pacourts.us/CaseSearch", calendarRetrievedAt: message.retrievedAt as string,
-                courtOffice: job.criteria.courtOffice, eventType: row.eventType,
-                courtRoom: job.criteria.courtRoom ?? null,
-                eventDate: row.eventDate, filingDate: row.filingDate, extractionOutcome: "UNPROCESSED",
+                courtOffice, courtType, eventType: row.eventType,
+                courtRoom: job.criteria.courtRoom === "ANY" ? null : job.criteria.courtRoom ?? null,
+                eventDate: row.eventDate, filingDate: row.filingDate,
+                extractionOutcome: courtType === "UNSUPPORTED" ? "UNSUPPORTED_LAYOUT" : "UNPROCESSED",
                 postedEntryState: "UNKNOWN", entries: [],
               },
             }).onConflictDoNothing({ target: [discoveryItemsTable.jobId, discoveryItemsTable.docketNumber] });

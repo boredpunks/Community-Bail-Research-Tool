@@ -31,7 +31,8 @@ def expected_optional_console_error(kind, text, location_url, blocked_optional_u
 
 
 PUBLIC_CONTROLS = ("SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT",
-                   "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE")
+                   "COURT_OFFICE", "COURT_ROOM", "SCHEDULED_EVENTS_ONLY",
+                   "START_DATE", "END_DATE", "EVENT_TYPE")
 CONTROL_REASONS = ("MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
                    "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
                    "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
@@ -266,7 +267,7 @@ async def select_bound_calendar_controls(page, criteria):
     """Current method: resolve the observed public room, not a presumed field."""
     other = {key: value for key, value in criteria.items() if key != "courtRoom"}
     values = await select_calendar_preview_controls(page, other)
-    if criteria.get("courtRoom"):
+    if criteria.get("courtRoom") not in (None, "", "ANY"):
         if criteria["courtRoom"] != "Courtroom 506":
             raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "OPTION_MISSING")
         from courtroom_observation import PROBE
@@ -306,6 +307,16 @@ async def select_bound_calendar_controls(page, criteria):
 
 
 async def validate_bound_calendar_form(page, criteria, selected_values):
+    if criteria.get("courtRoom") == "ANY":
+        submitted_fields = await validate_calendar_form(
+            page, {k: v for k, v in criteria.items() if k != "courtRoom"},
+            {k: v for k, v in selected_values.items() if k != "courtRoom"})
+        additional_fields = await validate_unfiltered_room_and_schedule(page)
+        names = {name for name, _ in submitted_fields}
+        if any(name in names for name, _ in additional_fields):
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM",
+                                      "BACKING_CONTROL_AMBIGUOUS")
+        return submitted_fields + additional_fields
     if not criteria.get("courtRoom"):
         return await validate_calendar_form(page, criteria, selected_values)
     from courtroom_observation import PROBE
@@ -332,6 +343,74 @@ async def validate_bound_calendar_form(page, criteria, selected_values):
                != len(submitted_fields) + 1):
         raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM", "BACKING_VALUE_MISMATCH")
     return submitted_fields + ((binding["name"], binding["value"]),)
+
+
+async def validate_unfiltered_room_and_schedule(page):
+    result = await page.evaluate("""() => {
+      const form = document.querySelector("#btnSearch")?.form;
+      if (!form) return {control: "COURT_ROOM", reason: "WRONG_FORM"};
+      const normalize = label => label.textContent.replace(/[:\\s]+$/g, "").trim();
+      const oneLabel = text => {
+        const matches = [...form.querySelectorAll("label")].filter(label => normalize(label) === text);
+        return matches.length === 1 ? matches[0] : null;
+      };
+      const inspect = (labelText, expected, controlName) => {
+        const label = oneLabel(labelText);
+        if (!label) return {control: controlName, reason: "MISSING"};
+        const control = label.control;
+        if (!control || control.form !== form) return {control: controlName, reason: "WRONG_FORM"};
+        if (control.matches(":disabled")) return {control: controlName, reason: "DISABLED"};
+        if (!label.getClientRects().length || !control.getClientRects().length)
+          return {control: controlName, reason: "HIDDEN"};
+        if (expected === "ROOM") {
+          if (control.tagName !== "SELECT") return {control: controlName, reason: "VALUE_MISMATCH"};
+          const blank = [...control.options].filter(option => option.value === "");
+          if (blank.length !== 1) return {control: controlName, reason: blank.length ? "OPTION_AMBIGUOUS" : "OPTION_MISSING"};
+          if (blank[0].disabled) return {control: controlName, reason: "OPTION_DISABLED"};
+          if (control.value !== "" || control.selectedOptions.length !== 1
+              || control.selectedOptions[0] !== blank[0]) return {control: controlName, reason: "NO_FILTER_NOT_SELECTED"};
+        } else if (control.type !== "checkbox" || !control.checked) {
+          return {control: controlName, reason: "VALUE_MISMATCH"};
+        }
+        if (!control.name || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(control.name)
+            || /token|password|secret|session|cookie|captcha|verification|auth/i.test(control.name))
+          return {control: controlName, reason: "UNNAMED"};
+        const value = expected === "ROOM" ? "" : control.value;
+        const values = new FormData(form).getAll(control.name);
+        if (values.length !== 1 || values[0] !== value)
+          return {control: controlName, reason: "BACKING_VALUE_MISMATCH"};
+        return {name: control.name, value};
+      };
+      const room = inspect("Room", "ROOM", "COURT_ROOM");
+      if (room.reason) return room;
+      const schedule = inspect("Scheduled Events Only", "CHECKED", "SCHEDULED_EVENTS_ONLY");
+      if (schedule.reason) return schedule;
+      if (room.name === schedule.name) return {control: "SCHEDULED_EVENTS_ONLY", reason: "BACKING_CONTROL_AMBIGUOUS"};
+      return {bindings: [
+        {name: room.name, value: room.value},
+        {name: schedule.name, value: schedule.value},
+      ]};
+    }""")
+    if not isinstance(result, dict) or set(result) != {"bindings"}:
+        control = result.get("control") if isinstance(result, dict) else None
+        reason = result.get("reason") if isinstance(result, dict) else None
+        if control not in ("COURT_ROOM", "SCHEDULED_EVENTS_ONLY"):
+            control = "COURT_ROOM"
+        if reason not in CONTROL_REASONS:
+            reason = "BACKING_VALUE_MISMATCH"
+        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", control, reason)
+    bindings = result["bindings"]
+    if (not isinstance(bindings, list) or len(bindings) != 2
+            or any(not isinstance(row, dict) or set(row) != {"name", "value"}
+                   or not isinstance(row["name"], str) or not re.fullmatch(
+                       r"[A-Za-z][A-Za-z0-9_.-]{0,127}", row["name"])
+                   or re.search(r"token|password|secret|session|cookie|captcha|verification|auth",
+                                row["name"], re.I)
+                   or not isinstance(row["value"], str) for row in bindings)
+            or len({row["name"] for row in bindings}) != 2):
+        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "COURT_ROOM",
+                                  "BACKING_VALUE_MISMATCH")
+    return tuple((row["name"], row["value"]) for row in bindings)
 
 
 async def select_calendar_preview_controls(page, criteria):
@@ -371,55 +450,50 @@ async def select_calendar_preview_controls(page, criteria):
     if criteria.get("eventType") not in ("ANY", "Bail Hearing", "Preliminary Arraignment"):
         raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
 
+    async def select_no_filter(selector, control_name):
+        state = await page.evaluate("""(selector) => {
+          const controls = [...document.querySelectorAll(selector)];
+          if (controls.length !== 1) return {reason: controls.length ? "CONTROL_AMBIGUOUS" : "MISSING"};
+          const control = controls[0];
+          const form = document.querySelector("#btnSearch")?.form;
+          if (!form || control.form !== form) return {reason: "WRONG_FORM"};
+          if (control.matches(":disabled")) return {reason: "DISABLED"};
+          const blanks = [...control.options].filter(option => option.value === "");
+          if (blanks.length !== 1) return {reason: blanks.length ? "OPTION_AMBIGUOUS" : "OPTION_MISSING"};
+          if (blanks[0].disabled) return {reason: "OPTION_DISABLED"};
+          if (control.value !== "" || control.selectedOptions.length !== 1
+              || control.selectedOptions[0] !== blanks[0]) return {reason: "NO_FILTER_NOT_SELECTED"};
+          return {value: ""};
+        }""", selector)
+        if state != {"value": ""}:
+            reason = state.get("reason") if isinstance(state, dict) else None
+            if reason not in CONTROL_REASONS:
+                reason = "OPTION_MISSING"
+            raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", control_name, reason)
+        return ""
+
     search_mode = await select_exact_option(
         "#SearchBy-Control select", "Calendar Event", "SEARCH_MODE")
     judicial_district = await select_exact_option(
         "#JudicialDistrict-Control select", "Allegheny - 05", "JUDICIAL_DISTRICT")
-    court_office = await select_exact_option(
-        "#CourtOffice-Control select", criteria["courtOffice"], "COURT_OFFICE")
-    court_room = None
-    if criteria.get("courtRoom"):
+    court_office = (await select_no_filter("#CourtOffice-Control select", "COURT_OFFICE")
+                    if criteria["courtOffice"] == "ANY"
+                    else await select_exact_option(
+                        "#CourtOffice-Control select", criteria["courtOffice"], "COURT_OFFICE"))
+    court_room = criteria.get("courtRoom")
+    if court_room and court_room != "ANY":
         court_room = await select_exact_option(
             'select[name="CourtRoomID"]', criteria["courtRoom"], "COURT_ROOM")
-
-    if criteria["eventType"] != "ANY":
-        event_type = await select_exact_option(
-            "#CalendarEventType-Control select", criteria["eventType"], "EVENT_TYPE")
-        return {"searchMode": search_mode, "judicialDistrict": judicial_district,
-                "courtOffice": court_office, "eventType": event_type,
-                **({"courtRoom": court_room} if court_room else {})}
-    if not court_room:
-        raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
-
-    # "ANY" is an application sentinel, never a source value. The served form
-    # must already expose and select one unique empty no-filter option.
-    no_filter = await page.evaluate("""() => {
-      const controls = [...document.querySelectorAll("#CalendarEventType-Control select")];
-      if (!controls.length) return {reason: "MISSING"};
-      if (controls.length !== 1) return {reason: "CONTROL_AMBIGUOUS"};
-      const control = controls[0];
-      const form = document.querySelector("#btnSearch")?.form;
-      if (!form || control.form !== form) return {reason: "WRONG_FORM"};
-      if (control.matches(":disabled")) return {reason: "DISABLED"};
-      const blanks = [...control.options].filter(option => option.value === "" && option.label.trim() === "");
-      if (!blanks.length) return {reason: "OPTION_MISSING"};
-      if (blanks.length !== 1) return {reason: "OPTION_AMBIGUOUS"};
-      if (blanks[0].disabled) return {reason: "OPTION_DISABLED"};
-      if (control.selectedOptions.length !== 1 || control.selectedOptions[0] !== blanks[0])
-        return {reason: "NO_FILTER_NOT_SELECTED"};
-      return {value: ""};
-    }""")
-    if not isinstance(no_filter, dict) or no_filter != {"value": ""}:
-        reason = no_filter.get("reason") if isinstance(no_filter, dict) else None
-        if reason not in CONTROL_REASONS:
-            reason = "OPTION_MISSING"
-        raise CalendarFormFailure("CALENDAR_CONTROL_STATE_MISMATCH", "EVENT_TYPE", reason)
+    event_type = (await select_no_filter("#CalendarEventType-Control select", "EVENT_TYPE")
+                  if criteria["eventType"] == "ANY"
+                  else await select_exact_option(
+                      "#CalendarEventType-Control select", criteria["eventType"], "EVENT_TYPE"))
     return {
         "searchMode": search_mode,
         "judicialDistrict": judicial_district,
         "courtOffice": court_office,
         "courtRoom": court_room,
-        "eventType": "",
+        "eventType": event_type,
     }
 
 

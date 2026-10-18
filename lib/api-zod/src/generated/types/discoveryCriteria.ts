@@ -10,7 +10,7 @@ import type { DiscoveryCriteriaEventType } from './discoveryCriteriaEventType';
 import type { DiscoveryMatchFilters } from './discoveryMatchFilters';
 
 export interface DiscoveryCriteria {
-  /** Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage. */
+  /** ANY means no court-office filter and is only admitted for calendar-only previews. */
   courtOffice: DiscoveryCriteriaCourtOffice;
   /** @maxLength 80 */
   courtRoom?: string;

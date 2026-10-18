@@ -20,12 +20,13 @@ export interface WorkspaceSession {
 }
 
 /**
- * Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.
+ * ANY means no court-office filter and is only admitted for calendar-only previews.
  */
 export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
 
 
 export const DiscoveryCriteriaCourtOffice = {
+  ANY: 'ANY',
   'CP-05-02-Crim': 'CP-05-02-Crim',
   'CP-05-02-Fam': 'CP-05-02-Fam',
   'CP-05-02-Juv': 'CP-05-02-Juv',
@@ -54,7 +55,7 @@ export interface DiscoveryMatchFilters {
 }
 
 export interface DiscoveryCriteria {
-  /** Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage. */
+  /** ANY means no court-office filter and is only admitted for calendar-only previews. */
   courtOffice: DiscoveryCriteriaCourtOffice;
   /** @maxLength 80 */
   courtRoom?: string;
@@ -91,28 +92,43 @@ export type DiscoveryJobInput = DiscoveryCriteria & {
 };
 
 /**
- * Observed October 12, 2026; runtime availability must be checked.
+ * ANY means no office filter; returned court types are identified from each source row.
  */
 export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
 
 
 export const CalendarPreviewInputCourtOffice = {
+  ANY: 'ANY',
   'CP-05-02-Crim': 'CP-05-02-Crim',
   'CP-05-02-Fam': 'CP-05-02-Fam',
   'CP-05-02-Juv': 'CP-05-02-Juv',
+} as const;
+
+/**
+ * ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope.
+ */
+export type CalendarPreviewInputCourtRoom = typeof CalendarPreviewInputCourtRoom[keyof typeof CalendarPreviewInputCourtRoom];
+
+
+export const CalendarPreviewInputCourtRoom = {
+  ANY: 'ANY',
+  Courtroom_506: 'Courtroom 506',
 } as const;
 
 export type CalendarPreviewInputEventType = typeof CalendarPreviewInputEventType[keyof typeof CalendarPreviewInputEventType];
 
 
 export const CalendarPreviewInputEventType = {
+  ANY: 'ANY',
   Bail_Hearing: 'Bail Hearing',
   Preliminary_Arraignment: 'Preliminary Arraignment',
 } as const;
 
 export interface CalendarPreviewInput {
-  /** Observed October 12, 2026; runtime availability must be checked. */
+  /** ANY means no office filter; returned court types are identified from each source row. */
   courtOffice: CalendarPreviewInputCourtOffice;
+  /** ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope. */
+  courtRoom?: CalendarPreviewInputCourtRoom;
   eventType: CalendarPreviewInputEventType;
   /** Real date, today or later in America/New_York. */
   startDate: string;
@@ -344,6 +360,15 @@ export interface DiscoveryEntry {
   sourcePages?: number[];
 }
 
+export type DiscoveryProvenanceCourtType = typeof DiscoveryProvenanceCourtType[keyof typeof DiscoveryProvenanceCourtType];
+
+
+export const DiscoveryProvenanceCourtType = {
+  MDJ: 'MDJ',
+  COMMON_PLEAS: 'COMMON_PLEAS',
+  UNSUPPORTED: 'UNSUPPORTED',
+} as const;
+
 export interface DiscoveryProvenance {
   calendarUrl: string;
   calendarRetrievedAt: string;
@@ -355,6 +380,7 @@ export interface DiscoveryProvenance {
   /** @nullable */
   filingDate: string | null;
   courtOffice: string;
+  courtType?: DiscoveryProvenanceCourtType;
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];

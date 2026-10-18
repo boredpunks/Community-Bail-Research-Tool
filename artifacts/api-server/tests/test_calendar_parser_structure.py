@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
-from evidence import CalendarResults, calendar_result_state
+from evidence import CalendarResults, calendar_result_state, label_court_type
 
 
 class CalendarParserStructureTests(unittest.TestCase):
@@ -36,6 +36,41 @@ class CalendarParserStructureTests(unittest.TestCase):
         self.assertEqual(parser.validated(self.criteria), [])
         self.assertEqual(calendar_result_state(True, [], False), "RESULTS_NOT_VALIDATED")
         self.assertTrue(parser.layout_summary()["complete"])
+
+    def test_case_information_header_only_is_not_a_zero_match_result(self):
+        labels = ["Column"] * 12
+        for index, name in {0: "Docket Number", 1: "Court Type", 4: "Filing Date",
+                            7: "County", 8: "Court Office"}.items():
+            labels[index] = name
+        table = '<table id="caseSearchResultGrid"><tr>' + "".join(
+            f"<th>{label}</th>" for label in labels
+        ) + "</tr></table>"
+        criteria = {"courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
+                    "startDate": "2026-10-19", "endDate": "2026-10-19"}
+        parser = self.parse(table)
+        self.assertEqual(parser.validated(criteria), [])
+        self.assertFalse(parser.explicit_empty_state)
+        self.assertEqual(calendar_result_state(True, [], False), "RESULTS_NOT_VALIDATED")
+
+    def test_case_information_layout_requires_supported_scope_and_link_identity(self):
+        labels = ["Column"] * 12
+        for index, name in {0: "Docket Number", 1: "Court Type", 4: "Filing Date",
+                            7: "County", 8: "Court Office"}.items():
+            labels[index] = name
+        table = '<table id="caseSearchResultGrid"><tr>' + "".join(
+            f"<th>{label}</th>" for label in labels
+        ) + "</tr><tr>" + "<td></td>" * 12 + "</tr></table>"
+        parser = self.parse(table)
+        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
+            parser.validated({
+                "courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
+                "startDate": "2026-10-19", "endDate": "2026-10-19",
+            })
+
+    def test_court_type_labels_are_explicit_and_unknown_labels_stay_unknown(self):
+        self.assertEqual(label_court_type("Common Pleas"), "COMMON_PLEAS")
+        self.assertEqual(label_court_type("Magisterial District Court"), "MDJ")
+        self.assertIsNone(label_court_type("Unrecognized court type"))
 
     def test_duplicate_grids_cannot_be_merged(self):
         parser = self.assert_unsupported(self.grid + self.grid)
@@ -75,7 +110,9 @@ class CalendarParserStructureTests(unittest.TestCase):
     def test_distinct_document_links_cannot_overwrite_each_other(self):
         row = ('<tr><td><a href="/Report/CpDocketSheet?docketNumber=invalid-one"></a>'
                '<a href="/Report/CpDocketSheet?docketNumber=invalid-two"></a></td></tr>')
-        self.assert_unsupported(self.grid.replace("</table>", row + "</table>"))
+        parser = self.parse(self.grid.replace("</table>", row + "</table>"))
+        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
+            parser.validated(self.criteria)
 
     def test_summary_has_no_source_text_or_urls(self):
         row = ('<tr><td colspan="18">private-fixture-marker'
@@ -85,7 +122,7 @@ class CalendarParserStructureTests(unittest.TestCase):
         encoded = json.dumps(summary)
         for marker in ("private-fixture", "secret-marker", "docketNumber", "CpDocketSheet", "not-a-case"):
             self.assertNotIn(marker, encoded)
-        self.assertEqual(summary["recognizedDocumentLinks"], 1)
+        self.assertEqual(summary["recognizedDocumentLinks"], 0)
 
     def test_unrelated_tables_do_not_change_result_headers(self):
         parser = self.parse('<table><tr><td>layout</td></tr></table>' + self.grid

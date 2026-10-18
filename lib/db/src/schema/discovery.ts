@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 
 export interface DiscoveryCriteriaData {
-  courtOffice: "CP-05-02-Crim" | "CP-05-02-Fam" | "CP-05-02-Juv";
+  courtOffice: "ANY" | "CP-05-02-Crim" | "CP-05-02-Fam" | "CP-05-02-Juv";
   courtRoom?: string;
   eventType: "Bail Hearing" | "Preliminary Arraignment" | "ANY";
   calendarPreviewOnly?: boolean;
@@ -33,6 +33,7 @@ export interface DiscoveryProvenanceData {
   calendarUrl: string;
   calendarRetrievedAt: string;
   courtOffice: string;
+  courtType?: "MDJ" | "COMMON_PLEAS" | "UNSUPPORTED";
   eventType: string;
   courtRoom?: string | null;
   eventDate: string | null;

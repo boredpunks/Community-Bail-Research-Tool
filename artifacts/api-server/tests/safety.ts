@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
@@ -747,6 +747,24 @@ try {
   const selectedPreview = makeCalendarPreviewCriteria(selectedCriteria, minimumDate);
   check(isCalendarPreviewCriteria(selectedPreview));
   check(selectedPreview.eventType === selectedCriteria.eventType && selectedPreview.endDate === selectedCriteria.endDate);
+  // Retain a source-provided URL without enabling an unverified document route.
+  const redactedDocketLink = "https://ujsportal.pacourts.us/source-returned/path?docketNumber=REDACTED";
+  check(validCalendarDocketLink(redactedDocketLink, "REDACTED"));
+  check(!allowedSourceRequest(redactedDocketLink, "GET"));
+  check(!validCalendarDocketLink(
+    "https://ujsportal.pacourts.us/source-returned/path?docketNumber=REDACTED&docketNumber=REDACTED",
+    "REDACTED",
+  ));
+  const noFilterPreview = makeCalendarPreviewCriteria({
+    courtOffice: "ANY", eventType: "ANY", courtRoom: "ANY",
+    startDate: minimumDate, endDate: minimumDate,
+  }, minimumDate);
+  check(noFilterPreview.courtOffice === "ANY" && noFilterPreview.eventType === "ANY"
+    && noFilterPreview.courtRoom === "ANY" && isCalendarPreviewCriteria(noFilterPreview));
+  assert.throws(() => makeCalendarPreviewCriteria({
+    courtOffice: "ANY", eventType: "ANY", courtRoom: "ANY",
+    startDate: minimumDate, endDate: "2026-10-17",
+  }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
   // Exercise the exact parser date projection -> parent worker guard handoff.
   // Only date cells exist here: no docket, identity, case record or result claim.
   const projectedDates = spawnSync("python", ["-c", `
@@ -846,7 +864,7 @@ print(json.dumps(projections))
 
   for (const changed of [
     { startDate: "2026-10-14" }, { endDate: "2026-10-16" }, { courtRoom: "Courtroom 507" },
-    { courtRoom: undefined }, { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
+    { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
     { requestCap: 9 }, { recordCap: 2 }, { matchTarget: 1 },
   ]) {
     preview = await preparePreview(changed);

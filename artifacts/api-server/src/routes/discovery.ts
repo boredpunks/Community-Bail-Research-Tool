@@ -18,7 +18,7 @@ import { collectionBlock, resultsDeadline } from "../lib/discovery-safety";
 import { discoverySourceStatus, sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/discovery-retention";
 import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
-import { makeCalendarPreviewCriteria, validCalendarCriteria } from "../lib/calendar-criteria";
+import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { launchBoundedPermit } from "../lib/bounded-launch";
 
 const router: IRouter = Router();
@@ -116,8 +116,8 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
 
 router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
   const body = CreateCalendarPreviewBody.safeParse(req.body);
-  if (!body.success || !validCalendarCriteria(req.body ?? {}, easternToday())) {
-    res.status(400).json({ error: "INVALID_CALENDAR_CRITERIA: Use an observed office, Bail Hearing or Preliminary Arraignment, and real today-or-future dates covering at most seven days. No substitution." });
+  if (!body.success || !validCalendarPreviewCriteria(req.body ?? {}, easternToday())) {
+    res.status(400).json({ error: "INVALID_CALENDAR_CRITERIA: Use no-filter or an observed office/event, keep the all-filter-blank scope to one day, and use real today-or-future dates covering at most seven days. No substitution." });
     return;
   }
 
@@ -150,7 +150,7 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
     return;
   }
   await discoveryEvent(result, "QUEUED",
-    `One Calendar Event preview: ${criteria.courtOffice}, ${criteria.eventType}, ${criteria.startDate} to ${criteria.endDate}. Request budget ${requestCap}; docket-document downloads disabled.`);
+    `One Calendar Event preview: office=${criteria.courtOffice}, room=${criteria.courtRoom ?? "ANY"}, event=${criteria.eventType}, ${criteria.startDate} to ${criteria.endDate}. Request budget ${requestCap}; docket-document downloads disabled.`);
   const payload = await jobSummary(result);
   CreateCalendarPreviewResponse.parse(payload);
   res.status(201).json(payload);

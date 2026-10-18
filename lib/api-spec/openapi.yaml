@@ -389,7 +389,7 @@ components:
     DiscoveryCriteria:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage." }
+        courtOffice: { type: string, enum: [ANY, CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "ANY means no court-office filter and is only admitted for calendar-only previews." }
         courtRoom: { type: string, maxLength: 80 }
         eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment, ANY] }
         calendarPreviewOnly: { type: boolean }
@@ -410,8 +410,9 @@ components:
     CalendarPreviewInput:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Observed October 12, 2026; runtime availability must be checked." }
-        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment] }
+        courtOffice: { type: string, enum: [ANY, CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "ANY means no office filter; returned court types are identified from each source row." }
+        courtRoom: { type: string, enum: [ANY, Courtroom 506], description: "ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope." }
+        eventType: { type: string, enum: [ANY, Bail Hearing, Preliminary Arraignment] }
         startDate: { type: string, format: date, description: "Real date, today or later in America/New_York." }
         endDate: { type: string, format: date, description: "Inclusive window of at most seven days." }
       required: [courtOffice, eventType, startDate, endDate]
@@ -561,6 +562,7 @@ components:
         eventDate: { type: ["string", "null"] }
         filingDate: { type: ["string", "null"], format: date }
         courtOffice: { type: string }
+        courtType: { type: string, enum: [MDJ, COMMON_PLEAS, UNSUPPORTED] }
         extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
         postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
         entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }

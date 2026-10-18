@@ -6,11 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CalendarPreviewInputCourtOffice } from './calendarPreviewInputCourtOffice';
+import type { CalendarPreviewInputCourtRoom } from './calendarPreviewInputCourtRoom';
 import type { CalendarPreviewInputEventType } from './calendarPreviewInputEventType';
 
 export interface CalendarPreviewInput {
-  /** Observed October 12, 2026; runtime availability must be checked. */
+  /** ANY means no office filter; returned court types are identified from each source row. */
   courtOffice: CalendarPreviewInputCourtOffice;
+  /** ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope. */
+  courtRoom?: CalendarPreviewInputCourtRoom;
   eventType: CalendarPreviewInputEventType;
   /** Real date, today or later in America/New_York. */
   startDate: Date;

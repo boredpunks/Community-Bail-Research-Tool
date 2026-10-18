@@ -7,12 +7,13 @@
  */
 
 /**
- * Observed October 12, 2026; runtime availability must be checked.
+ * ANY means no office filter; returned court types are identified from each source row.
  */
 export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
 
 
 export const CalendarPreviewInputCourtOffice = {
+  ANY: 'ANY',
   'CP-05-02-Crim': 'CP-05-02-Crim',
   'CP-05-02-Fam': 'CP-05-02-Fam',
   'CP-05-02-Juv': 'CP-05-02-Juv',

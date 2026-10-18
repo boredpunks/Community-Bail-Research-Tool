@@ -93,7 +93,7 @@ export const listDiscoveryJobsResponseCriteriaMatchFiltersMonetaryUpperBoundCent
 export const ListDiscoveryJobsResponseItem = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(listDiscoveryJobsResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -148,7 +148,7 @@ export const createDiscoveryJobBodyTwoRequestCapMax = 500;
 
 
 export const CreateDiscoveryJobBody = zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(createDiscoveryJobBodyOneCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -181,7 +181,7 @@ export const createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCen
 export const CreateDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(createDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -223,8 +223,9 @@ export const CreateDiscoveryJobResponse = zod.object({
  * @summary Run one calendar-only preview without retrieving docket documents
  */
 export const CreateCalendarPreviewBody = zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Observed October 12, 2026; runtime availability must be checked.'),
-  "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no office filter; returned court types are identified from each source row.'),
+  "courtRoom": zod.enum(['ANY', 'Courtroom 506']).optional().describe('ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope.'),
+  "eventType": zod.enum(['ANY', 'Bail Hearing', 'Preliminary Arraignment']),
   "startDate": zod.coerce.date().describe('Real date, today or later in America/New_York.'),
   "endDate": zod.coerce.date().describe('Inclusive window of at most seven days.')
 })
@@ -244,7 +245,7 @@ export const createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBound
 export const CreateCalendarPreviewResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(createCalendarPreviewResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -303,7 +304,7 @@ export const ListDiscoveryAssessmentsResponseItem = zod.object({
   "stage": zod.enum(['SINGLE', 'SMALL', 'MODEST', 'BOUNDED_ENGINE']),
   "state": zod.enum(['PREPARED', 'APPROVED', 'ATTEMPTED', 'FAILED', 'VERIFIED', 'BOUNDED_COMPLETED']),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(listDiscoveryAssessmentsResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -355,7 +356,7 @@ export const startDiscoveryAssessmentResponseCriteriaMatchFiltersMonetaryUpperBo
 export const StartDiscoveryAssessmentResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(startDiscoveryAssessmentResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -422,7 +423,7 @@ export const GetDiscoveryJobResponse = zod.object({
   "job": zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(getDiscoveryJobResponseJobCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -474,6 +475,7 @@ export const GetDiscoveryJobResponse = zod.object({
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
+  "courtType": zod.enum(['MDJ', 'COMMON_PLEAS', 'UNSUPPORTED']).optional(),
   "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
   "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
   "entries": zod.array(zod.object({
@@ -528,7 +530,7 @@ export const controlDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCe
 export const ControlDiscoveryJobResponse = zod.object({
   "id": zod.string().uuid(),
   "criteria": zod.object({
-  "courtOffice": zod.enum(['CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.'),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim', 'CP-05-02-Fam', 'CP-05-02-Juv']).describe('ANY means no court-office filter and is only admitted for calendar-only previews.'),
   "courtRoom": zod.string().max(controlDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
   "eventType": zod.enum(['Bail Hearing', 'Preliminary Arraignment', 'ANY']),
   "calendarPreviewOnly": zod.boolean().optional(),
@@ -633,6 +635,7 @@ export const SaveDiscoveryObservationResponse = zod.object({
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
+  "courtType": zod.enum(['MDJ', 'COMMON_PLEAS', 'UNSUPPORTED']).optional(),
   "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
   "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
   "entries": zod.array(zod.object({
@@ -723,6 +726,7 @@ export const ListBailRecordsResponse = zod.object({
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
+  "courtType": zod.enum(['MDJ', 'COMMON_PLEAS', 'UNSUPPORTED']).optional(),
   "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
   "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
   "entries": zod.array(zod.object({
@@ -821,6 +825,7 @@ export const CreateBailRecordResponse = zod.object({
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
+  "courtType": zod.enum(['MDJ', 'COMMON_PLEAS', 'UNSUPPORTED']).optional(),
   "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
   "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
   "entries": zod.array(zod.object({
@@ -897,6 +902,7 @@ export const ReviewBailRecordResponse = zod.object({
   "eventDate": zod.string().nullable(),
   "filingDate": zod.coerce.date().nullable(),
   "courtOffice": zod.string(),
+  "courtType": zod.enum(['MDJ', 'COMMON_PLEAS', 'UNSUPPORTED']).optional(),
   "extractionOutcome": zod.enum(['UNPROCESSED', 'EXTRACTED', 'MISSING_BAIL_SECTION', 'UNREADABLE', 'UNSUPPORTED_LAYOUT', 'IDENTITY_MISMATCH', 'RETRIEVAL_FAILED']),
   "postedEntryState": zod.enum(['SHOWN_POSTED', 'NOT_SHOWN', 'UNKNOWN']),
   "entries": zod.array(zod.object({

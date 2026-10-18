@@ -7,12 +7,13 @@
  */
 
 /**
- * Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.
+ * ANY means no court-office filter and is only admitted for calendar-only previews.
  */
 export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
 
 
 export const DiscoveryCriteriaCourtOffice = {
+  ANY: 'ANY',
   'CP-05-02-Crim': 'CP-05-02-Crim',
   'CP-05-02-Fam': 'CP-05-02-Fam',
   'CP-05-02-Juv': 'CP-05-02-Juv',

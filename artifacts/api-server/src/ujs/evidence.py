@@ -1,4 +1,4 @@
-"""Minimal, fail-closed parsing of demonstrated Common Pleas source layouts."""
+"""Fail-closed parsing for source-linked Common Pleas and MDJ calendar rows."""
 from datetime import datetime
 from decimal import Decimal
 from html.parser import HTMLParser
@@ -8,11 +8,88 @@ from urllib.parse import parse_qs, urlsplit
 
 import pymupdf
 
-DOCKET = re.compile(r"CP-02-CR-\d{7}-\d{4}")
+CP_DOCKET = re.compile(r"CP-02-CR-\d{7}-\d{4}")
+MDJ_DOCKET = re.compile(r"MJ-05\d{3}-CR-\d{7}-\d{4}")
+DOCKET = re.compile(r"(?:CP-02-CR-\d{7}-\d{4}|MJ-05\d{3}-CR-\d{7}-\d{4})")
+SAFE_DOCKET = re.compile(r"[A-Za-z0-9][A-Za-z0-9/-]{1,79}")
+COMMON_PLEAS_DOCUMENT_PATH = "/Report/CpDocketSheet"
 CALENDAR_AUDIT_HEADERS = [
     "Docket Number", "Court Type", "Filing Date", "County", "Court Office",
     "Event Type",
 ]
+CASE_INFORMATION_HEADERS = ("Docket Number", "Court Type", "Filing Date", "County", "Court Office")
+
+
+def docket_court_type(docket):
+    if CP_DOCKET.fullmatch(docket):
+        return "COMMON_PLEAS"
+    if MDJ_DOCKET.fullmatch(docket):
+        return "MDJ"
+    return None
+
+
+def label_court_type(label):
+    value = re.sub(r"\s+", " ", label).strip().casefold()
+    if value in ("common pleas", "court of common pleas", "common pleas court"):
+        return "COMMON_PLEAS"
+    if value in ("magisterial district", "magisterial district court",
+                 "magisterial district judge"):
+        return "MDJ"
+    return None
+
+
+def result_court_type(label, docket):
+    actual = docket_court_type(docket)
+    declared = label_court_type(label)
+    return declared if declared and (actual is None or declared == actual) else "UNSUPPORTED"
+
+
+def exact_docket_link(href, docket):
+    """Keep only an exact same-source row link with an identity-matching query.
+
+    MDJ routes are deliberately not inferred from naming conventions. A link is
+    retained only when the calendar response itself supplied it.
+    """
+    try:
+        url = urlsplit(href)
+        relative = not url.scheme and not url.netloc and href.startswith("/") and not href.startswith("//")
+        absolute = (url.scheme == "https" and url.hostname == "ujsportal.pacourts.us"
+                    and url.port in (None, 443) and not url.username and not url.password)
+        query = parse_qs(url.query, keep_blank_values=True)
+        if (not SAFE_DOCKET.fullmatch(docket) or not (relative or absolute) or url.fragment or not url.path.startswith("/")
+                or any(part in (".", "..") for part in url.path.split("/"))
+                or query.get("docketNumber") != [docket]
+                or len(query.get("dnh", [])) > 1
+                or set(query) - {"docketNumber", "dnh"}):
+            return None
+        return "https://ujsportal.pacourts.us" + href if relative else href
+    except (TypeError, ValueError):
+        return None
+
+
+def case_information_columns(headers):
+    if any(value.strip().startswith("Event Type") for value in headers):
+        return None
+    columns = {}
+    for label in CASE_INFORMATION_HEADERS:
+        matches = [index for index, value in enumerate(headers) if value.strip().startswith(label)]
+        if len(matches) != 1:
+            return None
+        columns[label] = matches[0]
+    if len(set(columns.values())) != len(CASE_INFORMATION_HEADERS):
+        return None
+    return columns
+
+
+def docket_from_cells(cells, headers):
+    columns = case_information_columns(headers)
+    indexes = (columns["Docket Number"],) if columns else (2,)
+    for index in indexes:
+        if len(cells) > index:
+            docket = re.sub(r"\s+", "", cells[index])
+            if SAFE_DOCKET.fullmatch(docket):
+                return docket
+    return None
 
 
 def iso_date(text):
@@ -96,16 +173,11 @@ class CalendarResults(HTMLParser):
                 if not 1 <= span <= 128 or row_span != 1:
                     self._malformed = True
                 self._cell_spans.append(span)
-            elif self.in_row and tag == "a" and a.get("href", "").startswith("/Report/CpDocketSheet?"):
-                href = a["href"]
-                self._recognized_links += 1
-                if href not in self._links:
-                    self._links.append(href)
-                self.link = href
-                if len(self._links) > 1:
-                    self._malformed = True
             if self.in_row and tag == "a":
-                self._all_hrefs.append(a.get("href", ""))
+                href = a.get("href", "")
+                self._all_hrefs.append(href)
+                if href and href not in self._links:
+                    self._links.append(href)
             if self.in_row and (tag in ("button", "input") or "onclick" in a):
                 self._interactive += 1
         if tag == "a" and re.search(r"(?:pageNumber|pageIndex|page=)", a.get("href", ""), re.I):
@@ -131,6 +203,14 @@ class CalendarResults(HTMLParser):
                         self._malformed = True
                     self.headers = [cell.strip() for cell in self.cells]
                 elif kinds == {"td"}:
+                    docket = docket_from_cells(self.cells, self.headers)
+                    matching = [exact_docket_link(href, docket) for href in self._links] if docket else []
+                    matching = [href for href in matching if href]
+                    self._recognized_links += len(matching)
+                    if len(matching) == 1:
+                        self.link = matching[0]
+                    elif len(matching) > 1:
+                        self._malformed = True
                     self._row_observations.append(calendar_row_observation(
                         self.cells, self._cell_spans, self._all_hrefs, self._interactive))
                     if len(self.cells) == 1 and self._cell_spans[0] > 1 and not self._links:
@@ -179,6 +259,9 @@ class CalendarResults(HTMLParser):
         if (self._table_count != 1 or self._header_rows != 1 or self._malformed
                 or self.in_table or self.in_row or self.in_cell):
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
+        case_columns = case_information_columns(self.headers)
+        if case_columns:
+            return self._validated_case_information(criteria, case_columns)
         event_type_filter = criteria.get("eventType")
         if event_type_filter in ("", "ANY"):
             event_type_filter = None
@@ -215,12 +298,16 @@ class CalendarResults(HTMLParser):
             docket = cells[2].strip()
             event_type = cells[14].strip()
             url = urlsplit(link)
-            if (not DOCKET.fullmatch(docket) or url.path != "/Report/CpDocketSheet"
-                    or url.netloc or parse_qs(url.query).get("docketNumber") != [docket]
+            court_type = result_court_type(cells[3].strip(), docket)
+            office = re.sub(r"\s+", "", cells[10].strip())
+            query = parse_qs(url.query, keep_blank_values=True)
+            exact_link = exact_docket_link(link, docket)
+            if (not DOCKET.fullmatch(docket) or not exact_link
                     or cells[9].strip() != "Allegheny"
-                    or cells[10].strip() != criteria["courtOffice"]
+                    or criteria.get("courtOffice") not in (None, "", "ANY")
+                    and office != criteria["courtOffice"]
                     or not event_type
-                    or event_type_filter is not None and event_type != event_type_filter):
+                    or event_type_filter not in (None, "", "ANY") and event_type != event_type_filter):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
             date_fields = calendar_date_fields(cells, criteria)
             if docket in seen:
@@ -229,7 +316,9 @@ class CalendarResults(HTMLParser):
             seen.add(docket)
             result.append({
                 "docketNumber": docket, "position": len(result),
-                "sourceUrl": "https://ujsportal.pacourts.us" + link,
+                "sourceUrl": exact_link,
+                "courtType": court_type,
+                "courtOffice": office,
                 **date_fields,
                 "eventType": event_type,
             })
@@ -239,6 +328,50 @@ class CalendarResults(HTMLParser):
             self.dates_validated = True
         # Emit only allowlisted public label prefixes, never arbitrary header
         # text or any cell values, as preview audit metadata.
+        self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
+        return result
+
+    def _validated_case_information(self, criteria, columns):
+        if not (criteria.get("courtOffice") == "ANY"
+                and criteria.get("eventType") == "ANY"
+                and criteria.get("courtRoom") == "ANY"
+                and criteria.get("startDate") == criteria.get("endDate")):
+            raise ValueError("CASE_INFORMATION_SCOPE_UNSUPPORTED")
+        result, seen = [], set()
+        for cells, link in self.rows:
+            if not link or len(cells) != len(self.headers):
+                raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
+            docket = re.sub(r"\s+", "", cells[columns["Docket Number"]])
+            row_type = cells[columns["Court Type"]].strip()
+            county = re.sub(r"\s+", " ", cells[columns["County"]]).strip()
+            office = re.sub(r"\s+", "", cells[columns["Court Office"]])
+            filing_date = iso_date(cells[columns["Filing Date"]].strip())
+            exact_link = exact_docket_link(link, docket)
+            if (not SAFE_DOCKET.fullmatch(docket) or not exact_link
+                    or county != "Allegheny"
+                    or filing_date is None and cells[columns["Filing Date"]].strip()):
+                raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
+            court_type = result_court_type(row_type, docket)
+            expected_office_prefix = ("MDJ-05-" if court_type == "MDJ"
+                                      else "CP-05-" if court_type == "COMMON_PLEAS" else None)
+            if not office or not expected_office_prefix or not office.startswith(expected_office_prefix):
+                court_type = "UNSUPPORTED"
+            if docket in seen:
+                continue
+            seen.add(docket)
+            result.append({
+                "docketNumber": docket, "position": len(result),
+                "sourceUrl": exact_link,
+                "courtType": court_type,
+                "courtOffice": office,
+                "eventDate": None,
+                "filingDate": filing_date,
+                "eventType": "ANY",
+            })
+        if self.rows:
+            self.validated_row_count = len(self.rows)
+            self.scope_validated = True
+            self.dates_validated = False
         self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
         return result
 
@@ -263,12 +396,13 @@ def calendar_row_observation(cells, spans, hrefs, interactive):
             query = parse_qs(url.query, keep_blank_values=True)
             relative = not url.scheme and not url.netloc and href.startswith("/")
             absolute = url.scheme == "https" and url.netloc == "ujsportal.pacourts.us"
-            route = url.path == "/Report/CpDocketSheet" and not url.fragment
+            route = url.path == COMMON_PLEAS_DOCUMENT_PATH and not url.fragment
             key = ("relativeDocket" if relative else "absoluteSourceDocket") if route and (relative or absolute) else "other"
             links[key] += 1
             if key != "other":
-                links["identityMatched"] += bool(DOCKET.fullmatch(docket) and query.get("docketNumber") == [docket])
-                links["strictQuery"] += set(query) == {"docketNumber"} and len(query["docketNumber"]) == 1
+                row_docket = cells[0].strip() if cells and DOCKET.fullmatch(cells[0].strip()) else docket
+                links["identityMatched"] += bool(DOCKET.fullmatch(row_docket) and query.get("docketNumber") == [row_docket])
+                links["strictQuery"] += set(query) <= {"docketNumber", "dnh"} and set(query) >= {"docketNumber"} and len(query["docketNumber"]) == 1
         except ValueError:
             links["other"] += 1
     return {

@@ -123,7 +123,7 @@ class CalendarStructureTests(unittest.TestCase):
                                  + "</tr></tbody>")
         parser = CalendarResults()
         parser.feed(html)
-        with self.assertRaisesRegex(ValueError, "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT"):
+        with self.assertRaisesRegex(ValueError, "CALENDAR_DOCUMENT_LINK_MISSING"):
             parser.validated(self.criteria)
 
 
@@ -173,6 +173,65 @@ class PacingTests(unittest.TestCase):
 
 
 class FormTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unfiltered_calendar_form_keeps_room_blank_and_scheduled_only_checked(self):
+        from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form
+        markup = """
+        <form action="https://ujsportal.pacourts.us/CaseSearch" method="post">
+          <div id="SearchBy-Control"><select name="SearchBy">
+            <option value="CalendarEvent" selected>Calendar Event</option>
+          </select></div>
+          <div id="JudicialDistrict-Control"><select name="JudicialDistrict">
+            <option value="05" selected>Allegheny - 05</option>
+          </select></div>
+          <div id="CourtOffice-Control"><select name="CourtOffice">
+            <option value="" selected></option><option value="CP-05-02-Crim">CP-05-02-Crim</option>
+          </select></div>
+          <label for="room">Room</label>
+          <select id="room" name="CourtRoomID">
+            <option value="" selected></option><option value="fixture-room">Fixture room</option>
+          </select>
+          <div id="CalendarEventType-Control"><select name="CalendarEventType">
+            <option value="" selected></option><option value="Bail Hearing">Bail Hearing</option>
+          </select></div>
+          <input type="date" name="CalendarEventStartDate" value="2026-10-19">
+          <input type="date" name="CalendarEventEndDate" value="2026-10-19">
+          <label for="scheduled">Scheduled Events Only</label>
+          <input id="scheduled" type="checkbox" name="ScheduledEventsOnly" value="1" checked>
+          <button id="btnSearch" type="submit">Search</button>
+        </form>"""
+        criteria = {"courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
+                    "startDate": "2026-10-19", "endDate": "2026-10-19"}
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                executable_path=shutil.which("chromium"), headless=True,
+                args=["--disable-background-networking", "--no-sandbox"])
+            context = await browser.new_context(service_workers="block")
+            outbound = []
+            async def block(route):
+                outbound.append(route.request.url)
+                await route.abort()
+            await context.route("**/*", block)
+            page = await context.new_page()
+            try:
+                await page.set_content(markup)
+                selected = await select_bound_calendar_controls(page, criteria)
+                fields = await validate_bound_calendar_form(page, criteria, selected)
+                self.assertEqual(selected["courtOffice"], "")
+                self.assertEqual(selected["eventType"], "")
+                self.assertIn(("CourtRoomID", ""), fields)
+                self.assertIn(("ScheduledEventsOnly", "1"), fields)
+                self.assertEqual(outbound, [])
+
+                await page.set_content(markup.replace(' checked>', '>'))
+                selected = await select_bound_calendar_controls(page, criteria)
+                with self.assertRaises(CalendarFormFailure) as failure:
+                    await validate_bound_calendar_form(page, criteria, selected)
+                self.assertEqual(failure.exception.control, "SCHEDULED_EVENTS_ONLY")
+                self.assertEqual(outbound, [])
+            finally:
+                await context.close()
+                await browser.close()
+
     async def test_prevalidated_room_observation_continues_on_the_current_page(self):
         from courtroom_observation import observe
 

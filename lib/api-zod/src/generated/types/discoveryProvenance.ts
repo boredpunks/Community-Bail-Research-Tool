@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DiscoveryEntry } from './discoveryEntry';
+import type { DiscoveryProvenanceCourtType } from './discoveryProvenanceCourtType';
 import type { ExtractionOutcome } from './extractionOutcome';
 import type { PostedEntryState } from './postedEntryState';
 
@@ -20,6 +21,7 @@ export interface DiscoveryProvenance {
   /** @nullable */
   filingDate: Date | null;
   courtOffice: string;
+  courtType?: DiscoveryProvenanceCourtType;
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];

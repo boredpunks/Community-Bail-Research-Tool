@@ -10,6 +10,7 @@ export type CalendarPreviewInputEventType = typeof CalendarPreviewInputEventType
 
 
 export const CalendarPreviewInputEventType = {
+  ANY: 'ANY',
   Bail_Hearing: 'Bail Hearing',
   Preliminary_Arraignment: 'Preliminary Arraignment',
 } as const;

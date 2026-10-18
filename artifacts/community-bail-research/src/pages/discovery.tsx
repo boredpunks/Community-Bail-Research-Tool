@@ -19,6 +19,7 @@ import {
   type DiscoveryItem,
   type DiscoveryControlAction,
   CalendarPreviewInputCourtOffice,
+  CalendarPreviewInputCourtRoom,
   CalendarPreviewInputEventType,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
@@ -49,6 +50,7 @@ function amountText(e: DiscoveryItem['provenance']['entries'][number]) {
 }
 
 function canSaveCandidate(it: DiscoveryItem) {
+  if (it.provenance.courtType === 'UNSUPPORTED') return false;
   if (!it.sourceRetrievedAt || !Number.isFinite(Date.parse(it.sourceRetrievedAt))) return false;
   if (it.provenance.extractionOutcome === 'EXTRACTED') return it.provenance.entries.length > 0 && !!it.excerpt;
   if (it.provenance.extractionOutcome === 'MISSING_BAIL_SECTION') return it.provenance.entries.length === 0 && !!it.detail;
@@ -60,6 +62,7 @@ function amountMatches(it: DiscoveryItem, boundCents: number): boolean {
 }
 
 function documentStatus(it: DiscoveryItem, calendarOnly: boolean): string {
+  if (it.provenance.courtType === 'UNSUPPORTED') return 'Unsupported result type; document not requested';
   const outcome = it.provenance.extractionOutcome;
   if (outcome === 'RETRIEVAL_FAILED') return 'Retrieval failed';
   if (outcome === 'IDENTITY_MISMATCH') return it.sourceRetrievedAt ? 'Retrieved; docket identity did not match' : 'Docket identity did not match';
@@ -74,6 +77,7 @@ function documentStatus(it: DiscoveryItem, calendarOnly: boolean): string {
 }
 
 function extractionStatus(it: DiscoveryItem): string {
+  if (it.provenance.courtType === 'UNSUPPORTED') return 'Unsupported result type';
   switch (it.provenance.extractionOutcome) {
     case 'UNPROCESSED': return 'Not run';
     case 'EXTRACTED': return 'Bail entries extracted';
@@ -212,6 +216,7 @@ export default function Discovery() {
   const [endE, setEnd] = useState<string | undefined>();
   const [office, setOffice] = useState<CalendarPreviewInputCourtOffice>('CP-05-02-Crim');
   const [event, setEvent] = useState<CalendarPreviewInputEventType>('Bail Hearing');
+  const [room, setRoom] = useState<CalendarPreviewInputCourtRoom>('ANY');
   const [recCapE, setRecCap] = useState<string | undefined>();
   const [reqCapE, setReqCap] = useState<string | undefined>();
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -235,6 +240,7 @@ export default function Discovery() {
   const recCap = recCapE ?? (pol ? String(Math.min(pol.maxRecordCap, Math.max(pol.defaultRecordCap, Number.isInteger(tgtNum) ? tgtNum : 0))) : '');
   const reqCap = reqCapE ?? (pol ? String(pol.defaultRequestCap) : '');
   const selected = jobId || jobs.data?.[0]?.id || '';
+  const unfilteredCalendar = office === 'ANY' && event === 'ANY' && room === 'ANY';
 
   const report = useGetDiscoveryJob(selected, {
     query: {
@@ -270,6 +276,9 @@ export default function Discovery() {
     setFormErr(null);
     if (!pol) return;
     if (!pol.collectionEnabled) return setFormErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
+    if (office === 'ANY' || event === 'ANY' || room !== 'ANY') {
+      return setFormErr('Full docket collection is limited to supported Common Pleas criteria. Use the calendar-only preview for no-filter searches; it does not retrieve documents.');
+    }
     const rc = Number(recCap), qc2 = Number(reqCap);
     const mt = Number(target), upper = parseDollarsToCents(collectBound);
     if (!start || !end) return setFormErr('Choose a start and end date.');
@@ -300,14 +309,18 @@ export default function Discovery() {
       setPreviewErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
       return;
     }
-    if (!start || !end || start < pol.minimumDate || end < start || dayNum(end) - dayNum(start) > 6) {
-      setPreviewErr('Choose today-or-future dates covering at most seven days. No date will be substituted.');
+    if (!start || !end || start < pol.minimumDate || end < start
+      || dayNum(end) - dayNum(start) > (unfilteredCalendar ? 0 : 6)) {
+      setPreviewErr(unfilteredCalendar
+        ? 'With office, room, and event type all unfiltered, choose exactly one today-or-future date. No date will be substituted.'
+        : 'Choose today-or-future dates covering at most seven days. No date will be substituted.');
       return;
     }
     createCalendarPreview.mutate({
       data: {
         courtOffice: office,
         eventType: event,
+        courtRoom: room,
         startDate: start,
         endDate: end,
       },
@@ -464,32 +477,39 @@ export default function Discovery() {
 
       <section className="panel mb-8" aria-label="Calendar search criteria">
         <h2 className="mono text-xl font-bold mb-3">Calendar search criteria</h2>
-        <p className="hint mb-4">Both forms below use these exact choices. Office options were observed October 12, 2026; availability is checked again at run time. Only Common Pleas criminal results have prior validated coverage. Preliminary Arraignment and other offices are not yet proven end to end. Filing-date/MDJ search is not implemented here.</p>
+        <p className="hint mb-4">The calendar-only form can leave office, room, and event type unfiltered; results identify the court type returned by each row and do not assume MDJ. The all-unfiltered search is limited to one day because the portal may cap Common Pleas results. Full document collection remains limited to its separately approved, supported Common Pleas criteria. Availability and native form bindings must be validated before a source request.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div><label className="lbl" htmlFor="d-court">Court office</label>
             <select id="d-court" className="field" value={office} onChange={e => setOffice(e.target.value as CalendarPreviewInputCourtOffice)} data-testid="select-court">
-              {Object.values(CalendarPreviewInputCourtOffice).map(code => <option key={code} value={code}>{code}</option>)}
+              <option value="ANY">All court offices (no filter)</option>
+              {Object.values(CalendarPreviewInputCourtOffice).filter(code => code !== 'ANY').map(code => <option key={code} value={code}>{code}</option>)}
+            </select></div>
+          <div><label className="lbl" htmlFor="d-room">Room</label>
+            <select id="d-room" className="field" value={room} onChange={e => setRoom(e.target.value as CalendarPreviewInputCourtRoom)} data-testid="select-room">
+              <option value="ANY">All rooms (no filter)</option>
+              {room === 'Courtroom 506' ? <option value="Courtroom 506">Courtroom 506</option> : null}
             </select></div>
           <div><label className="lbl" htmlFor="d-event">Event type</label>
             <select id="d-event" className="field" value={event} onChange={e => setEvent(e.target.value as CalendarPreviewInputEventType)} data-testid="select-event">
-              {Object.values(CalendarPreviewInputEventType).map(label => <option key={label} value={label}>{label}</option>)}
+              <option value="ANY">All calendar event types (no filter)</option>
+              {Object.values(CalendarPreviewInputEventType).filter(label => label !== 'ANY').map(label => <option key={label} value={label}>{label}</option>)}
             </select></div>
           <div><label className="lbl" htmlFor="d-start">Start date</label>
             <input id="d-start" type="date" className="field" min={pol?.minimumDate} max="2999-12-31" value={start} onChange={e => setStart(e.target.value)} data-testid="input-start" /></div>
-          <div><label className="lbl" htmlFor="d-end">End date (at most seven days inclusive)</label>
-            <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + 6) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={e => setEnd(e.target.value)} data-testid="input-end" /></div>
+          <div><label className="lbl" htmlFor="d-end">End date (one day when office, room, and event are unfiltered)</label>
+            <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + (unfilteredCalendar ? 0 : 6)) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={e => setEnd(e.target.value)} data-testid="input-end" /></div>
         </div>
       </section>
 
       <form onSubmit={submitCalendarPreview} className="panel mb-8" aria-label="Calendar-only preview" data-testid="form-calendar-preview">
         <h2 className="mono text-xl font-bold mb-2">Calendar Event preview</h2>
-        <p className="hint mb-4">
-          One explicitly started Calendar Event search using the office, event and dates selected above.
+          <p className="hint mb-4">
+          One explicitly started Calendar Event search using the office, room, event and dates selected above.
           This preview retains validated calendar result rows independently of docket-PDF availability. It does not request PDFs, extract bail evidence, or save candidates.
           The shared source approval and request limiter still apply. While the source barrier is active, this button stays disabled.
           A separately approved one-use operator permit is limited to its saved exact criteria, without clearing the barrier or enabling PDFs.
         </p>
-        <p className="mono">{office} · {event} · {start} to {end}</p>
+        <p className="mono">{office === 'ANY' ? 'All offices' : office} · {room === 'ANY' ? 'All rooms' : room} · {event === 'ANY' ? 'All event types' : event} · {start} to {end}</p>
         {previewErr ? <p className="errbox mt-3" role="alert" data-testid="text-calendar-preview-error">{previewErr}</p> : null}
         <button type="submit" className="btn btn-primary mt-4"
           disabled={!pol?.collectionEnabled || createCalendarPreview.isPending}
@@ -560,7 +580,7 @@ export default function Discovery() {
             <>
               <div className="panel mb-6" role="status" aria-live="polite">
                 <p className="mono font-bold text-lg" data-testid="text-job-status">{job.status}</p>
-                <p>{job.criteria.courtOffice}{job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.eventType === 'ANY' ? 'no event-type filter' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
+                <p>{job.criteria.courtOffice === 'ANY' ? 'All court offices (no filter)' : job.criteria.courtOffice}{job.criteria.courtRoom === 'ANY' ? ', all rooms (no filter)' : job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.eventType === 'ANY' ? 'all event types (no filter)' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
                 {job.message ? <p className="mt-1" data-testid="text-job-message">{job.message}</p> : null}
                 {!isCalendarPreview ? <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
                   ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
@@ -618,6 +638,7 @@ export default function Discovery() {
                         <thead className="mono"><tr className="border-b-2 border-border">
                           <th scope="col" className="p-2">Pos.</th>
                           <th scope="col" className="p-2">Docket</th>
+                          <th scope="col" className="p-2">Court type</th>
                           <th scope="col" className="p-2">Court office</th>
                           <th scope="col" className="p-2">Courtroom filter</th>
                           <th scope="col" className="p-2">Event type</th>
@@ -631,10 +652,11 @@ export default function Discovery() {
                             <tr key={item.id} className="border-b border-border align-top" data-testid={`calendar-preview-row-${item.id}`}>
                               <td className="p-2 mono">{item.position + 1}</td>
                               <td className="p-2 mono font-semibold break-all">{item.docketNumber}</td>
+                              <td className="p-2">{item.provenance.courtType ?? 'Not identified'}</td>
                               <td className="p-2">{item.provenance.courtOffice}</td>
                               <td className="p-2">{item.provenance.courtRoom ?? 'Not recorded'}</td>
-                              <td className="p-2">{item.provenance.eventType}</td>
-                              <td className="p-2">{item.provenance.eventDate ?? 'Not recorded'}</td>
+                              <td className="p-2">{item.provenance.eventType === 'ANY' ? 'Not returned (unfiltered)' : item.provenance.eventType}</td>
+                              <td className="p-2">{item.provenance.eventDate ?? 'Not returned by Case Information results'}</td>
                               <td className="p-2">{item.provenance.filingDate ?? 'Not recorded'}</td>
                               <td className="p-2">{documentStatus(item, true)}</td>
                               <td className="p-2">{extractionStatus(item)}</td>

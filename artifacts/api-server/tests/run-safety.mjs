@@ -11,10 +11,10 @@ try {
   const out = path.join(dir, "checks.mjs");
   await build({
     entryPoints: ["tests/safety.ts"], outfile: out, bundle: true, platform: "node", format: "esm",
-    external: ["pg-native"], logLevel: "warning",
+    external: ["pg-native"], logLevel: "warning", sourcemap: "inline",
     banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   });
-  const check = spawnSync("node", [out], { stdio: "inherit" });
+  const check = spawnSync("node", ["--enable-source-maps", out], { stdio: "inherit" });
   if (check.status) process.exitCode = check.status;
   const capture = path.join(dir, "calendar-diagnostics.jsonl");
   const python = spawnSync("python", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"], {
