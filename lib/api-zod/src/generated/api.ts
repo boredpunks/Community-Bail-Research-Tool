@@ -347,6 +347,13 @@ export const getDiscoveryJobResponseJobCriteriaMatchTargetMax = 200;
 
 export const getDiscoveryJobResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
 
+export const getDiscoveryJobResponseItemsItemProvenanceEntriesItemSourcePagesItemMax = 100;
+
+export const getDiscoveryJobResponseItemsItemProvenanceDocumentSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getDiscoveryJobResponseItemsItemProvenanceDocumentPageCountMax = 100;
+
+export const getDiscoveryJobResponseItemsItemProvenanceBailSectionPagesItemMax = 100;
+
 export const getDiscoveryJobResponseItemsItemSavedObservationsItemEntryIndexMin = 0;
 
 
@@ -415,8 +422,12 @@ export const GetDiscoveryJobResponse = zod.object({
   "orderDate": zod.coerce.date().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "amountCents": zod.number().int().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
-}))
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "sourcePages": zod.array(zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenanceEntriesItemSourcePagesItemMax)).optional().describe('One-based PDF pages supporting this entry; absent for legacy evidence.')
+})),
+  "documentSha256": zod.string().regex(getDiscoveryJobResponseItemsItemProvenanceDocumentSha256RegExp).optional(),
+  "documentPageCount": zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenanceDocumentPageCountMax).optional(),
+  "bailSectionPages": zod.array(zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenanceBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),
   "savedRecordIds": zod.array(zod.string().uuid()),
   "savedObservations": zod.array(zod.object({
@@ -531,6 +542,13 @@ export const SaveDiscoveryObservationBody = zod.object({
 export const saveDiscoveryObservationResponseAmountCentsMin = 0;
 export const saveDiscoveryObservationResponseAmountCentsMax = 2147483647;
 
+export const saveDiscoveryObservationResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax = 100;
+
+export const saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentPageCountMax = 100;
+
+export const saveDiscoveryObservationResponseDiscoveryEvidenceOneBailSectionPagesItemMax = 100;
+
 
 
 export const SaveDiscoveryObservationResponse = zod.object({
@@ -564,8 +582,12 @@ export const SaveDiscoveryObservationResponse = zod.object({
   "orderDate": zod.coerce.date().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "amountCents": zod.number().int().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
-}))
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "sourcePages": zod.array(zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax)).optional().describe('One-based PDF pages supporting this entry; absent for legacy evidence.')
+})),
+  "documentSha256": zod.string().regex(saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
+  "documentPageCount": zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
+  "bailSectionPages": zod.array(zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
@@ -607,6 +629,13 @@ export const ListBailRecordsQueryParams = zod.object({
 export const listBailRecordsResponseRecordsItemAmountCentsMin = 0;
 export const listBailRecordsResponseRecordsItemAmountCentsMax = 2147483647;
 
+export const listBailRecordsResponseRecordsItemDiscoveryEvidenceOneEntriesItemSourcePagesItemMax = 100;
+
+export const listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentPageCountMax = 100;
+
+export const listBailRecordsResponseRecordsItemDiscoveryEvidenceOneBailSectionPagesItemMax = 100;
+
 export const listBailRecordsResponseTotalMin = 0;
 
 
@@ -643,8 +672,12 @@ export const ListBailRecordsResponse = zod.object({
   "orderDate": zod.coerce.date().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "amountCents": zod.number().int().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
-}))
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "sourcePages": zod.array(zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneEntriesItemSourcePagesItemMax)).optional().describe('One-based PDF pages supporting this entry; absent for legacy evidence.')
+})),
+  "documentSha256": zod.string().regex(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
+  "documentPageCount": zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentPageCountMax).optional(),
+  "bailSectionPages": zod.array(zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
@@ -697,6 +730,13 @@ export const CreateBailRecordBody = zod.object({
 export const createBailRecordResponseAmountCentsMin = 0;
 export const createBailRecordResponseAmountCentsMax = 2147483647;
 
+export const createBailRecordResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax = 100;
+
+export const createBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const createBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax = 100;
+
+export const createBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax = 100;
+
 
 
 export const CreateBailRecordResponse = zod.object({
@@ -730,8 +770,12 @@ export const CreateBailRecordResponse = zod.object({
   "orderDate": zod.coerce.date().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "amountCents": zod.number().int().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
-}))
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "sourcePages": zod.array(zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax)).optional().describe('One-based PDF pages supporting this entry; absent for legacy evidence.')
+})),
+  "documentSha256": zod.string().regex(createBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
+  "documentPageCount": zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
+  "bailSectionPages": zod.array(zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),
@@ -761,6 +805,13 @@ export const ReviewBailRecordBody = zod.object({
 
 export const reviewBailRecordResponseAmountCentsMin = 0;
 export const reviewBailRecordResponseAmountCentsMax = 2147483647;
+
+export const reviewBailRecordResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax = 100;
+
+export const reviewBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const reviewBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax = 100;
+
+export const reviewBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax = 100;
 
 
 
@@ -795,8 +846,12 @@ export const ReviewBailRecordResponse = zod.object({
   "orderDate": zod.coerce.date().nullable(),
   "bailCategory": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
   "amountCents": zod.number().int().nullable(),
-  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()])
-}))
+  "financialBasis": zod.union([zod.enum(['TOTAL_BAIL', 'CASH_DEPOSIT', 'SURETY_BOND', 'UNSECURED_AMOUNT']),zod.null()]),
+  "sourcePages": zod.array(zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOneEntriesItemSourcePagesItemMax)).optional().describe('One-based PDF pages supporting this entry; absent for legacy evidence.')
+})),
+  "documentSha256": zod.string().regex(reviewBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
+  "documentPageCount": zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
+  "bailSectionPages": zod.array(zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
   "reviewStatus": zod.enum(['PENDING', 'CONFIRMED', 'REJECTED']),
   "orderInterpretation": zod.enum(['UNREVIEWED', 'REVIEWED_OPERATIVE', 'SUPERSEDED', 'UNRESOLVED']),

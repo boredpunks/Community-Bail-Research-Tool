@@ -325,6 +325,12 @@ export interface DiscoveryEntry {
   /** @nullable */
   amountCents: number | null;
   financialBasis: FinancialBasis | null;
+  /**
+     * One-based PDF pages supporting this entry; absent for legacy evidence.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  sourcePages?: number[];
 }
 
 export interface DiscoveryProvenance {
@@ -341,6 +347,19 @@ export interface DiscoveryProvenance {
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @pattern ^[a-f0-9]{64}$ */
+  documentSha256?: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  documentPageCount?: number;
+  /**
+     * One-based pages containing the inspected bail section.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  bailSectionPages?: number[];
 }
 
 export type ReviewStatus = typeof ReviewStatus[keyof typeof ReviewStatus];

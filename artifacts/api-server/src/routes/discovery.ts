@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoverySourceTable } from "@workspace/db";
@@ -17,7 +16,7 @@ import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "..
 import { collectionBlock, resultsDeadline } from "../lib/discovery-safety";
 import { discoverySourceStatus, sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/discovery-retention";
-import { candidateEligible, observationValues } from "../lib/discovery-candidates";
+import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
 import { makeCalendarPreviewCriteria, validCalendarCriteria } from "../lib/calendar-criteria";
 
 const router: IRouter = Router();
@@ -161,7 +160,7 @@ router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
     items: (job.resultsExpiredAt ? [] : items).map((item) => {
       const entries = item.provenance.extractionOutcome === "MISSING_BAIL_SECTION" ? [null] : item.provenance.entries;
       const savedObservations = entries.flatMap((entry, index) => {
-        const key = createHash("sha256").update(JSON.stringify({ docket: item.docketNumber, excerpt: item.excerpt, entry })).digest("hex");
+        const key = observationKey(item, entry);
         return saved.filter((record) => record.key === key).map((record) => ({
           entryIndex: entry ? index : null, recordId: record.id, reviewStatus: record.reviewStatus, orderInterpretation: record.orderInterpretation,
         }));

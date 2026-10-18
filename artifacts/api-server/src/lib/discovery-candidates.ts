@@ -3,7 +3,13 @@ import type { DiscoveryEntryData, DiscoveryItemRow } from "@workspace/db";
 import { allowedSourceRequest } from "./discovery-safety";
 
 export function observationKey(item: Pick<DiscoveryItemRow, "docketNumber" | "excerpt">, entry: DiscoveryEntryData | null) {
-  return createHash("sha256").update(JSON.stringify({ docket: item.docketNumber, excerpt: item.excerpt, entry })).digest("hex");
+  // Keep legacy keys stable when additive page provenance becomes available.
+  // Location metadata is evidence, not a second observation of the same entry.
+  const identity = entry ? {
+    action: entry.action, wording: entry.wording, orderDate: entry.orderDate,
+    bailCategory: entry.bailCategory, amountCents: entry.amountCents, financialBasis: entry.financialBasis,
+  } : null;
+  return createHash("sha256").update(JSON.stringify({ docket: item.docketNumber, excerpt: item.excerpt, entry: identity })).digest("hex");
 }
 
 export function candidateEligible(item: Pick<DiscoveryItemRow,

@@ -27,6 +27,7 @@ export interface DiscoveryEntryData {
   bailCategory: "MONETARY" | "NOMINAL" | "UNSECURED" | "NONMONETARY" | "RECOGNIZANCE" | "DENIED" | "UNKNOWN";
   amountCents: number | null;
   financialBasis: "TOTAL_BAIL" | "UNSECURED_AMOUNT" | null;
+  sourcePages?: number[];
 }
 export interface DiscoveryProvenanceData {
   calendarUrl: string;
@@ -39,6 +40,9 @@ export interface DiscoveryProvenanceData {
   extractionOutcome: "UNPROCESSED" | "EXTRACTED" | "MISSING_BAIL_SECTION" | "UNREADABLE" | "UNSUPPORTED_LAYOUT" | "IDENTITY_MISMATCH" | "RETRIEVAL_FAILED";
   postedEntryState: "SHOWN_POSTED" | "NOT_SHOWN" | "UNKNOWN";
   entries: DiscoveryEntryData[];
+  documentSha256?: string;
+  documentPageCount?: number;
+  bailSectionPages?: number[];
 }
 
 export const discoveryJobsTable = pgTable("discovery_jobs", {

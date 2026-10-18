@@ -518,6 +518,11 @@ components:
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         amountCents: { type: ["integer", "null"] }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+        sourcePages:
+          type: array
+          description: One-based PDF pages supporting this entry; absent for legacy evidence.
+          items: { type: integer, minimum: 1, maximum: 100 }
+          uniqueItems: true
       required: [action, wording, orderDate, bailCategory, amountCents, financialBasis]
     DiscoveryProvenance:
       type: object
@@ -532,6 +537,13 @@ components:
         extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
         postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
         entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }
+        documentSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        documentPageCount: { type: integer, minimum: 1, maximum: 100 }
+        bailSectionPages:
+          type: array
+          description: One-based pages containing the inspected bail section.
+          items: { type: integer, minimum: 1, maximum: 100 }
+          uniqueItems: true
       required: [calendarUrl, calendarRetrievedAt, eventType, eventDate, filingDate, courtOffice, extractionOutcome, postedEntryState, entries]
     DiscoveryItem:
       type: object

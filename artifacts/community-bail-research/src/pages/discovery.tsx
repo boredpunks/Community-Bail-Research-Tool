@@ -107,6 +107,7 @@ function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
                   <p className="font-semibold">{e.action}; {e.orderDate ?? 'order date not recorded'}</p>
                   <p>{CATEGORY_LABEL[e.bailCategory]}{e.financialBasis ? `, ${BASIS_LABEL[e.financialBasis]}` : ''}: <span className="mono font-semibold">{amountText(e)}</span></p>
                   <p className="hint whitespace-pre-wrap">Wording: {e.wording}</p>
+                  <p className="hint">Supporting PDF page{e.sourcePages?.length === 1 ? '' : 's'}: {e.sourcePages?.length ? e.sourcePages.join(', ') : 'Not recorded in legacy evidence'}</p>
                 </div>
                 {savedFor(it, i) ? (
                   <p className="self-start text-right" data-testid={`status-entry-${it.id}-${i}`}>
@@ -130,6 +131,8 @@ function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
         <dl className="mt-3 grid gap-2 text-base md:grid-cols-[12rem_1fr]">
           <dt className="mono text-sm">Docket page</dt><dd className="break-all"><a className="underline text-primary" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">{it.sourceUrl}</a></dd>
           <dt className="mono text-sm">Docket retrieved</dt><dd>{formatInstant(it.sourceRetrievedAt)}</dd>
+          <dt className="mono text-sm">Bail section pages</dt><dd>{p.bailSectionPages?.length ? p.bailSectionPages.join(', ') : p.extractionOutcome === 'MISSING_BAIL_SECTION' ? 'No bail section found' : 'Not recorded'}</dd>
+          <dt className="mono text-sm">Document SHA-256</dt><dd className="mono break-all">{p.documentSha256 ?? 'Not recorded in legacy evidence'}</dd>
           <dt className="mono text-sm">Calendar page</dt><dd className="break-all"><a className="underline text-primary" href={p.calendarUrl} target="_blank" rel="noopener noreferrer">{p.calendarUrl}</a></dd>
           <dt className="mono text-sm">Calendar retrieved</dt><dd>{formatInstant(p.calendarRetrievedAt)}</dd>
           <dt className="mono text-sm">Excerpt</dt><dd className="whitespace-pre-wrap">{it.excerpt ?? 'No excerpt captured.'}</dd>

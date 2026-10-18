@@ -2,6 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from html.parser import HTMLParser
+import hashlib
 import re
 from urllib.parse import parse_qs, urlsplit
 
@@ -142,6 +143,28 @@ def calendar_result_state(validated_table, parsed_rows, explicit_empty_state):
     return "RESULTS_NOT_VALIDATED"
 
 
+def bail_sections(pages):
+    """Keep one-based page locations alongside the existing supported sections."""
+    sections = []
+    for page_number, page in enumerate(pages, 1):
+        if "BAIL INFORMATION" not in page:
+            continue
+        section = page[page.find("BAIL INFORMATION"):]
+        end = re.search(
+            r"\n\s*(?:DEFENDANT INFORMATION|CHARGES|DISPOSITION|DOCKET ENTRY INFORMATION|"
+            r"CASE FINANCIAL INFORMATION|ATTORNEY INFORMATION|CALENDAR EVENTS|STATUS INFORMATION|"
+            r"COMMONWEALTH INFORMATION|CASE PARTICIPANTS|COMMONWEALTH OF PENNSYLVANIA|CPCMS\s+\d+)\b",
+            section,
+        )
+        if end:
+            section = section[:end.start()]
+        header = section.find("Bail Action")
+        if header < 0:
+            raise ValueError("UNSUPPORTED_BAIL_HEADER")
+        sections.append((page_number, section[header:].strip()))
+    return sections
+
+
 def extract_bail(body, docket):
     base = {"entries": [], "postedEntryState": "UNKNOWN", "excerpt": None}
     if not body.startswith(b"%PDF-"):
@@ -160,31 +183,23 @@ def extract_bail(body, docket):
     if (not identifiers or identifiers[0] != docket
             or not re.search(r"COURT OF COMMON PLEAS OF\s+ALLEGHENY COUNTY", first, re.I)):
         return dict(base, extractionOutcome="IDENTITY_MISMATCH", detail="Court/docket header did not match the calendar row.")
-    bail_pages = [page for page in pages if "BAIL INFORMATION" in page]
-    if not bail_pages:
+    base.update(documentSha256=hashlib.sha256(body).hexdigest(),
+                documentPageCount=len(pages),
+                bailSectionPages=[i for i, page in enumerate(pages, 1)
+                                  if "BAIL INFORMATION" in page])
+    if not base["bailSectionPages"]:
         return dict(base, extractionOutcome="MISSING_BAIL_SECTION", detail="Readable matching docket has no bail section. Bail and custody remain unknown.")
-    sections = []
-    for page in bail_pages:
-        section = page[page.find("BAIL INFORMATION"):]
-        end = re.search(
-            r"\n\s*(?:DEFENDANT INFORMATION|CHARGES|DISPOSITION|DOCKET ENTRY INFORMATION|"
-            r"CASE FINANCIAL INFORMATION|ATTORNEY INFORMATION|CALENDAR EVENTS|STATUS INFORMATION|"
-            r"COMMONWEALTH INFORMATION|CASE PARTICIPANTS|COMMONWEALTH OF PENNSYLVANIA|CPCMS\s+\d+)\b",
-            section,
-        )
-        if end:
-            section = section[:end.start()]
-        # The participant/Nebbia line is not needed to interpret bail.
-        header = section.find("Bail Action")
-        if header < 0:
-            return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Bail section exists but its table header is unsupported.")
-        sections.append(section[header:].strip())
-    section = "\n".join(sections)
+    try:
+        sections = bail_sections(pages)
+    except ValueError:
+        return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Bail section exists but its table header is unsupported.")
+    section = "\n".join(text for _, text in sections)
     if len(section) > 4000:
         return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Bail chronology exceeds the minimal excerpt limit; do not truncate it silently.")
     entries = []
     unknown_rows = []
-    lines = section.splitlines()
+    located_lines = [(page, line) for page, text in sections for line in text.splitlines()]
+    lines = [line for _, line in located_lines]
     for index, line in enumerate(lines):
         match = re.match(r"^\s*(.*?)\s{2,}(\d{2}/\d{2}/\d{4})\s{2,}(.*?)\s*$", line)
         if not match:
@@ -192,10 +207,12 @@ def extract_bail(body, docket):
                 unknown_rows.append(line)
             continue
         action, date, tail = match.groups()
+        source_pages = [located_lines[index][0]]
         if action.count("(") > action.count(")") and index + 1 < len(lines):
             continuation = lines[index + 1].strip()
             if re.fullmatch(r"[A-Za-z -]+\)", continuation):
                 action += " " + continuation
+                source_pages = sorted(set(source_pages + [located_lines[index + 1][0]]))
         words = re.sub(r"\s+", " ", tail).strip()
         # Never silently select one of two financial values in an unknown layout.
         # Multiple historical rows are expected; multiple amounts in ONE row are
@@ -230,12 +247,13 @@ def extract_bail(body, docket):
                     amount = None
         entries.append({"action": action.strip(), "wording": words,
                         "orderDate": iso_date(date), "bailCategory": category,
-                        "amountCents": amount, "financialBasis": basis})
+                         "amountCents": amount, "financialBasis": basis,
+                         "sourcePages": source_pages})
     if not entries or unknown_rows or any(entry["orderDate"] is None for entry in entries):
         return dict(base, excerpt=section, extractionOutcome="UNSUPPORTED_LAYOUT",
                     detail="Some bail rows could not be interpreted; no guessed amounts were saved.")
     # All source rows/chronology stay in the excerpt, including multiline action text.
     posted = "SHOWN_POSTED" if re.search(r"\bpost(?:ed|ing)\b", section, re.I) else "NOT_SHOWN"
-    return {"entries": entries, "postedEntryState": posted, "excerpt": section,
-            "extractionOutcome": "EXTRACTED",
-            "detail": "Document identity matched. All bail entries remain provisional; no operative order or custody was inferred."}
+    return dict(base, entries=entries, postedEntryState=posted, excerpt=section,
+                extractionOutcome="EXTRACTED",
+                detail="Document identity matched. All bail entries remain provisional; no operative order or custody was inferred.")

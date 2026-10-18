@@ -23,4 +23,17 @@ export interface DiscoveryProvenance {
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @pattern ^[a-f0-9]{64}$ */
+  documentSha256?: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  documentPageCount?: number;
+  /**
+     * One-based pages containing the inspected bail section.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  bailSectionPages?: number[];
 }

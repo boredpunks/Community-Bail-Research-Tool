@@ -17,4 +17,10 @@ export interface DiscoveryEntry {
   /** @nullable */
   amountCents: number | null;
   financialBasis: FinancialBasis | null;
+  /**
+     * One-based PDF pages supporting this entry; absent for legacy evidence.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  sourcePages?: number[];
 }

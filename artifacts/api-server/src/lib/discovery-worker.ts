@@ -11,6 +11,7 @@ import {
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
+import { documentLocations } from "./document-locations";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
 import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
@@ -298,6 +299,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.docketNumber, String(message.docketNumber))));
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
+        const locations = documentLocations(message);
         if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
         extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries });
         // Validate, never replace raw calendar-date strings with Zod's coerced Dates.
@@ -314,6 +316,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           excerpt: typeof message.excerpt === "string" ? message.excerpt : null,
           detail: typeof message.detail === "string" ? message.detail : null,
           provenance: { ...item.provenance,
+            ...locations,
             extractionOutcome: outcome as typeof item.provenance.extractionOutcome,
             postedEntryState: message.postedEntryState as typeof item.provenance.postedEntryState,
             entries: message.entries as DiscoveryEntryData[],
