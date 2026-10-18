@@ -132,6 +132,8 @@ export const discoveryAssessmentsTable = pgTable("discovery_assessments", {
   state: text("state").notNull().default("PREPARED"),
   criteria: jsonb("criteria").$type<DiscoveryCriteriaData>().notNull(),
   expectedMethod: text("expected_method").notNull(),
+  // Operator-granted execution only; NULL keeps a permit CLI-only.
+  executionOwnerId: text("execution_owner_id"),
   jobId: uuid("job_id").references(() => discoveryJobsTable.id),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),

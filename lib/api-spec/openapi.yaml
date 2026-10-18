@@ -87,7 +87,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DiscoveryCriteria" }
+            schema: { $ref: "#/components/schemas/DiscoveryJobInput" }
       responses:
         "201":
           description: Bounded live collection explicitly queued
@@ -120,7 +120,7 @@ paths:
     get:
       operationId: listDiscoveryAssessments
       tags: [bail-records]
-      summary: Read operator-prepared pilot scopes and evidence status; never approve or run them
+      summary: Read only scopes explicitly delegated to this research workspace
       responses:
         "200":
           description: Pilot protocols, explicitly distinct from authorization to collect
@@ -128,6 +128,25 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscoveryAssessment" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /discovery/assessments/{assessmentId}/start:
+    post:
+      operationId: startDiscoveryAssessment
+      tags: [bail-records]
+      summary: Consume one exact operator-approved bounded permit delegated to this workspace
+      parameters:
+        - in: path
+          name: assessmentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: One exact-scope job queued; no approval or source-barrier changes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /discovery/jobs/{jobId}:
     get:
       operationId: getDiscoveryJob
@@ -377,10 +396,17 @@ components:
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
         recordCap: { type: integer, minimum: 1, maximum: 200 }
-        requestCap: { type: integer, minimum: 8, maximum: 500 }
+        requestCap: { type: integer, minimum: 1, maximum: 500, description: "Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8." }
         matchTarget: { type: integer, minimum: 1, maximum: 200, description: "Requested distinct matching dockets. Absent only for legacy processing-cap jobs." }
         matchFilters: { $ref: "#/components/schemas/DiscoveryMatchFilters" }
       required: [courtOffice, eventType, startDate, endDate, recordCap, requestCap]
+    DiscoveryJobInput:
+      allOf:
+        - $ref: "#/components/schemas/DiscoveryCriteria"
+        - type: object
+          properties:
+            requestCap: { type: integer, minimum: 8, maximum: 500 }
+          required: [requestCap]
     CalendarPreviewInput:
       type: object
       properties:
@@ -432,6 +458,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        jobId: { type: ["string", "null"], format: uuid }
         stage: { type: string, enum: [SINGLE, SMALL, MODEST, BOUNDED_ENGINE] }
         state: { type: string, enum: [PREPARED, APPROVED, ATTEMPTED, FAILED, VERIFIED, BOUNDED_COMPLETED] }
         criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }

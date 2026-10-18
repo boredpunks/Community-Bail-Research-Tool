@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetDiscoveryPolicy,
   useListDiscoveryAssessments,
+  useStartDiscoveryAssessment,
   getListDiscoveryAssessmentsQueryKey,
   getGetDiscoveryPolicyQueryKey,
   useListDiscoveryJobs,
@@ -154,11 +155,14 @@ export default function Discovery() {
   } });
   const create = useCreateDiscoveryJob();
   const createCalendarPreview = useCreateCalendarPreview();
+  const startApproved = useStartDiscoveryAssessment();
   const control = useControlDiscoveryJob();
   const save = useSaveDiscoveryObservation();
   const saveCandidates = useSaveDiscoveryCandidates();
 
   const [jobId, setJobId] = useState<string>('');
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchConfirmed, setLaunchConfirmed] = useState<string>('');
   const [startE, setStart] = useState<string | undefined>();
   const [endE, setEnd] = useState<string | undefined>();
   const [office, setOffice] = useState<CalendarPreviewInputCourtOffice>('CP-05-02-Crim');
@@ -349,6 +353,39 @@ export default function Discovery() {
             {pol.latencyWarning ? <p className="errbox" role="status">{pol.latencyWarning}</p> : null}
             {pol.pausedUntil && Date.parse(pol.pausedUntil) > Date.now() ? <p className="errbox" role="status">Source cooldown until {formatInstant(pol.pausedUntil)}. No new requests permitted before then.</p> : null}
             {!pol.collectionEnabled ? <p className="errbox" role="status">Collection is paused source-wide: {pol.blockedReason}. No new court requests will start. Access denial requires operator assessment, not an automatic retry.</p> : null}
+            <section className="border border-border rounded p-3" data-testid="bounded-scope-panel">
+              <h3 className="mono font-semibold">Approved workspace search</h3>
+              <p className="hint">An operator must separately approve and delegate an exact scope. This panel cannot approve source access, change criteria, reset permits, or enable broader collection. The shared workspace password identifies this workspace, not individual volunteers.</p>
+              {assessments.isError ? <p className="errbox">Approved scopes could not be loaded.</p> : assessments.isLoading ? <p className="hint">Loading scopes…</p> : !assessments.data?.length ? <p className="hint">No search scope has been delegated to this workspace.</p> : assessments.data.map(pilot => (
+                <div key={pilot.id} className="mt-3 border-t border-border pt-3">
+                  <p className="font-semibold">{pilot.state}: Allegheny - 05 / {pilot.criteria.courtOffice} / {pilot.criteria.eventType} / {pilot.criteria.courtRoom}</p>
+                  <p className="hint mono">Permit {pilot.id}</p>
+                  <p className="hint">{pilot.criteria.startDate} through {pilot.criteria.endDate}, America/New_York. At most {pilot.criteria.recordCap} distinct docket documents and {pilot.criteria.requestCap} total source requests, including assets and Search. No automatic retries.</p>
+                  <p className="hint">{pilot.report?.reason ?? (pilot.state === 'PREPARED' ? 'Prepared only. Fresh exact approval is still required.' : 'No completed source report.')}</p>
+                  {pilot.state === 'APPROVED' ? <>
+                    <label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={launchConfirmed === pilot.id} onChange={e => setLaunchConfirmed(e.target.checked ? pilot.id : '')} />I want to start this exact, single-use approved search.</label>
+                    <button type="button" className="btn btn-primary mt-2" data-testid={`start-approved-${pilot.id}`}
+                      disabled={launchConfirmed !== pilot.id || startApproved.isPending || !!pol.requestInFlight}
+                      onClick={() => {
+                        setLaunchError(null);
+                        startApproved.mutate({ assessmentId: pilot.id }, {
+                          onSuccess: j => {
+                            setJobId(j.id); setLaunchConfirmed(''); setSelectedCandidateIds([]);
+                            qc.invalidateQueries({ queryKey: getListDiscoveryAssessmentsQueryKey() });
+                            refreshJob(j.id);
+                          },
+                          onError: error => {
+                            setLaunchError(errMsg(error));
+                            qc.invalidateQueries({ queryKey: getListDiscoveryAssessmentsQueryKey() });
+                          },
+                        });
+                      }}>{startApproved.isPending ? 'Starting…' : 'Start approved search'}</button>
+                  </> : null}
+                  {pilot.jobId ? <button type="button" className="btn mt-2" onClick={() => { setJobId(pilot.jobId!); refreshJob(pilot.jobId!); }}>Inspect this search and evidence</button> : null}
+                </div>
+              ))}
+              {launchError ? <p className="errbox mt-2" role="alert">{launchError}</p> : null}
+            </section>
             <details className="border border-border rounded p-3" data-testid="details-pilot-status">
               <summary className="mono cursor-pointer font-semibold">Staged verification: preparation is not approval</summary>
               <p className="hint mt-2">Separate approvals are required for one identity-checked PDF, then 3, then 10 at a separate time. Each stage includes the exact browser calendar client and public HTTP PDF client, calendar overhead and fixed dates/budgets. The 10-document stage exceeds current protected limits and needs separate budget approval. Passing a pilot does not enable collection or start the 100-match sample.</p>

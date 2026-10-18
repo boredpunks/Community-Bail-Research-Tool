@@ -12,7 +12,7 @@ const stages = ["BEFORE_SEARCH", "SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEI
   "PARSER_STARTED", "PARSER_ACCEPTED", "PARSER_REJECTED"];
 const resources = ["document", "script", "stylesheet", "image", "font", "media",
   "xhr", "fetch", "eventsource", "websocket", "manifest", "texttrack", "other", "UNKNOWN"];
-const decisions = ["UNKNOWN", "OPTIONAL_ABORT", "POLICY_ABORT", "READ_ONLY_STOP", "CACHE", "FETCH_ATTEMPT"];
+const decisions = ["UNKNOWN", "OPTIONAL_ABORT", "LOCAL_IMAGE", "POLICY_ABORT", "READ_ONLY_STOP", "CACHE", "FETCH_ATTEMPT"];
 const failures = ["UNKNOWN", "NET_FAILED", "NET_ABORTED", "NET_BLOCKED_CLIENT", "DNS", "CONNECT",
   "TIMEOUT", "HTTP_DENIED", "HTTP_RATE_LIMIT", "HTTP_CLIENT", "HTTP_SERVER", "HTTP_OTHER", "OTHER"];
 const transportStatuses = ["RESPONSE_INCOMPLETE", "SOURCE_STOPPED", "REQUIRED_RESOURCE_FAILURE",

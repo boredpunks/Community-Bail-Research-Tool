@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import "./document-locations.test";
+import "./calendar-layout.test";
+import "./job-criteria.test";
+import { boundedLaunchChecks } from "./bounded-launch.test";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
@@ -203,6 +207,8 @@ try {
   for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
     await pool.query(`CREATE TABLE ${namespace}.${name} (LIKE public.${name} INCLUDING ALL)`);
   }
+  await boundedLaunchChecks(store);
+  await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
   check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v14");

@@ -58,6 +58,7 @@ class CalendarResults(HTMLParser):
         self._presentation_rows = 0
         self._recognized_links = 0
         self._malformed = False
+        self._row_observations = []
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -79,6 +80,7 @@ class CalendarResults(HTMLParser):
                 self.in_cell = False
                 self.cells, self.link = [], None
                 self._cell_types, self._cell_spans, self._links = [], [], []
+                self._all_hrefs, self._interactive = [], 0
             elif self.in_row and tag in ("td", "th"):
                 if self.in_cell:
                     self._malformed = True
@@ -101,6 +103,10 @@ class CalendarResults(HTMLParser):
                 self.link = href
                 if len(self._links) > 1:
                     self._malformed = True
+            if self.in_row and tag == "a":
+                self._all_hrefs.append(a.get("href", ""))
+            if self.in_row and (tag in ("button", "input") or "onclick" in a):
+                self._interactive += 1
         if tag == "a" and re.search(r"(?:pageNumber|pageIndex|page=)", a.get("href", ""), re.I):
             self.has_remote_pagination = True
 
@@ -124,6 +130,8 @@ class CalendarResults(HTMLParser):
                         self._malformed = True
                     self.headers = [cell.strip() for cell in self.cells]
                 elif kinds == {"td"}:
+                    self._row_observations.append(calendar_row_observation(
+                        self.cells, self._cell_spans, self._all_hrefs, self._interactive))
                     if len(self.cells) == 1 and self._cell_spans[0] > 1 and not self._links:
                         self._presentation_rows += 1
                     # Presentation-shaped rows remain unverified, never empty proof.
@@ -157,6 +165,11 @@ class CalendarResults(HTMLParser):
                 "overflow": any(value > 10_000 for value in counts.values()),
                 "malformed": self._malformed,
                 "complete": self.table_found and not self.in_table and not self.in_row}
+
+    def contract_observation(self):
+        return {"kind": "calendar_layout", "version": 1, **self.layout_summary(),
+                "rows": self._row_observations[:8],
+                "rowsOmitted": len(self._row_observations) > 8}
 
     def validated(self, criteria):
         if not self.table_found:
@@ -208,6 +221,44 @@ class CalendarResults(HTMLParser):
         # text or any cell values, as preview audit metadata.
         self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
         return result
+
+
+def calendar_row_observation(cells, spans, hrefs, interactive):
+    """A bounded structural projection, not a result acceptance decision."""
+    status_labels = {
+        "no records found": "NO_RECORDS_FOUND",
+        "no records found.": "NO_RECORDS_FOUND",
+        "no results found": "NO_RESULTS_FOUND",
+        "no results found.": "NO_RESULTS_FOUND",
+        "no data available in table": "NO_DATA_AVAILABLE",
+        "no matching records found": "NO_MATCHING_RECORDS",
+    }
+    text = " ".join(cells[0].split()).lower() if len(cells) == 1 else ""
+    links = {key: 0 for key in ("relativeDocket", "absoluteSourceDocket",
+                               "other", "identityMatched", "strictQuery")}
+    docket = cells[2].strip() if len(cells) > 2 else ""
+    for href in hrefs:
+        try:
+            url = urlsplit(href)
+            query = parse_qs(url.query, keep_blank_values=True)
+            relative = not url.scheme and not url.netloc and href.startswith("/")
+            absolute = url.scheme == "https" and url.netloc == "ujsportal.pacourts.us"
+            route = url.path == "/Report/CpDocketSheet" and not url.fragment
+            key = ("relativeDocket" if relative else "absoluteSourceDocket") if route and (relative or absolute) else "other"
+            links[key] += 1
+            if key != "other":
+                links["identityMatched"] += bool(DOCKET.fullmatch(docket) and query.get("docketNumber") == [docket])
+                links["strictQuery"] += set(query) == {"docketNumber"} and len(query["docketNumber"]) == 1
+        except ValueError:
+            links["other"] += 1
+    return {
+        "shape": "PRESENTATION_SHAPED" if len(cells) == 1 and spans[0] > 1 else "DATA_SHAPED" if len(cells) >= 18 and all(span == 1 for span in spans) else "OTHER",
+        "cells": min(len(cells), 128), "spanTotal": min(max(0, sum(spans)), 10_000),
+        "docketShapedCell": bool(DOCKET.fullmatch(docket)),
+        "statusLabel": status_labels.get(text, "BLANK" if not text else "OTHER"),
+        "interactive": min(interactive, 128),
+        "links": {key: min(value, 128) for key, value in links.items()},
+    }
 
 
 def calendar_result_state(validated_table, parsed_rows, explicit_empty_state):

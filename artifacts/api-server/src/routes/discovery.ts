@@ -9,6 +9,7 @@ import {
   SaveDiscoveryObservationBody, SaveDiscoveryObservationParams, SaveDiscoveryObservationResponse,
   SaveDiscoveryCandidatesBody, SaveDiscoveryCandidatesParams, SaveDiscoveryCandidatesResponse,
   ListDiscoveryAssessmentsResponse,
+  StartDiscoveryAssessmentParams, StartDiscoveryAssessmentResponse,
 } from "@workspace/api-zod";
 import { actualDate, discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
 import { serializeBailRecord } from "../lib/bail-records";
@@ -18,6 +19,7 @@ import { discoverySourceStatus, sourceAdmissionBlock } from "../lib/discovery-so
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/discovery-retention";
 import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
 import { makeCalendarPreviewCriteria, validCalendarCriteria } from "../lib/calendar-criteria";
+import { launchBoundedPermit } from "../lib/bounded-launch";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
@@ -47,18 +49,29 @@ router.get("/discovery/jobs", async (_req, res): Promise<void> => {
 });
 
 router.get("/discovery/assessments", async (_req, res): Promise<void> => {
-  // Read-only diagnostics remain operator-only. Scoped engine reports are
-  // visible but never represented as global staged access proof.
+  const { ownerId } = getWorkspaceIdentity(res);
   const rows = await db.select().from(discoveryAssessmentsTable)
-    .where(inArray(discoveryAssessmentsTable.stage, ["SINGLE", "SMALL", "MODEST", "BOUNDED_ENGINE"]))
+    .where(eq(discoveryAssessmentsTable.executionOwnerId, ownerId))
     .orderBy(desc(discoveryAssessmentsTable.createdAt)).limit(30);
   const payload = rows.map((row) => ({
-    id: row.id, stage: row.stage, state: row.state, criteria: row.criteria, expectedMethod: row.expectedMethod,
+    id: row.id, jobId: row.jobId, stage: row.stage, state: row.state, criteria: row.criteria, expectedMethod: row.expectedMethod,
     approvedAt: row.approvedAt?.toISOString() ?? null, expiresAt: row.expiresAt?.toISOString() ?? null,
     startedAt: row.startedAt?.toISOString() ?? null, completedAt: row.completedAt?.toISOString() ?? null, report: row.report,
   }));
   ListDiscoveryAssessmentsResponse.parse(payload);
   res.json(payload);
+});
+
+router.post("/discovery/assessments/:assessmentId/start", async (req, res): Promise<void> => {
+  const params = StartDiscoveryAssessmentParams.safeParse(req.params);
+  if (!params.success || Object.keys(req.body ?? {}).length) {
+    res.status(400).json({ error: "Choose one exact approved scope; criteria cannot be overridden." }); return;
+  }
+  const result = await launchBoundedPermit(getWorkspaceIdentity(res).ownerId, params.data.assessmentId);
+  if (!("job" in result) || !result.job) { res.status(result.status).json({ error: result.error }); return; }
+  const payload = await jobSummary(result.job);
+  StartDiscoveryAssessmentResponse.parse(payload);
+  res.status(201).json(payload);
 });
 
 router.post("/discovery/jobs", async (req, res): Promise<void> => {
@@ -210,6 +223,12 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
     }
     const status = action === "RESUME" ? "QUEUED" : action === "CANCEL" ? "CANCELLED" : "PAUSED";
     const [updated] = await tx.update(discoveryJobsTable).set({ status, updatedAt: new Date(), message: `${action}: partial results and original budgets preserved. An already-started source request may finish.` }).where(eq(discoveryJobsTable.id, job.id)).returning();
+    if (job.assessmentId && job.status === "QUEUED" && action !== "RESUME") {
+      await tx.update(discoveryAssessmentsTable).set({ state: "FAILED", completedAt: new Date(),
+        report: { requests: job.requestsUsed, validDocuments: 0, failures: 0,
+          reason: `${action} before execution. Permit consumed; no automatic retry.` },
+      }).where(and(eq(discoveryAssessmentsTable.id, job.assessmentId), eq(discoveryAssessmentsTable.state, "ATTEMPTED")));
+    }
     await tx.insert(discoveryEventsTable).values({ jobId: job.id, ownerId: job.ownerId, kind: action, message: `${action} explicitly requested; completed evidence retained.` });
     return { job: updated!, status: 200 };
   });

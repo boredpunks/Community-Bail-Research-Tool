@@ -373,6 +373,15 @@ async def main(config=None):
                 if response_recorder:
                     response_recorder.decide(request, "OPTIONAL_ABORT" if request.resource_type in (
                         "image", "font", "media") else "POLICY_ABORT")
+                if bounded_engine_observation and request.resource_type == "image":
+                    # A local, valid transparent image avoids generating browser
+                    # load-failure noise. No court request is transmitted; this
+                    # is a newly versioned method, not an exemption for errors.
+                    if response_recorder:
+                        response_recorder.decide(request, "LOCAL_IMAGE")
+                    await route.fulfill(status=200, content_type="image/svg+xml",
+                        body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')
+                    return
                 if post_response_read_only:
                     blocked_during_inspection = min(10_000, blocked_during_inspection + 1)
                 await route.abort()
@@ -662,6 +671,9 @@ async def main(config=None):
                 calendar_validated_headers = parser.validated_column_headers
                 items = parsed_items
             finally:
+                emit("calendar_layout", **{
+                    key: value for key, value in parser.contract_observation().items() if key != "kind"
+                })
                 # Do not retain response markup, row cells, links, docket IDs,
                 # or URLs in the diagnostic path.
                 parser.rows.clear()

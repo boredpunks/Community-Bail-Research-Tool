@@ -68,7 +68,8 @@ export interface DiscoveryCriteria {
      */
   recordCap: number;
   /**
-     * @minimum 8
+     * Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.
+     * @minimum 1
      * @maximum 500
      */
   requestCap: number;
@@ -80,6 +81,14 @@ export interface DiscoveryCriteria {
   matchTarget?: number;
   matchFilters?: DiscoveryMatchFilters;
 }
+
+export type DiscoveryJobInput = DiscoveryCriteria & {
+  /**
+     * @minimum 8
+     * @maximum 500
+     */
+  requestCap: number;
+};
 
 /**
  * Observed October 12, 2026; runtime availability must be checked.
@@ -181,6 +190,8 @@ export interface DiscoveryAssessmentResult {
 
 export interface DiscoveryAssessment {
   id: string;
+  /** @nullable */
+  jobId?: string | null;
   stage: DiscoveryAssessmentStage;
   state: DiscoveryAssessmentState;
   criteria: DiscoveryCriteria;

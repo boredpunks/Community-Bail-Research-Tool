@@ -24,7 +24,8 @@ export interface DiscoveryCriteria {
      */
   recordCap: number;
   /**
-     * @minimum 8
+     * Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.
+     * @minimum 1
      * @maximum 500
      */
   requestCap: number;

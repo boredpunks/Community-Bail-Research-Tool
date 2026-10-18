@@ -27,7 +27,7 @@ CHANGED_ASSET_VERSION = "fixture_new_version_0001"
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def run_fixture(self, *, missing_grid=False, changed_version=False,
                           dependent_replacement=False, initialize_button=False,
-                          hidden_button=False, selected_room=False, post_case=None):
+                          hidden_button=False, selected_room=False, post_case=None, bounded=False):
         # Scale the real completion-to-start pacing and click deadline together:
         # 80 logical seconds per request, a 180-logical-second navigation limit.
         scale = 0.02
@@ -52,6 +52,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         if selected_room:
             initial = initial.replace('<option value="" selected>', '<option value="">').replace(
                 '<option value="fixture-room">', '<option value="fixture-room" selected>')
+        if bounded:
+            initial = initial.replace('<select name="CourtRoomID"', '<select aria-label="Courtroom" name="CourtRoomID"')
         # This shared fixture originally displayed internal diagnostic tokens
         # instead of public labels. Exact-label selection must remain strict;
         # use the already documented public labels in this local fixture only.
@@ -226,6 +228,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         port = server.sockets[0].getsockname()[1]
         config = {"criteria": CRITERIA, "calendarComplete": False, "pendingItems": [],
                   "remainingRecords": 0, "calendarPreviewOnly": True}
+        if bounded:
+            config.update(calendarPreviewOnly=False, boundedEngineObservation=True)
+            config["criteria"] = {**CRITERIA, "courtRoom": "Courtroom 506",
+                                  "recordCap": 5, "requestCap": 12}
         protocol = []
         for index in range(8):
             protocol.extend([json.dumps({"allow": True, "requestId": f"offline-{index}"}),
@@ -286,6 +292,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "formContainerHasBox": container_visibility,
             "formStates": [row for row in messages if row["kind"] == "calendar_state"],
             "responseDiagnostics": [row for row in messages if row["kind"] == "calendar_response_diagnostic"],
+            "layoutDiagnostics": [row for row in messages if row["kind"] == "calendar_layout"],
             "checkpointEmitted": any(row["kind"] in ("calendar", "docket", "calendar_preview_finished") for row in messages),
         }
         capture = os.environ.get("CALENDAR_DIAGNOSTIC_CAPTURE")
@@ -325,6 +332,17 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostic["documentEligibility"], "BLOCKED_INTEGRITY")
         self.assertTrue(any(row["code"] == "CALENDAR_SUBMITTED_VALUES_MISMATCH"
                             for row in o["formDiagnostics"]))
+
+    async def test_bounded_local_image_never_transmits_or_weakens_console_gate(self):
+        o = await self.run_fixture(post_case="optional_abort", selected_room=True, bounded=True)
+        d = o["responseDiagnostics"][-1]
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertEqual(d["consoleDiagnostics"]["status"], "CLEAN")
+        self.assertEqual(d["transportIntegrity"]["status"], "COMPLETE")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_RESULT")
+        self.assertEqual(d["parserOutcome"], "NO_EMPTY_PROOF")
+        self.assertEqual(len(o["layoutDiagnostics"]), 1)
+        self.assertFalse(o["checkpointEmitted"])
 
     async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
         o = await self.run_fixture(post_case="optional_abort")

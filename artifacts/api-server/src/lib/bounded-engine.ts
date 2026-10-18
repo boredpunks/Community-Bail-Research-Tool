@@ -2,7 +2,7 @@ import { actualDate, easternToday } from "./calendar-criteria";
 import { integratedSourceMethod } from "./discovery-safety";
 
 // A scoped assessment, never collection enablement or global access proof.
-export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v5`;
+export const boundedEngineMethod = `${integratedSourceMethod}-bounded-506-v6`;
 export const boundedEngineRequestCap = 12;
 export const boundedEngineObservationRequestCap = 3;
 const keys = ["courtOffice", "courtRoom", "eventType", "startDate", "endDate", "recordCap", "requestCap"];

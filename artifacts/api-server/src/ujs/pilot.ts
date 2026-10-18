@@ -46,10 +46,14 @@ async function main() {
       const [active] = await tx.select().from(discoveryJobsTable).where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
       if (active) throw new Error("Another discovery job is active.");
       const prior = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.stage, "BOUNDED_ENGINE"));
-      if (prior.some(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate))
-        throw new Error("A bounded engine permit already exists for this scope; no reuse or automatic retry.");
+      const sameScope = prior.filter(p => p.criteria.startDate === criteria.startDate && p.criteria.endDate === criteria.endDate);
+      if (sameScope.length && (!value("supersedes")
+        || !sameScope.some(p => p.id === value("supersedes") && p.state === "FAILED")
+        || sameScope.some(p => ["PREPARED", "APPROVED", "ATTEMPTED"].includes(p.state))))
+        throw new Error("This scope needs an explicitly superseded failed permit and fresh separate approval; no reuse or automatic retry.");
       const [created] = await tx.insert(discoveryAssessmentsTable).values({
         stage: "BOUNDED_ENGINE", expectedMethod: boundedEngineMethod, criteria,
+        executionOwnerId: flag("delegate-workspace") ? WORKSPACE_OWNER_ID : null,
       }).returning();
       return created!;
     });

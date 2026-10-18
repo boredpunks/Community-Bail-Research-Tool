@@ -32,8 +32,8 @@ import type {
   DiscoveryCandidateResult,
   DiscoveryCandidateSelection,
   DiscoveryControl,
-  DiscoveryCriteria,
   DiscoveryJob,
+  DiscoveryJobInput,
   DiscoveryObservationInput,
   DiscoveryPolicy,
   DiscoveryReport,
@@ -465,7 +465,7 @@ export const getCreateDiscoveryJobUrl = () => {
   return `/api/discovery/jobs`
 }
 
-export const createDiscoveryJob = async (discoveryCriteria: DiscoveryCriteria, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -486,7 +486,7 @@ return customFetch<DiscoveryJob>(getCreateDiscoveryJobUrl(),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(discoveryCriteria)
+    body: JSON.stringify(discoveryJobInput)
   }
 );}
 
@@ -524,9 +524,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateDiscoveryJobMutationResult = NonNullable<Awaited<ReturnType<typeof createDiscoveryJob>>>
-    export type CreateDiscoveryJobMutationBody = BodyType<DiscoveryCriteria>
+    export type CreateDiscoveryJobMutationBody = BodyType<DiscoveryJobInput>
     export type CreateDiscoveryJobMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
-    export type CreateDiscoveryJobMutationVariables = {data: BodyType<DiscoveryCriteria>}
+    export type CreateDiscoveryJobMutationVariables = {data: BodyType<DiscoveryJobInput>}
 
     export const useCreateDiscoveryJob = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -636,7 +636,7 @@ export const getListDiscoveryAssessmentsUrl = () => {
 }
 
 /**
- * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
+ * @summary Read only scopes explicitly delegated to this research workspace
  */
 export const listDiscoveryAssessments = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryAssessment[]> => {
 
@@ -683,7 +683,7 @@ export type ListDiscoveryAssessmentsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
- * @summary Read operator-prepared pilot scopes and evidence status; never approve or run them
+ * @summary Read only scopes explicitly delegated to this research workspace
  */
 
 export function useListDiscoveryAssessments<TData = Awaited<ReturnType<typeof listDiscoveryAssessments>>, TError = ErrorType<UnauthorizedResponse>>(
@@ -703,6 +703,80 @@ export function useListDiscoveryAssessments<TData = Awaited<ReturnType<typeof li
 
 
 
+
+export const getStartDiscoveryAssessmentUrl = (assessmentId: string,) => {
+
+
+
+
+  return `/api/discovery/assessments/${assessmentId}/start`
+}
+
+/**
+ * @summary Consume one exact operator-approved bounded permit delegated to this workspace
+ */
+export const startDiscoveryAssessment = async (assessmentId: string, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+
+  return customFetch<DiscoveryJob>(getStartDiscoveryAssessmentUrl(assessmentId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartDiscoveryAssessmentMutationKey = () => ['startDiscoveryAssessment'] as const;
+
+export const getStartDiscoveryAssessmentMutationOptions = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext> => {
+
+const mutationKey = getStartDiscoveryAssessmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startDiscoveryAssessment>>, StartDiscoveryAssessmentMutationVariables> = (props) => {
+          const {assessmentId} = props ?? {};
+
+          return  startDiscoveryAssessment(assessmentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartDiscoveryAssessmentMutationResult = NonNullable<Awaited<ReturnType<typeof startDiscoveryAssessment>>>
+
+    export type StartDiscoveryAssessmentMutationError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type StartDiscoveryAssessmentMutationVariables = {assessmentId: string}
+
+    /**
+ * @summary Consume one exact operator-approved bounded permit delegated to this workspace
+ */
+export const useStartDiscoveryAssessment = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startDiscoveryAssessment>>,
+        TError,
+        StartDiscoveryAssessmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartDiscoveryAssessmentMutationOptions(options));
+    }
 
 export const getGetDiscoveryJobUrl = (jobId: string,) => {
 

@@ -12,6 +12,8 @@ import {
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { documentLocations } from "./document-locations";
+import { validCalendarLayout } from "./calendar-layout";
+import { finishBoundedRun } from "./bounded-report";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
 import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
@@ -252,6 +254,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
+      } else if (message.kind === "calendar_layout") {
+        if (diagnosticOnly || !validCalendarLayout(message)) throw new Error("Invalid calendar layout projection");
+        await discoveryEvent(job, "CALENDAR_LAYOUT", JSON.stringify(message));
       } else if (message.kind === "calendar") {
         if (boundedEngine && !boundedObservationComplete) throw new Error("Courtroom observation gate missing before Search results");
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
@@ -419,12 +424,30 @@ export async function startDiscoveryWorker() {
           await clearExpiredDiscoveryResults();
           cleanupAt = Date.now() + 60_000;
         }
-        const [job] = await db.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.status, "QUEUED"), isNull(discoveryJobsTable.assessmentId))).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
+        const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "QUEUED")).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
         if (job) {
-          try { await runJob(job); }
+          try {
+            if (job.assessmentId) {
+              const [permit] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, job.assessmentId));
+              if (!permit || permit.state !== "ATTEMPTED" || permit.jobId !== job.id
+                || permit.executionOwnerId !== job.ownerId || permit.stage !== "BOUNDED_ENGINE"
+                || permit.expectedMethod !== boundedEngineMethod || !validBoundedEngineCriteria(job.criteria)
+                || JSON.stringify(permit.criteria) !== JSON.stringify(job.criteria))
+                throw new Error("Queued assessment is not an exact delegated bounded scope");
+              await runJob(job, permit.id);
+              await finishBoundedRun(job.id, permit.id);
+            } else await runJob(job);
+          }
           catch (error) {
             logger.error({ err: error instanceof Error ? { name: error.name, message: error.message.slice(0, 180) } : undefined }, "Discovery worker stopped a job");
             await pause(job, "Local worker failure. No fabricated results or automatic retries. Operator should inspect setup.");
+            if (job.assessmentId) {
+              await db.update(discoveryAssessmentsTable).set({
+                state: "FAILED", completedAt: new Date(),
+                report: { requests: (await db.select().from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))).length,
+                  validDocuments: 0, failures: 0, reason: "Local worker failure. Permit consumed; inspect retained evidence. No automatic retry." },
+              }).where(and(eq(discoveryAssessmentsTable.id, job.assessmentId), eq(discoveryAssessmentsTable.state, "ATTEMPTED")));
+            }
           }
         } else await delay(1000);
       }

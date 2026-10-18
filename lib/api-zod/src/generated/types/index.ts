@@ -37,6 +37,7 @@ export * from './discoveryEntry';
 export * from './discoveryEvent';
 export * from './discoveryItem';
 export * from './discoveryJob';
+export * from './discoveryJobInput';
 export * from './discoveryJobStatus';
 export * from './discoveryMatchFilters';
 export * from './discoveryObservationInput';
