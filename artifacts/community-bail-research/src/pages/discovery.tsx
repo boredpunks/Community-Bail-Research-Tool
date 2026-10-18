@@ -487,7 +487,8 @@ export default function Discovery() {
           <div><label className="lbl" htmlFor="d-room">Room</label>
             <select id="d-room" className="field" value={room} onChange={e => setRoom(e.target.value as CalendarPreviewInputCourtRoom)} data-testid="select-room">
               <option value="ANY">All rooms (no filter)</option>
-              {room === 'Courtroom 506' ? <option value="Courtroom 506">Courtroom 506</option> : null}
+              {room === 'Courtroom 506' || office === 'CP-05-02-Crim' && event === 'Bail Hearing'
+                ? <option value="Courtroom 506">Courtroom 506</option> : null}
             </select></div>
           <div><label className="lbl" htmlFor="d-event">Event type</label>
             <select id="d-event" className="field" value={event} onChange={e => setEvent(e.target.value as CalendarPreviewInputEventType)} data-testid="select-event">
