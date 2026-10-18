@@ -17,3 +17,12 @@ and exposes credentials.
 never print it, log request bodies, save cookies/storage state, or add an
 authentication bypass. Retain only nonsecret assertions and screenshots after
 login. Use the app's actual authentication, not unused auth-provider credentials.
+
+When Playwright cannot find its bundled browser, check for an installed system
+Chromium before downloading another browser.
+
+**Why:** This workspace had a usable Nix Chromium even though Playwright's own
+browser cache was empty.
+
+**How to apply:** Launch the process-level test with the discovered executable
+path; keep authentication and cookies in the same in-memory browser context.
