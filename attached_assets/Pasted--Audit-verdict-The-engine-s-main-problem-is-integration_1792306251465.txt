@@ -1,0 +1,226 @@
+## Audit verdict
+
+The engine’s main problem is **integration**: calendar retrieval, result interpretation, document retrieval, and bail extraction exist as separate pieces, but the evidence does not yet demonstrate that they work together against the source.
+
+I inspected GitHub specifically to identify the shortest path to a working docket-number and bail-amount engine—not to propose another general safety project.
+
+The highest-value next change is to establish a source-backed contract for the Search response and test it through the actual document/extraction path. Another unchanged live attempt is unlikely to be informative enough.
+
+## Scope and verification limits
+
+Repository: `boredpunks/Community-Bail-Research-Tool`.
+
+Latest commit returned during this audit: `2d1d2254845693439b8c03902de105a54b138051`, October 18, 2026. I pinned subsequent route/document inspection to that revision. Some smaller modules were read immediately before establishing that baseline.
+
+I inspected:
+
+- `artifacts/api-server/src/ujs/evidence.py`
+- The previously retrieved current worker implementation.
+- `artifacts/api-server/src/lib/bounded-engine.ts`
+- `artifacts/api-server/src/lib/discovery-candidates.ts`
+- `artifacts/api-server/src/routes/discovery.ts`
+- Calendar-readiness and source-validation documentation.
+- The available execution history and repository structure.
+
+This was a read-only, static audit. I did not run the application’s tests, access its database, restart Replit, contact the court, or modify GitHub. Long worker/execution-document responses were truncated by the connector, so I cannot independently diagnose the latest four-request failure from the complete report.
+
+I followed the supplied audit framework’s distinction between inspected code, reproduced behavior, and unverified runtime claims. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/157740339/9ce637fa-46bd-4885-b95f-741a1eaf9813/paste.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIA2F3EMEYEVB4EGJIF%2F20261018%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261018T064419Z&X-Amz-Expires=2332&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEEcaCXVzLWVhc3QtMSJHMEUCIFe7NSWBmLuCBF5ArE4Z%2FfCufb668IXIiCoHZVhJ8%2BI3AiEAuFQy0RQwe6sanUee380OkmhQ9yvE9A17bZ9raYiba2IqgAUIDxABGgw2OTk3NTMzMDk3MDUiDHe3P9cgClSxnZbJIyrdBPxHCCG85bBmgOABPVqDBF3Ifx5zmMD0xXwknCFjeDDwgntbGfPa9adXz3v7DwC990ytnGkq7lhBVcmJ2rGnPyEW%2Fx3gBrL4uJUPiQ%2BcfiWUlN3A%2BvDtZ8mdclVpMscGCpeyeX%2FToHXgiQzgkzBTVWBoAPhL%2BypFEjVUDOQLNTksMWoj80KLaNw1NJJKxvhchaZrCdzI6uFvLjWzfkl9yNq5sjpWHH%2FfBTUG05paAyfNJFeMOyxUlGXDsOmrAyxss9ZM%2B7SGstyEAF%2BuTyk%2FkUotqYHPWnBcd2aE76%2Fj4qXohXNOBmViTJY6Oef4DIk5%2BPAPhTcQwfLrdvrzrEA%2B1gDtcowwiQ%2Fck2y%2BMyRC6V982PFiUQgn8xD7NrhgTCfcz0h27kTlD3JEjOs%2FK7yNBdnf96%2B0rGcGHm%2BVbLAYcwyDoGuuEmLM5YPrA7ugRgQkuo13aEO2EEEkw%2BnZgp%2BXFFrMxJg4i7EBwoyA27i9GX%2B9UTIElgZz3VKXPU%2BFdfZmuC8gVhWow3gOx4nDkI%2FFGcO%2FQ7PzmWXehZzaMP8Fr22w5tgCEyik4eY4HCPb%2FLReg3jJt64HLSN4IqndOb0Srb5OGhSuyWiAaNy%2BjJd3DfyIrHLTYBnq5rA9ExqXyZwWMvPcEWoVKqBtz8fcRWkZiU6b0RlJEBWr8lrwjd8Sn2Nu5tSAsF8z6pq%2BqOiBNajwgwDKkW2Zi6cj5TdPq8v8usrPgEwaIhDO4UXEDEOp%2FaipgPRL16mMvveTJb0uSpexlAi5d502sWScMQ9nRg7w0o4XxX3cR3fGWElTQLPfMIzM0dYGOpgBY9bI6C0xsd%2B38Ml4IpbcoEpAfxQjH4ZPsKyGAkT43cahnH5JiC0nvdn%2FtkOJjEfVM6ZvUTt5SmJMhoM9OQqeOThCDzYwNRf6Dn6jbmkUP%2BHhYsegqJ6vzQjl4on%2Fy%2BWvKEzP1vT19bbUxRXNGjGWzzSv4eTFGiDfX39%2By1KZwYY8aQEXNcvbZSbjyE6e70gT1ZqycVuyR%2FE%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=3cae761b95428d7e0901747b72a2c180d66ae513f5d2db31c9ae77898ef34dfb)
+
+## The functional path
+
+The intended flow is:
+
+```text
+Approved criteria
+  → browser form binding and Search submission
+  → calendar response validation
+  → docket/link extraction
+  → document retrieval
+  → document identity check
+  → bail-entry extraction
+  → discovery item
+  → pending observation
+  → authenticated display/search
+```
+
+The audit found consequential issues or verification gaps at four boundaries.
+
+## Prioritized findings
+
+### F1 — Calendar parsing needs a verified response contract
+
+Priority: first. Confidence: high about implementation behavior; unresolved source compatibility.
+
+Evidence: `evidence.py`, `CalendarResults.handle_starttag()` and `CalendarResults.validated()`.
+
+The parser expects:
+
+- Exactly named table `caseSearchResultGrid`.
+- Specific headers at fixed positions.
+- Docket number at column 2.
+- Court office at column 10.
+- Event type at column 14.
+- Event date at column 16.
+- A relative link beginning `/Report/CpDocketSheet?`.
+- A recognized document link on every non-header row.
+
+These are compatibility assumptions, not inherently incorrect checks. The problem is that the retained live evidence has not demonstrated the complete expected layout.
+
+The earlier recorded response had one result table, 19 header cells, one presentation row, and zero recognized document links. That could encounter `CALENDAR_DOCUMENT_LINK_MISSING` even after console classification is resolved. It does not establish whether the row was an empty-state message or a supported case row.
+
+Correction:
+
+- Establish explicit handling for data rows, presentation rows, and a verified source empty-state.
+- Map columns using verified headers, or explicitly validate the entire supported fixed layout before reading positions.
+- Support only document-link forms demonstrated by source evidence. If same-origin absolute links occur, normalize and validate them rather than rejecting them merely for being absolute.
+- Keep unknown layouts unsupported; do not guess.
+
+Acceptance: the actual parser distinguishes source-backed positive results, explicit empty results, returned forms, and unsupported layouts. A presentation row is never accidentally treated as a docket.
+
+### F2 — Diagnostics have been tested more thoroughly than the successful extraction path
+
+Priority: first, alongside F1. Confidence: high about the documented gap.
+
+The readiness documentation describes actual-worker fixtures containing public controls and header-only tables, deliberately ending as `RESULTS_NOT_VALIDATED`. Those tests can protect failure handling, but they cannot establish a successful calendar-to-document handoff.
+
+The project needs a positive acceptance chain, not another aggregate check count.
+
+Correction: establish a permitted, source-backed test bundle containing:
+
+1. A representative calendar result structure.
+2. Its docket/document relationship.
+3. A corresponding readable docket document.
+4. Expected identity and bail-extraction outcomes.
+
+Retain only what the project’s privacy rules permit. If a replayable sanitized artifact cannot be retained, document and execute a controlled acceptance procedure instead. Do not invent court records to make a fixture.
+
+Acceptance: one test or documented acceptance run exercises the real parser, retrieval-result handling, identity validation, observation construction, and API serialization together.
+
+### F3 — A successful operator run would not yet make the ordinary web engine usable
+
+Priority: immediately after the first source-backed success. Confidence: high.
+
+Evidence: `routes/discovery.ts`.
+
+The regular application routes:
+
+- Reject new document-discovery jobs when `courtRoom` is supplied.
+- Require `collectionEnabled` for normal jobs and calendar previews.
+- Keep assessment jobs operator-controlled and non-resumable through the ordinary endpoint.
+
+Meanwhile, the bounded engine is specifically constrained to Courtroom 506 and is designed not to enable ordinary collection.
+
+These restrictions are intentional. But they mean “the bounded operator run succeeded” and “the user can run the engine from the app” are different milestones.
+
+Correction:
+
+- Define the supported user-facing execution route after the bounded validation succeeds.
+- Either expose appropriately authorized bounded execution through the existing app, or complete the documented review needed for normal collection.
+- Align form options, API validation, worker criteria, and authorization.
+- Do not simply clear the barrier or remove courtroom rejection.
+
+Acceptance: an authenticated user can initiate the supported search, observe progress, inspect results, and save eligible evidence without an agent manually executing the CLI.
+
+### F4 — Bail extraction can fail the entire document on one unsupported row
+
+Priority: next after calendar parsing. Confidence: high.
+
+Evidence: `evidence.py`, `extract_bail()`.
+
+The extractor:
+
+- Requires identity in the first 2,500 characters of page-one text.
+- Looks for exact `BAIL INFORMATION` and `Bail Action` headings.
+- Requires date-bearing rows separated by two or more whitespace characters.
+- Rejects ambiguous/deposit-bearing layouts.
+- Returns `UNSUPPORTED_LAYOUT` with no entries if any row remains unsupported.
+
+That is conservative, but it creates a usability limitation: one difficult historical entry can prevent every otherwise readable entry from becoming a candidate.
+
+Do not “fix” this by accepting guessed amounts.
+
+Correction:
+
+- First verify the current extraction behavior against permitted real PDFs.
+- Support additional demonstrated layouts where needed.
+- Consider a separate partial-extraction representation: confidently identified entries plus explicit unresolved chronology. Such a change must preserve review restrictions and must not imply completeness or an operative order.
+
+Acceptance: representative documents produce expected entries, and unsupported rows remain visible as limitations rather than causing misleading zero amounts or invented certainty.
+
+### F5 — Provenance loses the page location during extraction
+
+Priority: before calling evidence display complete. Confidence: high.
+
+Evidence: `extract_bail()` collects page text, selects bail-containing pages, then joins sections without retaining original page numbers. Extracted entries contain action, wording, date, category, amount, and basis—but no page reference.
+
+The application retains an excerpt, which is useful. However, the user still needs to locate it manually in the source document.
+
+Correction: carry page numbers and source-section association through extraction and provenance. Use a stable document identity or hash where compatible with the existing retention model.
+
+Acceptance: each displayed bail entry can point the reviewer to the supporting page or explicitly identify a multi-page section.
+
+### F6 — The authenticated saving/display path remains unproven, and assessment visibility needs review
+
+Priority: before wider use. Confidence: high about route behavior; actual exposure untested.
+
+Positive findings:
+
+- `candidateEligible()` checks docket-shaped identity, source URL agreement, retrieval provenance, and extraction outcome.
+- Observation construction preserves source evidence.
+- Save endpoints use owner-scoped queries and duplicate-resistant keys.
+- Calendar previews cannot be saved as bail evidence.
+
+These are useful existing components—keep them.
+
+However:
+
+- Positive authenticated end-to-end operation has not been established by the evidence reviewed.
+- `GET /discovery/assessments` returns selected assessment rows without the owner filtering used by job endpoints.
+
+That assessment behavior may be intentional operator/shared metadata, but it needs an explicit access rule. Authentication alone does not establish that every signed-in account should see every assessment report.
+
+Acceptance:
+
+- A signed-in user can retrieve their job, inspect extraction evidence, save it once, and find the pending observation.
+- Another account cannot retrieve private job/item data.
+- Assessment visibility matches a documented role or ownership policy.
+
+## What I would fix first
+
+Do one coherent improvement: make Search-response interpretation and downstream extraction verifiable end to end.
+
+| Order | Work | Finish condition |
+|---|---|---|
+| 1 | Read the latest persisted failure and restore the API without resuming the job | Exact failure and healthy service established |
+| 2 | Compare the returned result structure with the actual parser | Data, presentation, empty, and unsupported states distinguished |
+| 3 | Obtain the minimum missing source-backed evidence, if necessary | No remaining guessed layout/link assumptions for the supported path |
+| 4 | Exercise calendar item → matching PDF → bail entries → pending observation | Positive integrated acceptance evidence |
+| 5 | Complete the authenticated app route | User can operate the supported engine without repeated CLI handoffs |
+
+Do not begin another containment redesign unless these changes expose a concrete problem in that boundary.
+
+## Required next live observation, if evidence is missing
+
+The next approved execution should be designed to resolve the remaining layout questions together:
+
+- Whether the result row is data, presentation, or a source empty-state.
+- Which supported field contains the docket identifier.
+- How the actual document link is represented.
+- Whether the existing parser accepts that representation.
+- Whether the matching document reaches the extractor.
+
+Counts alone cannot answer all of these. The evidence policy must allow an approved, minimal source-backed representation sufficient to debug those exact boundaries. That does not require retaining entire pages, tokens, or unrelated case details.
+
+## Completion standard
+
+The engine is functionally demonstrated when an authenticated user can:
+
+1. Run supported calendar criteria.
+2. See validated calendar outcomes.
+3. Retrieve an identity-matched docket document.
+4. See source-supported bail entries—or an explicit missing/unsupported outcome.
+5. Inspect supporting evidence and page location.
+6. Save eligible entries pending review.
+7. Repeat the supported workflow under the intended controls.
+
+My recommendation is to implement F1 and F2 as the next bounded repair, carrying it through the existing extraction and save path. That is the shortest evidence-supported route to your actual objective. This audit made no changes and does not establish that the engine currently works.
