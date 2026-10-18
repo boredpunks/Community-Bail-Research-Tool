@@ -50,42 +50,120 @@ class CalendarResults(HTMLParser):
         self.validated_row_count = 0
         self.scope_validated = False
         self.dates_validated = False
+        self._table_depth = 0
+        self._result_depth = None
+        self._table_count = 0
+        self._header_rows = 0
+        self._presentation_rows = 0
+        self._recognized_links = 0
+        self._malformed = False
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
-        if tag == "table" and a.get("id") == "caseSearchResultGrid":
-            self.table_found = self.in_table = True
-        if self.in_table and tag == "tr":
-            self.in_row = True
-            self.cells, self.link = [], None
-        if self.in_row and tag in ("td", "th"):
-            self.in_cell = True
-            self.cells.append("")
-            self.is_header = tag == "th"
-        if self.in_row and tag == "a" and a.get("href", "").startswith("/Report/CpDocketSheet?"):
-            self.link = a["href"]
+        if tag == "table":
+            self._table_depth += 1
+            if self.in_table:
+                self._malformed = True
+            if a.get("id") == "caseSearchResultGrid":
+                self._table_count += 1
+                self.table_found = True
+                if self._result_depth is None:
+                    self._result_depth = self._table_depth
+                    self.in_table = True
+        if self.in_table and self._table_depth == self._result_depth:
+            if tag == "tr":
+                if self.in_row:
+                    self._malformed = True
+                self.in_row = True
+                self.in_cell = False
+                self.cells, self.link = [], None
+                self._cell_types, self._cell_spans, self._links = [], [], []
+            elif self.in_row and tag in ("td", "th"):
+                if self.in_cell:
+                    self._malformed = True
+                self.in_cell = True
+                self.cells.append("")
+                self._cell_types.append(tag)
+                try:
+                    span = int(a.get("colspan", "1"))
+                    row_span = int(a.get("rowspan", "1"))
+                except (TypeError, ValueError):
+                    span, row_span = 0, 0
+                if not 1 <= span <= 128 or row_span != 1:
+                    self._malformed = True
+                self._cell_spans.append(span)
+            elif self.in_row and tag == "a" and a.get("href", "").startswith("/Report/CpDocketSheet?"):
+                href = a["href"]
+                self._recognized_links += 1
+                if href not in self._links:
+                    self._links.append(href)
+                self.link = href
+                if len(self._links) > 1:
+                    self._malformed = True
         if tag == "a" and re.search(r"(?:pageNumber|pageIndex|page=)", a.get("href", ""), re.I):
             self.has_remote_pagination = True
 
     def handle_data(self, text):
-        if self.in_cell and self.cells:
+        if self.in_cell and self.cells and self._table_depth == self._result_depth:
             self.cells[-1] += text
 
     def handle_endtag(self, tag):
-        if tag in ("td", "th"):
-            self.in_cell = False
-        if tag == "tr" and self.in_row:
-            if self.cells and getattr(self, "is_header", False):
-                self.headers = [cell.strip() for cell in self.cells]
-            elif self.cells:
-                self.rows.append((self.cells, self.link))
-            self.in_row = False
+        if self.in_table and self._table_depth == self._result_depth:
+            if tag in ("td", "th"):
+                if not self.in_cell or not self._cell_types or self._cell_types[-1] != tag:
+                    self._malformed = True
+                self.in_cell = False
+            elif tag == "tr" and self.in_row:
+                if self.in_cell:
+                    self._malformed = True
+                kinds = set(self._cell_types)
+                if kinds == {"th"}:
+                    self._header_rows += 1
+                    if any(span != 1 for span in self._cell_spans):
+                        self._malformed = True
+                    self.headers = [cell.strip() for cell in self.cells]
+                elif kinds == {"td"}:
+                    if len(self.cells) == 1 and self._cell_spans[0] > 1 and not self._links:
+                        self._presentation_rows += 1
+                    # Presentation-shaped rows remain unverified, never empty proof.
+                    self.rows.append((self.cells, self.link))
+                    if len(self.cells) > 1 and any(span != 1 for span in self._cell_spans):
+                        self._malformed = True
+                elif kinds:
+                    self._malformed = True
+                self.in_row = self.in_cell = False
         if tag == "table":
-            self.in_table = False
+            if self._table_depth == self._result_depth:
+                if self.in_row or self.in_cell:
+                    self._malformed = True
+                self.in_table = False
+                self._result_depth = None
+            self._table_depth = max(0, self._table_depth - 1)
+
+    def layout_summary(self):
+        """Local structural evidence only; never source text, identifiers or URLs.
+
+        This is not a result-acceptance decision or a parent wire envelope.
+        """
+        counts = {
+            "resultTables": self._table_count,
+            "headerRows": self._header_rows,
+            "nonHeaderRows": len(self.rows),
+            "presentationRows": self._presentation_rows,
+            "recognizedDocumentLinks": self._recognized_links,
+        }
+        return {**{key: min(10_000, value) for key, value in counts.items()},
+                "overflow": any(value > 10_000 for value in counts.values()),
+                "malformed": self._malformed,
+                "complete": self.table_found and not self.in_table and not self.in_row}
 
     def validated(self, criteria):
         if not self.table_found:
             raise ValueError("RESULTS_NOT_VALIDATED")
+        # Never combine separate grids or accept a partial/ambiguous parse.
+        if (self._table_count != 1 or self._header_rows != 1 or self._malformed
+                or self.in_table or self.in_row or self.in_cell):
+            raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
         event_type_filter = criteria.get("eventType")
         if event_type_filter in ("", "ANY"):
             event_type_filter = None
