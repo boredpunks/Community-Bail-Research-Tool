@@ -56,7 +56,7 @@ class FormDiagnosticProtocolTests(unittest.IsolatedAsyncioTestCase):
 
 
 class BoundedEngineScopeTests(unittest.TestCase):
-    def test_fresh_permit_budget_is_allowed_without_exceeding_aggregate_ceiling(self):
+    def test_bounded_engine_scope_enforces_per_permit_request_cap(self):
         criteria = {
             "courtOffice": "CP-05-02-Crim", "eventType": "Bail Hearing",
             "courtRoom": "Courtroom 506", "recordCap": 5,

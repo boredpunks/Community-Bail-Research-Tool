@@ -686,3 +686,16 @@ Court access remains unverified. Stop here; do not retry or advance stages.**
   ten-PDF stage, collection enablement or 100-docket proposal/sample is
   authorized by this failed attempt. Any future work needs fresh analysis and
   its own exact scope, request budget and explicit approval.
+
+### October 18, 2026: request-allocation accounting clarification
+
+- The current same-date v5 permit `0812596c-20db-42d6-b5eb-8d2aab8ba652`
+  and v6 permit `0af27cb8-f6c0-454c-871c-9ce4b26f07fc` are separate failed
+  one-use authorizations. Each stored a 12-request per-permit cap and has four
+  request-ledger entries: `GET /CaseSearch`, the known CSS and JavaScript
+  asset GETs, and `POST /CaseSearch`.
+- The earlier October 12 approval record above likewise applies its 12-request
+  cap to one permit and one-PDF scope. No shared twelve-request allocation
+  across matching date criteria was found. The permits and all eight requests
+  remain unchanged; historical usage is still included in source-wide rolling
+  hourly/daily quotas while in those windows.

@@ -65,7 +65,7 @@ delegation, reset, budget-override or barrier-clear endpoint.
 exact-method permit belonging to the authenticated workspace. It accepts no
 criteria override. A source-row lock and permit-row lock serialize duplicate,
 concurrent and cross-scope launch. The worker executes only the stored scope,
-retains original aggregate accounting, and writes the final scoped report
+retains original per-permit accounting, and writes the final scoped report
 without granting global source proof. Pausing/cancelling does not restore
 single-use authorization.
 
@@ -86,10 +86,29 @@ interactive elements, and clean transport/console diagnostics can validate an
 explicit empty result. Unknown or mixed rows and unsupported links still stop;
 an empty list alone is never zero-match proof.
 
-The bounded scope has a twelve-request aggregate ceiling across superseded
-permits for the same dates. Preparation counts every prior ledger request for
-those dates and caps the fresh permit at the remaining budget; it cannot reset
-or refill requests consumed by a failed attempt.
+Each bounded permit has its own one-use request cap (at most twelve) and
+processed-document cap (at most five). Preparing a new permit does not edit,
+reopen or refill either failed permit; prior request rows remain in the ledger.
+Matching date criteria do not by themselves create a shared lifetime quota.
+The scheduler still counts every source request in its rolling hourly and daily
+quotas, applies the minimum request spacing, and honors source cooldowns. A
+fresh permit cannot bypass those shared limits or the global source barrier.
+
+For the October 18, 2026 same-date scope, the retained failed v5 permit
+`0812596c-20db-42d6-b5eb-8d2aab8ba652` and v6 permit
+`0af27cb8-f6c0-454c-871c-9ce4b26f07fc` each record a twelve-request
+per-permit cap and four request-ledger rows. No shared twelve-request
+allocation record was found. Both permits and all eight historical requests
+remain unchanged; the requests count against rolling quotas by source and time,
+not as a lifetime quota derived from matching dates.
+
+The current bounded-run inventory is one `/CaseSearch` page GET, the two
+observed required CSS/JavaScript GETs, one Search POST, then one PDF GET per
+eligible distinct docket. That is four requests before documents; one document
+uses five total, and the five-document maximum uses nine, leaving three requests
+for additional required assets or redirects. This is a budget, not a required
+yield. Every asset counts; stop at the saved cap rather than retrying or
+increasing it.
 
 The existing document path requires calendar criteria/result eligibility,
 an allowlisted source-provided link, matching PDF court/docket identity, and
