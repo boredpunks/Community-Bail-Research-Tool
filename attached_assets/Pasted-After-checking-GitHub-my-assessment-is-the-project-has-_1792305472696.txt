@@ -1,0 +1,74 @@
+After checking GitHub, my assessment is: **the project has substantial machinery, but it still lacks a demonstrated successful calendar-to-document path. More safeguards and higher test counts are not the main thing it needs now.** It needs a tightly focused integration diagnosis using the actual returned page.
+
+## What I found in the code
+
+### 1. The calendar parser makes very specific layout assumptions
+
+In `artifacts/api-server/src/ujs/evidence.py`, `CalendarResults` expects:
+
+- A table with the exact ID `caseSearchResultGrid`.
+- Particular headers at fixed column positions.
+- Docket numbers in column 2, court office in column 10, event type in column 14, and event date in column 16.
+- A document link beginning exactly with `/Report/CpDocketSheet?`.
+- A recognizable document link on every non-header row.
+
+Those assumptions may match a supported layout, but they need source-backed verification. A presentation row, an empty-state row, an absolute document URL, or a different link mechanism would not satisfy this parser.
+
+That does not mean the checks should be removed. It means the engine must distinguish those cases instead of treating all of them as malformed case records.
+
+### 2. The retained structural evidence already points to another unresolved issue
+
+The execution documentation records an earlier response with:
+
+- One result table.
+- Nineteen header cells matching the bounded header checks.
+- One non-header presentation row.
+- Zero recognized docket-document links.
+- No parser execution because the console gate stopped it.
+
+That is useful evidence. But it is not enough to tell whether the row was an empty-state message, a data row using an unsupported link layout, or something else.
+
+Even if the console problem disappeared, the parser could encounter another stop immediately afterward. We should resolve that response-layout question alongside console correlation—not discover it through another full attempt.
+
+### 3. The bail extractor exists, but it is deliberately narrow
+
+`extract_bail()` already checks document identity and parses a specific bail-table text layout. It rejects unsupported rows, ambiguous financial values, and percentage/deposit-bearing layouts rather than guessing.
+
+That is a reasonable starting point. But code existing is not proof that the current document flow reaches it or that representative source documents pass it.
+
+### 4. The latest failure is not yet independently explained by GitHub
+
+The latest commit returned was `cc6477a8`, dated October 18 at 06:28 UTC, titled “Update pilot logic and expand calendar protocol testing.”
+
+I inspected that revision’s worker and parser. The execution document returned by the connector was too long and truncated before its latest sections. I therefore cannot independently confirm the exact cause of the four-request failure you just reported.
+
+GitHub also cannot establish whether the API process is currently running. That requires the Replit runtime logs or a health check.
+
+## My judgment
+
+The problem is now primarily **integration and evidence**, not a shortage of defensive code.
+
+We have repeatedly learned one assumption at a time through live attempts, then built another gate around it. The next work needs to answer the remaining questions together:
+
+1. What did the Search response actually contain?
+2. What does the parser require?
+3. Which mismatch—not just which error label—prevented continuation?
+4. Does the document route and extractor work against a permitted real document?
+
+I would not authorize another unchanged attempt. I also would not commission another broad architecture review.
+
+## What I would tell the agent now
+
+> Diagnose the latest four-request failure from the persisted report and current code, then restore the API without resuming the failed job.
+>
+> Focus on the actual integration boundary: Search response → result recognition → document-link discovery.
+>
+> Compare the response’s sanitized structural evidence with `CalendarResults` in `evidence.py`. Specifically resolve presentation/empty-state rows, fixed-column assumptions, and document-link recognition. Do not assume fixing console classification will make this parser succeed.
+>
+> If the required response evidence was not retained, say exactly what is missing. Prepare one narrowly scoped, approved source-backed capture or observation that can settle those remaining layout questions together, with appropriate sanitization and retention limits—not another run that saves only counts and discards the decisive distinction.
+>
+> Use a permitted real docket document to verify the downstream identity/extraction/display path independently if one is already available. Do not fabricate records or claim that doing so validates calendar discovery.
+>
+> Return a single integration diagnosis, the fixes supported by evidence, the API restoration result, and any exact live approval needed. No new court traffic or reuse of the failed permit under this instruction.
+
+I read the repository; I did not run its tests or modify anything. The strongest conclusion I can support is that we need to stop measuring readiness by test totals and verify the source-backed path through the parser and into extraction.
