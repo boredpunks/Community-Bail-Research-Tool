@@ -150,19 +150,21 @@ async function main() {
     const [row] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
     if (!row) throw new Error("Pilot not found.");
     const coverageEvidence: Record<string, unknown>[] = [];
-    if (["COVERAGE", "FILING_INSPECT"].includes(row.stage) && row.jobId) {
+    if (["COVERAGE", "FILING_INSPECT", "BOUNDED_ENGINE"].includes(row.stage) && row.jobId) {
       const events = await db.select().from(discoveryEventsTable).where(and(
-        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind, row.expectedMethod === courtroomObservationMethod
-          ? "COURTROOM_METADATA" : row.stage === "COVERAGE" ? "COVERAGE_METADATA" : "FILING_METADATA"),
+        eq(discoveryEventsTable.jobId, row.jobId), eq(discoveryEventsTable.kind,
+          row.stage === "BOUNDED_ENGINE" || row.expectedMethod === courtroomObservationMethod
+            ? "COURTROOM_METADATA" : row.stage === "COVERAGE" ? "COVERAGE_METADATA" : "FILING_METADATA"),
       )).orderBy(asc(discoveryEventsTable.createdAt));
       for (const event of events) {
         const metadata = JSON.parse(event.message) as Record<string, unknown>;
-        if (!(row.expectedMethod === courtroomObservationMethod ? validCourtroomObservationMetadata(metadata)
+        if (!(row.stage === "BOUNDED_ENGINE" || row.expectedMethod === courtroomObservationMethod
+          ? validCourtroomObservationMetadata(metadata)
           : row.stage === "COVERAGE" ? validCoverageMetadata(metadata) : validFilingMetadata(metadata))) throw new Error("Stored inspection metadata is invalid; no raw content returned.");
         coverageEvidence.push(metadata);
       }
     }
-    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" ? { coverageEvidence } : row.stage === "FILING_INSPECT" ? { filingEvidence: coverageEvidence } : {}),
+    console.log(JSON.stringify({ ...row, ...(row.stage === "COVERAGE" || row.stage === "BOUNDED_ENGINE" ? { coverageEvidence } : row.stage === "FILING_INSPECT" ? { filingEvidence: coverageEvidence } : {}),
       ...(row.stage === "CALENDAR_ONLY" ? {
         documentCap: 0, remotePostCap: 1,
         notice: "One exact approved Calendar Event search only. No docket PDFs, no retry, no collection approval, and the source-wide barrier is preserved.",

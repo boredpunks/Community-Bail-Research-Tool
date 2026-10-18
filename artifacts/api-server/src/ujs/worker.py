@@ -97,6 +97,7 @@ async def main(config=None):
     stopped = False
     requests = 0
     bounded_observation_complete = False
+    bounded_observation_limit_hit = False
     blocked = 0
     calendar_time = None
     last_completed_clock = None
@@ -163,7 +164,7 @@ async def main(config=None):
 
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
-            nonlocal bounded_observation_complete
+            nonlocal bounded_observation_complete, bounded_observation_limit_hit
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
             nonlocal calendar_post_attempt_started, calendar_post_attempt_order
             nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
@@ -184,6 +185,7 @@ async def main(config=None):
                         and resource_type is not None):
                     raise SourceFailure("REQUEST_NOT_PERMITTED")
                 if bounded_engine_observation and not bounded_observation_complete and requests >= 3:
+                    bounded_observation_limit_hit = True
                     raise SourceFailure("COURTROOM_OBSERVATION_REQUEST_LIMIT")
                 clock = asyncio.get_running_loop()
                 pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
@@ -339,6 +341,7 @@ async def main(config=None):
         async def handle_route(route):
             nonlocal blocked, blocked_scripts, blocked_stylesheets, blocked_requests
             nonlocal inspection_error
+            nonlocal bounded_observation_limit_hit
             nonlocal cached_responses, blocked_during_inspection
             nonlocal criteria_validation, submission_payload_rejected
             nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
@@ -457,7 +460,11 @@ async def main(config=None):
                         asset_cache[(request.url, request.resource_type)] = (headers, body)
                 await response.dispose()
                 del body
-            except Exception:
+            except Exception as error:
+                if (bounded_engine_observation and not bounded_observation_complete
+                        and isinstance(error, SourceFailure)
+                        and error.outcome == "COURTROOM_OBSERVATION_REQUEST_LIMIT"):
+                    bounded_observation_limit_hit = True
                 try:
                     await route.abort()
                 except Exception:
@@ -480,6 +487,12 @@ async def main(config=None):
         else:
             await context.route("**/*", handle_route)
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
+
+        def stop_if_observation_budget_exhausted():
+            if bounded_observation_limit_hit:
+                emit("bounded_engine_stopped", code="COURTROOM_OBSERVATION_REQUEST_LIMIT")
+                return True
+            return False
 
         def note_request_started(request):
             nonlocal calendar_search_request_started
@@ -753,6 +766,8 @@ async def main(config=None):
                     if goto_timeout <= 0:
                         raise RuntimeError("INSPECTION_SESSION_DEADLINE")
                 await page.goto("https://ujsportal.pacourts.us/CaseSearch", wait_until="load", timeout=goto_timeout)
+                if stop_if_observation_budget_exhausted():
+                    return
                 calendar_preflight("READY")
                 # Inspection inventory has its own readiness rules and remains frozen.
                 if filing_inspection_only or coverage_only or inspection_only:
@@ -798,11 +813,15 @@ async def main(config=None):
                 else:
                     from calendar_protocol import select_bound_calendar_controls
                     preview_values = await select_bound_calendar_controls(page, criteria)
+                    if stop_if_observation_budget_exhausted():
+                        return
                 if not inspection_only and not criteria.get("courtRoom"):
                     await validate_unfiltered_calendar_room(page)
                     preview_values["courtRoom"] = ""
                 form_phase = "DATE_ENTRY"
                 await fill_calendar_dates(page, criteria)
+                if stop_if_observation_budget_exhausted():
+                    return
                 if inspection_only:
                     from form_inspection import snapshot
                     inspection_before = await snapshot(page, criteria)
@@ -828,6 +847,8 @@ async def main(config=None):
                 from calendar_protocol import validate_bound_calendar_form
                 expected_calendar_post_fields = await validate_bound_calendar_form(
                     page, criteria, preview_values)
+                if stop_if_observation_budget_exhausted():
+                    return
                 if bounded_engine_observation:
                     observation = await courtroom_observer(
                         page, emit, criteria, lambda: inspection_error is None, controls_prevalidated=True)

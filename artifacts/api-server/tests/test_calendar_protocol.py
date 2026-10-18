@@ -158,6 +158,50 @@ class PacingTests(unittest.TestCase):
 
 
 class FormTests(unittest.IsolatedAsyncioTestCase):
+    async def test_prevalidated_room_observation_continues_on_the_current_page(self):
+        from courtroom_observation import observe
+
+        markup = """
+        <form action="https://ujsportal.pacourts.us/CaseSearch" method="post"
+              enctype="application/x-www-form-urlencoded">
+          <label for="room">Courtroom</label>
+          <select id="room" name="room">
+            <option value="fixture-room-506" selected>506</option>
+          </select>
+          <button id="btnSearch" type="submit">Search</button>
+        </form>"""
+        criteria = {"courtOffice": "CP-05-02-Crim", "courtRoom": "Courtroom 506",
+                    "eventType": "Bail Hearing", "startDate": "2026-10-18",
+                    "endDate": "2026-10-23", "recordCap": 5, "requestCap": 12}
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(executable_path=shutil.which("chromium"), headless=True,
+                args=["--disable-background-networking", "--no-sandbox"])
+            context = await browser.new_context(service_workers="block")
+            outbound = []
+
+            async def block(route):
+                outbound.append(route.request.url)
+                await route.abort()
+
+            await context.route("**/*", block)
+            page = await context.new_page()
+            try:
+                await page.set_content(markup)
+                original_url = page.url
+                messages = []
+                def emit(kind, **values):
+                    messages.append({"kind": kind, **values})
+
+                metadata = await observe(page, emit, criteria, controls_prevalidated=True)
+                self.assertEqual(metadata["outcome"], "BOUND_506")
+                self.assertEqual(messages[0]["outcome"], "BOUND_506")
+                self.assertEqual(page.url, original_url)
+                self.assertEqual(outbound, [])
+                self.assertTrue(metadata["afterSelection"]["nativeMatches"])
+            finally:
+                await context.close()
+                await browser.close()
+
     async def test_bound_room_uses_public_labels_and_revalidates_native_binding(self):
         from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form
         markup = """

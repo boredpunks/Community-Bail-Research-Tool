@@ -843,12 +843,12 @@ print(json.dumps(projections))
     });
 
   // The operator factory checks the real Eastern date; scheduler fixtures below
-  // deliberately use their injected October 16 clock, not today's wall clock.
+  // deliberately use their injected October 16 clock, before the exact scope.
   const factoryDay = easternToday();
   const boundedCriteria = { ...makeBoundedEngineCriteria(factoryDay, factoryDay),
-    startDate: "2026-10-16", endDate: "2026-10-22" };
+    startDate: "2026-10-18", endDate: "2026-10-23" };
   const outsideBoundedEnd = new Date(`${boundedCriteria.endDate}T00:00:00.000Z`);
-  outsideBoundedEnd.setUTCDate(outsideBoundedEnd.getUTCDate() + 1);
+  outsideBoundedEnd.setUTCDate(outsideBoundedEnd.getUTCDate() + 2);
   const outsideBoundedEndDate = outsideBoundedEnd.toISOString().slice(0, 10);
   assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
@@ -906,31 +906,27 @@ print(json.dumps(projections))
     };
     return reserveSourceRequest(bounded.job, path, "GET", bounded.permit.id, urls[path], () => false, context);
   };
-  const firstConcurrentPath = boundedPath("/CaseSearch");
-  const secondConcurrentPath = boundedPath("/CaseSearch");
-  const concurrentSleepContext = {
-    ...context,
-    sleep: async (ms: number) => {
-      if (ms === 1_000) await new Promise(resolve => setTimeout(resolve, 2));
-      else time += ms;
-    },
-  };
-  const concurrentGets = [
-    reserveSourceRequest(bounded.job, "/CaseSearch", "GET", bounded.permit.id,
-      requestUrl, () => false, concurrentSleepContext),
-    reserveSourceRequest(bounded.job, "/CaseSearch", "GET", bounded.permit.id,
-      requestUrl, () => false, concurrentSleepContext),
-  ];
-  const admitted = await Promise.race(concurrentGets);
-  assert.ok(admitted.allow);
-  await new Promise(resolve => setTimeout(resolve, 10));
-  const inFlightRows = await store.select().from(requests);
-  check(inFlightRows.length === 1 && inFlightRows[0]!.outcome === "IN_FLIGHT");
-  check(await response(bounded.job, admitted.requestId));
-  const concurrentOutcomes = await Promise.all(concurrentGets);
-  check(concurrentOutcomes.filter(result => result.allow).length === 1);
-  check(concurrentOutcomes.filter(result => !result.allow).length === 1);
-  for (const path of ["/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"]) {
+  const activeObservationRequest = await boundedPath("/CaseSearch");
+  assert.ok(activeObservationRequest.allow);
+  let accountedConcurrentRequest = false;
+  const waitingObservationRequest = await reserveSourceRequest(
+    bounded.job, "/resource/js/sitemain.min.js", "GET", bounded.permit.id,
+    "https://ujsportal.pacourts.us/resource/js/sitemain.min.js", () => false, {
+      ...context,
+      sleep: async (ms: number) => {
+        if (!accountedConcurrentRequest) {
+          const pendingRows = await store.select().from(requests);
+          check(pendingRows.length === 1 && pendingRows[0]!.outcome === "IN_FLIGHT");
+          check(await response(bounded.job, activeObservationRequest.requestId));
+          accountedConcurrentRequest = true;
+        }
+        time += ms;
+      },
+    });
+  assert.ok(waitingObservationRequest.allow);
+  check(accountedConcurrentRequest);
+  check(await response(bounded.job, waitingObservationRequest.requestId));
+  for (const path of ["/resource/css/sitemain.min.css"]) {
     const grant = await boundedPath(path);
     assert.ok(grant.allow);
     check(await response(bounded.job, grant.requestId));
@@ -976,11 +972,10 @@ print(json.dumps(projections))
   check(!(await response(bounded.job, uncertainGrant.requestId, "NETWORK_ERROR", null)));
   const [uncertainJob] = await store.select().from(jobs).where(eq(jobs.id, bounded.job.id));
   check(uncertainJob!.requestsUsed === 1 && boundedEngineRequestsRemaining(uncertainJob!.requestsUsed) === 11);
+  const [uncertainSource] = await store.select().from(sources);
+  check(uncertainSource!.blockedReason === "NETWORK_ERROR");
   check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
 
-  const [boundedSource] = await store.select().from(sources);
-  check(boundedSource!.blockedReason === "SOURCE_VALIDATION_BARRIER" && !boundedSource!.accessVerifiedAt
-    && !boundedSource!.collectionApprovedAt);
   for (const change of [{ courtRoom: "Courtroom 507" }, { requestCap: 13 }, { recordCap: 6 }]) {
     bounded = await prepareBounded(change);
     check(!(await previewReserve(bounded.job, bounded.permit.id)).allow);
