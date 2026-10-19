@@ -9,7 +9,7 @@ Completion requires demonstrating the authenticated calendar → docket → bail
 
 **How to apply:** Continue independent implementation until acceptance is demonstrated or a specific approval, login action, or external dependency prevents continuation. Keep fixture behavior separate from live source proof.
 
-App launch must be explicitly owner/workspace-delegated to an exact approved permit and stored criteria, with duplicate/concurrent launch prevented. Launch-only acceptance and improved diagnostics must never stand in for actual document retrieval, identity checks, extraction, page-reference display and pending storage.
+The following permit requirement is historical pilot guidance only, superseded for ordinary authenticated research by [ordinary research direction](ordinary-research-direction.md). Historical pilot launch was explicitly owner/workspace-delegated to an exact approved permit and stored criteria, with duplicate/concurrent launch prevented. Launch-only acceptance and improved diagnostics must never stand in for actual document retrieval, identity checks, extraction, page-reference display and pending storage.
 
 **Why:** The user repeated these functional acceptance requirements while authorizing independent implementation and testing, with exact fresh live approval only after offline preparation.
 
@@ -31,4 +31,4 @@ When the Replit GitHub connection is already active but HTTPS pushes still rejec
 
 **Why:** After a workspace restart, Git selected a stale HTTPS credential even though the Replit-managed GitHub connection was active; setting up the GitHub CLI credential helper restored push access.
 
-**How to apply:** Confirm the GitHub integration is active, run the setup command, then retry the intended push once. Do not change repository visibility or remote URLs to work around authentication.
+**How to apply:** Confirm the GitHub integration is active, run the setup command, then retry the intended push once. A healthy integration does not prove Git's selected credential helper is current; connection-card failures are not a reason to abandon this supported repair. Do not change repository visibility or remote URLs to work around authentication.
