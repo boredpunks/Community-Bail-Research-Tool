@@ -112,3 +112,12 @@ Do not raise a cap or clear a source stop merely to force this search through.
 Any later live check must be separately user-initiated after the blocker is
 resolved, not an automatic retry of this job. Document transport acceptance is
 a separate work item and was not attempted here.
+
+## Subsequent offline repair
+
+The response handling was subsequently repaired and tested without additional
+court requests. See [calendar response handling](calendar-response-handling.md)
+for the exact old/new units, bounded policy, processing path, regressions, and
+next deliberate live check. This does not change this attempt's ledger or
+convert its unvalidated HTTP 200 response into accepted results. Live acceptance
+remains outstanding.

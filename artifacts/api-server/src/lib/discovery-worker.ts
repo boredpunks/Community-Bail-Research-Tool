@@ -1,3 +1,4 @@
+import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
@@ -178,6 +179,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
           throw new Error("Inspection response accounting mismatch");
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
+      } else if (message.kind === "calendar_response_size") {
+        if (diagnosticOnly || !validCalendarResponseSize(message))
+          throw new Error("Invalid calendar response-size metadata");
+        await discoveryEvent(job, "CALENDAR_RESPONSE_SIZE", JSON.stringify(message));
       } else if (message.kind === "filing_metadata") {
         if (!filingInspectionOnly || !validFilingInventoryMetadata(message) || message.phase !== filingPhases[filingPhase])
           throw new Error("Invalid filing metadata");

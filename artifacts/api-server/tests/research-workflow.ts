@@ -1,4 +1,22 @@
 import assert from "node:assert/strict";
+import { validCalendarResponseSize } from "../src/lib/calendar-response-metadata";
+const responseSize = {kind:"calendar_response_size",version:1,
+  measurement:"CHROMIUM_DECODED_ENTITY_BYTES",limitBytes:16_000_000,
+  observedBytes:4_500_000,complete:true,statusCode:200,
+  mediaType:"text/html",contentEncoding:"gzip"};
+assert.equal(validCalendarResponseSize(responseSize),true);
+for (const bad of [
+  {...responseSize,rawHeaders:{"set-cookie":"PRIVATE"}},
+  {...responseSize,observedBytes:32_000_001},
+  {...responseSize,complete:false,observedBytes:16_000_002},
+  {...responseSize,limitBytes:0},
+  {...responseSize,mediaType:"PRIVATE"},
+  {...responseSize,mediaType:["text/html"]},
+  {...responseSize,contentEncoding:"PRIVATE"},
+  {...responseSize,complete:true,observedBytes:16_000_001},
+]) assert.equal(validCalendarResponseSize(bad),false);
+assert.equal(validCalendarResponseSize({...responseSize,complete:false,observedBytes:16_000_001}),true);
+assert.equal(validCalendarResponseSize({...responseSize,complete:false,statusCode:null,observedBytes:0}),true);
 import { calendarOperationBlock } from "../src/lib/research-operations";
 import { pacingConfig, effectiveAdaptiveSpacing } from "../src/lib/research-pacing";
 import { calendarPreviewRequestAllowed, qualifyingMonetaryTotal, throttleDeadline } from "../src/lib/discovery-safety";

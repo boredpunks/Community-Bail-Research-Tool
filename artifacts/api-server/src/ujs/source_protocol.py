@@ -45,7 +45,7 @@ def allowed(url, method):
         return False
 
 
-def classify_response(status, headers, body, pdf=False, path=None):
+def classify_response(status, headers, body, pdf=False, path=None, calendar_limit=4_000_000):
     if status == 429:
         return "RATE_LIMIT"
     if status in (401, 403):
@@ -54,7 +54,10 @@ def classify_response(status, headers, body, pdf=False, path=None):
         return "REDIRECT"
     if status != 200:
         return "HTTP_ERROR"
-    if len(body) > 4_000_000:
+    # Only calendar HTML may use its explicit larger policy. Assets and PDFs
+    # retain the original independent 4 MB limit.
+    limit = calendar_limit if path == "/CaseSearch" and not pdf else 4_000_000
+    if len(body) > limit:
         return "SIZE_LIMIT"
     content_type = next(
         (value for key, value in headers.items() if key.lower() == "content-type"), ""
@@ -69,7 +72,7 @@ def classify_response(status, headers, body, pdf=False, path=None):
     }
     if path in expected_types and media_type not in expected_types[path]:
         return "UNSUPPORTED_RESPONSE"
-    html = media_type == "text/html" or body.lstrip().lower().startswith((b"<html", b"<!doctype"))
+    html = media_type == "text/html" or body[:256].lstrip().lower().startswith((b"<html", b"<!doctype"))
     if html:
         if re.search(rb"verify you are human|cf-chl-|g-recaptcha|hcaptcha", body, re.I):
             return "CHALLENGE"

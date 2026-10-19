@@ -272,7 +272,8 @@ RESPONSE_STRUCTURE = r"""() => {
     const raw = links[i].getAttribute("href") || "";
     if (raw.length <= 2048 && /^\/Report\/(?:Cp|Mdj)DocketSheet\?/.test(raw)) out.documentLinkCount++;
   }
-  if ((document.documentElement?.outerHTML?.length ?? 0) > 4000000) out.countsCapped = true;
+  // Size is enforced during streaming receipt and bounded DOM projection.
+  // Do not create a full document serialization merely to measure its length.
   return out;
 }"""
 

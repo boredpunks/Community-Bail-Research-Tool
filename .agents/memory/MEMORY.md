@@ -14,3 +14,4 @@
 - [Authenticated test execution](authenticated-testing.md) — If the browser runtime lacks secrets, authenticate in process-level Playwright with shared in-memory cookies, never copied credentials.
 - [Portal control evidence](portal-control-evidence.md) — User-observed live comboboxes use titles and hidden model inputs, not label-for associations.
 - [Independent research stages](independent-research-stages.md) — Calendar discovery must not wait for PDFs; verify transport, local extraction, filtering and saving separately.
+- [Browser stream integrity](browser-stream-integrity.md) — Body-stream EOF is not transport completion; native request continuation also needs a redirect header gate.

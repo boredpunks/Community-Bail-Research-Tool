@@ -62,6 +62,7 @@ This is a private-per-account research prototype, not a complete production team
 
 ## Gotchas
 
+- Calendar HTML response policy and offline/live evidence boundaries: see `docs/calendar-response-handling.md` (`UJS_CALENDAR_HTML_MAX_BYTES`; PDF limits are separate).
 - See `.agents/memory/date-only-response-validation.md` before changing date serialization or generated response validation.
 - Use managed Clerk configuration and its proxy middleware; do not create `.env` files.
 - Do not describe the application as current/countywide data or as custody verification.
