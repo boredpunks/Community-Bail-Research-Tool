@@ -260,12 +260,16 @@ RESPONSE_STRUCTURE = r"""() => {
   }
   out.dataRowCount = cap(out.dataRowCount, 5000);
   out.headerCellCount = cap(headers.length, 128);
+  const labels = headers.map(cell => {
+    const text = cell?.textContent;
+    return typeof text === "string" && text.length <= 128 ? text.trim() : "";
+  });
+  const caseInformation = !labels.some(text => text.startsWith("Event Type"))
+    && ["Docket Number", "Court Type", "Filing Date", "County", "Court Office"].every(label =>
+      labels.filter(text => text.startsWith(label)).length === 1);
   const expected = [[2,"Docket Number"],[3,"Court Type"],[6,"Filing Date"],
     [9,"County"],[10,"Court Office"],[14,"Event Type"]];
-  out.expectedHeaders = expected.every(([i,label]) => {
-    const text = headers[i]?.textContent;
-    return typeof text === "string" && text.length <= 128 && text.trim().startsWith(label);
-  });
+  out.expectedHeaders = caseInformation || expected.every(([i,label]) => labels[i]?.startsWith(label));
   const links = table.querySelectorAll("a[href]");
   if (links.length > 20000) out.countsCapped = true;
   for (let i=0; i<Math.min(links.length,20000); i++) {
@@ -286,6 +290,7 @@ def parser_outcome(error):
         "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT": "IDENTITY_OR_SCOPE_REJECTED",
         "UNSUPPORTED_EVENT_DATE_LAYOUT": "DATE_REJECTED",
         "CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW": "DATE_REJECTED",
+        "CASE_INFORMATION_SCOPE_UNSUPPORTED": "UNSUPPORTED_LAYOUT",
         "CALENDAR_RESPONSE_LIMIT": "PARSER_ERROR",
         "CALENDAR_STRUCTURE_MISMATCH": "PARSER_ERROR",
     }.get(str(error), "PARSER_ERROR")

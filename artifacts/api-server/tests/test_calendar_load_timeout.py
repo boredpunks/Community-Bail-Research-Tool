@@ -131,7 +131,19 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 '<script src="/resource/js/sitemain.min.js"></script>' +
                 (empty_grid() + PADDING if large_page == "early" else PADDING + empty_grid()))
             if large_page == "warning":
-                results += '<p>Results limit reached</p><a href="?pageIndex=2">Next</a>'
+                results += ('<p>Not all results are shown for Common Pleas. Please narrow your search.</p>'
+                            '<a href="?pageIndex=2">Next</a>')
+            if large_page == "case_information":
+                info_headers = ["Column"] * 12
+                for index, label in {0: "Docket Number", 1: "Court Type", 4: "Filing Date",
+                                     7: "County", 8: "Court Office"}.items():
+                    info_headers[index] = label
+                results = (
+                    '<link rel="stylesheet" href="/resource/css/sitemain.min.css">'
+                    '<script src="/resource/js/sitemain.min.js"></script>'
+                    '<table id="caseSearchResultGrid"><thead><tr>'
+                    + ''.join('<th>' + label + '</th>' for label in info_headers)
+                    + '</tr></thead><tbody></tbody></table>')
             if large_page == "oversized":
                 results += PADDING * 3
             if large_page == "malformed":
@@ -362,6 +374,18 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         o = await self.run_fixture(large_page="warning")
         self.assertFalse(o["calendars"][0]["paginationComplete"])
         self.assertTrue(o["calendars"][0]["resultCapReached"])
+
+    async def test_case_information_headers_flow_through_production_diagnostics_and_parser(self):
+        # Header-only is deliberately not empty-result evidence; no synthetic
+        # docket or personal row is added to exercise this production path.
+        o = await self.run_fixture(large_page="case_information")
+        self.assertEqual(o["calendars"], [])
+        self.assertTrue(o["responseDiagnostics"][-1]["structure"]["expectedHeaders"])
+        self.assertEqual(o["responseDiagnostics"][-1]["structure"]["headerCellCount"], 12)
+        self.assertEqual(o["responseDiagnostics"][-1]["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["outcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["documentEligibility"], "BLOCKED_RESULT")
+        self.assertIn("UNSUPPORTED_LAYOUT", o["barriers"])
 
     async def test_large_malformed_grid_is_not_repaired_into_acceptance(self):
         o = await self.run_fixture(large_page="malformed")

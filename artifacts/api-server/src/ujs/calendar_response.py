@@ -52,20 +52,26 @@ class CalendarResponse:
     def add_data(self, data):
         if self.outcome != "OK":
             return
+        if not isinstance(data, str):
+            raise ValueError("CALENDAR_RESPONSE_CHUNK_INVALID")
         # Bound base64 before decoding. The initial buffered prefix and the
         # concurrent streamed tail share this single aggregate byte allowance.
         if len(data) > ((self.limit - self.retained + 2) // 3) * 4:
             self.outcome = "SIZE_LIMIT"
             return
-        chunk = base64.b64decode(data, validate=True)
-        self.retained += len(chunk)
-        if self.retained > self.limit:
-            self.outcome = "SIZE_LIMIT"
-            return
-        if self.streaming:
-            self.buffer.extend(chunk)
-        else:
-            self.tail.append(chunk)
+        # CDP may return the already-buffered response prefix as one large
+        # base64 string. Decode that prefix in bounded pieces instead of
+        # creating a second full-response bytes object before extending buffer.
+        for offset in range(0, len(data), CHUNK_BYTES):
+            chunk = base64.b64decode(data[offset:offset + CHUNK_BYTES], validate=True)
+            self.retained += len(chunk)
+            if self.retained > self.limit:
+                self.outcome = "SIZE_LIMIT"
+                return
+            if self.streaming:
+                self.buffer.extend(chunk)
+            else:
+                self.tail.append(chunk)
 
     async def body(self):
         return self.buffer  # No additional bytes(buffer) full-page copy.
@@ -191,8 +197,12 @@ class CalendarStream:
             tail, response.tail = response.tail, deque()
             response.streaming = True
             response.add_data(prefix)
-            while tail:
-                response.buffer.extend(tail.popleft())
+            if response.outcome == "OK":
+                while tail:
+                    response.buffer.extend(tail.popleft())
+            else:
+                tail.clear()
+                response.buffer.clear()
             if response.outcome != "OK":
                 await self._stop()
         except Exception:

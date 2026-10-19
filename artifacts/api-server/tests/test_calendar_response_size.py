@@ -1,5 +1,6 @@
 """Synthetic structures only; loopback-only transport, no docket/case fixtures."""
 import asyncio
+import base64
 import gzip
 import json
 import os
@@ -69,6 +70,26 @@ class CalendarPolicyTests(unittest.TestCase):
         self.assertNotIn("document.documentElement?.outerHTML", RESPONSE_STRUCTURE)
         # Only the bounded grid, not documentElement, may be serialized.
         self.assertIn("table.outerHTML", DOM_PROJECTION)
+
+    def test_buffered_cdp_prefix_decodes_in_bounded_chunks_without_a_second_body_copy(self):
+        raw = b"x" * 5_000_000
+        encoded = base64.b64encode(raw).decode("ascii")
+        response = CalendarResponse(8_000_000)
+        response.streaming = True
+        sizes = []
+        original_decode = base64.b64decode
+
+        def bounded_decode(part, *, validate):
+            sizes.append(len(part))
+            return original_decode(part, validate=validate)
+
+        with patch("calendar_response.base64.b64decode", side_effect=bounded_decode):
+            response.add_data(encoded)
+        self.assertEqual(response.outcome, "OK")
+        self.assertEqual(response.retained, len(raw))
+        self.assertEqual(len(response.buffer), len(raw))
+        self.assertLessEqual(max(sizes), CHUNK_BYTES)
+        self.assertIs(asyncio.run(response.body()), response.buffer)
 
 
 class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
@@ -215,7 +236,8 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
             '<tr><td><a href="' + action + '">Source action</a></td></tr></table>')
         record, projection, _, _ = await self.run_stream(
             "<html><body>" + grid + PADDING +
-            '<p>Results limit reached</p><a href="?pageIndex=2">Next</a></body></html>')
+            '<p>Not all results are shown for Common Pleas. Please narrow your search.</p>'
+            '<a href="?pageIndex=2">Next</a></body></html>')
         self.assertEqual(record["outcome"], "OK")
         self.assertIn(action, projection["html"])
         self.assertTrue(projection["pagination"])

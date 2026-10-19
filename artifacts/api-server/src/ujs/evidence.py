@@ -337,6 +337,12 @@ class CalendarResults(HTMLParser):
                 and criteria.get("courtRoom") == "ANY"
                 and criteria.get("startDate") == criteria.get("endDate")):
             raise ValueError("CASE_INFORMATION_SCOPE_UNSUPPORTED")
+        if self.rows:
+            self.validated_row_count = len(self.rows)
+            self.scope_validated = True
+            # This layout omits scheduled event date/type; filing date alone
+            # cannot establish a match for the Calendar Event workflow.
+            raise ValueError("UNSUPPORTED_EVENT_DATE_LAYOUT")
         result, seen = [], set()
         for cells, link in self.rows:
             if not link or len(cells) != len(self.headers):
@@ -368,10 +374,6 @@ class CalendarResults(HTMLParser):
                 "filingDate": filing_date,
                 "eventType": "ANY",
             })
-        if self.rows:
-            self.validated_row_count = len(self.rows)
-            self.scope_validated = True
-            self.dates_validated = False
         self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
         return result
 

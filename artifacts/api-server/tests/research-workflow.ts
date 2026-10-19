@@ -33,6 +33,19 @@ assert.equal(calendarOperationBlock(source,[{...denial,path:"/CaseSearch"}]),"AC
 assert.equal(calendarOperationBlock(source,[denial,{...denial,outcome:"CHALLENGE",path:"/CaseSearch"}]),"ACCESS_DENIED");
 assert.equal(calendarOperationBlock({...source,pausedUntil:new Date(Date.now()+60000)},[denial]),"SOURCE_COOLDOWN");
 assert.equal(calendarOperationBlock({...source,blockedReason:"RESTART_IN_FLIGHT"},[denial]),"RESTART_IN_FLIGHT");
+const retainedSizeLimit = {...source, blockedReason:"SIZE_LIMIT"};
+const sizeLimitCalendarRequest = {method:"POST",path:"/CaseSearch",statusCode:200,outcome:"SIZE_LIMIT"};
+assert.equal(calendarOperationBlock(retainedSizeLimit,[sizeLimitCalendarRequest]),null);
+assert.equal(retainedSizeLimit.blockedReason,"SIZE_LIMIT"); // Calendar-only retry; no barrier/history clearing.
+for (const origin of [
+  {...sizeLimitCalendarRequest, path:"/Report/CpDocketSheet"},
+  {...sizeLimitCalendarRequest, method:"GET"},
+  {...sizeLimitCalendarRequest, outcome:"ACCESS_DENIED"},
+  {...sizeLimitCalendarRequest, statusCode:403},
+]) assert.equal(calendarOperationBlock(retainedSizeLimit,[origin]),"SIZE_LIMIT");
+assert.equal(calendarOperationBlock(retainedSizeLimit,[]),"SIZE_LIMIT");
+assert.equal(calendarOperationBlock({...retainedSizeLimit,pausedUntil:new Date(Date.now()+60_000)},
+  [sizeLimitCalendarRequest]),"SOURCE_COOLDOWN");
 for(const path of ["/Report/MdjDocketSheet","/Report/CpDocketSheet"])
   assert.equal(calendarPreviewRequestAllowed(path,"GET"),false);
 assert.equal(calendarPreviewRequestAllowed("/CaseSearch","POST"),true);

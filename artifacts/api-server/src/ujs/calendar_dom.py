@@ -83,7 +83,7 @@ DOM_PROJECTION = r"""({limit}) => {
         const part=tail+text.slice(i,i+4096);
         if (node.nodeType===Node.TEXT_NODE) units+=text.slice(i,i+4096)
           .replace(/[&<>]/g,c=>c==="&"?"&amp;":c==="<"?"&lt;":"&gt;").length;
-        if (/(?:maximum|limit)\s+(?:of\s+)?(?:500|results)|(?:first|more than)\s+500|(?:result|record)s?\s+limit|too many results/i.test(part)) resultLimit=true;
+        if (/(?:not\s+all\s+results\s+are\s+shown)|(?:maximum|limit)\s+(?:of\s+)?(?:500|results)|(?:first|more than)\s+500|(?:result|record)s?\s+limit|too many results/i.test(part)) resultLimit=true;
         tail=part.slice(-256);
       }
     } else if (node.nodeType===Node.ELEMENT_NODE) {

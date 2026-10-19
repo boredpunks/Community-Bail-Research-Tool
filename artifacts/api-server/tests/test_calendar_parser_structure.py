@@ -61,11 +61,24 @@ class CalendarParserStructureTests(unittest.TestCase):
             f"<th>{label}</th>" for label in labels
         ) + "</tr><tr>" + "<td></td>" * 12 + "</tr></table>"
         parser = self.parse(table)
-        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
+        with self.assertRaisesRegex(ValueError, "^UNSUPPORTED_EVENT_DATE_LAYOUT$"):
             parser.validated({
                 "courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
                 "startDate": "2026-10-19", "endDate": "2026-10-19",
             })
+
+    def test_case_information_data_cannot_claim_a_scheduled_event_without_event_dates(self):
+        labels = ["Column"] * 12
+        for index, name in {0: "Docket Number", 1: "Court Type", 4: "Filing Date",
+                            7: "County", 8: "Court Office"}.items():
+            labels[index] = name
+        table = '<table id="caseSearchResultGrid"><tr>' + "".join(
+            f"<th>{label}</th>" for label in labels
+        ) + "</tr><tr>" + "<td></td>" * 12 + "</tr></table>"
+        parser = self.parse(table)
+        with self.assertRaisesRegex(ValueError, "^UNSUPPORTED_EVENT_DATE_LAYOUT$"):
+            parser.validated({"courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
+                              "startDate": "2026-10-19", "endDate": "2026-10-19"})
 
     def test_court_type_labels_are_explicit_and_unknown_labels_stay_unknown(self):
         self.assertEqual(label_court_type("Common Pleas"), "COMMON_PLEAS")
