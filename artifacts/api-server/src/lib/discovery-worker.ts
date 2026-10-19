@@ -207,6 +207,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           || job.calendarComplete) throw new Error("Invalid bounded engine stop");
         await pause(job, `${String(message.code)}: no Search or document request was authorized.`);
         finished = true;
+      } else if (message.kind === "document_session_required") {
+        if (!job.calendarComplete || diagnosticOnly || Object.keys(message).length !== 1)
+          throw new Error("Invalid document session checkpoint");
+        await pause(job, "The original calendar browser session has ended. Start a new search with the same criteria to obtain fresh document links, or verify a user-supplied PDF. Existing results, budgets, and source restrictions are retained.");
+        finished = true;
       } else if (message.kind === "coverage_metadata") {
         if (!coverageOnly || courtroomObservationOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
           throw new Error("Invalid coverage metadata");

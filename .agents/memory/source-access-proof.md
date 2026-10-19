@@ -3,6 +3,18 @@ name: Source proof is client-specific
 description: Calendar and PDF access must be proven using the same request methods used by the live adapter.
 ---
 
+The user reports that PDFs can sometimes be accessed only by right-clicking
+the calendar document link and choosing “Open link in new tab,” and directed:
+“access the pdf from the calendar search.”
+
+**Why:** A separate no-cookie request is not the browser flow the user observes
+working. This report does not establish that a recorded HTTP denial was only
+a viewer failure.
+
+**How to apply:** Use the actual calendar-provided action in that calendar's
+browser context; distinguish native document navigation/download from viewer
+display. Preserve genuine denials and exact-method assessment controls.
+
 Treat a source-access proof as specific to the HTTP/browser methods actually tested. Calendar access alone does not establish docket access, and a successful standard HTTP PDF download does not prove Playwright's request client will work.
 
 **Why:** On October 6, 2026, ordinary browser calendar submission and a standard HTTP docket download succeeded during assessment. The integrated browser-calendar job later received HTTP 403 for its Playwright-client PDF request. The cause of the denial was not established.

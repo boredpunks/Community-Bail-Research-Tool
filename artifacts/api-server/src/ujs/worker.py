@@ -14,7 +14,7 @@ from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
-from public_http import download
+from calendar_document import CalendarDocument
 from optional_resources import IMAGE, FONT
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_response import CalendarStream, CalendarResponse, html_byte_limit
@@ -179,6 +179,7 @@ async def main(config=None):
         context = await browser.new_context(service_workers="block", accept_downloads=False)
         context.set_default_timeout(60_000)
         calendar_stream = None
+        browser_document = None
 
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
@@ -376,6 +377,8 @@ async def main(config=None):
             nonlocal criteria_validation, submission_payload_rejected
             nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
             request = route.request
+            if browser_document is not None and await browser_document.handle_route(route):
+                return
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
             if request.resource_type in ("image", "font"):
@@ -535,6 +538,7 @@ async def main(config=None):
 
             await context.route_web_socket("**/*", block_websocket)
         page = await context.new_page()
+        browser_document = CalendarDocument(context, page)
         if inspection_only:
             inspection_cdp = await context.new_cdp_session(page)
             inspection_router = InspectionRequestRouter(inspection_cdp)
@@ -838,6 +842,11 @@ async def main(config=None):
 
         try:
             items = config["pendingItems"]
+            if config["calendarComplete"] and items:
+                # A restarted browser does not have the calendar session that
+                # issued these actions. Do not silently use a different client.
+                emit("document_session_required")
+                return
             if not config["calendarComplete"]:
                 goto_timeout = 600_000
                 if inspection_only:
@@ -1005,7 +1014,7 @@ async def main(config=None):
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
-                        lambda: download(item["sourceUrl"]),
+                        lambda: browser_document.open(item["sourceUrl"]),
                     )
                     try:
                         result = extract_bail(body, item["docketNumber"])
