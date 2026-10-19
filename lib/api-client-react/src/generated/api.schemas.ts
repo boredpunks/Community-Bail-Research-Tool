@@ -203,7 +203,6 @@ export type DiscoveryControlAction = typeof DiscoveryControlAction[keyof typeof 
 export const DiscoveryControlAction = {
   PAUSE: 'PAUSE',
   CANCEL: 'CANCEL',
-  RESUME: 'RESUME',
 } as const;
 
 export interface DiscoveryControl {

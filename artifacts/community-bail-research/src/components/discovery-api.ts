@@ -22,20 +22,6 @@ async function parse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export type DiscoveryOperations = {
-  calendarEnabled: boolean;
-  calendarBlockedReason: string | null;
-  documentEnabled: false;
-  documentBlockedReason: string | null;
-  pacing: { navigationMs: number; assetMs: number; searchMs: number; documentMs: number };
-  notice: string | null;
-};
-
-export type SearchInput = {
-  courtOffice: string; courtRoom: string; eventType: string;
-  startDate: string; endDate: string; scheduledOnly: true;
-};
-
 export type LocalUploadResult = { jobId: string; itemId: string; extractionOutcome: string; detail: string | null };
 
 export type LedgerRequest = {
@@ -48,19 +34,6 @@ export type EntryExt = DiscoveryEntry & {
   percentageCondition?: string | null;
   excerpt?: string | null;
 };
-
-export const OPERATIONS_KEY = ['/api/discovery/operations'] as const;
-
-export async function getOperations(signal?: AbortSignal): Promise<DiscoveryOperations> {
-  return parse(await fetch(apiUrl('/api/discovery/operations'), { credentials: 'include', signal }));
-}
-
-export async function postSearch(input: SearchInput): Promise<DiscoveryJob> {
-  return parse(await fetch(apiUrl('/api/discovery/searches'), {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
-  }));
-}
 
 export async function uploadLocalDocument(file: File, opts: { docketNumber?: string; jobId?: string; itemId?: string }): Promise<LocalUploadResult> {
   const q = new URLSearchParams();

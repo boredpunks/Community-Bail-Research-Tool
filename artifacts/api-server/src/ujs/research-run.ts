@@ -48,7 +48,7 @@ async function main() {
   const lease = await pool.connect();
   if (!(await lease.query("SELECT pg_try_advisory_lock(74651283) AS acquired")).rows[0]?.acquired) {
     lease.release();
-    throw new Error("Managed worker active; no source request");
+    throw new Error("Managed worker active.");
   }
   let permitId: string | undefined;
   let jobId: string | undefined;

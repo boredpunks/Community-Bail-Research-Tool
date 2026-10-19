@@ -292,18 +292,18 @@ async function main() {
         }
         const [activeJob] = await tx.select().from(discoveryJobsTable)
           .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
-        if (activeJob) throw new Error("Another discovery job is active; no source request sent.");
+        if (activeJob) throw new Error("Another discovery job is active.");
       }
       if (pilot.expectedMethod === courtroomObservationMethod
         && (!validCourtroomObservationCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)))
-        throw new Error("Courtroom observation scope/barrier no longer matches; no source request sent.");
+        throw new Error("Courtroom observation scope/barrier no longer matches.");
       if (pilot.stage === "BOUNDED_ENGINE"
         && (!validBoundedEngineCriteria(pilot.criteria) || !calendarPreviewSourceAllowed(source)))
-        throw new Error("Bounded engine scope/barrier no longer matches; no source request sent.");
+        throw new Error("Bounded engine scope/barrier no longer matches.");
       if (pilot.stage === "BOUNDED_ENGINE") {
         const [active] = await tx.select().from(discoveryJobsTable)
           .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
-        if (active) throw new Error("Another discovery job is active; no source request sent.");
+        if (active) throw new Error("Another discovery job is active.");
       }
       const [created] = await tx.insert(discoveryJobsTable).values({
         ownerId: WORKSPACE_OWNER_ID, criteria: pilot.criteria, assessmentId: pilot.id,

@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApiError,
   BadRequestResponse,
   BailRange,
   BailRecord,
@@ -88,9 +89,10 @@ export const getStartResearchCalendarSearchUrl = () => {
 }
 
 /**
- * @summary Authenticated Calendar Event search without operator permits or document requests
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const startResearchCalendarSearch = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+export const startResearchCalendarSearch = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -106,7 +108,7 @@ export const startResearchCalendarSearch = async (calendarPreviewInput: Calendar
     }
     return headers;
   };
-return customFetch<DiscoveryJob>(getStartResearchCalendarSearchUrl(),
+return customFetch<unknown>(getStartResearchCalendarSearchUrl(),
   {
     ...options,
     method: 'POST',
@@ -121,7 +123,7 @@ return customFetch<DiscoveryJob>(getStartResearchCalendarSearchUrl(),
 
 export const getStartResearchCalendarSearchMutationKey = () => ['startResearchCalendarSearch'] as const;
 
-export const getStartResearchCalendarSearchMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+export const getStartResearchCalendarSearchMutationOptions = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext> => {
 
@@ -150,13 +152,14 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type StartResearchCalendarSearchMutationResult = NonNullable<Awaited<ReturnType<typeof startResearchCalendarSearch>>>
     export type StartResearchCalendarSearchMutationBody = BodyType<CalendarPreviewInput>
-    export type StartResearchCalendarSearchMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type StartResearchCalendarSearchMutationError = ErrorType<UnauthorizedResponse | ApiError>
     export type StartResearchCalendarSearchMutationVariables = {data: BodyType<CalendarPreviewInput>}
 
     /**
- * @summary Authenticated Calendar Event search without operator permits or document requests
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const useStartResearchCalendarSearch = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+export const useStartResearchCalendarSearch = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startResearchCalendarSearch>>,
@@ -729,7 +732,11 @@ export const getCreateDiscoveryJobUrl = () => {
   return `/api/discovery/jobs`
 }
 
-export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+/**
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
+ */
+export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -745,7 +752,7 @@ export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, o
     }
     return headers;
   };
-return customFetch<DiscoveryJob>(getCreateDiscoveryJobUrl(),
+return customFetch<unknown>(getCreateDiscoveryJobUrl(),
   {
     ...options,
     method: 'POST',
@@ -760,7 +767,7 @@ return customFetch<DiscoveryJob>(getCreateDiscoveryJobUrl(),
 
 export const getCreateDiscoveryJobMutationKey = () => ['createDiscoveryJob'] as const;
 
-export const getCreateDiscoveryJobMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+export const getCreateDiscoveryJobMutationOptions = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext> => {
 
@@ -789,10 +796,14 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateDiscoveryJobMutationResult = NonNullable<Awaited<ReturnType<typeof createDiscoveryJob>>>
     export type CreateDiscoveryJobMutationBody = BodyType<DiscoveryJobInput>
-    export type CreateDiscoveryJobMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type CreateDiscoveryJobMutationError = ErrorType<UnauthorizedResponse | ApiError>
     export type CreateDiscoveryJobMutationVariables = {data: BodyType<DiscoveryJobInput>}
 
-    export const useCreateDiscoveryJob = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    /**
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
+ */
+export const useCreateDiscoveryJob = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createDiscoveryJob>>,
@@ -812,9 +823,10 @@ export const getCreateCalendarPreviewUrl = () => {
 }
 
 /**
- * @summary Run one calendar-only preview without retrieving docket documents
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const createCalendarPreview = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+export const createCalendarPreview = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -830,7 +842,7 @@ export const createCalendarPreview = async (calendarPreviewInput: CalendarPrevie
     }
     return headers;
   };
-return customFetch<DiscoveryJob>(getCreateCalendarPreviewUrl(),
+return customFetch<unknown>(getCreateCalendarPreviewUrl(),
   {
     ...options,
     method: 'POST',
@@ -845,7 +857,7 @@ return customFetch<DiscoveryJob>(getCreateCalendarPreviewUrl(),
 
 export const getCreateCalendarPreviewMutationKey = () => ['createCalendarPreview'] as const;
 
-export const getCreateCalendarPreviewMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+export const getCreateCalendarPreviewMutationOptions = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext> => {
 
@@ -874,13 +886,14 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateCalendarPreviewMutationResult = NonNullable<Awaited<ReturnType<typeof createCalendarPreview>>>
     export type CreateCalendarPreviewMutationBody = BodyType<CalendarPreviewInput>
-    export type CreateCalendarPreviewMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type CreateCalendarPreviewMutationError = ErrorType<UnauthorizedResponse | ApiError>
     export type CreateCalendarPreviewMutationVariables = {data: BodyType<CalendarPreviewInput>}
 
     /**
- * @summary Run one calendar-only preview without retrieving docket documents
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const useCreateCalendarPreview = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+export const useCreateCalendarPreview = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalendarPreview>>, TError,CreateCalendarPreviewMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createCalendarPreview>>,
@@ -977,11 +990,12 @@ export const getStartDiscoveryAssessmentUrl = (assessmentId: string,) => {
 }
 
 /**
- * @summary Consume one exact operator-approved bounded permit delegated to this workspace
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const startDiscoveryAssessment = async (assessmentId: string, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+export const startDiscoveryAssessment = async (assessmentId: string, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-  return customFetch<DiscoveryJob>(getStartDiscoveryAssessmentUrl(assessmentId),
+  return customFetch<unknown>(getStartDiscoveryAssessmentUrl(assessmentId),
   {
     ...options,
     method: 'POST'
@@ -996,7 +1010,7 @@ export const startDiscoveryAssessment = async (assessmentId: string, options?: P
 
 export const getStartDiscoveryAssessmentMutationKey = () => ['startDiscoveryAssessment'] as const;
 
-export const getStartDiscoveryAssessmentMutationOptions = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+export const getStartDiscoveryAssessmentMutationOptions = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext> => {
 
@@ -1025,13 +1039,14 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type StartDiscoveryAssessmentMutationResult = NonNullable<Awaited<ReturnType<typeof startDiscoveryAssessment>>>
 
-    export type StartDiscoveryAssessmentMutationError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type StartDiscoveryAssessmentMutationError = ErrorType<UnauthorizedResponse | ApiError>
     export type StartDiscoveryAssessmentMutationVariables = {assessmentId: string}
 
     /**
- * @summary Consume one exact operator-approved bounded permit delegated to this workspace
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
-export const useStartDiscoveryAssessment = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+export const useStartDiscoveryAssessment = <TError = ErrorType<UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDiscoveryAssessment>>, TError,StartDiscoveryAssessmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startDiscoveryAssessment>>,

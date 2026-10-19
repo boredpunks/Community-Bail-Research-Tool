@@ -18,7 +18,7 @@ export async function launchBoundedPermit(ownerId: string, id: string, store = d
       || permit.state !== "APPROVED" || permit.jobId || !permit.approvedAt || !permit.expiresAt || permit.expiresAt <= now
       || !source || !calendarPreviewSourceAllowed(source)
       || source.pausedUntil && source.pausedUntil > now) {
-      return { status: 409 as const, error: "This exact scope is not currently launchable. No permit was reused and no source request was sent." };
+      return { status: 409 as const, error: "This exact scope is not currently launchable." };
     }
     const [active] = await tx.select({ id: jobs.id }).from(jobs)
       .where(inArray(jobs.status, ["QUEUED", "RUNNING"])).limit(1);

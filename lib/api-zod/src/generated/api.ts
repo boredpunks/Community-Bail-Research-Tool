@@ -9,7 +9,8 @@ import * as zod from 'zod';
 
 
 /**
- * @summary Authenticated Calendar Event search without operator permits or document requests
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
 export const startResearchCalendarSearchBodyCourtOfficeMax = 80;
 
@@ -28,61 +29,7 @@ export const StartResearchCalendarSearchBody = zod.object({
   "scheduledOnly": zod.literal(true).default(startResearchCalendarSearchBodyScheduledOnlyDefault)
 })
 
-export const startResearchCalendarSearchResponseCriteriaCourtOfficeMax = 80;
-
-export const startResearchCalendarSearchResponseCriteriaCourtRoomMax = 80;
-
-export const startResearchCalendarSearchResponseCriteriaEventTypeMax = 80;
-
-export const startResearchCalendarSearchResponseCriteriaRecordCapMax = 200;
-
-export const startResearchCalendarSearchResponseCriteriaRequestCapMax = 500;
-
-export const startResearchCalendarSearchResponseCriteriaMatchTargetMax = 200;
-
-export const startResearchCalendarSearchResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
-
-
-
-export const StartResearchCalendarSearchResponse = zod.object({
-  "id": zod.string().uuid(),
-  "criteria": zod.object({
-  "courtOffice": zod.string().max(startResearchCalendarSearchResponseCriteriaCourtOfficeMax).describe('Exact source-displayed office choice, or ANY for no filter.'),
-  "courtRoom": zod.string().max(startResearchCalendarSearchResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.string().max(startResearchCalendarSearchResponseCriteriaEventTypeMax),
-  "calendarPreviewOnly": zod.boolean().optional(),
-  "startDate": zod.coerce.date(),
-  "endDate": zod.coerce.date(),
-  "recordCap": zod.number().int().min(1).max(startResearchCalendarSearchResponseCriteriaRecordCapMax),
-  "requestCap": zod.number().int().min(1).max(startResearchCalendarSearchResponseCriteriaRequestCapMax).describe('Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.'),
-  "matchTarget": zod.number().int().min(1).max(startResearchCalendarSearchResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
-  "matchFilters": zod.object({
-  "monetaryUpperBoundCents": zod.number().int().min(1).max(startResearchCalendarSearchResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
-  "excludeShownPosted": zod.boolean(),
-  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
-}).optional()
-}),
-  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
-  "requestsUsed": zod.number().int(),
-  "completedRequests": zod.number().int(),
-  "failedRequests": zod.number().int(),
-  "discovered": zod.number().int(),
-  "processed": zod.number().int(),
-  "matching": zod.number().int(),
-  "targetReached": zod.boolean(),
-  "failed": zod.number().int(),
-  "unprocessed": zod.number().int(),
-  "calendarComplete": zod.boolean(),
-  "paginationComplete": zod.boolean(),
-  "resultCapReached": zod.boolean(),
-  "message": zod.string().nullable(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "resultsExpireAt": zod.coerce.date().nullable(),
-  "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int(),
-  "isAssessment": zod.boolean()
-})
+export const StartResearchCalendarSearchResponse = zod.void()
 
 
 /**
@@ -243,6 +190,10 @@ export const ListDiscoveryJobsResponseItem = zod.object({
 export const ListDiscoveryJobsResponse = zod.array(ListDiscoveryJobsResponseItem)
 
 
+/**
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
+ */
 export const createDiscoveryJobBodyOneCourtOfficeMax = 80;
 
 export const createDiscoveryJobBodyOneCourtRoomMax = 80;
@@ -281,65 +232,12 @@ export const CreateDiscoveryJobBody = zod.object({
   "requestCap": zod.number().int().min(createDiscoveryJobBodyTwoRequestCapMin).max(createDiscoveryJobBodyTwoRequestCapMax)
 }))
 
-export const createDiscoveryJobResponseCriteriaCourtOfficeMax = 80;
-
-export const createDiscoveryJobResponseCriteriaCourtRoomMax = 80;
-
-export const createDiscoveryJobResponseCriteriaEventTypeMax = 80;
-
-export const createDiscoveryJobResponseCriteriaRecordCapMax = 200;
-
-export const createDiscoveryJobResponseCriteriaRequestCapMax = 500;
-
-export const createDiscoveryJobResponseCriteriaMatchTargetMax = 200;
-
-export const createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
-
-
-
-export const CreateDiscoveryJobResponse = zod.object({
-  "id": zod.string().uuid(),
-  "criteria": zod.object({
-  "courtOffice": zod.string().max(createDiscoveryJobResponseCriteriaCourtOfficeMax).describe('Exact source-displayed office choice, or ANY for no filter.'),
-  "courtRoom": zod.string().max(createDiscoveryJobResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.string().max(createDiscoveryJobResponseCriteriaEventTypeMax),
-  "calendarPreviewOnly": zod.boolean().optional(),
-  "startDate": zod.coerce.date(),
-  "endDate": zod.coerce.date(),
-  "recordCap": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaRecordCapMax),
-  "requestCap": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaRequestCapMax).describe('Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.'),
-  "matchTarget": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
-  "matchFilters": zod.object({
-  "monetaryUpperBoundCents": zod.number().int().min(1).max(createDiscoveryJobResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
-  "excludeShownPosted": zod.boolean(),
-  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
-}).optional()
-}),
-  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
-  "requestsUsed": zod.number().int(),
-  "completedRequests": zod.number().int(),
-  "failedRequests": zod.number().int(),
-  "discovered": zod.number().int(),
-  "processed": zod.number().int(),
-  "matching": zod.number().int(),
-  "targetReached": zod.boolean(),
-  "failed": zod.number().int(),
-  "unprocessed": zod.number().int(),
-  "calendarComplete": zod.boolean(),
-  "paginationComplete": zod.boolean(),
-  "resultCapReached": zod.boolean(),
-  "message": zod.string().nullable(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "resultsExpireAt": zod.coerce.date().nullable(),
-  "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int(),
-  "isAssessment": zod.boolean()
-})
+export const CreateDiscoveryJobResponse = zod.void()
 
 
 /**
- * @summary Run one calendar-only preview without retrieving docket documents
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
 export const createCalendarPreviewBodyCourtOfficeMax = 80;
 
@@ -358,61 +256,7 @@ export const CreateCalendarPreviewBody = zod.object({
   "scheduledOnly": zod.literal(true).default(createCalendarPreviewBodyScheduledOnlyDefault)
 })
 
-export const createCalendarPreviewResponseCriteriaCourtOfficeMax = 80;
-
-export const createCalendarPreviewResponseCriteriaCourtRoomMax = 80;
-
-export const createCalendarPreviewResponseCriteriaEventTypeMax = 80;
-
-export const createCalendarPreviewResponseCriteriaRecordCapMax = 200;
-
-export const createCalendarPreviewResponseCriteriaRequestCapMax = 500;
-
-export const createCalendarPreviewResponseCriteriaMatchTargetMax = 200;
-
-export const createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
-
-
-
-export const CreateCalendarPreviewResponse = zod.object({
-  "id": zod.string().uuid(),
-  "criteria": zod.object({
-  "courtOffice": zod.string().max(createCalendarPreviewResponseCriteriaCourtOfficeMax).describe('Exact source-displayed office choice, or ANY for no filter.'),
-  "courtRoom": zod.string().max(createCalendarPreviewResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.string().max(createCalendarPreviewResponseCriteriaEventTypeMax),
-  "calendarPreviewOnly": zod.boolean().optional(),
-  "startDate": zod.coerce.date(),
-  "endDate": zod.coerce.date(),
-  "recordCap": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaRecordCapMax),
-  "requestCap": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaRequestCapMax).describe('Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.'),
-  "matchTarget": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
-  "matchFilters": zod.object({
-  "monetaryUpperBoundCents": zod.number().int().min(1).max(createCalendarPreviewResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
-  "excludeShownPosted": zod.boolean(),
-  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
-}).optional()
-}),
-  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
-  "requestsUsed": zod.number().int(),
-  "completedRequests": zod.number().int(),
-  "failedRequests": zod.number().int(),
-  "discovered": zod.number().int(),
-  "processed": zod.number().int(),
-  "matching": zod.number().int(),
-  "targetReached": zod.boolean(),
-  "failed": zod.number().int(),
-  "unprocessed": zod.number().int(),
-  "calendarComplete": zod.boolean(),
-  "paginationComplete": zod.boolean(),
-  "resultCapReached": zod.boolean(),
-  "message": zod.string().nullable(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "resultsExpireAt": zod.coerce.date().nullable(),
-  "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int(),
-  "isAssessment": zod.boolean()
-})
+export const CreateCalendarPreviewResponse = zod.void()
 
 
 /**
@@ -471,67 +315,14 @@ export const ListDiscoveryAssessmentsResponse = zod.array(ListDiscoveryAssessmen
 
 
 /**
- * @summary Consume one exact operator-approved bounded permit delegated to this workspace
+ * @deprecated
+ * @summary Disabled while the search implementation is rebuilt
  */
 export const StartDiscoveryAssessmentParams = zod.object({
   "assessmentId": zod.coerce.string().uuid()
 })
 
-export const startDiscoveryAssessmentResponseCriteriaCourtOfficeMax = 80;
-
-export const startDiscoveryAssessmentResponseCriteriaCourtRoomMax = 80;
-
-export const startDiscoveryAssessmentResponseCriteriaEventTypeMax = 80;
-
-export const startDiscoveryAssessmentResponseCriteriaRecordCapMax = 200;
-
-export const startDiscoveryAssessmentResponseCriteriaRequestCapMax = 500;
-
-export const startDiscoveryAssessmentResponseCriteriaMatchTargetMax = 200;
-
-export const startDiscoveryAssessmentResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
-
-
-
-export const StartDiscoveryAssessmentResponse = zod.object({
-  "id": zod.string().uuid(),
-  "criteria": zod.object({
-  "courtOffice": zod.string().max(startDiscoveryAssessmentResponseCriteriaCourtOfficeMax).describe('Exact source-displayed office choice, or ANY for no filter.'),
-  "courtRoom": zod.string().max(startDiscoveryAssessmentResponseCriteriaCourtRoomMax).optional(),
-  "eventType": zod.string().max(startDiscoveryAssessmentResponseCriteriaEventTypeMax),
-  "calendarPreviewOnly": zod.boolean().optional(),
-  "startDate": zod.coerce.date(),
-  "endDate": zod.coerce.date(),
-  "recordCap": zod.number().int().min(1).max(startDiscoveryAssessmentResponseCriteriaRecordCapMax),
-  "requestCap": zod.number().int().min(1).max(startDiscoveryAssessmentResponseCriteriaRequestCapMax).describe('Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.'),
-  "matchTarget": zod.number().int().min(1).max(startDiscoveryAssessmentResponseCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
-  "matchFilters": zod.object({
-  "monetaryUpperBoundCents": zod.number().int().min(1).max(startDiscoveryAssessmentResponseCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Local monetary TOTAL_BAIL maximum; null disables this filter.'),
-  "excludeShownPosted": zod.boolean(),
-  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.')
-}).optional()
-}),
-  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
-  "requestsUsed": zod.number().int(),
-  "completedRequests": zod.number().int(),
-  "failedRequests": zod.number().int(),
-  "discovered": zod.number().int(),
-  "processed": zod.number().int(),
-  "matching": zod.number().int(),
-  "targetReached": zod.boolean(),
-  "failed": zod.number().int(),
-  "unprocessed": zod.number().int(),
-  "calendarComplete": zod.boolean(),
-  "paginationComplete": zod.boolean(),
-  "resultCapReached": zod.boolean(),
-  "message": zod.string().nullable(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "resultsExpireAt": zod.coerce.date().nullable(),
-  "resultsExpiredAt": zod.coerce.date().nullable(),
-  "candidateDockets": zod.number().int(),
-  "isAssessment": zod.boolean()
-})
+export const StartDiscoveryAssessmentResponse = zod.void()
 
 
 export const GetDiscoveryJobParams = zod.object({
@@ -668,7 +459,7 @@ export const ControlDiscoveryJobParams = zod.object({
 })
 
 export const ControlDiscoveryJobBody = zod.object({
-  "action": zod.enum(['PAUSE', 'CANCEL', 'RESUME'])
+  "action": zod.enum(['PAUSE', 'CANCEL'])
 })
 
 export const controlDiscoveryJobResponseCriteriaCourtOfficeMax = 80;

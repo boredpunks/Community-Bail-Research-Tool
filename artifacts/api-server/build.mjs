@@ -18,8 +18,6 @@ async function buildAll() {
   await esbuild({
     entryPoints: {
       index: path.resolve(artifactDir, "src/index.ts"),
-      pilot: path.resolve(artifactDir, "src/ujs/pilot.ts"),
-      "research-run": path.resolve(artifactDir, "src/ujs/research-run.ts"),
     },
     platform: "node",
     bundle: true,

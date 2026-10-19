@@ -1,26 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  useGetDiscoveryPolicy,
   useListDiscoveryJobs,
   useGetDiscoveryJob,
   useControlDiscoveryJob,
   useSaveDiscoveryObservation,
   getListDiscoveryJobsQueryKey,
   getGetDiscoveryJobQueryKey,
-  getGetDiscoveryPolicyQueryKey,
   type DiscoveryItem,
   type DiscoveryControlAction,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import {
-  OPERATIONS_KEY, getOperations, postSearch, uploadLocalDocument, isHttpsPortal,
+  uploadLocalDocument, isHttpsPortal,
   type ReportWithRequests, type EntryExt, type LocalUploadResult,
 } from '@/components/discovery-api';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
-const POLL_MS = 3000;
 const VERIF: Record<string, string> = {
   PENDING: 'Saved, pending review',
   CONFIRMED: 'Source verified in review',
@@ -153,11 +150,8 @@ function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded }: {
 /* ---------- Page ---------- */
 export default function Discovery() {
   const qc = useQueryClient();
-  const policy = useGetDiscoveryPolicy({ query: { queryKey: getGetDiscoveryPolicyQueryKey() } });
-  const ops = useQuery({ queryKey: OPERATIONS_KEY, queryFn: ({ signal }) => getOperations(signal), refetchInterval: 30_000 });
   const jobs = useListDiscoveryJobs({ query: {
     queryKey: getListDiscoveryJobsQueryKey(),
-    refetchInterval: (q) => q.state.data?.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING') ? POLL_MS : false,
   } });
   const control = useControlDiscoveryJob();
   const save = useSaveDiscoveryObservation();
@@ -171,13 +165,12 @@ export default function Discovery() {
   }, []);
 
   const today = todayNY();
-  const [office, setOffice] = useState('ANY');
-  const [room, setRoom] = useState('ANY');
-  const [eventType, setEventType] = useState('ANY');
-  const [start, setStart] = useState(today);
-  const [end, setEnd] = useState(today);
-  const [scheduled, setScheduled] = useState(true);
-  const [formErr, setFormErr] = useState<string | null>(null);
+  const office = 'ANY';
+  const room = 'ANY';
+  const eventType = 'ANY';
+  const start = today;
+  const end = today;
+  const scheduled = true;
   const [ctlMsg, setCtlMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<{ id: string; msg: string } | null>(null);
   const [maxBail, setMaxBail] = useState('');
@@ -190,7 +183,6 @@ export default function Discovery() {
   const report = useGetDiscoveryJob(selected, { query: {
     queryKey: getGetDiscoveryJobQueryKey(selected),
     enabled: !!selected,
-    refetchInterval: (q) => { const st = q.state.data?.job.status; return st === 'QUEUED' || st === 'RUNNING' ? POLL_MS : false; },
   } });
   const data = report.data as ReportWithRequests | undefined;
   const job = data?.job;
@@ -198,14 +190,8 @@ export default function Discovery() {
   function refresh(id?: string) {
     if (id) qc.invalidateQueries({ queryKey: getGetDiscoveryJobQueryKey(id) });
     qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() });
-    qc.invalidateQueries({ queryKey: OPERATIONS_KEY });
   }
 
-  const search = useMutation({
-    mutationFn: postSearch,
-    onSuccess: (j) => { setJobId(j.id); setCtlMsg(null); refresh(j.id); },
-    onError: (e) => setFormErr(`Search not started: ${errMsg(e)}`),
-  });
   const solo = useMutation({
     mutationFn: (f: File) => uploadLocalDocument(f, { docketNumber: soloDocket }),
     onSuccess: (r) => {
@@ -214,19 +200,6 @@ export default function Discovery() {
     },
     onError: (e) => setSoloMsg({ ok: false, text: `Upload failed: ${errMsg(e)}` }),
   });
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setFormErr(null);
-    if (!scheduled) return setFormErr('Scheduled Events Only is required.');
-    if (!start || !end) return setFormErr('Choose a start and end date.');
-    if (end < start) return setFormErr('End date cannot be before start date.');
-    if (ops.data && !ops.data.calendarEnabled) return setFormErr(`Calendar search unavailable: ${ops.data.calendarBlockedReason ?? 'blocked'}.`);
-    search.mutate({
-      courtOffice: office.trim() || 'ANY', courtRoom: room.trim() || 'ANY', eventType: eventType.trim() || 'ANY',
-      startDate: start, endDate: end, scheduledOnly: true,
-    });
-  }
 
   function act(action: DiscoveryControlAction) {
     if (!selected) return;
@@ -267,8 +240,6 @@ export default function Discovery() {
     : `${items.length} validated row${items.length === 1 ? '' : 's'}`;
   const distinctDockets = new Set(items.map((i) => i.docketNumber)).size;
   const active = job?.status === 'QUEUED' || job?.status === 'RUNNING';
-  const o = ops.data;
-
   return (
     <Shell>
       <PageHead label="Search" title="Calendar search and docket evidence">
@@ -276,41 +247,29 @@ export default function Discovery() {
       </PageHead>
 
       <section className="panel mb-6" aria-labelledby="ops-h" data-testid="section-operations">
-        <h2 id="ops-h" className="mono text-xl font-bold mb-2">Source status</h2>
-        {ops.isLoading ? <div className="skel h-12" aria-busy="true" /> : ops.isError ? (
-          <div className="errbox" role="alert"><p>Could not load source status. {errMsg(ops.error)}</p>
-            <button type="button" className="btn mt-2" onClick={() => ops.refetch()}>Retry</button></div>
-        ) : o ? (
-          <div className="space-y-1">
-            <p>Calendar search: <strong>{o.calendarEnabled ? 'available' : 'unavailable'}</strong>{!o.calendarEnabled && o.calendarBlockedReason ? `: ${o.calendarBlockedReason}` : ''}</p>
-            <p>Automatic document retrieval: <strong>off</strong>{o.documentBlockedReason ? `: ${o.documentBlockedReason}` : ''}. Use per-row source links and local PDF upload.</p>
-            <p className="hint mono text-sm">Pacing: navigation {o.pacing.navigationMs} ms, assets {o.pacing.assetMs} ms, search {o.pacing.searchMs} ms, document {o.pacing.documentMs} ms.</p>
-            {o.notice ? <p className="hint">{o.notice}</p> : null}
-            {policy.data?.minimumDate ? <p className="hint">Coverage note: history before {policy.data.minimumDate} is not proven.</p> : null}
-          </div>
-        ) : null}
+        <h2 id="ops-h" className="mono text-xl font-bold mb-2">Search status</h2>
+        <p role="status">The search implementation is being rebuilt. Existing saved records and manual PDF uploads are unchanged.</p>
       </section>
 
       <div className="grid gap-6 md:grid-cols-[3fr_2fr] mb-8">
-        <form className="panel space-y-3" onSubmit={submit} data-testid="form-search">
+        <form className="panel space-y-3" data-testid="form-search">
           <h2 className="mono text-xl font-bold">Calendar Event search</h2>
-          <p className="hint">County: <strong>Allegheny – 05</strong>. Leave filters as ANY for no filter.</p>
+          <p className="hint">County: <strong>Allegheny – 05</strong>. The controls are retained as layout only while search is rebuilt.</p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block">Court office<input className="input w-full" value={office} onChange={(e) => setOffice(e.target.value)} data-testid="input-office" /></label>
-            <label className="block">Courtroom<input className="input w-full" value={room} onChange={(e) => setRoom(e.target.value)} data-testid="input-room" /></label>
+            <label className="block">Court office<input className="input w-full" value={office} disabled data-testid="input-office" /></label>
+            <label className="block">Courtroom<input className="input w-full" value={room} disabled data-testid="input-room" /></label>
             <label className="block">Event type
-              <input className="input w-full" list="event-types" value={eventType} onChange={(e) => setEventType(e.target.value)} data-testid="input-event" />
+              <input className="input w-full" list="event-types" value={eventType} disabled data-testid="input-event" />
               <datalist id="event-types"><option value="ANY" /><option value="Bail Hearing" /><option value="Preliminary Arraignment" /><option value="Formal Arraignment" /></datalist>
             </label>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">Start date<input type="date" className="input w-full" value={start} onChange={(e) => { setStart(e.target.value); if (end < e.target.value) setEnd(e.target.value); }} required data-testid="input-start" /></label>
-            <label className="block">End date<input type="date" className="input w-full" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required data-testid="input-end" /></label>
+            <label className="block">Start date<input type="date" className="input w-full" value={start} disabled data-testid="input-start" /></label>
+            <label className="block">End date<input type="date" className="input w-full" value={end} min={start} disabled data-testid="input-end" /></label>
           </div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={scheduled} required onChange={(e) => setScheduled(e.target.checked)} data-testid="checkbox-scheduled" />Scheduled Events Only (required)</label>
-          {formErr ? <p className="errbox" role="alert">{formErr}</p> : null}
-          <button type="submit" className="btn btn-primary" disabled={search.isPending || (o ? !o.calendarEnabled : false)} data-testid="button-search">
-            {search.isPending ? 'Submitting…' : 'Search calendar'}
+          <label className="flex items-center gap-2"><input type="checkbox" checked={scheduled} disabled data-testid="checkbox-scheduled" />Scheduled Events Only</label>
+          <button type="button" className="btn btn-primary" disabled data-testid="button-search">
+            Search is being rebuilt
           </button>
         </form>
 
@@ -331,7 +290,7 @@ export default function Discovery() {
         <h2 id="jobs-h" className="mono text-xl font-bold mb-2">Jobs</h2>
         {jobs.isLoading ? <div className="skel h-10" /> : jobs.isError ? (
           <div className="errbox" role="alert">Could not load jobs. {errMsg(jobs.error)} <button type="button" className="btn ml-2" onClick={() => jobs.refetch()}>Retry</button></div>
-        ) : !jobs.data?.length ? <p className="hint">No jobs yet. Run a calendar search or upload a PDF.</p> : (
+        ) : !jobs.data?.length ? <p className="hint">No saved jobs yet. Manual PDF upload remains available.</p> : (
           <select className="input w-full" value={selected} onChange={(e) => setJobId(e.target.value)} data-testid="select-job">
             {jobs.data.map((j) => (
               <option key={j.id} value={j.id}>
@@ -353,7 +312,6 @@ export default function Discovery() {
                 <div className="flex gap-2">
                   {active ? <><button type="button" className="btn" onClick={() => act('PAUSE')} disabled={control.isPending}>Pause</button>
                     <button type="button" className="btn btn-danger" onClick={() => act('CANCEL')} disabled={control.isPending}>Cancel</button></> : null}
-                  {job.status === 'PAUSED' && !job.criteria.calendarPreviewOnly && !job.isAssessment ? <button type="button" className="btn" onClick={() => act('RESUME')} disabled={control.isPending}>Resume</button> : null}
                 </div>
               </div>
               {ctlMsg ? <p className="hint mt-1" role="status">{ctlMsg}</p> : null}

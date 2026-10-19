@@ -19,21 +19,20 @@ paths:
     post:
       operationId: startResearchCalendarSearch
       tags: [bail-records]
-      summary: Authenticated Calendar Event search without operator permits or document requests
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
       responses:
-        "201":
-          description: Calendar search queued within shared request limits
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DiscoveryJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/operations:
     get:
       operationId: getResearchOperations
@@ -161,39 +160,38 @@ paths:
     post:
       operationId: createDiscoveryJob
       tags: [bail-records]
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/DiscoveryJobInput" }
       responses:
-        "201":
-          description: Bounded live collection explicitly queued
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DiscoveryJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/calendar-previews:
     post:
       operationId: createCalendarPreview
       tags: [bail-records]
-      summary: Run one calendar-only preview without retrieving docket documents
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
       responses:
-        "201":
-          description: One explicitly initiated, paced Calendar Event preview was queued
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DiscoveryJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/assessments:
     get:
       operationId: listDiscoveryAssessments
@@ -210,21 +208,20 @@ paths:
     post:
       operationId: startDiscoveryAssessment
       tags: [bail-records]
-      summary: Consume one exact operator-approved bounded permit delegated to this workspace
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
       parameters:
         - in: path
           name: assessmentId
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "201":
-          description: One exact-scope job queued; no approval or source-barrier changes
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DiscoveryJob" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/jobs/{jobId}:
     get:
       operationId: getDiscoveryJob
@@ -577,7 +574,7 @@ components:
     DiscoveryControl:
       type: object
       properties:
-        action: { type: string, enum: [PAUSE, CANCEL, RESUME] }
+        action: { type: string, enum: [PAUSE, CANCEL] }
       required: [action]
     DiscoveryObservationInput:
       type: object

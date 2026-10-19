@@ -1,6 +1,5 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startDiscoveryWorker } from "./lib/discovery-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -23,12 +22,9 @@ const server = app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  void startDiscoveryWorker();
 });
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => {
   server.close();
-  // Child/source traffic is stopped by the worker's signal handler. Recovery
-  // retains uncertain request slots rather than silently sending them again.
   setTimeout(() => process.exit(0), 1500).unref();
 });
