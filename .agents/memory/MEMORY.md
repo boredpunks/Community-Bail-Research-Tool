@@ -12,3 +12,4 @@
 - [Engine completion and GitHub access](engine-completion.md) — Prioritize calendar-to-document integration; request private-repository reconnection immediately, alongside independent work.
 - [Authenticated test execution](authenticated-testing.md) — If the browser runtime lacks secrets, authenticate in process-level Playwright with shared in-memory cookies, never copied credentials.
 - [Portal control evidence](portal-control-evidence.md) — User-observed live comboboxes use titles and hidden model inputs, not label-for associations.
+- [Independent research stages](independent-research-stages.md) — Calendar discovery must not wait for PDFs; verify transport, local extraction, filtering and saving separately.

@@ -101,7 +101,7 @@ function calendarCoverage(job: {
       ? 'Stopped at the request budget before calendar validation; coverage is unknown.'
       : 'No validated calendar response yet; coverage is unknown.';
   }
-  if (job.resultCapReached) return 'Stopped at the source result cap; additional docket rows may exist.';
+  if (job.resultCapReached) return 'The result count reached the adapter’s conservative cap-warning threshold. Retained rows remain available; additional source results are not ruled out.';
   if (!job.paginationComplete) return 'Additional pages were detected; only the returned page was inspected.';
   return 'All rows in the returned page were inspected; no additional page was detected. This does not cover other dates or query scopes.';
 }
@@ -659,7 +659,13 @@ export default function Discovery() {
                               <td className="p-2">{item.provenance.eventType === 'ANY' ? 'Not returned (unfiltered)' : item.provenance.eventType}</td>
                               <td className="p-2">{item.provenance.eventDate ?? 'Not returned by Case Information results'}</td>
                               <td className="p-2">{item.provenance.filingDate ?? 'Not recorded'}</td>
-                              <td className="p-2">{documentStatus(item, true)}</td>
+                              <td className="p-2">
+                                <span className="block">{documentStatus(item, true)}</span>
+                                <a className="underline text-primary" href={item.sourceUrl} target="_blank" rel="noopener noreferrer">
+                                  Open source document
+                                </a>
+                                <span className="block text-xs text-muted-foreground">Uses your browser; may require the original portal session.</span>
+                              </td>
                               <td className="p-2">{extractionStatus(item)}</td>
                             </tr>
                           ))}
