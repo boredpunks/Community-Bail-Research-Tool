@@ -15,6 +15,7 @@ from urllib.parse import urlsplit, parse_qs, parse_qsl
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
 from public_http import download
+from optional_resources import IMAGE, FONT
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, calendar_form_field_shape, wait_for_calendar_search_button, calendar_search_button_visible, validate_unfiltered_calendar_room
 from inspection_safety import (
@@ -196,7 +197,9 @@ async def main(config=None):
                     bounded_observation_limit_hit = True
                     raise SourceFailure("COURTROOM_OBSERVATION_REQUEST_LIMIT")
                 clock = asyncio.get_running_loop()
-                pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
+                pause = (0 if last_completed_clock is None else max(0, last_completed_clock + 2 - clock.time())
+                         ) if config.get("researchRun") is True else response_pause(
+                             last_completed_clock, clock.time(), random.uniform(60, 90))
                 if inspection_only:
                     remaining = inspection_gate.remaining_seconds()
                     if remaining <= 0:
@@ -279,7 +282,7 @@ async def main(config=None):
                         response_recorder.mark("RESPONSE_BODY_READ")
                     outcome = classify_response(
                         response.status, response.headers, body,
-                        pdf=urlsplit(url).path == "/Report/CpDocketSheet",
+                        pdf=urlsplit(url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet"),
                         path=urlsplit(url).path,
                     )
                     if outcome != "OK":
@@ -356,6 +359,17 @@ async def main(config=None):
             request = route.request
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
+            if request.resource_type in ("image", "font"):
+                # Fulfil EVERY optional image/font locally, in every phase.
+                # A valid font is required: an empty body creates OTS/console
+                # errors. No network reservation, transport or error exemption.
+                if response_recorder:
+                    response_recorder.decide(request, "CACHE")
+                await route.fulfill(status=200,
+                    content_type="image/svg+xml" if request.resource_type == "image" else "font/ttf",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                    body=IMAGE if request.resource_type == "image" else FONT)
+                return
             if (inspection_only or coverage_only or filing_inspection_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
                 inspection_error = "INSPECTION_UNEXPECTED_LOCAL_REQUEST"
@@ -369,7 +383,7 @@ async def main(config=None):
                 await route.abort()
                 return
             if (not allowed(request.url, request.method)
-                    or calendar_preview_only and urlsplit(request.url).path == "/Report/CpDocketSheet"
+                    or calendar_preview_only and urlsplit(request.url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet")
                     or request.method == "POST" and not submission_armed
                     or request.resource_type not in ("document", "script", "stylesheet", "xhr", "fetch")):
                 blocked += 1
@@ -381,15 +395,6 @@ async def main(config=None):
                 if response_recorder:
                     response_recorder.decide(request, "OPTIONAL_ABORT" if request.resource_type in (
                         "image", "font", "media") else "POLICY_ABORT")
-                if bounded_engine_observation and request.resource_type == "image":
-                    # A local, valid transparent image avoids generating browser
-                    # load-failure noise. No court request is transmitted; this
-                    # is a newly versioned method, not an exemption for errors.
-                    if response_recorder:
-                        response_recorder.decide(request, "LOCAL_IMAGE")
-                    await route.fulfill(status=200, content_type="image/svg+xml",
-                        body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')
-                    return
                 if post_response_read_only:
                     blocked_during_inspection = min(10_000, blocked_during_inspection + 1)
                 await route.abort()
@@ -643,7 +648,7 @@ async def main(config=None):
             parser = CalendarResults()
             try:
                 markup = await page.content()
-                if len(markup) > 2_000_000:
+                if len(markup) > 4_000_000:
                     raise ValueError("CALENDAR_RESPONSE_LIMIT")
                 parser.feed(markup)
                 if len(parser.rows) != response_structure["dataRowCount"]:

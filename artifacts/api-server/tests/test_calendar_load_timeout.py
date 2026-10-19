@@ -46,14 +46,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         initial = public_fixture().replace(
             '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL">', ''
         ).replace('</form>',
-                  '<select name="CourtRoomID"><option value="" selected></option>'
+                  '<select title="Room" name="CourtRoomID"><option value="" selected></option>'
                   '<option value="fixture-room">Courtroom 506</option></select>'
                   '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></form>')
         if selected_room:
             initial = initial.replace('<option value="" selected>', '<option value="">').replace(
                 '<option value="fixture-room">', '<option value="fixture-room" selected>')
         if bounded:
-            initial = initial.replace('<select name="CourtRoomID"', '<select aria-label="Courtroom" name="CourtRoomID"')
+            initial = initial.replace('<select title="Room" name="CourtRoomID"', '<select title="Room" aria-label="Courtroom" name="CourtRoomID"')
         # This shared fixture originally displayed internal diagnostic tokens
         # instead of public labels. Exact-label selection must remain strict;
         # use the already documented public labels in this local fixture only.
@@ -344,13 +344,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(o["layoutDiagnostics"]), 1)
         self.assertFalse(o["checkpointEmitted"])
 
-    async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
+    async def test_post_optional_image_is_local_and_causes_no_console_failure(self):
         o = await self.run_fixture(post_case="optional_abort")
         d = o["responseDiagnostics"][-1]
         self.assertTrue(o["parserReached"])
         self.assertEqual(d["parserOutcome"], "NO_EMPTY_PROOF")
         self.assertEqual(d["stopGate"], "NONE")
-        self.assertTrue(any(r["category"] == "BLOCKED_OPTIONAL_RESOURCE_ERROR" for r in d["classifications"]))
+        self.assertEqual(d["consoleDiagnostics"]["status"], "CLEAN")
+        self.assertFalse(any(r["category"] == "BLOCKED_OPTIONAL_RESOURCE_ERROR" for r in d["classifications"]))
         self.assertFalse(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(o["checkpointEmitted"])

@@ -22,6 +22,7 @@ export { easternToday, actualDate } from "./calendar-criteria";
 
 export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, filters: DiscoveryCriteriaData["matchFilters"]) {
   if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(provenance.extractionOutcome)) return false;
+  if (filters?.requirePostedNotShown && provenance.postedEntryState !== "NOT_SHOWN") return false;
   if (filters?.excludeShownPosted && provenance.postedEntryState === "SHOWN_POSTED") return false;
   const upper = filters?.monetaryUpperBoundCents;
   return upper == null || provenance.entries.some((entry) => qualifyingMonetaryTotal(

@@ -136,8 +136,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       "dataRowCount", "documentLinkCount", "countsCapped"])
       || !["bodyPresent", "searchFormPresent", "expectedHeaders", "countsCapped"].every(k => typeof s[k] === "boolean")
       || !count(s.searchButtonCount, 2) || !count(s.resultTableCount, 2)
-      || !count(s.headerCellCount, 128) || !count(s.dataRowCount, 1000)
-      || !count(s.documentLinkCount, 1000)
+      || !count(s.headerCellCount, 128) || !count(s.dataRowCount, 5000)
+      || !count(s.documentLinkCount, 20000)
       || s.expectedHeaders && s.resultTableCount !== 1) return false;
   } else if (m.structure !== null) return false;
   const transport = m.transportIntegrity;
@@ -160,8 +160,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       "outcome", "observedRows", "validatedRows", "validatedDockets",
       "documentLinks", "scope", "dates", "explicitEmptyResult"])
     || !oneOf(result.outcome, resultOutcomes)
-    || !count(result.observedRows, 1000) || !count(result.validatedRows, 1000)
-    || !count(result.validatedDockets, 1000)
+    || !count(result.observedRows, 5000) || !count(result.validatedRows, 5000)
+    || !count(result.validatedDockets, 5000)
     || Number(result.validatedRows) > Number(result.observedRows)
     || !oneOf(result.documentLinks, ["NOT_CHECKED", "NO_ROWS", "ALL_VALID", "REJECTED"])
     || !oneOf(result.scope, ["NOT_CHECKED", "NO_ROWS", "ALL_ROWS_MATCH", "REJECTED"])

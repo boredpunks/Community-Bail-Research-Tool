@@ -28,6 +28,7 @@ import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtr
 import { boundedEngineMethod, boundedObservationCanContinue, boundedObservationRequestAllowed,
   validBoundedEngineCriteria } from "./bounded-engine";
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
+import { researchMethod, validResearchCriteria } from "./research-scope";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -76,6 +77,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
   const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
   const boundedEngine = permit?.stage === "BOUNDED_ENGINE" && permit.expectedMethod === boundedEngineMethod;
+  const researchRun = permit?.stage === "RESEARCH_RUN" && permit.expectedMethod === researchMethod
+    && validResearchCriteria(job.criteria);
+  if (permit?.stage === "RESEARCH_RUN" && !researchRun) throw new Error("Invalid research-run scope");
   if (permit?.stage === "CALENDAR_ONLY"
       && (!calendarOnlyPermit || !calendarPreviewOnly || !isCalendarPreviewCriteria(job.criteria))) {
     throw new Error("Invalid calendar-only operator permit scope");
@@ -134,14 +138,14 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
-     calendarPreviewOnly, courtroomObservationOnly, boundedEngineObservation: boundedEngine,
+     calendarPreviewOnly, courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
   try {
     const lines = createInterface({ input: child.stdout });
     for await (const line of lines) {
-      if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
+      if (line.length > 4_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (finished) throw new Error("Worker message after completion");
       if (inspectionOnly && !["request", "response", "inspection_metadata",
@@ -288,7 +292,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           filingDate: string | null; eventType: string; courtOffice: string;
           courtType: "MDJ" | "COMMON_PLEAS" | "UNSUPPORTED";
         }[];
-        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"
+        if (!Array.isArray(rows) || rows.length > 5000 || typeof message.retrievedAt !== "string"
           || !Number.isFinite(Date.parse(message.retrievedAt))
           || rows.length === 0 && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen)
           || calendarPreviewOnly && !validCalendarAuditHeaders(message.columnHeaders)) {
@@ -297,7 +301,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await db.transaction(async (tx) => {
           for (const row of rows) {
             const docketType = /^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "COMMON_PLEAS"
-              : /^MJ-05\d{3}-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "MDJ" : null;
+              : /^MJ-\d{5}-(CR|NT)-\d{7}-\d{4}$/.test(row.docketNumber) ? "MDJ" : null;
             if (!validCalendarDocketLink(row.sourceUrl, row.docketNumber)
               || !["MDJ", "COMMON_PLEAS", "UNSUPPORTED"].includes(row.courtType)
               || docketType !== null && row.courtType !== "UNSUPPORTED" && row.courtType !== docketType

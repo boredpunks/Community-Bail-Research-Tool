@@ -18,6 +18,7 @@ export interface DiscoveryCriteriaData {
     excludeShownPosted: boolean;
     // Absent on legacy jobs, which retain their original strict comparison.
     inclusiveMaximum?: boolean;
+    requirePostedNotShown?: boolean;
   };
 }
 export interface DiscoveryEntryData {

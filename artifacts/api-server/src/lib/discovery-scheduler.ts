@@ -13,6 +13,7 @@ import { coverageInspectionMethod } from "./coverage-inspection";
 import { coverageMethod, courtroomObservationMethod, validCourtroomObservationCriteria } from "./courtroom-observation";
 import { filingInspectionMethod } from "./filing-inspection";
 import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
+import { researchMethod, proofMethod, proofUrls, validResearchCriteria, researchSpacingMs } from "./research-scope";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,9 +42,13 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       let calendarOnlyPermit = false;
       let diagnosticPermit = false;
       let boundedPermit = false;
+      let researchPermit = false;
+      let proofPermit = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
-        const expectedMethod = permit?.stage === "BOUNDED_ENGINE" ? boundedEngineMethod
+        const expectedMethod = permit?.stage === "RESEARCH_RUN" ? researchMethod
+          : permit?.stage === "RESEARCH_PROOF" ? proofMethod
+          : permit?.stage === "BOUNDED_ENGINE" ? boundedEngineMethod
           : permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
           : permit?.stage === "COVERAGE" ? coverageMethod(permit.criteria)
           : permit?.stage === "INSPECT" ? formInspectionMethod
@@ -62,8 +67,23 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
           return deny("CALENDAR_PREVIEW_SCOPE_INVALID");
         }
         calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
-        boundedPermit = permit.stage === "BOUNDED_ENGINE";
-        if (boundedPermit && (!validBoundedEngineCriteria(current.criteria)
+        researchPermit = permit.stage === "RESEARCH_RUN";
+        proofPermit = permit.stage === "RESEARCH_PROOF";
+        if ((researchPermit || proofPermit) && (!validResearchCriteria(current.criteria, proofPermit)
+          || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
+          || !calendarPreviewSourceAllowed(source, now, true)
+          || proofPermit && (method !== "GET" || typeof url !== "string" || !proofUrls.includes(url))))
+          return deny("RESEARCH_SCOPE_INVALID");
+        if (researchPermit) {
+          const proofId = (current.criteria as unknown as Record<string, unknown>).proofPermitId;
+          const [proof] = await tx.select().from(discoveryAssessmentsTable)
+            .where(eq(discoveryAssessmentsTable.id, String(proofId)));
+          if (!proof || proof.stage !== "RESEARCH_PROOF" || proof.expectedMethod !== proofMethod
+            || proof.state !== "REGRESSION_VERIFIED" || proof.criteria.startDate !== current.criteria.startDate
+            || !proof.expiresAt || proof.expiresAt <= now) return deny("REAL_PDF_REGRESSION_REQUIRED");
+        }
+        boundedPermit = permit.stage === "BOUNDED_ENGINE" || researchPermit;
+        if (permit.stage === "BOUNDED_ENGINE" && (!validBoundedEngineCriteria(current.criteria)
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
           || !calendarPreviewSourceAllowed(source, now, true)))
           return deny("BOUNDED_ENGINE_SCOPE_INVALID");
@@ -84,7 +104,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         const block = collectionBlock(source, now);
         if (block) return deny(block);
       }
-      if (diagnosticPermit || boundedPermit && method === "GET" && requestPath !== "/Report/CpDocketSheet") {
+      if (diagnosticPermit || boundedPermit && method === "GET" && !["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(requestPath))) {
         const [priorPath] = await tx.select({ id: discoveryRequestsTable.id })
           .from(discoveryRequestsTable)
           .where(and(
@@ -105,17 +125,21 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         }
         return { waitMs: 1000 };
       }
-      const usage = rollingUsage(recent.map((request) => request.startedAt), now, discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap);
+      const scoped = researchPermit || proofPermit;
+      const usage = rollingUsage(recent.map((request) => request.startedAt), now,
+        scoped ? Math.max(154, discoveryPolicy.hourlyRequestCap) : discoveryPolicy.hourlyRequestCap,
+        scoped ? Math.max(154, discoveryPolicy.dailyRequestCap) : discoveryPolicy.dailyRequestCap);
       if (usage.blockedReason) return deny(`${usage.blockedReason}; next eligible ${usage.nextEligibleAt!.toISOString()}`);
-      const eligibleAt = paceEligibleAt(source, discoveryPolicy.spacingMs);
+      const eligibleAt = paceEligibleAt(scoped ? {...source, adaptiveSpacingMs: researchSpacingMs} : source,
+        scoped ? researchSpacingMs : discoveryPolicy.spacingMs);
       if (eligibleAt && eligibleAt > now) return { waitMs: Math.min(1000, eligibleAt.getTime() - now.getTime()) };
       let itemId: string | null = null;
       const resourceKey = createHash("sha256").update(`${method}|${url}`).digest("hex");
-      if (requestPath === "/Report/CpDocketSheet") {
+      if (requestPath === "/Report/CpDocketSheet" || requestPath === "/Report/MdjDocketSheet") {
         if (boundedPermit) {
           if (!current.calendarComplete) return deny("CALENDAR_NOT_VALIDATED");
           const attempted = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
-            .where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.path, "/Report/CpDocketSheet")));
+            .where(and(eq(discoveryRequestsTable.jobId, current.id), inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"])));
           if (attempted.length >= current.criteria.recordCap) return deny("DOCUMENT_CAP_REACHED");
           const ordered = await tx.select().from(discoveryItemsTable)
             .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
@@ -125,10 +149,10 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         const [item] = await tx.select().from(discoveryItemsTable).where(and(
           eq(discoveryItemsTable.jobId, current.id), eq(discoveryItemsTable.sourceUrl, url),
         )).for("update");
-        if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") return deny("DOCUMENT_NOT_PENDING");
+        if (!proofPermit && (!item || item.provenance.extractionOutcome !== "UNPROCESSED")) return deny("DOCUMENT_NOT_PENDING");
         const [prior] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.resourceKey, resourceKey))).limit(1);
         if (prior) return deny("DOCUMENT_ALREADY_ATTEMPTED");
-        itemId = item.id;
+        itemId = item?.id ?? null;
       } else {
         if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
         if ((calendarOnlyPermit || boundedPermit) && requestPath === "/CaseSearch" && method === "POST") {

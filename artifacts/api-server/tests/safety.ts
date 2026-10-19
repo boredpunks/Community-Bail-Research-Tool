@@ -12,6 +12,7 @@ import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, ca
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
+import { makeResearchCriteria, validResearchCriteria, proofMethod, researchMethod, proofUrls } from "../src/lib/research-scope";
 import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
 import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
@@ -205,7 +206,7 @@ try {
     { version: 1 }, { version: 2 }, { version: 3 }, { parserAttempted: true }, { responseCompleted: false },
     { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
     { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
-    { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
+    { structure: { ...responseDiagnostic.structure, dataRowCount: 5001 } },
     { structure: { ...responseDiagnostic.structure, expectedHeaders: "true" } },
     { classifications: [{ ...responseDiagnostic.classifications[0], message: "not permitted" }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], alias: "/private?token=not permitted" }] },
@@ -271,6 +272,45 @@ try {
     layout: explicitEmptyLayout,
     diagnostic: validatedEmptyDiagnostic,
   });
+  await reset(false);
+  // The new source scope remains operator-only, one-use, exact-URL and capped.
+  // No court traffic or docket/case rows are created in this disposable schema.
+  const proofCriteria = makeResearchCriteria("2026-10-19");
+  check(validResearchCriteria(proofCriteria, true));
+  check(!validResearchCriteria({...proofCriteria, requestCap: 5}, true));
+  check(!validResearchCriteria({...proofCriteria, recordCap: 150}, true));
+  await store.update(sources).set({blockedReason: "SOURCE_VALIDATION_BARRIER"}).where(eq(sources.id, "UJS"));
+  const [proofPermit] = await store.insert(pilots).values({stage: "RESEARCH_PROOF",
+    expectedMethod: proofMethod, criteria: proofCriteria, state: "ATTEMPTED",
+    approvedAt: new Date(time), expiresAt: new Date(time + 86400000)}).returning();
+  const proofJob = await createJob({criteria: proofCriteria, assessmentId: proofPermit!.id});
+  await store.update(pilots).set({jobId: proofJob.id}).where(eq(pilots.id, proofPermit!.id));
+  for (const url of proofUrls) {
+    const grant = await reserveSourceRequest(proofJob, new URL(url).pathname, "GET", proofPermit!.id, url, () => false, context);
+    assert.ok(grant.allow && "requestId" in grant);
+    check(await response(proofJob, grant.requestId!));
+  }
+  check((await store.select().from(requests)).length === 4);
+  check(!(await reserveSourceRequest(proofJob, "/Report/MdjDocketSheet", "GET", proofPermit!.id, proofUrls[0], () => false, context)).allow);
+  check((await store.select().from(requests)).length === 4);
+  check((await store.select().from(sources))[0]!.blockedReason === "SOURCE_VALIDATION_BARRIER");
+  const engineCriteria = makeResearchCriteria("2026-10-19", proofPermit!.id);
+  check(validResearchCriteria(engineCriteria));
+  check(!validResearchCriteria({...engineCriteria, recordCap: 147}));
+  check(!validResearchCriteria({...engineCriteria, matchTarget: 4}));
+  const [enginePermit] = await store.insert(pilots).values({stage: "RESEARCH_RUN",
+    expectedMethod: researchMethod, criteria: engineCriteria, state: "ATTEMPTED",
+    approvedAt: new Date(time), expiresAt: new Date(time + 86400000)}).returning();
+  const engineJob = await createJob({criteria: engineCriteria, assessmentId: enginePermit!.id});
+  await store.update(pilots).set({jobId: engineJob.id}).where(eq(pilots.id, enginePermit!.id));
+  check(!(await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context)).allow);
+  await store.update(jobs).set({status: "RUNNING"}).where(eq(jobs.id, engineJob.id));
+  await store.update(pilots).set({state: "REGRESSION_VERIFIED"}).where(eq(pilots.id, proofPermit!.id));
+  const researchGrant = await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context);
+  assert.ok(researchGrant.allow && "requestId" in researchGrant);
+  check(await response(engineJob, researchGrant.requestId!));
+  check(!(await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context)).allow);
+  check((await store.select().from(requests)).length === 5);
   await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);

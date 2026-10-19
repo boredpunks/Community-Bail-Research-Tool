@@ -150,9 +150,10 @@ export function allowedSourceRequest(raw: unknown, method: unknown) {
       return url.search.length <= 257 && !url.search.includes("&") && entries.length === 1 && entries[0]![0] === "v"
         && version.length >= 16 && version.length <= 128 && !/[^A-Za-z0-9_-]/.test(version);
     }
-    if (url.pathname !== "/Report/CpDocketSheet" || method !== "GET") return false;
+    if (!["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(url.pathname) || method !== "GET") return false;
     const docket = url.searchParams.get("docketNumber") ?? "";
-    return /^CP-02-CR-\d{7}-\d{4}$/.test(docket) && url.searchParams.getAll("docketNumber").length === 1
+    return (url.pathname === "/Report/CpDocketSheet" ? /^CP-02-CR-\d{7}-\d{4}$/.test(docket)
+      : /^MJ-\d{5}-(CR|NT)-\d{7}-\d{4}$/.test(docket)) && url.searchParams.getAll("docketNumber").length === 1
       && url.searchParams.getAll("dnh").length <= 1
       && [...url.searchParams.keys()].every((key) => ["docketNumber", "dnh"].includes(key));
   } catch { return false; }

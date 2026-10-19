@@ -9,8 +9,8 @@ from urllib.parse import parse_qs, urlsplit
 import pymupdf
 
 CP_DOCKET = re.compile(r"CP-02-CR-\d{7}-\d{4}")
-MDJ_DOCKET = re.compile(r"MJ-05\d{3}-CR-\d{7}-\d{4}")
-DOCKET = re.compile(r"(?:CP-02-CR-\d{7}-\d{4}|MJ-05\d{3}-CR-\d{7}-\d{4})")
+MDJ_DOCKET = re.compile(r"MJ-\d{5}-(?:CR|NT)-\d{7}-\d{4}")
+DOCKET = re.compile(r"(?:CP-02-CR-\d{7}-\d{4}|MJ-\d{5}-(?:CR|NT)-\d{7}-\d{4})")
 SAFE_DOCKET = re.compile(r"[A-Za-z0-9][A-Za-z0-9/-]{1,79}")
 COMMON_PLEAS_DOCUMENT_PATH = "/Report/CpDocketSheet"
 CALENDAR_AUDIT_HEADERS = [
@@ -352,7 +352,7 @@ class CalendarResults(HTMLParser):
                     or filing_date is None and cells[columns["Filing Date"]].strip()):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
             court_type = result_court_type(row_type, docket)
-            expected_office_prefix = ("MDJ-05-" if court_type == "MDJ"
+            expected_office_prefix = (("MDJ-05-", "MJ-05-") if court_type == "MDJ"
                                       else "CP-05-" if court_type == "COMMON_PLEAS" else None)
             if not office or not expected_office_prefix or not office.startswith(expected_office_prefix):
                 court_type = "UNSUPPORTED"
@@ -396,7 +396,7 @@ def calendar_row_observation(cells, spans, hrefs, interactive):
             query = parse_qs(url.query, keep_blank_values=True)
             relative = not url.scheme and not url.netloc and href.startswith("/")
             absolute = url.scheme == "https" and url.netloc == "ujsportal.pacourts.us"
-            route = url.path == COMMON_PLEAS_DOCUMENT_PATH and not url.fragment
+            route = url.path in (COMMON_PLEAS_DOCUMENT_PATH, "/Report/MdjDocketSheet") and not url.fragment
             key = ("relativeDocket" if relative else "absoluteSourceDocket") if route and (relative or absolute) else "other"
             links[key] += 1
             if key != "other":
@@ -462,6 +462,10 @@ def extract_bail(body, docket):
     if not pages or not pages[0].strip():
         return dict(base, extractionOutcome="UNREADABLE", detail="No readable document text; OCR is not enabled.")
     first = pages[0][:2500]
+    if MDJ_DOCKET.fullmatch(docket):
+        from mdj_bail import extract_mdj_bail
+        base.update(documentSha256=hashlib.sha256(body).hexdigest(), documentPageCount=len(pages))
+        return extract_mdj_bail(pages, docket, base, iso_date)
     identifiers = DOCKET.findall(first)
     if (not identifiers or identifiers[0] != docket
             or not re.search(r"COURT OF COMMON PLEAS OF\s+ALLEGHENY COUNTY", first, re.I)):

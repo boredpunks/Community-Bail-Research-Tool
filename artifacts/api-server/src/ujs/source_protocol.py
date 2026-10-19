@@ -31,11 +31,13 @@ def allowed(url, method):
             return method in ("GET", "POST") and not parsed.query
         if parsed.path in CALENDAR_ASSETS:
             return method == "GET" and allowed_asset_query(parsed.query)
-        if parsed.path == "/Report/CpDocketSheet":
+        if parsed.path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet"):
             query = parse_qs(parsed.query, keep_blank_values=True)
             docket = query.get("docketNumber", [])
             return (method == "GET" and len(docket) == 1
-                    and bool(re.fullmatch(r"CP-02-CR-\d{7}-\d{4}", docket[0]))
+                    and bool(re.fullmatch(
+                        r"CP-02-CR-\d{7}-\d{4}" if parsed.path == "/Report/CpDocketSheet"
+                        else r"MJ-\d{5}-(?:CR|NT)-\d{7}-\d{4}", docket[0]))
                     and len(query.get("dnh", [])) <= 1
                     and set(query) <= {"docketNumber", "dnh"})
         return False

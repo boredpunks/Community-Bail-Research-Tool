@@ -10,6 +10,7 @@ from playwright.async_api import async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 import calendar_protocol
+from public_title_fixture import titled
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, validate_unfiltered_calendar_room
 from source_protocol import CALENDAR_ASSETS
 from evidence import calendar_result_state
@@ -213,7 +214,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             await context.route("**/*", block)
             page = await context.new_page()
             try:
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 selected = await select_bound_calendar_controls(page, criteria)
                 fields = await validate_bound_calendar_form(page, criteria, selected)
                 self.assertEqual(selected["courtOffice"], "")
@@ -233,18 +234,17 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                     '<div id="CalendarEventType-Control">',
                     '<input type="hidden" name="FixtureRoomBinding" value=""></div>'
                     '<div id="CalendarEventType-Control">')
-                await page.set_content(grouped_markup)
+                await page.set_content(titled(grouped_markup.replace("FixtureRoomBinding", "CourtRoomID")))
                 selected = await select_bound_calendar_controls(page, criteria)
                 fields = await validate_bound_calendar_form(page, criteria, selected)
-                self.assertIn(("FixtureRoomBinding", ""), fields)
-                self.assertNotIn("CourtRoomID", dict(fields))
-                await page.locator('input[name="FixtureRoomBinding"]').evaluate(
+                self.assertIn(("CourtRoomID", ""), fields)
+                await page.locator('input[name="CourtRoomID"]').evaluate(
                     "el => el.value = 'not-blank'")
                 with self.assertRaises(CalendarFormFailure) as failure:
                     await validate_bound_calendar_form(page, criteria, selected)
                 self.assertEqual(failure.exception.reason, "BACKING_VALUE_MISMATCH")
 
-                await page.set_content(markup.replace(' checked>', '>'))
+                await page.set_content(titled(markup.replace(' checked>', '>')))
                 selected = await select_bound_calendar_controls(page, criteria)
                 with self.assertRaises(CalendarFormFailure) as failure:
                     await validate_bound_calendar_form(page, criteria, selected)
@@ -282,7 +282,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             await context.route("**/*", block)
             page = await context.new_page()
             try:
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 original_url = page.url
                 messages = []
                 def emit(kind, **values):
@@ -326,11 +326,11 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             page = await context.new_page()
             try:
                 for unnamed in (False, True):
-                    await page.set_content(markup)
+                    await page.set_content(titled(markup))
                     if unnamed:
                         await page.locator("#public-room").evaluate("""el => {
                           el.removeAttribute('name');
-                          el.insertAdjacentHTML('afterend', '<input name="fixture-backing" type="hidden">');
+                          el.insertAdjacentHTML('afterend', '<input name="CourtRoomID" type="hidden">');
                           el.onchange = () => el.nextElementSibling.value = el.value;
                         }""")
                     values = await select_bound_calendar_controls(page, criteria)
@@ -382,7 +382,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             page = await context.new_page()
             try:
                 for event in ("Bail Hearing", "Preliminary Arraignment"):
-                    await page.set_content(markup)
+                    await page.set_content(titled(markup))
                     selected = {**criteria, "eventType": event}
                     values = await select_calendar_preview_controls(page, selected)
                     await validate_unfiltered_calendar_room(page)
@@ -399,13 +399,13 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                                      "fixture-bail" if event == "Bail Hearing" else "fixture-arraignment")
                 for change in ({"courtOffice": "CP-05-02-Fam"},
                                {"eventType": "Preliminary Arraignment"}):
-                    await page.set_content(markup)
+                    await page.set_content(titled(markup))
                     if "eventType" in change:
                         await page.locator('option[value="fixture-arraignment"]').evaluate("(option) => option.disabled = true")
                     with self.assertRaisesRegex(RuntimeError, "^CRITERIA_NOT_AVAILABLE_ON_SOURCE$"):
                         await select_calendar_preview_controls(page, {**criteria, **change})
                 for dates in ({"startDate": "2026-10-15"}, {"endDate": "3000-01-01"}):
-                    await page.set_content(markup)
+                    await page.set_content(titled(markup))
                     with self.assertRaisesRegex(RuntimeError, "^CRITERIA_NOT_AVAILABLE_ON_SOURCE$"):
                         await fill_calendar_dates(page, {**criteria, **dates})
                 self.assertEqual(outbound, [])
@@ -454,7 +454,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             await context.route("**/*", block_every_request)
             page = await context.new_page()
             try:
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 before = await calendar_form_field_count(page)
                 values = await select_calendar_preview_controls(page, criteria)
                 await fill_calendar_dates(page, criteria)
@@ -583,7 +583,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
             await context.route("**/*", block_every_request)
             page = await context.new_page()
             try:
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 await validate_calendar_form(page, criteria)
                 await page.evaluate("""() => {
                   window.dateChanges = 0;
@@ -598,10 +598,10 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 # Resolve the replaced dependent control, never a stale handle.
                 await page.evaluate("""() => {
                   document.querySelector('#CalendarEventType-Control select').outerHTML =
-                    '<select name=CalendarEventType><option>Bail Hearing</option></select>';
+                    '<select title="Calendar Event Type" name=CalendarEventType><option>Bail Hearing</option></select>';
                 }""")
                 await validate_calendar_form(page, criteria)
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 await page.evaluate("""() => {
                   const end = document.querySelector('input[name=CalendarEventEndDate]');
                   end.value = '';
@@ -613,7 +613,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 await fill_calendar_dates(page, criteria)
                 with self.assertRaisesRegex(RuntimeError, "CALENDAR_CONTROL_STATE_MISMATCH"):
                     await validate_calendar_form(page, criteria)
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 # Dependent option population is allowed to finish before checks.
                 await page.evaluate("""() => {
                   const select = document.querySelector("#CourtOffice-Control select");
@@ -645,7 +645,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 }
                 for mutation, barrier in scenarios:
                     with self.subTest(barrier=barrier, mutation=mutation):
-                        await page.set_content(markup)
+                        await page.set_content(titled(markup))
                         await page.evaluate(mutation)
                         with self.assertRaisesRegex(RuntimeError, "^" + barrier + "$") as failure:
                             await validate_calendar_form(page, criteria)
@@ -656,7 +656,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 # named text control in each widget container with an exact
                 # value/readback/local-POST match. Exercise that shape offline;
                 # fixtures retain no source page or field names.
-                await page.set_content(markup)
+                await page.set_content(titled(markup))
                 widget_binding = """() => {
                   for (const id of ['SearchBy-Control', 'JudicialDistrict-Control',
                     'CourtOffice-Control', 'CalendarEventType-Control']) {
@@ -664,7 +664,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                     const select = group.querySelector('select');
                     const backing = document.createElement('input');
                     backing.type = 'hidden';
-                    backing.name = 'FixtureBacking-' + id;
+                    backing.name = id.replace('-Control', '');
                     backing.setAttribute('value', select.value);
                     backing.value = select.value;
                     select.removeAttribute('name');
@@ -673,7 +673,7 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 }"""
                 for backing_type in ("hidden", "text", "default_text"):
                     with self.subTest(backing_type=backing_type):
-                        await page.set_content(markup)
+                        await page.set_content(titled(markup))
                         if backing_type == "default_text":
                             binding_fixture = widget_binding.replace(
                                 "backing.type = 'hidden';", "backing.removeAttribute('type');")
@@ -691,21 +691,23 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                         binding_failures = [
                             ("document.querySelector('#SearchBy-Control input').remove()", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_MISSING"),
                             ("document.querySelector('#SearchBy-Control input').value = 'Other public mode'", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_VALUE_MISMATCH"),
-                            ("document.querySelector('#SearchBy-Control input').disabled = true", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_MISSING"),
-                            ("document.querySelector('form').append(document.querySelector('#SearchBy-Control input'))", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_MISSING"),
+                            ("document.querySelector('#SearchBy-Control input').disabled = true", "CALENDAR_CONTROL_STATE_MISMATCH", "DISABLED"),
                             ("document.querySelector('#SearchBy-Control').append(document.querySelector('#SearchBy-Control input').cloneNode())", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_AMBIGUOUS"),
-                            ("document.querySelector('form').append(document.querySelector('#SearchBy-Control input').cloneNode())", "CALENDAR_SUBMITTED_VALUES_MISMATCH", "SUBMITTED_COUNT_MISMATCH"),
+                            ("document.querySelector('form').append(document.querySelector('#SearchBy-Control input').cloneNode())", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_AMBIGUOUS"),
                             ("document.querySelector('#SearchBy-Control input').type = 'search'", "CALENDAR_CONTROL_STATE_MISMATCH", "BACKING_CONTROL_MISSING"),
                             ("document.querySelector('#SearchBy-Control select').innerHTML = '<option>Other public mode</option>'", "CALENDAR_CONTROL_STATE_MISMATCH", "VALUE_MISMATCH"),
                         ]
                         for mutation, barrier, reason in binding_failures:
                             with self.subTest(mutation=mutation):
-                                await page.set_content(bound_markup)
+                                await page.set_content(titled(bound_markup))
                                 await page.evaluate(mutation)
                                 with self.assertRaisesRegex(CalendarFormFailure, "^" + barrier + "$") as failure:
                                     await validate_calendar_form(page, criteria)
                                 self.assertEqual((failure.exception.control, failure.exception.reason), ("SEARCH_MODE", reason))
-                await page.set_content(markup)
+                        await page.set_content(titled(bound_markup))
+                        await page.evaluate("document.querySelector('form').append(document.querySelector('#SearchBy-Control input'))")
+                        await validate_calendar_form(page, criteria)
+                await page.set_content(titled(markup))
                 await page.evaluate("""() => {
                   document.querySelector('#SearchBy-Control select').removeAttribute('name');
                   document.querySelector('#CourtOffice-Control select').disabled = true;

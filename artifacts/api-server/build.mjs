@@ -19,6 +19,7 @@ async function buildAll() {
     entryPoints: {
       index: path.resolve(artifactDir, "src/index.ts"),
       pilot: path.resolve(artifactDir, "src/ujs/pilot.ts"),
+      "research-run": path.resolve(artifactDir, "src/ujs/research-run.ts"),
     },
     platform: "node",
     bundle: true,
@@ -123,7 +124,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
-  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "calendar_diagnostics.py", "room_discovery.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
+  for (const file of ["worker.py", "evidence.py", "mdj_bail.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "calendar_diagnostics.py", "room_discovery.py", "optional_resources.py", "document_regression.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }
   // Check the actual packaged import path, without launching a browser/network.
