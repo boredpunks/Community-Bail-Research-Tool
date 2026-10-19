@@ -1,5 +1,23 @@
 import assert from "node:assert/strict";
 import { validCalendarResponseSize } from "../src/lib/calendar-response-metadata";
+import { clearWorkspaceSessionCookie, setWorkspaceSessionCookie } from "../src/middlewares/researchAuth";
+
+const cookieHeaders: string[] = [];
+const cookieResponse = { append: (_name: string, value: string) => cookieHeaders.push(value) } as any;
+const secureRequest = {
+  secure: false,
+  get: (name: string) => name.toLowerCase() === "x-forwarded-proto" ? "https" : undefined,
+} as any;
+setWorkspaceSessionCookie(cookieResponse, secureRequest, "test-session");
+assert.match(cookieHeaders.pop()!, /; SameSite=None; Secure; Partitioned;/);
+clearWorkspaceSessionCookie(cookieResponse, secureRequest);
+assert.match(cookieHeaders.pop()!, /; SameSite=None; Secure; Partitioned; Max-Age=0/);
+const localRequest = { secure: false, get: () => undefined } as any;
+setWorkspaceSessionCookie(cookieResponse, localRequest, "test-session");
+const localCookie = cookieHeaders.pop()!;
+assert.match(localCookie, /; SameSite=Lax;/);
+assert.doesNotMatch(localCookie, /; Secure(?:;|$)|; Partitioned(?:;|$)/);
+
 const responseSize = {kind:"calendar_response_size",version:1,
   measurement:"CHROMIUM_DECODED_ENTITY_BYTES",limitBytes:16_000_000,
   observedBytes:4_500_000,complete:true,statusCode:200,

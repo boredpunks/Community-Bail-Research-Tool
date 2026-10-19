@@ -26,3 +26,17 @@ browser cache was empty.
 
 **How to apply:** Launch the process-level test with the discovered executable
 path; keep authentication and cookies in the same in-memory browser context.
+
+For the embedded Replit preview, a successful password POST is not proof that
+the browser retained a usable session cookie. On HTTPS, use a partitioned
+`SameSite=None; Secure` workspace cookie, and verify the session endpoint before
+the client marks the workspace authenticated.
+
+**Why:** The UI accepted the password, but protected discovery requests still
+returned 401 in the embedded preview. A first-party browser flow worked; the
+preview needed a partitioned cookie, and the client had trusted the login
+response without reading the session back.
+
+**How to apply:** Test password entry, session readback, and a protected
+read-only endpoint in one browser context without invoking Search. Never log or
+persist the cookie or password. Keep the cookie clear operation partitioned too.

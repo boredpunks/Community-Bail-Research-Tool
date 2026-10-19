@@ -89,22 +89,24 @@ export function workspacePasswordMatches(candidate: string): boolean {
   return timingSafeEqual(actualDigest, expectedDigest);
 }
 
-export function setWorkspaceSessionCookie(res: Response, req: Request, token: string): void {
-  const expires = new Date((Math.floor(Date.now() / 1000) + WORKSPACE_SESSION_TTL_SECONDS) * 1000);
+function workspaceCookieTransportAttributes(req: Request): string {
   const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const secure = req.secure || forwardedProto === "https";
+  return secure ? "; SameSite=None; Secure; Partitioned" : "; SameSite=Lax";
+}
+
+export function setWorkspaceSessionCookie(res: Response, req: Request, token: string): void {
+  const expires = new Date((Math.floor(Date.now() / 1000) + WORKSPACE_SESSION_TTL_SECONDS) * 1000);
   res.append(
     "Set-Cookie",
-    `${WORKSPACE_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${WORKSPACE_SESSION_TTL_SECONDS}; Expires=${expires.toUTCString()}${secure ? "; Secure" : ""}`,
+    `${WORKSPACE_COOKIE_NAME}=${token}; Path=/; HttpOnly${workspaceCookieTransportAttributes(req)}; Max-Age=${WORKSPACE_SESSION_TTL_SECONDS}; Expires=${expires.toUTCString()}`,
   );
 }
 
 export function clearWorkspaceSessionCookie(res: Response, req: Request): void {
-  const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  const secure = req.secure || forwardedProto === "https";
   res.append(
     "Set-Cookie",
-    `${WORKSPACE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT${secure ? "; Secure" : ""}`,
+    `${WORKSPACE_COOKIE_NAME}=; Path=/; HttpOnly${workspaceCookieTransportAttributes(req)}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
   );
 }
 
