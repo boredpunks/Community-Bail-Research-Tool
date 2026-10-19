@@ -1,0 +1,133 @@
+The manual-upload workflow is accepted as progress. It is not the automated discovery tool I requested. Stop substituting offline checks and intercepted requests for live acceptance.
+
+Your next deliverable is working calendar discovery through the authenticated app, followed by a precise, evidence-backed resolution of automatic document retrieval.
+
+1. Inspect the current execution path before running
+
+Trace the ordinary authenticated Search action from the UI through the API, worker, source submission, result parser, and persisted response.
+
+Identify and fix any remaining pilot-only dependency or disabled feature flag that prevents this ordinary path from executing. Do not introduce another approval subsystem or parallel demonstration endpoint.
+
+Distinguish production behavior from test interception. Confirm that a test mock, intercepted route, dry-run setting, or stale worker bundle cannot silently replace the live operation.
+
+Complete these checks locally before spending source requests.
+
+2. Execute the actual calendar search
+
+I authorize one bounded calendar-only attempt using:
+
+Search By: Calendar Event.
+
+Judicial District: Allegheny–05.
+
+Court Office, Room, and Calendar Event Type: blank/no filter.
+
+Scheduled Events Only: checked.
+
+Start and end date: October 19, 2026.
+
+At most eight transmitted source requests, including assets and Search.
+
+At most one Search submission.
+
+Zero PDF requests, no automatic retries, and no silent scope changes.
+
+Use the configured sequential pacing, shared quotas, server-directed waits, and stop conditions. If a mandatory execution confirmation is required, present the exact confirmation rather than asking whether I want the feature implemented.
+
+Launch through the authenticated UI. Do not substitute a standalone script whose result never reaches the application.
+
+3. Verify submission behavior—not just the intended payload
+
+Before Search, verify the active form’s actual ownership and current public-control bindings.
+
+Resolve controls from the rendered page and supported associations.
+
+Preserve required browser-managed form state without logging secrets.
+
+Submit blank filters using the source’s actual representation, never the application’s ANY sentinel.
+
+Use the actual Search action and required submitter behavior.
+
+Wait for a defined result or failure state, rather than assuming a click means submission succeeded.
+
+If a control fails validation, report the specific distinction: absent control, unresolved label association, ambiguous candidates, wrong form owner, disabled control, or submitted-value mismatch. Do not collapse these into WRONG_FORM.
+
+Do not repeat a failed source attempt under this authorization.
+
+4. Parse and display what the source actually returns
+
+The demonstrated workflow reaches Case Information rows from Calendar Event search. Support that result view; do not require Calendar Events merely because its name resembles the search mode.
+
+Map fields by validated headers and structure, not inherited Common Pleas column positions.
+
+Recognize supported CP and MDJ docket types separately.
+
+Retain the actual source-provided document action.
+
+Do not silently discard unsupported rows; report their count and reason.
+
+Distinguish returned rows from distinct dockets.
+
+Detect result-limit warnings and pagination.
+
+Do not claim complete coverage merely because the query covers one day.
+
+Show the validated results in the normal authenticated application. Verify their retention across reload according to the application’s intended persistence behavior.
+
+A failed PDF request must not erase calendar rows or convert a successful calendar search into a global failure.
+
+5. Diagnose automatic document retrieval from actual evidence
+
+After calendar acceptance, inspect the retained document actions offline. Do not make PDF requests under the calendar-only authorization.
+
+Establish:
+
+Whether the action provides a complete URL or requires a browser action.
+
+Whether the current implementation preserves the complete source-generated target.
+
+Whether the document client differs from the browser context that produced the link.
+
+Whether the current disabled state reflects an actual applicable restriction or obsolete application gating.
+
+The previous 401 from a constructed URL does not verify the behavior of a complete source-provided link. Conversely, do not assume browser-context retrieval will work until tested.
+
+Implement the supported retrieval integration offline, then present the smallest separate document-access approval needed. Do not construct replacement URLs, invent opaque parameters, bypass access controls, or retry denials.
+
+6. Keep the product usable while document automation is unfinished
+
+For each docket, show separate states for:
+
+Calendar discovery.
+
+Source-document availability.
+
+Retrieval.
+
+Extraction.
+
+Filter outcome.
+
+Pending save.
+
+Preserve “Open source document” and upload as fallbacks. Clearly label uploaded evidence and retrieval failures. Do not represent manual upload as successful automatic collection.
+
+7. Return acceptance evidence
+
+Provide a concise table with:
+
+Required evidence	What to report
+Required evidence	What to report
+Live execution	Whether Search was transmitted and its upstream outcome
+Results	Validated rows, distinct dockets, and rejected/unsupported rows
+Coverage	Warnings, additional pages, and stopping reason
+UI	Results visible through the authenticated workflow
+Retention	Reload behavior actually verified
+Requests	Actual transmitted count and operation types
+Documents	Zero PDFs during the calendar-only attempt
+Delivery	Pushed commit and the running version tested
+
+
+If execution fails, identify the exact boundary and the next concrete code correction. Continue independent offline fixes, but obtain fresh authorization before another source attempt.
+
+Do not return another “implemented but live acceptance not attempted” report unless an actual external condition prevents the attempt. An internal gate, stale build, missing route integration, or test interception is implementation work to resolve—not a reason to declare the milestone finished.
