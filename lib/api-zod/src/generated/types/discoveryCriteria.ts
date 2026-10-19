@@ -5,16 +5,18 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
-import type { DiscoveryCriteriaCourtOffice } from './discoveryCriteriaCourtOffice';
-import type { DiscoveryCriteriaEventType } from './discoveryCriteriaEventType';
 import type { DiscoveryMatchFilters } from './discoveryMatchFilters';
 
 export interface DiscoveryCriteria {
-  /** ANY means no court-office filter and is only admitted for calendar-only previews. */
-  courtOffice: DiscoveryCriteriaCourtOffice;
+  /**
+     * Exact source-displayed office choice, or ANY for no filter.
+     * @maxLength 80
+     */
+  courtOffice: string;
   /** @maxLength 80 */
   courtRoom?: string;
-  eventType: DiscoveryCriteriaEventType;
+  /** @maxLength 80 */
+  eventType: string;
   calendarPreviewOnly?: boolean;
   startDate: Date;
   endDate: Date;

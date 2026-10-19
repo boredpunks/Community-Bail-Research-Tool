@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import "./document-locations.test";
 import "./calendar-layout.test";
 import "./job-criteria.test";
+import "./research-workflow";
 import { boundedLaunchChecks } from "./bounded-launch.test";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -17,6 +18,7 @@ import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-di
 import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
+import { discoveryPolicy } from "../src/lib/discovery";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
 
@@ -408,7 +410,7 @@ try {
   const b = await bPromise;
   assert.ok(b.allow && b.requestId);
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
-  check(reserved!.startedAt.getTime() >= completed + 60_000);
+  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs);
   await response(second, b.requestId);
 
   // Stop racing with a waiting grant: no post-stop request is reserved.
@@ -428,6 +430,16 @@ try {
   check(rateState!.pausedUntil!.getTime() >= time + 900_000);
   check(rateState!.adaptiveSpacingMs === 120_000);
   check((await store.select().from(requests)).length === 1);
+
+  // Server-directed waits apply even to an otherwise successful response.
+  await reset();
+  const directed = await createJob();
+  const directedGrant = await reserve(directed);
+  assert.ok(directedGrant.allow && directedGrant.requestId);
+  check(await response(directed,directedGrant.requestId,"OK",200,"120"));
+  const [directedState] = await store.select().from(sources);
+  check(directedState!.pausedUntil!.getTime() >= time + 120_000);
+  check(!(await reserve(await createJob())).allow);
 
   for (const [outcome, status] of [["ACCESS_DENIED", 403], ["CHALLENGE", 200], ["LOGIN_PROMPT", 200], ["REDIRECT", 302], ["TIMEOUT", null], ["INVALID_PDF", 200]] as const) {
     await reset();
@@ -836,17 +848,25 @@ print(json.dumps(projections))
     { endDate: "2026-10-14" },
   ]) {
     check(!validCalendarCriteria({ ...selectedCriteria, ...change }, minimumDate));
-    assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
+    if ("courtOffice" in change || "eventType" in change) {
+      // Ordinary calendar choices are validated exactly against live controls,
+      // not rejected by a stale local enumeration or silently substituted.
+      const scoped = makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate);
+      check(scoped.courtOffice === (change.courtOffice ?? selectedCriteria.courtOffice));
+      check(scoped.eventType === (change.eventType ?? selectedCriteria.eventType));
+    } else {
+      assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
+    }
   }
   check(!isCalendarPreviewCriteria({ ...selectedPreview, requestCap: 9 }));
   check(!isCalendarPreviewCriteria({ ...selectedPreview, recordCap: 2 }));
-  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
+  check(isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
   check(isCalendarPreviewCriteria({ ...selectedPreview, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }));
-  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 507" }));
+  check(isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 507" }));
   const roomPreview = makeCalendarPreviewCriteria({ ...selectedCriteria, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }, minimumDate);
   check(roomPreview.courtRoom === "Courtroom 506" && isCalendarPreviewCriteria(roomPreview));
   assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "" }, minimumDate));
-  assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "Courtroom 507" }, minimumDate));
+  check(makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "Courtroom 507" }, minimumDate).courtRoom === "Courtroom 507");
   check(!calendarPreviewRequestAllowed("/Report/CpDocketSheet", "GET"));
   check(!calendarPreviewRequestAllowed("/resource/js/sitemain.min.js", "POST"));
   const previewSource = {
@@ -907,7 +927,11 @@ print(json.dumps(projections))
     { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
     { requestCap: 9 }, { recordCap: 2 }, { matchTarget: 1 },
   ]) {
-    preview = await preparePreview(changed);
+    preview = await preparePreview();
+    // Changes to the JOB must not inherit the permit's saved authorization.
+    // A separately created ordinary search may use different public filters.
+    await store.update(jobs).set({criteria:{...calendarPreviewCriteria,...changed}})
+      .where(eq(jobs.id,preview.job.id));
     check(!(await previewReserve(preview.job, preview.permit.id)).allow);
     check((await store.select().from(requests)).length === 0);
   }

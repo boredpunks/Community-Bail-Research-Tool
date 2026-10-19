@@ -1,6 +1,6 @@
-import { Router, type IRouter } from "express";
+import { Router, raw, type IRouter } from "express";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoverySourceTable } from "@workspace/db";
+import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import {
   ControlDiscoveryJobBody, ControlDiscoveryJobParams, ControlDiscoveryJobResponse,
   CreateDiscoveryJobBody, CreateDiscoveryJobResponse, GetDiscoveryJobParams,
@@ -20,20 +20,23 @@ import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../lib/disc
 import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { launchBoundedPermit } from "../lib/bounded-launch";
+import { calendarAdmission } from "../lib/research-operations";
+import { researchPacing } from "../lib/research-pacing";
+import { inspectLocalPdf } from "../lib/local-document";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
 
 router.get("/discovery/policy", async (_req, res): Promise<void> => {
   const payload = {
-    adapter: "UJS public browser calendar + standard public HTTP, identity-checked Common Pleas PDF",
+    adapter: "Authenticated UJS Calendar Event search + separately labelled local PDF verification",
     minimumDate: easternToday(), spacingMs: discoveryPolicy.spacingMs,
     concurrency: 1, automaticRetries: 0,
     defaultRecordCap: Math.min(5, discoveryPolicy.maxRecordCap), maxRecordCap: discoveryPolicy.maxRecordCap,
     defaultRequestCap: Math.min(12, discoveryPolicy.maxRequestCap), maxRequestCap: discoveryPolicy.maxRequestCap,
     ...await discoverySourceStatus(),
     calendarRequestAllowance: 8,
-    coverageNote: "Calendar office options observed October 12, 2026: CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv. Bail Hearing and Preliminary Arraignment are selectable with real today/future windows up to 7 days; runtime unavailability stops as CRITERIA_NOT_AVAILABLE_ON_SOURCE. These options are not fresh access proof. Only Common Pleas criminal results have prior validated coverage; Preliminary Arraignment and other offices are unproven end to end. Filing-date/MDJ search is not implemented. Integrated calendar and PDF access must be separately verified and collection approved. Only demonstrated bail layouts are extracted; ambiguous/deposit-bearing rows fail closed. No custody, operative-order, completeness or freshness claim. Remote pagination is not traversed. Required browser assets count; unnecessary assets are blocked before transmission. Hourly/daily quotas and adaptive pacing are conservative local controls, not published court limits. Targets, dates and budgets do not expand automatically.",
+    coverageNote: "Calendar Event searches use Allegheny–05 and Scheduled Events Only. Optional office, room and event choices must match actual source controls; unavailable choices stop without substitution. Unfiltered searches use one day. Returned rows and source links remain separate from document transport. Automated document access is not verified and remains disabled in the ordinary workflow; manual uploads are identity checked locally and labelled accordingly. File bytes are discarded after extraction; retain originals. No custody, operative-order, completeness or freshness claim. Remote pagination is not traversed. Every transmitted asset counts. Configurable pacing, quotas and cooldowns are local safeguards, not published court rates.",
   };
   GetDiscoveryPolicyResponse.parse(payload);
   res.json(payload);
@@ -114,16 +117,30 @@ router.post("/discovery/jobs", async (req, res): Promise<void> => {
   res.status(201).json(payload);
 });
 
-router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
+router.get("/discovery/operations", async (_req, res): Promise<void> => {
+  const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+  const calendarBlockedReason = await calendarAdmission(db, source);
+  res.json({calendarEnabled: !calendarBlockedReason, calendarBlockedReason,
+    documentEnabled: false, documentBlockedReason: source?.blockedReason === "ACCESS_DENIED"
+      ? "ACCESS_DENIED: document transport remains stopped; use the complete source action or a local PDF."
+      : "AUTOMATED_DOCUMENT_METHOD_UNVERIFIED: use a source action and local PDF upload.",
+    pacing: researchPacing, notice: "Pacing and quotas are application safeguards, not court-approved rates. Every transmitted resource counts; one in flight; no automatic retries. Calendar and local-upload evidence are separate."});
+});
+
+router.post(["/discovery/calendar-previews", "/discovery/searches"], async (req, res): Promise<void> => {
   const body = CreateCalendarPreviewBody.safeParse(req.body);
   if (!body.success || !validCalendarPreviewCriteria(req.body ?? {}, easternToday())) {
     res.status(400).json({ error: "INVALID_CALENDAR_CRITERIA: Use no-filter or an observed office/event, keep the all-filter-blank scope to one day, and use real today-or-future dates covering at most seven days. No substitution." });
     return;
   }
 
-  const availability = await discoverySourceStatus();
-  if (!availability.collectionEnabled) {
-    res.status(409).json({ error: `Source-wide stop: ${availability.blockedReason}. No collection authorized.` });
+  if (req.body.scheduledOnly === false) {
+    res.status(400).json({error: "Scheduled Events Only is required."}); return;
+  }
+  const [currentSource] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+  const unavailable = await calendarAdmission(db, currentSource);
+  if (unavailable) {
+    res.status(409).json({ error: `Calendar operation stopped: ${unavailable}. No request sent.` });
     return;
   }
   const { ownerId, ownerIds } = getWorkspaceIdentity(res);
@@ -131,7 +148,7 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
   const criteria = { ...makeCalendarPreviewCriteria(req.body), requestCap };
   const result = await db.transaction(async (tx) => {
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
-    if (await sourceAdmissionBlock(tx, source)) return null;
+    if (await calendarAdmission(tx, source)) return null;
     await tx.execute(`SELECT pg_advisory_xact_lock(hashtext('ujs-job-creation'))`);
     const [active] = await tx.select().from(discoveryJobsTable).where(and(
       inArray(discoveryJobsTable.ownerId, ownerIds),
@@ -141,8 +158,13 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
     const [job] = await tx.insert(discoveryJobsTable).values({
       ownerId,
       criteria,
-      message: "One calendar-only preview queued. No docket PDFs, bail extraction, candidate saving or automatic second search.",
+      message: "Authenticated Calendar Event search queued. No automatic document requests or retries. Validated rows remain available independently of documents.",
     }).returning();
+    await tx.insert(discoveryEventsTable).values({jobId:job!.id,ownerId,kind:"CALENDAR_OPERATION_ADMISSION",
+      message:JSON.stringify({operation:"CALENDAR_ONLY",authenticatedUserInitiated:true,
+        retainedSourceReason:source?.blockedReason ?? null,criteria,
+        documentRequestsAuthorized:false,globalBarrierCleared:false,
+        policy:"Operation-scoped calendar admission; original request ledger and denials retained."})});
     return job!;
   });
   if (!result) {
@@ -150,10 +172,62 @@ router.post("/discovery/calendar-previews", async (req, res): Promise<void> => {
     return;
   }
   await discoveryEvent(result, "QUEUED",
-    `One Calendar Event preview: office=${criteria.courtOffice}, room=${criteria.courtRoom ?? "ANY"}, event=${criteria.eventType}, ${criteria.startDate} to ${criteria.endDate}. Request budget ${requestCap}; docket-document downloads disabled.`);
+    `User-initiated Calendar Event search: office=${criteria.courtOffice}, room=${criteria.courtRoom ?? "ANY"}, event=${criteria.eventType}, ${criteria.startDate} to ${criteria.endDate}. Request budget ${requestCap}; docket-document downloads disabled.`);
   const payload = await jobSummary(result);
   CreateCalendarPreviewResponse.parse(payload);
   res.status(201).json(payload);
+});
+
+router.post("/discovery/local-documents", raw({type: "application/pdf", limit: 4_000_000}), async (req, res): Promise<void> => {
+  if (!Buffer.isBuffer(req.body) || !req.body.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+    res.status(400).json({error: "Upload a readable PDF using application/pdf."}); return;
+  }
+  const expected = typeof req.query.docketNumber === "string" ? req.query.docketNumber : "";
+  if (expected && !/^(?:MJ-\d{5}-(?:CR|NT)|CP-02-CR)-\d{7}-\d{4}$/.test(expected)) {
+    res.status(400).json({error: "Expected docket must be a supported exact docket number."}); return;
+  }
+  const jobId = typeof req.query.jobId === "string" ? req.query.jobId : "";
+  const itemId = typeof req.query.itemId === "string" ? req.query.itemId : "";
+  if (!!jobId !== !!itemId || [jobId, itemId].some(id => id && !/^[a-f0-9-]{36}$/i.test(id))) {
+    res.status(400).json({error: "Select a valid calendar row or upload independently."}); return;
+  }
+  const {ownerId, ownerIds} = getWorkspaceIdentity(res);
+  let expectedDocket = expected;
+  if (itemId) {
+    const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, jobId), inArray(discoveryItemsTable.ownerId, ownerIds)));
+    if (!item || expected && expected !== item.docketNumber) { res.status(404).json({error:"Selected docket not found."}); return; }
+    expectedDocket = item.docketNumber;
+  }
+  let parsed;
+  try { parsed = await inspectLocalPdf(req.body, expectedDocket); }
+  catch (error) { res.status(422).json({error: error instanceof Error ? error.message : "Local verification failed."}); return; }
+  const now = new Date();
+  const result = await db.transaction(async tx => {
+    let job;
+    if (jobId) {
+      [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
+      if (!job || job.resultsExpiredAt || resultsDeadline(job) && resultsDeadline(job)! <= now) throw new Error("Selected results have expired.");
+    } else {
+      [job] = await tx.insert(discoveryJobsTable).values({ownerId, status:"COMPLETED",
+        criteria:{courtOffice:"ANY", courtRoom:"ANY", eventType:"ANY", startDate:easternToday(), endDate:easternToday(), recordCap:1, requestCap:8},
+        message:"Local PDF verification only. No calendar search or source request was made; keep your original PDF."}).returning();
+    }
+    const [old] = itemId ? await tx.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id,itemId)).for("update") : [];
+    const reference = `urn:sha256:${parsed.documentSha256}`;
+    const provenance = { ...(old?.provenance ?? {calendarUrl:reference, calendarRetrievedAt:now.toISOString(),
+      courtOffice:"Not established by calendar", courtType:parsed.courtType, eventType:"Not established by calendar", eventDate:null, filingDate:null}),
+      extractionOutcome:parsed.extractionOutcome, postedEntryState:parsed.postedEntryState, entries:parsed.entries,
+      documentSha256:parsed.documentSha256, documentPageCount:parsed.documentPageCount,
+      bailSectionPages:parsed.bailSectionPages, documentAcquisition:"MANUAL_UPLOAD" as const };
+    const values = {provenance, excerpt:parsed.excerpt, detail:parsed.detail, sourceRetrievedAt:now};
+    const [item] = old
+      ? await tx.update(discoveryItemsTable).set(values).where(eq(discoveryItemsTable.id, old.id)).returning()
+      : await tx.insert(discoveryItemsTable).values({...values, ownerId, jobId:job!.id, docketNumber:parsed.docketNumber, position:0, sourceUrl:reference}).returning();
+    await tx.insert(discoveryEventsTable).values({jobId:job!.id,ownerId,kind:"LOCAL_PDF",
+      message:"User-supplied PDF identity checked locally; no live retrieval claimed. Original file bytes are not retained. Bail/custody and chronology require review."});
+    return {jobId:job!.id,itemId:item!.id,extractionOutcome:parsed.extractionOutcome,detail:parsed.detail};
+  });
+  res.status(201).json(result);
 });
 
 router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
@@ -186,6 +260,8 @@ router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
       };
     }),
     events: events.map((event) => ({ kind: event.kind, message: event.message, createdAt: event.createdAt.toISOString() })),
+    requests: await db.select({method:discoveryRequestsTable.method,path:discoveryRequestsTable.path,statusCode:discoveryRequestsTable.statusCode,outcome:discoveryRequestsTable.outcome,startedAt:discoveryRequestsTable.startedAt,completedAt:discoveryRequestsTable.completedAt,durationMs:discoveryRequestsTable.durationMs})
+      .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId,job.id)).orderBy(asc(discoveryRequestsTable.startedAt)),
   };
   GetDiscoveryJobResponse.parse(payload);
   res.json(payload);
@@ -207,7 +283,7 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 };
     const action = body.data.action;
     if (action === "RESUME") {
-      if (job.criteria.calendarPreviewOnly) return { error: "A calendar preview is a single-use search and cannot be resumed. Start a new separately approved preview instead.", status: 409 };
+      if (job.criteria.calendarPreviewOnly) return { error: "A calendar search submits once and cannot be resumed. Resolve any source stop, then submit a new search with your chosen dates and filters. No automatic retry or substitution.", status: 409 };
       if (job.assessmentId) return { error: "Pilot permits are single-use and operator-only. They cannot be resumed from this endpoint.", status: 409 };
       const expired = expiredResumeConflict(job);
       if (expired) return expired;
@@ -246,7 +322,6 @@ router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promi
   const result = await db.transaction(async (tx) => {
     const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
     if (!job) return { error: "Job not found.", status: 404 };
-    if (job.criteria.calendarPreviewOnly) return { error: "Calendar-preview rows are not bail evidence and cannot be saved as observations.", status: 409 };
     if (job.resultsExpiredAt || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())) return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 };
     const [item] = await tx.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, job.id), inArray(discoveryItemsTable.ownerId, ownerIds)));
     if (!item) return { error: "Evidence not found.", status: 404 };
@@ -277,9 +352,6 @@ router.post("/discovery/jobs/:jobId/candidates", async (req, res): Promise<void>
       .where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)))
       .for("update");
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 as const };
-    if (job.criteria.calendarPreviewOnly) {
-      return { error: "Calendar-preview rows are not bail evidence and cannot be saved as candidates.", status: 409 as const };
-    }
     const deadline = resultsDeadline(job);
     if (job.resultsExpiredAt || (deadline && deadline <= new Date())) {
       return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 as const };

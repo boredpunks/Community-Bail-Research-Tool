@@ -9,7 +9,8 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pilot": "node --enable-source-maps ./dist/pilot.mjs",
-    "test:safety": "node ./tests/run-safety.mjs"
+    "test:safety": "node ./tests/run-safety.mjs",
+    "test:research-workflow": "node ./tests/run-research-workflow.mjs"
   },
   "dependencies": {
     "@clerk/express": "^2.1.75",

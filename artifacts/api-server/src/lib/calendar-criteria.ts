@@ -44,13 +44,11 @@ export function validCalendarCriteria(value: {
 export function validCalendarPreviewCriteria(value: {
   courtOffice?: unknown; eventType?: unknown; courtRoom?: unknown; startDate?: unknown; endDate?: unknown;
 }, minimumDate?: string): boolean {
-  const officeValid = value.courtOffice === CALENDAR_ANY
-    || calendarOffices.includes(value.courtOffice as typeof calendarOffices[number]);
-  const eventValid = value.eventType === CALENDAR_ANY
-    || calendarEvents.includes(value.eventType as typeof calendarEvents[number]);
-  const roomValid = value.courtRoom === undefined || value.courtRoom === CALENDAR_ANY
-    || value.courtRoom === "Courtroom 506"
-      && value.courtOffice === "CP-05-02-Crim" && value.eventType === "Bail Hearing";
+  const publicChoice = (v: unknown) => typeof v === "string" && v.trim().length > 0
+    && v.length <= 80 && !/[\u0000-\u001f\u007f<>]/.test(v);
+  const officeValid = publicChoice(value.courtOffice);
+  const eventValid = publicChoice(value.eventType);
+  const roomValid = value.courtRoom === undefined || publicChoice(value.courtRoom);
   const unfiltered = value.courtOffice === CALENDAR_ANY
     && value.courtRoom === CALENDAR_ANY && value.eventType === CALENDAR_ANY;
   return officeValid && eventValid && roomValid
@@ -68,10 +66,10 @@ export function makeCalendarPreviewCriteria(input: {
     throw new Error("INVALID_CALENDAR_CRITERIA: Choose no-filter or observed office/event criteria, keep the all-filter-blank scope to one day, and use real today-or-future dates covering at most seven days. No substitution.");
   }
   return {
-    courtOffice: input.courtOffice as typeof calendarOffices[number] | typeof CALENDAR_ANY,
-    eventType: input.eventType as typeof calendarEvents[number] | typeof CALENDAR_ANY,
+    courtOffice: input.courtOffice as string,
+    eventType: input.eventType as string,
     calendarPreviewOnly: true,
-    courtRoom: normalized.courtRoom as typeof CALENDAR_ANY | "Courtroom 506",
+    courtRoom: normalized.courtRoom as string,
     startDate: input.startDate as string,
     endDate: input.endDate as string,
     recordCap: 1,

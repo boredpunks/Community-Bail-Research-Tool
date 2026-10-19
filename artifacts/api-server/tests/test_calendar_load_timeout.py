@@ -249,10 +249,22 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 loop.default_exception_handler(context)
 
         loop.set_exception_handler(capture_unhandled)
+        class ParentPacedProtocol(io.StringIO):
+            reads = 0
+
+            def readline(self, *args, **kwargs):
+                # Simulate the shared parent's pre-POST pacing wait, rather
+                # than relying on the retired child-side 60–90-second floor.
+                if post_case == "pre_post_wait_error" and self.reads == 6:
+                    import time
+                    time.sleep(0.15)
+                self.reads += 1
+                return super().readline(*args, **kwargs)
+
         try:
             with ExitStack() as stack:
                 stack.enter_context(patch.object(Route, "fetch", local_fetch))
-                stack.enter_context(patch.object(worker.sys, "stdin", io.StringIO('\n'.join(protocol) + '\n')))
+                stack.enter_context(patch.object(worker.sys, "stdin", ParentPacedProtocol('\n'.join(protocol) + '\n')))
                 stack.enter_context(patch.object(worker, "emit", lambda kind, **values:
                                                 messages.append({"kind": kind, **values})))
                 stack.enter_context(patch.object(worker, "response_pause", scaled_pause))
@@ -390,7 +402,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(lifecycle["browserFulfilled"])
         self.assertFalse(lifecycle["readOnlyInspection"])
         self.assertFalse(d["submissionObserved"])
-        self.assertEqual(o["requestGrants"], 3)
+        # The parent's granted-but-untransmitted slot is conservatively
+        # consumed and accounted uncertain; it cannot be silently reused.
+        self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(any(method == "POST" for method, _path in o["network"]))
         self.assertGreater(row["firstEventOrder"], lifecycle["browserRequestStartOrder"])
 

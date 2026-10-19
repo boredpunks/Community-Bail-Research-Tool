@@ -36,7 +36,7 @@ export function isCalendarPreviewCriteria(value: unknown): boolean {
   const keys = ["courtOffice", "eventType", "calendarPreviewOnly", "startDate", "endDate", "recordCap", "requestCap"];
   const scopedRoom = candidate.courtRoom === "Courtroom 506"
     && candidate.courtOffice === "CP-05-02-Crim" && candidate.eventType === "Bail Hearing";
-  if (legacy || scopedRoom || noFilter || candidate.courtRoom === "ANY") keys.push("courtRoom");
+  if ("courtRoom" in candidate) keys.push("courtRoom");
   return Object.keys(candidate).length === keys.length && keys.every(key => key in candidate)
     && candidate.calendarPreviewOnly === true && candidate.recordCap === 1 && candidate.requestCap === 8
     && (legacy || validCalendarPreviewCriteria(candidate));

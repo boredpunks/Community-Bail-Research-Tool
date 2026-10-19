@@ -15,6 +15,84 @@ tags:
   - name: workspace-access
     description: Shared password access to the research workspace
 paths:
+  /discovery/searches:
+    post:
+      operationId: startResearchCalendarSearch
+      tags: [bail-records]
+      summary: Authenticated Calendar Event search without operator permits or document requests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
+      responses:
+        "201":
+          description: Calendar search queued within shared request limits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /discovery/operations:
+    get:
+      operationId: getResearchOperations
+      tags: [bail-records]
+      summary: Calendar and document operation status and local pacing policy
+      responses:
+        "200":
+          description: Separately scoped operation status; never a global access proof
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  calendarEnabled: { type: boolean }
+                  calendarBlockedReason: { type: ["string", "null"] }
+                  documentEnabled: { type: boolean }
+                  documentBlockedReason: { type: string }
+                  pacing:
+                    type: object
+                    additionalProperties: { type: integer }
+                  notice: { type: string }
+                required: [calendarEnabled, calendarBlockedReason, documentEnabled, documentBlockedReason, pacing, notice]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /discovery/local-documents:
+    post:
+      operationId: uploadResearchDocument
+      tags: [bail-records]
+      summary: Verify a local PDF in memory; retain evidence metadata, not file bytes
+      parameters:
+        - in: query
+          name: docketNumber
+          schema: { type: string }
+        - in: query
+          name: jobId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: itemId
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Local identity-checked PDF evidence retained, without a court request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string, format: uuid }
+                  itemId: { type: string, format: uuid }
+                  extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
+                  detail: { type: ["string", "null"] }
+                required: [jobId, itemId, extractionOutcome, detail]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/BadRequest" }
   /workspace-access/session:
     get:
       operationId: getWorkspaceSession
@@ -389,9 +467,9 @@ components:
     DiscoveryCriteria:
       type: object
       properties:
-        courtOffice: { type: string, enum: [ANY, CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "ANY means no court-office filter and is only admitted for calendar-only previews." }
+        courtOffice: { type: string, maxLength: 80, description: "Exact source-displayed office choice, or ANY for no filter." }
         courtRoom: { type: string, maxLength: 80 }
-        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment, ANY] }
+        eventType: { type: string, maxLength: 80 }
         calendarPreviewOnly: { type: boolean }
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
@@ -410,11 +488,12 @@ components:
     CalendarPreviewInput:
       type: object
       properties:
-        courtOffice: { type: string, enum: [ANY, CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "ANY means no office filter; returned court types are identified from each source row." }
-        courtRoom: { type: string, enum: [ANY, Courtroom 506], description: "ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope." }
-        eventType: { type: string, enum: [ANY, Bail Hearing, Preliminary Arraignment] }
+        courtOffice: { type: string, maxLength: 80, description: "Exact source-displayed office, or ANY." }
+        courtRoom: { type: string, maxLength: 80, description: "Exact source-displayed room, or ANY." }
+        eventType: { type: string, maxLength: 80, description: "Exact source-displayed event type, or ANY." }
         startDate: { type: string, format: date, description: "Real date, today or later in America/New_York." }
         endDate: { type: string, format: date, description: "Inclusive window of at most seven days." }
+        scheduledOnly: { type: boolean, const: true, default: true }
       required: [courtOffice, eventType, startDate, endDate]
     DiscoveryMatchFilters:
       type: object
@@ -546,6 +625,8 @@ components:
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         amountCents: { type: ["integer", "null"] }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+        originatingCourt: { type: ["string", "null"] }
+        percentageCondition: { type: ["string", "null"] }
         sourcePages:
           type: array
           description: One-based PDF pages supporting this entry; absent for legacy evidence.
@@ -567,6 +648,7 @@ components:
         postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
         entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }
         documentSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        documentAcquisition: { type: string, enum: [AUTOMATED, MANUAL_UPLOAD] }
         documentPageCount: { type: integer, minimum: 1, maximum: 100 }
         bailSectionPages:
           type: array
@@ -609,6 +691,19 @@ components:
         job: { $ref: "#/components/schemas/DiscoveryJob" }
         items: { type: array, items: { $ref: "#/components/schemas/DiscoveryItem" } }
         events: { type: array, items: { $ref: "#/components/schemas/DiscoveryEvent" } }
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              method: { type: string }
+              path: { type: string }
+              statusCode: { type: ["integer", "null"] }
+              outcome: { type: string }
+              startedAt: { type: string, format: date-time }
+              completedAt: { type: ["string", "null"], format: date-time }
+              durationMs: { type: ["integer", "null"] }
+            required: [method, path, statusCode, outcome, startedAt, completedAt, durationMs]
       required: [job, items, events]
     HealthStatus:
       type: object

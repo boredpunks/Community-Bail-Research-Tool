@@ -17,6 +17,10 @@ export interface DiscoveryEntry {
   /** @nullable */
   amountCents: number | null;
   financialBasis: FinancialBasis | null;
+  /** @nullable */
+  originatingCourt?: string | null;
+  /** @nullable */
+  percentageCondition?: string | null;
   /**
      * One-based PDF pages supporting this entry; absent for legacy evidence.
      * @items.minimum 1

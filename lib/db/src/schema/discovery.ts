@@ -3,9 +3,9 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 
 export interface DiscoveryCriteriaData {
-  courtOffice: "ANY" | "CP-05-02-Crim" | "CP-05-02-Fam" | "CP-05-02-Juv";
+  courtOffice: string;
   courtRoom?: string;
-  eventType: "Bail Hearing" | "Preliminary Arraignment" | "ANY";
+  eventType: string;
   calendarPreviewOnly?: boolean;
   startDate: string;
   endDate: string;
@@ -29,6 +29,8 @@ export interface DiscoveryEntryData {
   amountCents: number | null;
   financialBasis: "TOTAL_BAIL" | "UNSECURED_AMOUNT" | null;
   sourcePages?: number[];
+  originatingCourt?: string | null;
+  percentageCondition?: string | null;
 }
 export interface DiscoveryProvenanceData {
   calendarUrl: string;
@@ -45,6 +47,7 @@ export interface DiscoveryProvenanceData {
   documentSha256?: string;
   documentPageCount?: number;
   bailSectionPages?: number[];
+  documentAcquisition?: "AUTOMATED" | "MANUAL_UPLOAD";
 }
 
 export const discoveryJobsTable = pgTable("discovery_jobs", {

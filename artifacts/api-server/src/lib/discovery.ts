@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type DiscoveryJobRow, type DiscoveryCriteriaData, type DiscoveryProvenanceData } from "@workspace/db";
 import { qualifyingMonetaryTotal, resultsDeadline } from "./discovery-safety";
+import { researchPacing } from "./research-pacing";
 
 function policyInteger(key: string, initial: number, min: number, max: number): number {
   const raw = process.env[key];
@@ -10,7 +11,7 @@ function policyInteger(key: string, initial: number, min: number, max: number): 
   return value;
 }
 export const discoveryPolicy = {
-  spacingMs: Math.max(60_000, policyInteger("UJS_SPACING_MS", 60_000, 30_000, 3_600_000)),
+  spacingMs: researchPacing.navigationMs,
   maxRecordCap: policyInteger("UJS_MAX_RECORDS", 5, 1, 200),
   maxRequestCap: policyInteger("UJS_MAX_REQUESTS", 12, 8, 500),
   cooldownMs: policyInteger("UJS_RATE_LIMIT_COOLDOWN_MS", 900_000, 900_000, 86_400_000),

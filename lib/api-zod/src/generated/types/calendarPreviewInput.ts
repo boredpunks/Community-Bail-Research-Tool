@@ -5,18 +5,26 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
-import type { CalendarPreviewInputCourtOffice } from './calendarPreviewInputCourtOffice';
-import type { CalendarPreviewInputCourtRoom } from './calendarPreviewInputCourtRoom';
-import type { CalendarPreviewInputEventType } from './calendarPreviewInputEventType';
 
 export interface CalendarPreviewInput {
-  /** ANY means no office filter; returned court types are identified from each source row. */
-  courtOffice: CalendarPreviewInputCourtOffice;
-  /** ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope. */
-  courtRoom?: CalendarPreviewInputCourtRoom;
-  eventType: CalendarPreviewInputEventType;
+  /**
+     * Exact source-displayed office, or ANY.
+     * @maxLength 80
+     */
+  courtOffice: string;
+  /**
+     * Exact source-displayed room, or ANY.
+     * @maxLength 80
+     */
+  courtRoom?: string;
+  /**
+     * Exact source-displayed event type, or ANY.
+     * @maxLength 80
+     */
+  eventType: string;
   /** Real date, today or later in America/New_York. */
   startDate: Date;
   /** Inclusive window of at most seven days. */
   endDate: Date;
+  scheduledOnly?: true;
 }

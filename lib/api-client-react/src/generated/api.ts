@@ -39,12 +39,15 @@ import type {
   DiscoveryReport,
   ForbiddenResponse,
   GetBailRangeParams,
+  GetResearchOperations200,
   HealthStatus,
   ListBailRecordsParams,
   NotFoundResponse,
   TooManyRequestsResponse,
   UnauthorizedResponse,
   UnavailableResponse,
+  UploadResearchDocument201,
+  UploadResearchDocumentParams,
   WorkspacePasswordInput,
   WorkspaceSession
 } from './api.schemas';
@@ -75,6 +78,267 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getStartResearchCalendarSearchUrl = () => {
+
+
+
+
+  return `/api/discovery/searches`
+}
+
+/**
+ * @summary Authenticated Calendar Event search without operator permits or document requests
+ */
+export const startResearchCalendarSearch = async (calendarPreviewInput: CalendarPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DiscoveryJob>(getStartResearchCalendarSearchUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(calendarPreviewInput)
+  }
+);}
+
+
+
+
+
+export const getStartResearchCalendarSearchMutationKey = () => ['startResearchCalendarSearch'] as const;
+
+export const getStartResearchCalendarSearchMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext> => {
+
+const mutationKey = getStartResearchCalendarSearchMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startResearchCalendarSearch>>, StartResearchCalendarSearchMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  startResearchCalendarSearch(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartResearchCalendarSearchMutationResult = NonNullable<Awaited<ReturnType<typeof startResearchCalendarSearch>>>
+    export type StartResearchCalendarSearchMutationBody = BodyType<CalendarPreviewInput>
+    export type StartResearchCalendarSearchMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>
+    export type StartResearchCalendarSearchMutationVariables = {data: BodyType<CalendarPreviewInput>}
+
+    /**
+ * @summary Authenticated Calendar Event search without operator permits or document requests
+ */
+export const useStartResearchCalendarSearch = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startResearchCalendarSearch>>, TError,StartResearchCalendarSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startResearchCalendarSearch>>,
+        TError,
+        StartResearchCalendarSearchMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartResearchCalendarSearchMutationOptions(options));
+    }
+
+export const getGetResearchOperationsUrl = () => {
+
+
+
+
+  return `/api/discovery/operations`
+}
+
+/**
+ * @summary Calendar and document operation status and local pacing policy
+ */
+export const getResearchOperations = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetResearchOperations200> => {
+
+  return customFetch<GetResearchOperations200>(getGetResearchOperationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetResearchOperationsQueryKey = () => {
+    return [
+    `/api/discovery/operations`
+    ] as const;
+    }
+
+
+export const getGetResearchOperationsQueryOptions = <TData = Awaited<ReturnType<typeof getResearchOperations>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResearchOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetResearchOperationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResearchOperations>>> = ({ signal }) => getResearchOperations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResearchOperations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResearchOperationsQueryResult = NonNullable<Awaited<ReturnType<typeof getResearchOperations>>>
+export type GetResearchOperationsQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary Calendar and document operation status and local pacing policy
+ */
+
+export function useGetResearchOperations<TData = Awaited<ReturnType<typeof getResearchOperations>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResearchOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResearchOperationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUploadResearchDocumentUrl = (params?: UploadResearchDocumentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/discovery/local-documents?${stringifiedParams}` : `/api/discovery/local-documents`
+}
+
+/**
+ * @summary Verify a local PDF in memory; retain evidence metadata, not file bytes
+ */
+export const uploadResearchDocument = async (uploadResearchDocumentBody: Blob,
+    params?: UploadResearchDocumentParams, options?: Parameters<typeof customFetch>[1]): Promise<UploadResearchDocument201> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<UploadResearchDocument201>(getUploadResearchDocumentUrl(params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/pdf', ...getHeaders(options?.headers) },
+    body: uploadResearchDocumentBody
+  }
+);}
+
+
+
+
+
+export const getUploadResearchDocumentMutationKey = () => ['uploadResearchDocument'] as const;
+
+export const getUploadResearchDocumentMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadResearchDocument>>, TError,UploadResearchDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadResearchDocument>>, TError,UploadResearchDocumentMutationVariables, TContext> => {
+
+const mutationKey = getUploadResearchDocumentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadResearchDocument>>, UploadResearchDocumentMutationVariables> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  uploadResearchDocument(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadResearchDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof uploadResearchDocument>>>
+    export type UploadResearchDocumentMutationBody = BodyType<Blob>
+    export type UploadResearchDocumentMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse>
+    export type UploadResearchDocumentMutationVariables = {data: BodyType<Blob>;params?: UploadResearchDocumentParams}
+
+    /**
+ * @summary Verify a local PDF in memory; retain evidence metadata, not file bytes
+ */
+export const useUploadResearchDocument = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadResearchDocument>>, TError,UploadResearchDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadResearchDocument>>,
+        TError,
+        UploadResearchDocumentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUploadResearchDocumentMutationOptions(options));
+    }
 
 export const getGetWorkspaceSessionUrl = () => {
 

@@ -3,6 +3,11 @@ name: Calendar-only operator approval
 description: Scoped court retrieval authority and operator boundaries while regular collection remains blocked.
 ---
 
+Historical pilot guidance only. The user's later direction in
+[ordinary research](ordinary-research-direction.md) removes per-run operator
+approval and single-use permits from ordinary authenticated searches.
+Do not apply this historical framework to the ordinary research UI.
+
 A user-approved one-use calendar gate is separate from general source access and collection approval. Approval to build it is not approval to run it.
 
 **Why:** The user approved a separate one-use operator gate only for the selected calendar search, with regular collection blocked and PDFs disabled.

@@ -83,7 +83,7 @@ async function main() {
       return created!;
     });
     console.log(JSON.stringify({permitId, jobId, criteria, notice:
-      "Single-use explicit operator scope; 4 regression PDFs + at most 146 calendar PDFs = 150. 2s spacing. Global collection remains blocked."}));
+      "Historical operator scope; configured per-operation pacing, shared quotas and source stops apply. Ordinary authenticated research does not use this pilot."}));
     if (proof) {
       for (let i = 0; i < proofUrls.length; i++) {
         const url = proofUrls[i]!;

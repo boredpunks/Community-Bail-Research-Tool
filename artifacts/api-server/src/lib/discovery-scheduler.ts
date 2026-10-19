@@ -13,7 +13,9 @@ import { coverageInspectionMethod } from "./coverage-inspection";
 import { coverageMethod, courtroomObservationMethod, validCourtroomObservationCriteria } from "./courtroom-observation";
 import { filingInspectionMethod } from "./filing-inspection";
 import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
-import { researchMethod, proofMethod, proofUrls, validResearchCriteria, researchSpacingMs } from "./research-scope";
+import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from "./research-scope";
+import { calendarAdmission } from "./research-operations";
+import { effectiveAdaptiveSpacing, requestSpacing } from "./research-pacing";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,7 +33,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
       const deny = async (reason: string) => {
         if (current?.status === "RUNNING") await tx.update(discoveryJobsTable).set({
-          status: "PAUSED", updatedAt: now, message: `${reason}: source request not sent. Explicit approval/resume required; budgets unchanged.`,
+          status: "PAUSED", updatedAt: now, message: `${reason}: source request not sent. Explicit user action required after the stop is resolved; budgets unchanged.`,
         }).where(eq(discoveryJobsTable.id, current.id));
         return { allow: false as const, reason };
       };
@@ -101,7 +103,10 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         if (source.blockedReason?.startsWith("UNCERTAIN") || source.blockedReason === "RESTART_IN_FLIGHT") return deny("UNCERTAIN_SOURCE_STATE");
       } else {
         if (permitId) return deny("ASSESSMENT_NOT_APPROVED");
-        const block = collectionBlock(source, now);
+        if (current.criteria.calendarPreviewOnly && !calendarPreviewRequestAllowed(requestPath, method))
+          return deny("CALENDAR_DOCUMENT_REQUEST_FORBIDDEN");
+        const block = current.criteria.calendarPreviewOnly
+          ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
         if (block) return deny(block);
       }
       if (diagnosticPermit || boundedPermit && method === "GET" && !["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(requestPath))) {
@@ -125,13 +130,12 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         }
         return { waitMs: 1000 };
       }
-      const scoped = researchPermit || proofPermit;
       const usage = rollingUsage(recent.map((request) => request.startedAt), now,
-        scoped ? Math.max(154, discoveryPolicy.hourlyRequestCap) : discoveryPolicy.hourlyRequestCap,
-        scoped ? Math.max(154, discoveryPolicy.dailyRequestCap) : discoveryPolicy.dailyRequestCap);
+        discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap);
       if (usage.blockedReason) return deny(`${usage.blockedReason}; next eligible ${usage.nextEligibleAt!.toISOString()}`);
-      const eligibleAt = paceEligibleAt(scoped ? {...source, adaptiveSpacingMs: researchSpacingMs} : source,
-        scoped ? researchSpacingMs : discoveryPolicy.spacingMs);
+      const spacing = requestSpacing(requestPath, method);
+      const eligibleAt = paceEligibleAt({...source,
+        adaptiveSpacingMs: effectiveAdaptiveSpacing(source, spacing)}, spacing);
       if (eligibleAt && eligibleAt > now) return { waitMs: Math.min(1000, eligibleAt.getTime() - now.getTime()) };
       let itemId: string | null = null;
       const resourceKey = createHash("sha256").update(`${method}|${url}`).digest("hex");
@@ -155,7 +159,7 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         itemId = item?.id ?? null;
       } else {
         if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
-        if ((calendarOnlyPermit || boundedPermit) && requestPath === "/CaseSearch" && method === "POST") {
+        if ((current.criteria.calendarPreviewOnly || calendarOnlyPermit || boundedPermit) && requestPath === "/CaseSearch" && method === "POST") {
           const [priorSearch] = await tx.select({ id: discoveryRequestsTable.id })
             .from(discoveryRequestsTable)
             .where(and(
@@ -172,7 +176,8 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       }).returning();
       await tx.update(discoverySourceTable).set({
         activeRequestId: request!.id, lastRequestAt: now,
-        ...(!current.assessmentId && source.blockedReason === "RATE_LIMIT" ? { blockedReason: null, pausedUntil: null } : {}),
+        ...(!current.assessmentId && ["RATE_LIMIT", "HTTP_ERROR"].includes(source.blockedReason ?? "")
+          ? { blockedReason: null, pausedUntil: null } : {}),
       }).where(eq(discoverySourceTable.id, sourceId));
       await tx.update(discoveryJobsTable).set({
         requestsUsed: current.requestsUsed + 1, updatedAt: now,
@@ -209,6 +214,13 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     const slowCalendarPreview = calendarOnlyPreview && outcome === "OK" && durationMs >= 20_000;
     const block = outcome === "OK" ? (slowCalendarPreview ? "LATENCY_WARNING" : health.blockedReason) : outcome;
     const throttle = outcome === "RATE_LIMIT";
+    const directedWait = typeof message.retryAfter === "string"
+      ? throttleDeadline(now, 0, 0, message.retryAfter).getTime() : 0;
+    const automaticWait = throttle
+      ? throttleDeadline(now, discoveryPolicy.cooldownMs, source.throttleCount, message.retryAfter).getTime()
+      : outcome === "HTTP_ERROR" && Number(message.status) >= 500
+        ? throttleDeadline(now, 60_000, 0, message.retryAfter).getTime() : 0;
+    const pauseUntil = Math.max(source.pausedUntil?.getTime() ?? 0, directedWait, automaticWait);
     await tx.update(discoveryRequestsTable).set({
       outcome, statusCode: message.status as number | null, completedAt: now, durationMs,
     }).where(eq(discoveryRequestsTable.id, request.id));
@@ -216,10 +228,10 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     // transaction. No competing grant can enter between these operations.
     await tx.update(discoverySourceTable).set({
       activeRequestId: null, lastCompletedAt: now, lastLatencyMs: durationMs,
+      pausedUntil: pauseUntil > now.getTime() ? new Date(pauseUntil) : null,
       ...health, blockedReason: slowCalendarPreview && source.blockedReason === "SOURCE_VALIDATION_BARRIER"
         ? source.blockedReason : block ?? source.blockedReason,
       ...(block ? {
-        pausedUntil: throttle ? throttleDeadline(now, discoveryPolicy.cooldownMs, source.throttleCount, message.retryAfter) : null,
         ...(throttle ? {
           throttleCount: source.throttleCount + 1,
           adaptiveSpacingMs: Math.min(3_600_000, Math.max(discoveryPolicy.spacingMs, source.adaptiveSpacingMs) * 2),

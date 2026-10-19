@@ -7,6 +7,7 @@
  */
 import type { DiscoveryEntry } from './discoveryEntry';
 import type { DiscoveryProvenanceCourtType } from './discoveryProvenanceCourtType';
+import type { DiscoveryProvenanceDocumentAcquisition } from './discoveryProvenanceDocumentAcquisition';
 import type { ExtractionOutcome } from './extractionOutcome';
 import type { PostedEntryState } from './postedEntryState';
 
@@ -27,6 +28,7 @@ export interface DiscoveryProvenance {
   entries: DiscoveryEntry[];
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
+  documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
   /**
      * @minimum 1
      * @maximum 100

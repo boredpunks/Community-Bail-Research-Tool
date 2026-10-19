@@ -197,9 +197,10 @@ async def main(config=None):
                     bounded_observation_limit_hit = True
                     raise SourceFailure("COURTROOM_OBSERVATION_REQUEST_LIMIT")
                 clock = asyncio.get_running_loop()
-                pause = (0 if last_completed_clock is None else max(0, last_completed_clock + 2 - clock.time())
-                         ) if config.get("researchRun") is True else response_pause(
-                             last_completed_clock, clock.time(), random.uniform(60, 90))
+                # The persisted parent scheduler grants each transmission only
+                # after operation-specific pacing, shared quotas and cooldowns.
+                # No second hidden 60–90s per-resource application floor.
+                pause = 0
                 if inspection_only:
                     remaining = inspection_gate.remaining_seconds()
                     if remaining <= 0:
@@ -846,7 +847,9 @@ async def main(config=None):
                     await select_calendar_preview_controls(page, criteria)
                 else:
                     from calendar_protocol import select_bound_calendar_controls
-                    preview_values = await select_bound_calendar_controls(page, criteria)
+                    preview_values = (await select_calendar_preview_controls(page, criteria)
+                                      if config.get("ordinaryCalendar") else
+                                      await select_bound_calendar_controls(page, criteria))
                     if stop_if_observation_budget_exhausted():
                         return
                 if not inspection_only and not criteria.get("courtRoom"):
@@ -879,8 +882,9 @@ async def main(config=None):
                 # owner, action, method and submitted backing values instead.
                 await calendar_form_field_count(page)
                 from calendar_protocol import validate_bound_calendar_form
-                expected_calendar_post_fields = await validate_bound_calendar_form(
-                    page, criteria, preview_values)
+                expected_calendar_post_fields = (await validate_calendar_form(page, criteria, preview_values)
+                    if config.get("ordinaryCalendar") else
+                    await validate_bound_calendar_form(page, criteria, preview_values))
                 if stop_if_observation_budget_exhausted():
                     return
                 if bounded_engine_observation:

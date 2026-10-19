@@ -465,7 +465,7 @@ def extract_bail(body, docket):
     if MDJ_DOCKET.fullmatch(docket):
         from mdj_bail import extract_mdj_bail
         base.update(documentSha256=hashlib.sha256(body).hexdigest(), documentPageCount=len(pages))
-        return extract_mdj_bail(pages, docket, base, iso_date)
+        return extract_mdj_bail(pages, docket, base, iso_date, body=body)
     identifiers = DOCKET.findall(first)
     if (not identifiers or identifiers[0] != docket
             or not re.search(r"COURT OF COMMON PLEAS OF\s+ALLEGHENY COUNTY", first, re.I)):

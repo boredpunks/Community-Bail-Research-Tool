@@ -138,7 +138,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
-     calendarPreviewOnly, courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
+     calendarPreviewOnly, ordinaryCalendar: calendarPreviewOnly && !job.assessmentId,
+     courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
@@ -309,7 +310,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
               || row.courtOffice.length > 80 || /[\u0000-\u001f\u007f]/.test(row.courtOffice)
               || !Number.isSafeInteger(row.position) || row.position < 0
                || !validCalendarRowDates(row, job.criteria,
-                 (calendarPreviewOnly || permit?.stage === "BOUNDED_ENGINE")
+                  (calendarPreviewOnly && !!job.assessmentId || permit?.stage === "BOUNDED_ENGINE")
                    && !(job.criteria.courtOffice === "ANY" && job.criteria.eventType === "ANY"
                      && job.criteria.courtRoom === "ANY"))
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160

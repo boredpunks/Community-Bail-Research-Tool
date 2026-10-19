@@ -10,12 +10,21 @@ ROW = re.compile(
     r"\$?((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})[ \t]*$", re.I)
 
 
-def extract_mdj_bail(pages, docket, base, iso_date):
+def extract_mdj_bail(pages, docket, base, iso_date, body=None):
     first = pages[0][:5000]
     if (not re.search(r"Magisterial District Judge\b", first, re.I)
             or not re.search(r"Docket\s+Number\s*:\s*" + re.escape(docket) + r"\b", first, re.I)):
         return dict(base, extractionOutcome="IDENTITY_MISMATCH",
                     detail="MDJ court/docket header did not match the requested document.")
+    if body is not None and any("Originating Court" in page for page in pages):
+        from mdj_table import read_originating_tables
+        try:
+            entries, excerpt, section_pages = read_originating_tables(body, iso_date)
+        except ValueError as error:
+            return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail=str(error))
+        return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=section_pages,
+                    postedEntryState="NOT_SHOWN", extractionOutcome="EXTRACTED",
+                    detail="Header-mapped MDJ entries; originating courts preserved. No posting entry shown; payment, custody and operative chronology remain unverified.")
     sections = []
     for page, text in enumerate(pages, 1):
         marker = re.search(r"(?m)^\s*BAIL(?: INFORMATION)?\s*$", text)

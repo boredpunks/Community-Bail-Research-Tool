@@ -19,28 +19,6 @@ export interface WorkspaceSession {
   expiresInSeconds?: number;
 }
 
-/**
- * ANY means no court-office filter and is only admitted for calendar-only previews.
- */
-export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
-
-
-export const DiscoveryCriteriaCourtOffice = {
-  ANY: 'ANY',
-  'CP-05-02-Crim': 'CP-05-02-Crim',
-  'CP-05-02-Fam': 'CP-05-02-Fam',
-  'CP-05-02-Juv': 'CP-05-02-Juv',
-} as const;
-
-export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof typeof DiscoveryCriteriaEventType];
-
-
-export const DiscoveryCriteriaEventType = {
-  Bail_Hearing: 'Bail Hearing',
-  Preliminary_Arraignment: 'Preliminary Arraignment',
-  ANY: 'ANY',
-} as const;
-
 export interface DiscoveryMatchFilters {
   /**
      * Local monetary TOTAL_BAIL maximum; null disables this filter.
@@ -55,11 +33,15 @@ export interface DiscoveryMatchFilters {
 }
 
 export interface DiscoveryCriteria {
-  /** ANY means no court-office filter and is only admitted for calendar-only previews. */
-  courtOffice: DiscoveryCriteriaCourtOffice;
+  /**
+     * Exact source-displayed office choice, or ANY for no filter.
+     * @maxLength 80
+     */
+  courtOffice: string;
   /** @maxLength 80 */
   courtRoom?: string;
-  eventType: DiscoveryCriteriaEventType;
+  /** @maxLength 80 */
+  eventType: string;
   calendarPreviewOnly?: boolean;
   startDate: string;
   endDate: string;
@@ -91,49 +73,27 @@ export type DiscoveryJobInput = DiscoveryCriteria & {
   requestCap: number;
 };
 
-/**
- * ANY means no office filter; returned court types are identified from each source row.
- */
-export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
-
-
-export const CalendarPreviewInputCourtOffice = {
-  ANY: 'ANY',
-  'CP-05-02-Crim': 'CP-05-02-Crim',
-  'CP-05-02-Fam': 'CP-05-02-Fam',
-  'CP-05-02-Juv': 'CP-05-02-Juv',
-} as const;
-
-/**
- * ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope.
- */
-export type CalendarPreviewInputCourtRoom = typeof CalendarPreviewInputCourtRoom[keyof typeof CalendarPreviewInputCourtRoom];
-
-
-export const CalendarPreviewInputCourtRoom = {
-  ANY: 'ANY',
-  Courtroom_506: 'Courtroom 506',
-} as const;
-
-export type CalendarPreviewInputEventType = typeof CalendarPreviewInputEventType[keyof typeof CalendarPreviewInputEventType];
-
-
-export const CalendarPreviewInputEventType = {
-  ANY: 'ANY',
-  Bail_Hearing: 'Bail Hearing',
-  Preliminary_Arraignment: 'Preliminary Arraignment',
-} as const;
-
 export interface CalendarPreviewInput {
-  /** ANY means no office filter; returned court types are identified from each source row. */
-  courtOffice: CalendarPreviewInputCourtOffice;
-  /** ANY means no courtroom filter. Courtroom 506 is supported only in its validated Common Pleas scope. */
-  courtRoom?: CalendarPreviewInputCourtRoom;
-  eventType: CalendarPreviewInputEventType;
+  /**
+     * Exact source-displayed office, or ANY.
+     * @maxLength 80
+     */
+  courtOffice: string;
+  /**
+     * Exact source-displayed room, or ANY.
+     * @maxLength 80
+     */
+  courtRoom?: string;
+  /**
+     * Exact source-displayed event type, or ANY.
+     * @maxLength 80
+     */
+  eventType: string;
   /** Real date, today or later in America/New_York. */
   startDate: string;
   /** Inclusive window of at most seven days. */
   endDate: string;
+  scheduledOnly?: true;
 }
 
 export interface DiscoveryPolicy {
@@ -352,6 +312,10 @@ export interface DiscoveryEntry {
   /** @nullable */
   amountCents: number | null;
   financialBasis: FinancialBasis | null;
+  /** @nullable */
+  originatingCourt?: string | null;
+  /** @nullable */
+  percentageCondition?: string | null;
   /**
      * One-based PDF pages supporting this entry; absent for legacy evidence.
      * @items.minimum 1
@@ -367,6 +331,14 @@ export const DiscoveryProvenanceCourtType = {
   MDJ: 'MDJ',
   COMMON_PLEAS: 'COMMON_PLEAS',
   UNSUPPORTED: 'UNSUPPORTED',
+} as const;
+
+export type DiscoveryProvenanceDocumentAcquisition = typeof DiscoveryProvenanceDocumentAcquisition[keyof typeof DiscoveryProvenanceDocumentAcquisition];
+
+
+export const DiscoveryProvenanceDocumentAcquisition = {
+  AUTOMATED: 'AUTOMATED',
+  MANUAL_UPLOAD: 'MANUAL_UPLOAD',
 } as const;
 
 export interface DiscoveryProvenance {
@@ -386,6 +358,7 @@ export interface DiscoveryProvenance {
   entries: DiscoveryEntry[];
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
+  documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
   /**
      * @minimum 1
      * @maximum 100
@@ -451,10 +424,24 @@ export interface DiscoveryEvent {
   createdAt: string;
 }
 
+export type DiscoveryReportRequestsItem = {
+  method: string;
+  path: string;
+  /** @nullable */
+  statusCode: number | null;
+  outcome: string;
+  startedAt: string;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  durationMs: number | null;
+};
+
 export interface DiscoveryReport {
   job: DiscoveryJob;
   items: DiscoveryItem[];
   events: DiscoveryEvent[];
+  requests?: DiscoveryReportRequestsItem[];
 }
 
 export interface HealthStatus {
@@ -651,6 +638,32 @@ export type TooManyRequestsResponse = ApiError;
  * Workspace password or session signing secret is not configured
  */
 export type UnavailableResponse = ApiError;
+
+export type GetResearchOperations200Pacing = {[key: string]: number};
+
+export type GetResearchOperations200 = {
+  calendarEnabled: boolean;
+  /** @nullable */
+  calendarBlockedReason: string | null;
+  documentEnabled: boolean;
+  documentBlockedReason: string;
+  pacing: GetResearchOperations200Pacing;
+  notice: string;
+};
+
+export type UploadResearchDocumentParams = {
+docketNumber?: string;
+jobId?: string;
+itemId?: string;
+};
+
+export type UploadResearchDocument201 = {
+  jobId: string;
+  itemId: string;
+  extractionOutcome: ExtractionOutcome;
+  /** @nullable */
+  detail: string | null;
+};
 
 export type ListBailRecordsParams = {
 /**

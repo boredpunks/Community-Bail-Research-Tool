@@ -6,7 +6,8 @@
 - [pnpm CLI arguments](pnpm-cli-arguments.md) — Pass script subcommands directly; an extra standalone separator is forwarded to the CLI in this workspace.
 - [Deferred pipeline options](deferred-pipeline-options.md) — Keep unused pipeline ideas ready for a later requested safeguard revision, without enabling them now.
 - [Inspector network boundary](inspection-network-boundary.md) — Workspace-first review, Unix datagram relay pitfalls, and a separate deployed-readiness gate.
-- [Calendar-only operator approval](calendar-only-operator-approval.md) — Building a one-use gate is not run approval; retain the global barrier and exclude PDFs.
+- [Ordinary research direction](ordinary-research-direction.md) — User-driven searches supersede pilot-only approvals and fixed scopes; preserve genuine restrictions and evidence.
+- [Historical operator approval](calendar-only-operator-approval.md) — Historical pilot boundaries only; ordinary searches follow the newer research direction.
 - [Playwright completion](playwright-teardown.md) — Pinned Response.finished leaves a target-close task pending; prefer pre-registered public completion events.
 - [Pre-POST fixture ordering](pre-post-wait-ordering.md) — A zero-delay form-submit timer can fire before the routed Search request event; assert local sequence bounds in wait tests.
 - [Engine completion and GitHub access](engine-completion.md) — Prioritize calendar-to-document integration; request private-repository reconnection immediately, alongside independent work.

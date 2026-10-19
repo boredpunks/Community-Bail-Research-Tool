@@ -15,11 +15,15 @@ export function observationKey(item: Pick<DiscoveryItemRow, "docketNumber" | "ex
 export function candidateEligible(item: Pick<DiscoveryItemRow,
   "docketNumber" | "sourceUrl" | "sourceRetrievedAt" | "provenance" | "excerpt" | "detail"
 >) {
-  const docketIdentityMatches = /^CP-02-CR-\d{7}-\d{4}$/.test(item.docketNumber)
+  const supportedDocket = /^(?:CP-02-CR|MJ-05\d{3}-(?:CR|NT))-\d{7}-\d{4}$/.test(item.docketNumber);
+  const manual = item.provenance.documentAcquisition === "MANUAL_UPLOAD"
+    && /^[a-f0-9]{64}$/.test(item.provenance.documentSha256 ?? "");
+  const docketIdentityMatches = supportedDocket && (manual || (
+    supportedDocket
     && allowedSourceRequest(item.sourceUrl, "GET")
-    && new URL(item.sourceUrl).searchParams.get("docketNumber") === item.docketNumber;
-  const calendarWasRetrieved = allowedSourceRequest(item.provenance.calendarUrl, "GET")
-    && Number.isFinite(Date.parse(item.provenance.calendarRetrievedAt));
+    && new URL(item.sourceUrl).searchParams.get("docketNumber") === item.docketNumber));
+  const calendarWasRetrieved = manual || (allowedSourceRequest(item.provenance.calendarUrl, "GET")
+    && Number.isFinite(Date.parse(item.provenance.calendarRetrievedAt)));
   const documentWasRetrieved = item.sourceRetrievedAt instanceof Date
     && Number.isFinite(item.sourceRetrievedAt.getTime());
   const extracted = item.provenance.extractionOutcome === "EXTRACTED"
@@ -32,12 +36,16 @@ export function candidateEligible(item: Pick<DiscoveryItemRow,
 export function observationValues(ownerId: string, item: DiscoveryItemRow, entry: DiscoveryEntryData | null) {
   if (!candidateEligible(item)) throw new Error("Only identity-checked, source-backed evidence can be saved.");
   return {
-    ownerId, caseKey: `allegheny|COMMON_PLEAS|${item.docketNumber}`, docketNumber: item.docketNumber,
-    county: "Allegheny", courtLevel: "COMMON_PLEAS" as const, chargeGroup: null,
+    ownerId, caseKey: `allegheny|${item.docketNumber.startsWith("MJ-") ? "MDJ" : "COMMON_PLEAS"}|${item.docketNumber}`, docketNumber: item.docketNumber,
+    county: "Allegheny", courtLevel: item.docketNumber.startsWith("MJ-") ? "MDJ" as const : "COMMON_PLEAS" as const, chargeGroup: null,
     bailCategory: entry?.bailCategory ?? "UNKNOWN" as const, financialBasis: entry?.financialBasis ?? null,
     amountCents: entry?.amountCents ?? null, orderDate: entry?.orderDate ?? null,
-    sourceTitle: "Pennsylvania UJS Common Pleas docket sheet", sourceUrl: item.sourceUrl,
-    sourceRetrievedAt: item.sourceRetrievedAt!, sourceObservedAt: null,
+    sourceTitle: item.provenance.documentAcquisition === "MANUAL_UPLOAD"
+      ? "User-supplied PDF — local verification, not live retrieval" : "Pennsylvania UJS docket sheet", sourceUrl: item.sourceUrl,
+    // Legacy schema requires a timestamp; for manual evidence this is the
+    // local file receipt time, explicitly labelled by title and acquisition.
+    sourceRetrievedAt: item.sourceRetrievedAt!,
+    sourceObservedAt: item.provenance.documentAcquisition === "MANUAL_UPLOAD" ? item.sourceRetrievedAt! : null,
     evidenceNote: item.excerpt || item.detail!, discoveryEvidence: item.provenance,
     discoveryKey: observationKey(item, entry), discoveryItemId: item.id,
   };
