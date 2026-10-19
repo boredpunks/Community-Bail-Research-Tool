@@ -1,0 +1,65 @@
+Proceed with the implementation work below. Do not stop at proposing it again.
+
+1. Fix the demonstrated PDF layout
+
+The uploaded PDF is readable, passes identity validation, and has a bail section on page 2. Diagnose why the Originating Court column causes rejection.
+
+Implement evidence-backed handling of this layout:
+
+Map columns from the actual document headers and structure, rather than assuming fixed positions.
+
+Preserve the relationship between each bail entry and its originating court.
+
+Do not ignore the column blindly, shift values between columns, or infer missing amounts.
+
+Preserve page references and supporting excerpts.
+
+Continue rejecting genuinely ambiguous or unsupported layouts.
+
+Add a regression test for this sample using an appropriate local fixture; do not commit personal records without explicit authorization. Verify the extracted entries against the PDF, then test amount filtering and posting classification.
+
+Report this as an additional real-document sample, not one of the four unavailable regression documents and not proof of live retrieval.
+
+2. Resolve calendar admission without erasing the document denial
+
+Establish whether the saved denial is legitimately document-specific or requires a source-wide stop under applicable policy.
+
+If operation-specific recovery is justified, implement an explicit, auditable admission mechanism for a separately approved calendar-only run. Do not create an unexplained exception for a particular date or permit.
+
+Require:
+
+Exact approved calendar criteria and a fresh single-use permit.
+
+Zero PDF requests, enforced at the network boundary.
+
+Retention of the original document denial and request history.
+
+Existing shared quotas, cooldowns, and stop conditions.
+
+No global barrier clearance or restoration of document collection.
+
+Test that calendar permission cannot authorize document retrieval, change scope, or reopen a consumed permit. If policy requires a source-wide stop, identify the actual recovery requirements instead of implementing an exception.
+
+3. Finish the pacing review
+
+“Stricter pacing” must not substitute for the review already requested. Establish the provenance of the 60-second floor and distinguish external requirements from application defaults.
+
+Implement justified configurable pacing offline, preserving applicable restrictions. Do not use a pacing change to clear the denial or authorize live requests.
+
+4. Deliver before asking for another run
+
+Complete the independent code changes, regression tests, and builds. Push through any required repository approval.
+
+Return:
+
+The uploaded PDF’s verified extraction and filtering outcome.
+
+The admission-policy determination and implemented mechanism, if justified.
+
+The pacing-policy findings.
+
+The pushed commit and test results.
+
+The exact remaining approval needed for an executable calendar-only demonstration.
+
+No additional court requests under this instruction. Prepare the next executable approval only after the offline prerequisites pass; do not return another acknowledgment that the current gate blocks the run.

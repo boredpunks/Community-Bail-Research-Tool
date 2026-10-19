@@ -1,0 +1,97 @@
+Continue the local PDF work, resolve the calendar authorization-state blocker, and review the pacing policy as three parallel tasks. Do not let one block independent progress on the others.
+
+The goal is a usable calendar-to-docket-to-bail workflow—not another cycle of approvals that the application cannot execute.
+
+1. Verify the uploaded PDF locally
+
+Use the available uploaded document to test:
+
+Court and docket identity.
+
+Total bail amount, bail category, and percentage/deposit conditions.
+
+Explicit posting actions, posted amounts, and relevant dates.
+
+Source page references and supporting excerpts.
+
+Maximum-bail filtering and shown-posted exclusion.
+
+Do not interpret a percentage condition as proof of posting, or absence of a posting entry as proof of nonpayment or incarceration. Flag unclear chronology for review.
+
+Report actual results and fix any extraction or filtering defects. Label this local-document verification, not successful live retrieval. Do not wait for calendar authorization to complete this work.
+
+2. Diagnose and resolve the saved access-denial scope
+
+The calendar run is blocked locally because the saved state is ACCESS_DENIED, while its gate requires SOURCE_VALIDATION_BARRIER. No Search was submitted.
+
+Investigate offline:
+
+Identify the exact operation, client, and code transition that set ACCESS_DENIED.
+
+Confirm whether it originated from the constructed PDF URL requested through separate urllib transport.
+
+Identify the policy and code that make that denial source-wide rather than specific to document retrieval.
+
+Determine whether this scope is intentional or an implementation defect.
+
+Identify the authorized recovery mechanism, including any cooldown and operator approval.
+
+Do not simply relabel the state, reset a consumed permit, or ignore the denial.
+
+If the state model incorrectly conflates calendar access with document access, implement an explicit, tested correction consistent with the applicable policy. Preserve genuinely source-wide restrictions. Add tests proving that calendar-only authorization cannot enable PDF retrieval.
+
+If policy intentionally requires a source-wide stop, state the exact recovery requirements. If no recovery mechanism exists, propose one for review rather than repeatedly requesting a calendar run the app cannot execute.
+
+3. Establish the pacing policy’s basis and revise it where justified
+
+Do not treat the existing 60-second floor as a court requirement merely because it is in the code.
+
+Establish, without additional court requests:
+
+Where the floor is defined and enforced.
+
+Whether it comes from an applicable published restriction, an observed server response, or a conservative application default.
+
+Whether it applies to navigation, required assets, Search submissions, and PDF downloads, and the justification for each.
+
+If it is an application default, implement configurable pacing with explicit bounds and tests. Preserve stricter documented source requirements and server-directed waiting periods.
+
+For a future bounded live test, propose sequential document requests spaced two to five seconds apart, with one request in flight, a small document cap, and no automatic retries. This is a proposed test interval—not an established source-supported rate. Explain required-asset handling separately rather than applying a minute-long delay to every resource without justification.
+
+Preserve these protections:
+
+Stop on access denial, authentication requirements, or challenges; do not bypass them.
+
+Honor server-directed waits.
+
+Define bounded handling of rate-limit and service-error responses.
+
+Count every transmitted request against the authorized budget.
+
+Preserve shared quotas unless their independent review justifies an explicit change.
+
+Pacing changes must not clear access-denial state, reopen permits, or expand authorization.
+
+4. Complete independent work before requesting another live run
+
+This instruction authorizes offline implementation, local testing, and preparation—not additional court requests.
+
+After resolving the above, present only the precise approval or operator action still required for an executable calendar-only demonstration. Keep PDF retrieval separately authorized. Do not make calendar discovery depend on PDF regression completion.
+
+5. Deliver evidence, not another acknowledgment
+
+Commit the changes and push through the required repository approval process. Return:
+
+Local PDF extraction and filtering results.
+
+The evidenced cause and intended scope of ACCESS_DENIED.
+
+The implemented correction or exact recovery requirement.
+
+The provenance of the 60-second floor and any pacing-policy changes.
+
+Regression-test results and the pushed commit.
+
+The smallest remaining action needed to demonstrate calendar discovery.
+
+Clearly separate local verification, live calendar acceptance, live document retrieval, and pending-save acceptance. Do not claim completion from passing tests alone, and do not ask again whether to begin the independent work specified here.
