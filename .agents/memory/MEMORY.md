@@ -16,3 +16,4 @@
 - [Independent research stages](independent-research-stages.md) — Calendar discovery must not wait for PDFs; verify transport, local extraction, filtering and saving separately.
 - [Browser stream integrity](browser-stream-integrity.md) — Body-stream EOF is not transport completion; native request continuation also needs a redirect header gate.
 - [Scoped size-limit recovery](scoped-size-limit-recovery.md) — Recover a calendar-only operation from a proven old HTML cap without clearing broader source or document barriers.
+- [Single-attempt ownership](single-attempt-ownership.md) — Verify execution ownership and transmitted requests; isolated-task activity cannot be inferred from the main ledger.
