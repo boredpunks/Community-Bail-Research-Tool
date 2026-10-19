@@ -27,8 +27,8 @@ Request GitHub reconnection immediately when authenticated access fails while co
 
 **How to apply:** Fetch and inspect the exact published commit once access is restored, preserve newer local work, and continue implementation without another planning handoff.
 
-When the Replit GitHub connection is already active but HTTPS pushes still reject authentication, rerun `gh auth setup-git --hostname github.com` before retrying Git. Do not ask for or paste credentials.
+When the Replit GitHub connection is active but HTTPS pushes still reject authentication, inspect which helper Git selects after running `gh auth setup-git --hostname github.com`. A generic workspace helper can override or precede the authenticated GitHub CLI helper; if so, use a repository-local empty reset followed by `!gh auth git-credential`. Keep tokens out of remotes, commands, logs, and commits. Verify PR head SHA through the GitHub REST API if `gh pr view` reports a stale head.
 
-**Why:** After a workspace restart, Git selected a stale HTTPS credential even though the Replit-managed GitHub connection was active; setting up the GitHub CLI credential helper restored push access.
+**Why:** A present `GIT_URL` and authenticated GitHub CLI session did not ensure Git used the right credential source; this workspace selected a wrapper until the repository-local GitHub CLI helper was set. The PR summary also briefly lagged the pushed branch head.
 
-**How to apply:** Confirm the GitHub integration is active, run the setup command, then retry the intended push once. A healthy integration does not prove Git's selected credential helper is current; connection-card failures are not a reason to abandon this supported repair. Do not change repository visibility or remote URLs to work around authentication.
+**How to apply:** Check the redacted remote, active GitHub CLI session and repository-write scope; run the setup command; inspect the effective GitHub helper and URL rewrites; then make one normal push. A healthy integration or present secret does not prove which helper Git selected. Do not change repository visibility, embed credentials, or rewrite history to work around authentication.
