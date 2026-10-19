@@ -371,9 +371,15 @@ async def validate_unfiltered_room_and_schedule(page):
       const inspect = (labelText, controlName) => {
         const label = oneLabel(labelText);
         if (!label) return {control: controlName, reason: "MISSING"};
-        const checkboxes = [...form.querySelectorAll('input[type="checkbox"]')].filter(
-          el => el.id && el.id === label.htmlFor || label.contains(el)
-            || label.parentElement !== form && label.parentElement.contains(el));
+         const all = [...form.querySelectorAll('input[type="checkbox"]')];
+         // Native label.control is authoritative. A wide ancestor can contain
+         // unrelated checkbox widgets; never combine those with explicit ties.
+         const explicit = all.filter(el => label.control === el
+           || el.id && el.id === label.htmlFor || label.contains(el));
+         const titled = all.filter(el => el.title.trim() === labelText
+           || el.getAttribute("aria-label")?.trim() === labelText);
+         const checkboxes = explicit.length ? explicit : titled.length ? titled
+           : all.filter(el => label.parentElement !== form && label.parentElement.contains(el));
         const control = checkboxes.length === 1 ? checkboxes[0] : null;
         if (!control) return {control: controlName, reason: "ASSOCIATION_UNPROVEN"};
         if (control.form !== form) return {control: controlName, reason: "WRONG_FORM"};
@@ -459,7 +465,7 @@ async def select_calendar_preview_controls(page, criteria):
                 "CALENDAR_CONTROL_STATE_MISMATCH", control_name, "VALUE_MISMATCH")
         return selected
 
-    if criteria.get("eventType") not in ("ANY", "Bail Hearing", "Preliminary Arraignment"):
+    if criteria.get("eventType") not in ("ANY", "Bail Hearing", "Preliminary Arraignment", "Formal Arraignment", "Preliminary Hearing"):
         raise RuntimeError("CALENDAR_PREFLIGHT_FAILED")
 
     async def select_no_filter(selector, control_name):

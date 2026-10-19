@@ -260,7 +260,7 @@ class CalendarResults(HTMLParser):
                 or self.in_table or self.in_row or self.in_cell):
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
         case_columns = case_information_columns(self.headers)
-        if case_columns:
+        if case_columns and not any(header.startswith("Event Type") for header in self.headers):
             return self._validated_case_information(criteria, case_columns)
         event_type_filter = criteria.get("eventType")
         if event_type_filter in ("", "ANY"):
@@ -289,7 +289,7 @@ class CalendarResults(HTMLParser):
                 self.validated_row_count = 1
                 self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
                 return []
-        result, seen = [], set()
+        result, seen = [], {}
         for cells, link in self.rows:
             if not link:
                 raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
@@ -310,18 +310,29 @@ class CalendarResults(HTMLParser):
                     or event_type_filter not in (None, "", "ANY") and event_type != event_type_filter):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
             date_fields = calendar_date_fields(cells, criteria)
+            time_columns = [i for i, header in enumerate(self.headers)
+                            if header.strip().casefold() in ("start time", "event time", "time")]
+            time_text = (cells[time_columns[0]].strip() if len(time_columns) == 1 else
+                         cells[16].strip()[10:].strip())
+            time_match = re.fullmatch(r"\d{1,2}:\d{2}\s*[ap]m", time_text, re.I)
+            event = {"eventDate": date_fields["eventDate"], "eventType": event_type,
+                     "eventTime": time_text.lower() if time_match else None}
             if docket in seen:
-                # Validate even repeated rows before first-seen deduplication.
+                existing = seen[docket]
+                if event not in existing["matchingEvents"]:
+                    existing["matchingEvents"].append(event)
                 continue
-            seen.add(docket)
-            result.append({
+            row = {
                 "docketNumber": docket, "position": len(result),
                 "sourceUrl": exact_link,
                 "courtType": court_type,
                 "courtOffice": office,
                 **date_fields,
                 "eventType": event_type,
-            })
+                "matchingEvents": [event],
+            }
+            seen[docket] = row
+            result.append(row)
         if self.rows:
             self.validated_row_count = len(self.rows)
             self.scope_validated = True
@@ -467,17 +478,31 @@ def extract_bail(body, docket):
     if MDJ_DOCKET.fullmatch(docket):
         from mdj_bail import extract_mdj_bail
         base.update(documentSha256=hashlib.sha256(body).hexdigest(), documentPageCount=len(pages))
-        return extract_mdj_bail(pages, docket, base, iso_date, body=body)
+        return dict(extract_mdj_bail(pages, docket, base, iso_date, body=body),
+                    pdfEvents=document_events(pages))
     identifiers = DOCKET.findall(first)
     if (not identifiers or identifiers[0] != docket
             or not re.search(r"COURT OF COMMON PLEAS OF\s+ALLEGHENY COUNTY", first, re.I)):
         return dict(base, extractionOutcome="IDENTITY_MISMATCH", detail="Court/docket header did not match the calendar row.")
     base.update(documentSha256=hashlib.sha256(body).hexdigest(),
                 documentPageCount=len(pages),
+                pdfEvents=document_events(pages),
                 bailSectionPages=[i for i, page in enumerate(pages, 1)
                                   if "BAIL INFORMATION" in page])
     if not base["bailSectionPages"]:
         return dict(base, extractionOutcome="MISSING_BAIL_SECTION", detail="Readable matching docket has no bail section. Bail and custody remain unknown.")
+    if any("Originating Court" in page[page.find("BAIL INFORMATION"):]
+           for page in pages if "BAIL INFORMATION" in page):
+        from bail_table import read_bail_tables, FinancialAssociationError
+        try:
+            entries, excerpt, locations, posted = read_bail_tables(body, iso_date)
+        except ValueError as error:
+            return dict(base, extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
+                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT",
+                        detail=str(error))
+        return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=locations,
+                    postedEntryState=posted, extractionOutcome="EXTRACTED",
+                    detail="Verified recorded Amount column; percentage and posting kept separate. Historical/provisional evidence, not an operative-order finding.")
     try:
         sections = bail_sections(pages)
     except ValueError:
@@ -543,6 +568,29 @@ def extract_bail(body, docket):
                     detail="Some bail rows could not be interpreted; no guessed amounts were saved.")
     # All source rows/chronology stay in the excerpt, including multiline action text.
     posted = "SHOWN_POSTED" if re.search(r"\bpost(?:ed|ing)\b", section, re.I) else "NOT_SHOWN"
-    return dict(base, entries=entries, postedEntryState=posted, excerpt=section,
+    from bail_table import stable_entries
+    return dict(base, entries=stable_entries(entries), postedEntryState=posted, excerpt=section,
                 extractionOutcome="EXTRACTED",
                 detail="Document identity matched. All bail entries remain provisional; no operative order or custody was inferred.")
+
+
+def document_events(pages):
+    events = []
+    for number, page in enumerate(pages, 1):
+        marker = page.find("CALENDAR EVENTS")
+        if marker < 0:
+            continue
+        section = page[marker + len("CALENDAR EVENTS"):]
+        end = re.search(r"\n\s*(?:CONFINEMENT|DEFENDANT INFORMATION|CASE PARTICIPANTS|BAIL|CHARGES)\b", section)
+        if end:
+            section = section[:end.start()]
+        for line in section.splitlines():
+            match = re.match(r"^\s*(.*?)\s{2,}(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}\s*[ap]m)\b", line, re.I)
+            if match:
+                event_type, date, time = match.groups()
+                if event_type.strip() and iso_date(date):
+                    event = {"eventDate": iso_date(date), "eventType": event_type.strip(),
+                             "eventTime": time.strip().lower(), "sourcePage": number}
+                    if event not in events:
+                        events.append(event)
+    return events

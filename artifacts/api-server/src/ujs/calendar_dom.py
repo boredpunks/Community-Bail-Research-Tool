@@ -96,7 +96,29 @@ DOM_PROJECTION = r"""({limit}) => {
   }
   if (tables===0) return {html:"",pagination,resultLimit};
   if (tables!==1) throw new Error("RESULTS_NOT_VALIDATED");
-  const html=table.outerHTML;
+  let projected=table, traversal="STATIC_DOM";
+  // Read every locally-held row, including pages detached by DataTables. This
+  // is a local data read, never a page click or unaccounted source request.
+  const jq=window.jQuery;
+  if (jq?.fn?.dataTable?.isDataTable?.(table)) {
+    const api=jq(table).DataTable();
+    const settings=api.settings()[0];
+    if (settings?.oFeatures?.bServerSide) {
+      pagination=true; traversal="REMOTE_PAGINATION_NOT_TRAVERSED";
+    } else {
+      const rows=api.rows().nodes().toArray();
+      if (rows.length>5000) throw new Error("CALENDAR_RESPONSE_LIMIT");
+      projected=table.cloneNode(true);
+      for (const body of [...projected.tBodies]) body.remove();
+      const body=document.createElement("tbody");
+      for (const row of rows) body.append(row.cloneNode(true));
+      projected.append(body);
+      traversal="LOCAL_DATATABLES";
+    }
+  } else if (document.querySelector('[aria-controls="caseSearchResultGrid"][data-page], #caseSearchResultGrid_next:not(.disabled)')) {
+    pagination=true; traversal="REMOTE_PAGINATION_NOT_TRAVERSED";
+  }
+  const html=projected.outerHTML;
   if (html.length>limit) throw new Error("CALENDAR_RESPONSE_LIMIT");
-  return {html,pagination,resultLimit};
+  return {html,pagination,resultLimit,traversal};
 }"""

@@ -297,6 +297,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           docketNumber: string; position: number; sourceUrl: string; eventDate: string | null;
           filingDate: string | null; eventType: string; courtOffice: string;
           courtType: "MDJ" | "COMMON_PLEAS" | "UNSUPPORTED";
+          matchingEvents?: NonNullable<import("@workspace/db").DiscoveryProvenanceData["matchingEvents"]>;
         }[];
         if (!Array.isArray(rows) || rows.length > 5000 || typeof message.retrievedAt !== "string"
           || !Number.isFinite(Date.parse(message.retrievedAt))
@@ -315,13 +316,19 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
               || row.courtOffice.length > 80 || /[\u0000-\u001f\u007f]/.test(row.courtOffice)
               || !Number.isSafeInteger(row.position) || row.position < 0
                || !validCalendarRowDates(row, job.criteria,
-                  (calendarPreviewOnly && !!job.assessmentId || permit?.stage === "BOUNDED_ENGINE")
+                  (job.criteria.resultVersion === 2 || calendarPreviewOnly && !!job.assessmentId || permit?.stage === "BOUNDED_ENGINE")
                    && !(job.criteria.courtOffice === "ANY" && job.criteria.eventType === "ANY"
                      && job.criteria.courtRoom === "ANY"))
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
               || job.criteria.eventType !== "ANY" && row.eventType !== job.criteria.eventType)
               throw new Error("Calendar identity conflict");
-            const { courtOffice, courtType, ...itemRow } = row;
+            const { courtOffice, courtType, matchingEvents, ...itemRow } = row;
+            if (matchingEvents !== undefined && (!Array.isArray(matchingEvents) || !matchingEvents.length
+              || matchingEvents.length > 500 || matchingEvents.some(event =>
+                !actualDate(event.eventDate) || event.eventDate < job.criteria.startDate || event.eventDate > job.criteria.endDate
+                || typeof event.eventType !== "string" || !event.eventType.length || event.eventType.length > 160
+                || job.criteria.eventType !== "ANY" && event.eventType !== job.criteria.eventType
+                || event.eventTime != null && (typeof event.eventTime !== "string" || event.eventTime.length > 40)))) throw new Error("Invalid matching calendar events");
             await tx.insert(discoveryItemsTable).values({
               jobId: job.id, ownerId: job.ownerId, ...itemRow,
               provenance: {
@@ -331,6 +338,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
                 eventDate: row.eventDate, filingDate: row.filingDate,
                 extractionOutcome: courtType === "UNSUPPORTED" ? "UNSUPPORTED_LAYOUT" : "UNPROCESSED",
                 postedEntryState: "UNKNOWN", entries: [],
+                ...(matchingEvents ? { matchingEvents } : {}),
               },
             }).onConflictDoNothing({ target: [discoveryItemsTable.jobId, discoveryItemsTable.docketNumber] });
           }
@@ -342,7 +350,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR",
           `Validated ${rows.length} distinct result-linked dockets in source order. ${calendarPreviewOnly
             ? `Validated column headers (allowlisted labels only): ${calendarAuditHeaders.join(", ")}. `
-            : ""}${message.paginationComplete ? "All rows in this returned table inspected; no remote pagination detected." : "Pagination or source result cap limits coverage."} Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
+            : ""}${message.paginationComplete ? "All locally available rows inspected; no remote pagination detected." : "Pagination or source result cap limits coverage; additional remote pages were not examined."} Traversal: ${["STATIC_DOM", "LOCAL_DATATABLES", "REMOTE_PAGINATION_NOT_TRAVERSED"].includes(String(message.traversal)) ? message.traversal : "LEGACY_UNREPORTED"}. Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
       } else if (message.kind === "calendar_preview_finished") {
         if (!calendarPreviewOnly || !job.calendarComplete || Object.keys(message).length !== 1)
           throw new Error("Invalid calendar preview completion");
@@ -353,8 +361,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
         const locations = documentLocations(message);
-        if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
-        extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries });
+        if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "AMBIGUOUS_FINANCIAL_ASSOCIATION", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
+        extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries, pdfEvents: message.pdfEvents });
+        if (message.pdfEvents !== undefined && (!Array.isArray(message.pdfEvents) || message.pdfEvents.some(event =>
+          !event || !actualDate(event.eventDate) || typeof event.eventType !== "string" || !event.eventType.trim()
+          || event.sourcePage !== undefined && (!Number.isInteger(event.sourcePage) || event.sourcePage < 1 || event.sourcePage > Number(message.documentPageCount))))) throw new Error("Invalid PDF calendar events");
         // Validate, never replace raw calendar-date strings with Zod's coerced Dates.
         if (!(message.retrievedAt === null || typeof message.retrievedAt === "string" && Number.isFinite(Date.parse(message.retrievedAt)))
           || !(message.excerpt === null || typeof message.excerpt === "string" && message.excerpt.length <= 200_000)
@@ -373,10 +384,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
             extractionOutcome: outcome as typeof item.provenance.extractionOutcome,
             postedEntryState: message.postedEntryState as typeof item.provenance.postedEntryState,
             entries: message.entries as DiscoveryEntryData[],
+            ...(message.pdfEvents ? {pdfEvents: message.pdfEvents as import("@workspace/db").DiscoveryProvenanceData["pdfEvents"]} : {}),
           },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
-        if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) await validationStop("DOCUMENT_VALIDATION_FAILED");
+        if (outcome === "IDENTITY_MISMATCH") await validationStop("DOCUMENT_VALIDATION_FAILED");
       } else if (message.kind === "checkpoint") {
         const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
         const counts = current ? await jobSummary(current) : null;
@@ -449,6 +461,9 @@ export async function startDiscoveryWorker() {
       // Recovery never retries source work silently. Consumed slots stay consumed.
       const interrupted = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "RUNNING"));
       for (const job of interrupted) await pause(job, "Application restarted during collection. Partial results and consumed request slots preserved. Resume explicitly.");
+      await db.update(discoveryJobsTable).set({ status: "PAUSED", updatedAt: new Date(),
+        message: "Application restarted before queued collection. Resume explicitly; criteria and budgets preserved." })
+        .where(eq(discoveryJobsTable.status, "QUEUED"));
       await recoverUncertainRequests();
       // Holding the worker lease proves no pilot runner is active. Interrupted
       // single-use permits are failed, never returned to the approval queue.

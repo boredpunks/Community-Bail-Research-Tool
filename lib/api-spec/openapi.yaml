@@ -160,14 +160,19 @@ paths:
     post:
       operationId: createDiscoveryJob
       tags: [bail-records]
-      deprecated: true
-      summary: Disabled while the search implementation is rebuilt
+      summary: Start a bounded calendar-to-document monetary research job
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/DiscoveryJobInput" }
       responses:
+        "201":
+          description: Research job queued with fixed criteria and budgets
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
           description: Search is disabled; no source request was sent
@@ -464,6 +469,7 @@ components:
     DiscoveryCriteria:
       type: object
       properties:
+        resultVersion: { type: integer, enum: [2], description: "Recorded monetary setting semantics; absent on legacy jobs." }
         courtOffice: { type: string, maxLength: 80, description: "Exact source-displayed office choice, or ANY for no filter." }
         courtRoom: { type: string, maxLength: 80 }
         eventType: { type: string, maxLength: 80 }
@@ -495,9 +501,11 @@ components:
     DiscoveryMatchFilters:
       type: object
       properties:
-        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 1, maximum: 2147483647, description: "Local monetary TOTAL_BAIL maximum; null disables this filter." }
+        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647, description: "Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound." }
+        monetaryLowerBoundCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647 }
         excludeShownPosted: { type: boolean }
         inclusiveMaximum: { type: boolean, description: "Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved." }
+        requirePostedNotShown: { type: boolean, description: "Historical operator criterion retained for legacy reports; not enabled by the simple search flow." }
       required: [monetaryUpperBoundCents, excludeShownPosted]
     DiscoveryPolicy:
       type: object
@@ -574,7 +582,7 @@ components:
     DiscoveryControl:
       type: object
       properties:
-        action: { type: string, enum: [PAUSE, CANCEL] }
+        action: { type: string, enum: [PAUSE, CANCEL, RESUME] }
       required: [action]
     DiscoveryObservationInput:
       type: object
@@ -584,6 +592,13 @@ components:
     DiscoveryJob:
       type: object
       properties:
+        documentsAttempted: { type: ["integer", "null"] }
+        documentsRetrieved: { type: ["integer", "null"] }
+        documentsParsed: { type: ["integer", "null"] }
+        displayedRows: { type: ["integer", "null"] }
+        excluded: { type: ["integer", "null"] }
+        ambiguities: { type: ["integer", "null"] }
+        eventConflicts: { type: ["integer", "null"] }
         id: { type: string, format: uuid }
         criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
         status: { type: string, enum: [QUEUED, RUNNING, PAUSED, CANCELLED, COMPLETED, FAILED] }
@@ -612,7 +627,16 @@ components:
       enum: [SHOWN_POSTED, NOT_SHOWN, UNKNOWN]
     ExtractionOutcome:
       type: string
-      enum: [UNPROCESSED, EXTRACTED, MISSING_BAIL_SECTION, UNREADABLE, UNSUPPORTED_LAYOUT, IDENTITY_MISMATCH, RETRIEVAL_FAILED]
+      enum: [UNPROCESSED, EXTRACTED, MISSING_BAIL_SECTION, UNREADABLE, UNSUPPORTED_LAYOUT, AMBIGUOUS_FINANCIAL_ASSOCIATION, IDENTITY_MISMATCH, RETRIEVAL_FAILED]
+    MatchingEvent:
+      type: object
+      properties:
+        eventDate: { type: string, format: date }
+        eventType: { type: string, minLength: 1, maxLength: 160 }
+        eventTime: { type: ["string", "null"], maxLength: 40 }
+        sourceId: { type: ["string", "null"], maxLength: 160 }
+        sourcePage: { type: integer, minimum: 1, maximum: 100 }
+      required: [eventDate, eventType]
     DiscoveryEntry:
       type: object
       properties:
@@ -624,6 +648,8 @@ components:
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
         originatingCourt: { type: ["string", "null"] }
         percentageCondition: { type: ["string", "null"] }
+        sourceEntryId: { type: string, pattern: "^[a-f0-9]{64}$" }
+        excerpt: { type: string, maxLength: 4000 }
         sourcePages:
           type: array
           description: One-based PDF pages supporting this entry; absent for legacy evidence.
@@ -644,6 +670,8 @@ components:
         extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
         postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
         entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }
+        matchingEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
+        pdfEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
         documentSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
         documentAcquisition: { type: string, enum: [AUTOMATED, MANUAL_UPLOAD] }
         documentPageCount: { type: integer, minimum: 1, maximum: 100 }
@@ -717,7 +745,7 @@ components:
       enum: [MONETARY, NOMINAL, UNSECURED, NONMONETARY, RECOGNIZANCE, DENIED, UNKNOWN]
     FinancialBasis:
       type: string
-      enum: [TOTAL_BAIL, CASH_DEPOSIT, SURETY_BOND, UNSECURED_AMOUNT]
+      enum: [TOTAL_BAIL, RECORDED_BAIL_AMOUNT, CASH_DEPOSIT, SURETY_BOND, UNSECURED_AMOUNT]
     ReviewStatus:
       type: string
       enum: [PENDING, CONFIRMED, REJECTED]

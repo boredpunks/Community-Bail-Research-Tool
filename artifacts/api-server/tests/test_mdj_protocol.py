@@ -25,7 +25,7 @@ class MdjProtocolTests(unittest.TestCase):
     def test_mdj_identity_and_missing_bail_remain_explicit(self):
         docket = EXPECTED[0][0]
         base = {"entries": [], "postedEntryState": "UNKNOWN", "excerpt": None}
-        header = f"Magisterial District Judge\nDocket Number: {docket}\n"
+        header = f"Magisterial District Judge\nDocket Number: {docket}\nCounty: Allegheny\n"
         self.assertEqual(extract_mdj_bail([header], docket, base.copy(), iso_date)["extractionOutcome"],
                          "MISSING_BAIL_SECTION")
         self.assertEqual(extract_mdj_bail(["Unrecognized court header"], docket, base.copy(), iso_date)["extractionOutcome"],

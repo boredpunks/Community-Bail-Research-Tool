@@ -181,6 +181,9 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
+      '@workspace/bail-research':
+        specifier: workspace:*
+        version: link:../../lib/bail-research
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
@@ -353,6 +356,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/bail-research':
+        specifier: workspace:*
+        version: link:../../lib/bail-research
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -626,6 +632,15 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/bail-research:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.6
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.13
 
   lib/db:
     dependencies:
@@ -4624,7 +4639,7 @@ snapshots:
       '@drizzle-team/brocli': 0.10.2
       '@esbuild-kit/esm-loader': tsx@4.23.15
       esbuild: 0.28.2
-      tsx: 4.23.13
+      tsx: 4.23.15
 
   drizzle-orm@0.45.2(@types/pg@8.23.1)(pg@8.23.0):
     optionalDependencies:

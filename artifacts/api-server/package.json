@@ -9,12 +9,14 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:safety": "node ./tests/run-safety.mjs",
+    "test:completion": "node ./tests/run-completion.mjs",
     "test:research-workflow": "node ./tests/run-research-workflow.mjs"
   },
   "dependencies": {
     "@clerk/express": "^2.1.75",
     "@clerk/shared": "^4.38.0",
     "@workspace/api-zod": "workspace:*",
+    "@workspace/bail-research": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

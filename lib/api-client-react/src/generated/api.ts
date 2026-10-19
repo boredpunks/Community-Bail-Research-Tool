@@ -733,10 +733,9 @@ export const getCreateDiscoveryJobUrl = () => {
 }
 
 /**
- * @deprecated
- * @summary Disabled while the search implementation is rebuilt
+ * @summary Start a bounded calendar-to-document monetary research job
  */
-export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryJob> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -752,7 +751,7 @@ export const createDiscoveryJob = async (discoveryJobInput: DiscoveryJobInput, o
     }
     return headers;
   };
-return customFetch<unknown>(getCreateDiscoveryJobUrl(),
+return customFetch<DiscoveryJob>(getCreateDiscoveryJobUrl(),
   {
     ...options,
     method: 'POST',
@@ -767,7 +766,7 @@ return customFetch<unknown>(getCreateDiscoveryJobUrl(),
 
 export const getCreateDiscoveryJobMutationKey = () => ['createDiscoveryJob'] as const;
 
-export const getCreateDiscoveryJobMutationOptions = <TError = ErrorType<UnauthorizedResponse | ApiError>,
+export const getCreateDiscoveryJobMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext> => {
 
@@ -796,14 +795,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateDiscoveryJobMutationResult = NonNullable<Awaited<ReturnType<typeof createDiscoveryJob>>>
     export type CreateDiscoveryJobMutationBody = BodyType<DiscoveryJobInput>
-    export type CreateDiscoveryJobMutationError = ErrorType<UnauthorizedResponse | ApiError>
+    export type CreateDiscoveryJobMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ApiError>
     export type CreateDiscoveryJobMutationVariables = {data: BodyType<DiscoveryJobInput>}
 
     /**
- * @deprecated
- * @summary Disabled while the search implementation is rebuilt
+ * @summary Start a bounded calendar-to-document monetary research job
  */
-export const useCreateDiscoveryJob = <TError = ErrorType<UnauthorizedResponse | ApiError>,
+export const useCreateDiscoveryJob = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDiscoveryJob>>, TError,CreateDiscoveryJobMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createDiscoveryJob>>,

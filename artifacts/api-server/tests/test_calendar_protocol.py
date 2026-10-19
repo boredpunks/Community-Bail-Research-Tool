@@ -222,6 +222,14 @@ class FormTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn(("CourtRoomID", ""), fields)
                 self.assertIn(("ScheduledEventsOnly", "1"), fields)
                 self.assertEqual(outbound, [])
+                shared_group = markup.replace(
+                    '<label for="scheduled">', '<div><label for="scheduled">').replace(
+                    '<button id="btnSearch"', '<input type="checkbox" name="Unrelated" value="1"></div><button id="btnSearch"')
+                await page.set_content(titled(shared_group))
+                selected = await select_bound_calendar_controls(page, criteria)
+                grouped_fields = await validate_bound_calendar_form(page, criteria, selected)
+                self.assertIn(("ScheduledEventsOnly", "1"), grouped_fields)
+                self.assertNotIn(("Unrelated", "1"), grouped_fields)
 
                 # The same end-to-end blank-filter validation must work with
                 # bounded public grouping and a UI-only native select. Field

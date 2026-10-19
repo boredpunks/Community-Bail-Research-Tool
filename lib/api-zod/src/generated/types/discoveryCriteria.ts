@@ -5,9 +5,12 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { DiscoveryCriteriaResultVersion } from './discoveryCriteriaResultVersion';
 import type { DiscoveryMatchFilters } from './discoveryMatchFilters';
 
 export interface DiscoveryCriteria {
+  /** Recorded monetary setting semantics; absent on legacy jobs. */
+  resultVersion?: DiscoveryCriteriaResultVersion;
   /**
      * Exact source-displayed office choice, or ANY for no filter.
      * @maxLength 80

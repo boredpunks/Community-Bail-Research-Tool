@@ -5,6 +5,8 @@ import { bailRecordsTable, bailReviewsTable, db, discoveryJobsTable } from "@wor
 export const WORKSPACE_OWNER_ID = "community-bail-research-shared-workspace";
 export const WORKSPACE_COOKIE_NAME = "cbr_workspace";
 export const WORKSPACE_SESSION_TTL_SECONDS = 12 * 60 * 60;
+// Invalidate previously issued sessions after an acceptance-run token exposure.
+export const WORKSPACE_SESSION_VERSION = 2;
 
 export interface WorkspaceIdentity {
   ownerId: string;
@@ -25,7 +27,7 @@ export function createWorkspaceSession(nowSeconds = Math.floor(Date.now() / 1000
   if (!secret) throw new Error("Workspace sessions are not configured.");
 
   const payload = Buffer.from(JSON.stringify({
-    v: 1,
+    v: WORKSPACE_SESSION_VERSION,
     issuedAt: nowSeconds,
     expiresAt: nowSeconds + WORKSPACE_SESSION_TTL_SECONDS,
     nonce: randomBytes(24).toString("base64url"),
@@ -55,7 +57,7 @@ export function hasValidWorkspaceSession(req: Request, nowSeconds = Math.floor(D
     const data: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (!data || typeof data !== "object") return false;
     const session = data as { v?: unknown; issuedAt?: unknown; expiresAt?: unknown; nonce?: unknown };
-    return session.v === 1
+    return session.v === WORKSPACE_SESSION_VERSION
       && typeof session.issuedAt === "number"
       && Number.isSafeInteger(session.issuedAt)
       && session.issuedAt <= nowSeconds + 60

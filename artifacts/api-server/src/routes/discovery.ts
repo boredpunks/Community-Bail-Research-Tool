@@ -1,6 +1,6 @@
-import { Router, raw, type IRouter, type Response } from "express";
+import { Router, raw, type IRouter } from "express";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable } from "@workspace/db";
+import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import {
   ControlDiscoveryJobBody, ControlDiscoveryJobParams, ControlDiscoveryJobResponse,
   GetDiscoveryJobParams,
@@ -8,6 +8,7 @@ import {
   SaveDiscoveryObservationBody, SaveDiscoveryObservationParams, SaveDiscoveryObservationResponse,
   SaveDiscoveryCandidatesBody, SaveDiscoveryCandidatesParams, SaveDiscoveryCandidatesResponse,
   ListDiscoveryAssessmentsResponse,
+  CreateDiscoveryJobBody,
 } from "@workspace/api-zod";
 import { discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
 import { serializeBailRecord } from "../lib/bail-records";
@@ -17,28 +18,27 @@ import { discoverySourceStatus } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults } from "../lib/discovery-retention";
 import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
 import { researchPacing } from "../lib/research-pacing";
+import { launchDiscovery, newResearchCriteria } from "../lib/discovery-launch";
+import { calendarAdmission } from "../lib/research-operations";
+import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
+import { sourceAdmissionBlock } from "../lib/discovery-source-status";
+import { launchBoundedPermit } from "../lib/bounded-launch";
 import { inspectLocalPdf } from "../lib/local-document";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
 
-function searchRebuildConflict(res: Response): void {
-  res.status(409).json({ error: "SEARCH_REBUILD_IN_PROGRESS: Search is paused for a clean rebuild. Existing records remain unchanged." });
-}
-
 router.get("/discovery/policy", async (_req, res): Promise<void> => {
   const sourceStatus = await discoverySourceStatus();
   const payload = {
-    adapter: "Search is paused for rebuild; saved evidence remains available",
+    adapter: "Paced Calendar Event → associated PDF → provisional monetary observations",
     minimumDate: easternToday(), spacingMs: discoveryPolicy.spacingMs,
     concurrency: 1, automaticRetries: 0,
     defaultRecordCap: Math.min(5, discoveryPolicy.maxRecordCap), maxRecordCap: discoveryPolicy.maxRecordCap,
     defaultRequestCap: Math.min(12, discoveryPolicy.maxRequestCap), maxRequestCap: discoveryPolicy.maxRequestCap,
     ...sourceStatus,
-    blockedReason: "SEARCH_REBUILD_IN_PROGRESS",
-    collectionEnabled: false,
-    calendarRequestAllowance: 0,
-    coverageNote: "Search is paused for a rebuild. Existing jobs, evidence, saved records, authentication, and manual PDF upload are retained.",
+    calendarRequestAllowance: Math.max(0, Math.min(discoveryPolicy.maxRequestCap, sourceStatus.hourlyRequestCap - sourceStatus.hourlyRequestsUsed, sourceStatus.dailyRequestCap - sourceStatus.dailyRequestsUsed)),
+    coverageNote: "Common Pleas percentage-bearing and MDJ posted-bail supplied PDFs verified offline. Live calendar and PDF access are separate capabilities; source policy and incomplete coverage are reported per job.",
   };
   GetDiscoveryPolicyResponse.parse(payload);
   res.json(payload);
@@ -67,27 +67,47 @@ router.get("/discovery/assessments", async (_req, res): Promise<void> => {
   res.json(payload);
 });
 
-router.post("/discovery/assessments/:assessmentId/start", (_req, res): void => {
-  searchRebuildConflict(res);
+router.post("/discovery/assessments/:assessmentId/start", async (req, res): Promise<void> => {
+  if (!/^[a-f0-9-]{36}$/i.test(String(req.params.assessmentId))) {
+    res.status(404).json({error: "Approved scope not found."}); return;
+  }
+  const result = await launchBoundedPermit(getWorkspaceIdentity(res).ownerId, String(req.params.assessmentId));
+  res.status(result.status).json(result.job ? await jobSummary(result.job) : {error: result.error});
 });
 
-router.post("/discovery/jobs", (_req, res): void => {
-  searchRebuildConflict(res);
+router.post("/discovery/jobs", async (req, res): Promise<void> => {
+  if (!CreateDiscoveryJobBody.safeParse(req.body).success) {
+    res.status(400).json({error: "Provide valid calendar criteria, monetary filters, and bounded request and record limits."}); return;
+  }
+  let criteria;
+  try { criteria = newResearchCriteria(req.body ?? {}); }
+  catch (error) { res.status(400).json({error: error instanceof Error ? error.message : "Invalid research criteria."}); return; }
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+  const result = await launchDiscovery(criteria, ownerId, ownerIds);
+  res.status(result.status ?? 409).json(result.payload ?? {error: result.error});
 });
 
-router.get("/discovery/operations", (_req, res): void => {
+router.get("/discovery/operations", async (_req, res): Promise<void> => {
+  const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+  const calendarBlock = await calendarAdmission(db, source);
+  const documentBlock = (await discoverySourceStatus()).blockedReason;
   res.json({
-    calendarEnabled: false,
-    calendarBlockedReason: "SEARCH_REBUILD_IN_PROGRESS",
-    documentEnabled: false,
-    documentBlockedReason: "Automated retrieval is disabled during the search rebuild; manual PDF upload remains available.",
+    calendarEnabled: !calendarBlock,
+    calendarBlockedReason: calendarBlock,
+    documentEnabled: !documentBlock,
+    documentBlockedReason: documentBlock,
     pacing: researchPacing,
-    notice: "Search is paused while the implementation is being rebuilt. Existing records and authentication are unchanged.",
+    notice: "Calendar discovery and document retrieval have separate source-access readiness. Offline PDF verification remains available.",
   });
 });
 
-router.post(["/discovery/calendar-previews", "/discovery/searches"], (_req, res): void => {
-  searchRebuildConflict(res);
+router.post(["/discovery/calendar-previews", "/discovery/searches"], async (req, res): Promise<void> => {
+  let criteria;
+  try { criteria = makeCalendarPreviewCriteria(req.body ?? {}); }
+  catch (error) { res.status(400).json({error: error instanceof Error ? error.message : "Invalid calendar criteria."}); return; }
+  const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+  const result = await launchDiscovery(criteria, ownerId, ownerIds);
+  res.status(result.status ?? 409).json(result.payload ?? {error: result.error});
 });
 
 router.post("/discovery/local-documents", raw({type: "application/pdf", limit: 4_000_000}), async (req, res): Promise<void> => {
@@ -130,6 +150,7 @@ router.post("/discovery/local-documents", raw({type: "application/pdf", limit: 4
       courtOffice:"Not established by calendar", courtType:parsed.courtType, eventType:"Not established by calendar", eventDate:null, filingDate:null}),
       extractionOutcome:parsed.extractionOutcome, postedEntryState:parsed.postedEntryState, entries:parsed.entries,
       documentSha256:parsed.documentSha256, documentPageCount:parsed.documentPageCount,
+      pdfEvents:parsed.pdfEvents,
       bailSectionPages:parsed.bailSectionPages, documentAcquisition:"MANUAL_UPLOAD" as const };
     const values = {provenance, excerpt:parsed.excerpt, detail:parsed.detail, sourceRetrievedAt:now};
     const [item] = old
@@ -182,21 +203,28 @@ router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
 router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> => {
   await clearExpiredDiscoveryResults();
   const params = ControlDiscoveryJobParams.safeParse(req.params);
-  if (req.body?.action === "RESUME") {
-    res.status(409).json({ error: "SEARCH_REBUILD_IN_PROGRESS: Existing search jobs cannot be resumed while the engine is disabled." });
-    return;
-  }
   const body = ControlDiscoveryJobBody.safeParse(req.body);
   if (!params.success || !body.success) { res.status(400).json({ error: "Choose pause or cancel." }); return; }
   const result = await db.transaction(async (tx) => {
     const { ownerIds } = getWorkspaceIdentity(res);
+    const [resumeSource] = body.data.action === "RESUME" ? await tx.select().from(discoverySourceTable)
+      .where(eq(discoverySourceTable.id, "UJS")).for("update") : [];
     const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 };
     const action = body.data.action;
     if (!["QUEUED", "RUNNING", "PAUSED"].includes(job.status)) {
       return { error: "This job is already stopped.", status: 409 };
     }
-    const status = action === "CANCEL" ? "CANCELLED" : "PAUSED";
+    if (action === "RESUME") {
+      if (job.status !== "PAUSED" || job.assessmentId || job.resultsExpiredAt
+        || resultsDeadline(job) && resultsDeadline(job)! <= new Date()
+        || !job.calendarComplete && job.criteria.startDate < easternToday()
+        || job.requestsUsed >= job.criteria.requestCap) return { error: "This job cannot resume: check paused state, expiration, permit, or original budget.", status: 409 };
+      const block = job.criteria.calendarPreviewOnly || job.criteria.resultVersion === 2 && !job.calendarComplete
+        ? await calendarAdmission(tx, resumeSource) : await sourceAdmissionBlock(tx, resumeSource);
+      if (block) return { error: `Resume blocked: ${block}. Original criteria and evidence retained.`, status: 409 };
+    }
+    const status = action === "CANCEL" ? "CANCELLED" : action === "RESUME" ? "QUEUED" : "PAUSED";
     const [updated] = await tx.update(discoveryJobsTable).set({ status, updatedAt: new Date(), message: `${action}: partial results and original budgets preserved. An already-started source request may finish.` }).where(eq(discoveryJobsTable.id, job.id)).returning();
     if (job.assessmentId && job.status === "QUEUED") {
       await tx.update(discoveryAssessmentsTable).set({ state: "FAILED", completedAt: new Date(),

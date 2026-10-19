@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 
 export interface DiscoveryCriteriaData {
+  resultVersion?: 2;
   courtOffice: string;
   courtRoom?: string;
   eventType: string;
@@ -14,6 +15,7 @@ export interface DiscoveryCriteriaData {
   // Optional only for jobs created before matching-target collection existed.
   matchTarget?: number;
   matchFilters?: {
+    monetaryLowerBoundCents?: number | null;
     monetaryUpperBoundCents: number | null;
     excludeShownPosted: boolean;
     // Absent on legacy jobs, which retain their original strict comparison.
@@ -27,12 +29,16 @@ export interface DiscoveryEntryData {
   orderDate: string | null;
   bailCategory: "MONETARY" | "NOMINAL" | "UNSECURED" | "NONMONETARY" | "RECOGNIZANCE" | "DENIED" | "UNKNOWN";
   amountCents: number | null;
-  financialBasis: "TOTAL_BAIL" | "UNSECURED_AMOUNT" | null;
+  financialBasis: "TOTAL_BAIL" | "RECORDED_BAIL_AMOUNT" | "UNSECURED_AMOUNT" | null;
+  sourceEntryId?: string;
+  excerpt?: string;
   sourcePages?: number[];
   originatingCourt?: string | null;
   percentageCondition?: string | null;
 }
 export interface DiscoveryProvenanceData {
+  matchingEvents?: { eventDate: string; eventType: string; eventTime?: string | null; sourceId?: string | null }[];
+  pdfEvents?: { eventDate: string; eventType: string; eventTime?: string | null; sourcePage?: number }[];
   calendarUrl: string;
   calendarRetrievedAt: string;
   courtOffice: string;
@@ -41,7 +47,7 @@ export interface DiscoveryProvenanceData {
   courtRoom?: string | null;
   eventDate: string | null;
   filingDate: string | null;
-  extractionOutcome: "UNPROCESSED" | "EXTRACTED" | "MISSING_BAIL_SECTION" | "UNREADABLE" | "UNSUPPORTED_LAYOUT" | "IDENTITY_MISMATCH" | "RETRIEVAL_FAILED";
+  extractionOutcome: "UNPROCESSED" | "EXTRACTED" | "MISSING_BAIL_SECTION" | "UNREADABLE" | "UNSUPPORTED_LAYOUT" | "AMBIGUOUS_FINANCIAL_ASSOCIATION" | "IDENTITY_MISMATCH" | "RETRIEVAL_FAILED";
   postedEntryState: "SHOWN_POSTED" | "NOT_SHOWN" | "UNKNOWN";
   entries: DiscoveryEntryData[];
   documentSha256?: string;

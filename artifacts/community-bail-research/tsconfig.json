@@ -15,6 +15,7 @@
     }
   },
   "references": [
+    { "path": "../../lib/bail-research" },
     {
       "path": "../../lib/api-client-react"
     }

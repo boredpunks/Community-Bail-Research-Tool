@@ -12,19 +12,23 @@ ROW = re.compile(
 
 def extract_mdj_bail(pages, docket, base, iso_date, body=None):
     first = pages[0][:5000]
+    identities = re.findall(r"Docket\s+Number\s*:\s*(MJ-\d{5}-(?:CR|NT)-\d{7}-\d{4})", first)
     if (not re.search(r"Magisterial District Judge\b", first, re.I)
-            or not re.search(r"Docket\s+Number\s*:\s*" + re.escape(docket) + r"\b", first, re.I)):
+            or not identities or identities[0] != docket or not docket.startswith("MJ-05")
+            or not re.search(r"County:\s+Allegheny\b", first)):
         return dict(base, extractionOutcome="IDENTITY_MISMATCH",
                     detail="MDJ court/docket header did not match the requested document.")
     if body is not None and any("Originating Court" in page for page in pages):
-        from mdj_table import read_originating_tables
+        from bail_table import read_bail_tables, FinancialAssociationError
         try:
-            entries, excerpt, section_pages = read_originating_tables(body, iso_date)
+            entries, excerpt, section_pages, posted = read_bail_tables(body, iso_date)
         except ValueError as error:
-            return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail=str(error))
+            return dict(base, extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
+                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT",
+                        bailSectionPages=[], detail=str(error))
         return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=section_pages,
-                    postedEntryState="NOT_SHOWN", extractionOutcome="EXTRACTED",
-                    detail="Header-mapped MDJ entries; originating courts preserved. No posting entry shown; payment, custody and operative chronology remain unverified.")
+                    postedEntryState=posted, extractionOutcome="EXTRACTED",
+                    detail="Header-mapped MDJ recorded setting amount; originating court and posting status kept separate. Historical/provisional evidence, not an operative-order or custody finding.")
     sections = []
     for page, text in enumerate(pages, 1):
         marker = re.search(r"(?m)^\s*BAIL(?: INFORMATION)?\s*$", text)
@@ -75,8 +79,8 @@ def extract_mdj_bail(pages, docket, base, iso_date, body=None):
             basis = ("UNSECURED_AMOUNT" if category == "UNSECURED"
                      else "TOTAL_BAIL" if category in ("MONETARY", "NOMINAL") else None)
             entries.append({"action": action, "wording": wording, "orderDate": date,
-                            "bailCategory": category, "amountCents": amount,
-                            "financialBasis": basis, "sourcePages": [page]})
+                            "bailCategory": category, "amountCents": amount if basis else None,
+                            "financialBasis": basis, "sourcePages": [page], "excerpt": match.group().strip()})
         if len(split) == 2:
             posting = split[1]
             if not re.search(r"Posting Status", posting, re.I):
@@ -93,6 +97,7 @@ def extract_mdj_bail(pages, docket, base, iso_date, body=None):
     if not entries:
         return dict(base, excerpt=excerpt, extractionOutcome="UNSUPPORTED_LAYOUT",
                     detail="MDJ BAIL section has no fully supported action rows.")
-    return dict(base, entries=entries, postedEntryState=posted, excerpt=excerpt,
+    from bail_table import stable_entries
+    return dict(base, entries=stable_entries(entries), postedEntryState=posted, excerpt=excerpt,
                 extractionOutcome="EXTRACTED",
                 detail="MDJ identity and complete supported bail rows matched; provisional source evidence only.")

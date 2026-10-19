@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startDiscoveryWorker } from "./lib/discovery-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -22,6 +23,7 @@ const server = app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  void startDiscoveryWorker().catch(error => logger.error({ err: error }, "Discovery worker stopped"));
 });
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => {

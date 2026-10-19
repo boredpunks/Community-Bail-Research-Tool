@@ -202,7 +202,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
         || result.documentLinks !== "NO_ROWS" || result.scope !== "NO_ROWS" || result.dates !== "NO_ROWS"
         || result.explicitEmptyResult !== "SOURCE_STATUS_MARKER"
         || !object(m.structure) || m.structure.bodyPresent !== true
-        || m.structure.searchFormPresent !== true || m.structure.resultTableCount !== 1
+         || m.structure.searchFormPresent !== (m.structure.searchButtonCount === 1)
+         || ![0, 1].includes(Number(m.structure.searchButtonCount)) || m.structure.resultTableCount !== 1
         || m.structure.headerCellCount !== 19 || m.structure.dataRowCount !== 1
         || m.structure.documentLinkCount !== 0 || m.structure.expectedHeaders !== true
         || m.structure.countsCapped !== false)) return false;

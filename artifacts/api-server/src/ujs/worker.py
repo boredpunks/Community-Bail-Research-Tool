@@ -157,6 +157,7 @@ async def main(config=None):
         "explicitEmptyResult": "NOT_CAPTURED",
     }
     calendar_has_remote_pagination = False
+    calendar_traversal = "STATIC_DOM"
     calendar_result_limit_warning = False
     calendar_source_framing = False
     calendar_validated_headers = None
@@ -672,7 +673,7 @@ async def main(config=None):
 
         async def validate_loaded_response():
             nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
-            nonlocal items, calendar_has_remote_pagination, calendar_validated_headers
+            nonlocal items, calendar_has_remote_pagination, calendar_validated_headers, calendar_traversal
             nonlocal calendar_explicit_empty
             nonlocal calendar_result_limit_warning
             if (not response_recorder or response_parser_attempted
@@ -693,6 +694,7 @@ async def main(config=None):
                 parser.close()
                 parser.has_remote_pagination |= projection["pagination"]
                 calendar_result_limit_warning = projection["resultLimit"]
+                calendar_traversal = projection.get("traversal", "STATIC_DOM")
                 del projection
                 if len(parser.rows) != response_structure["dataRowCount"]:
                     raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
@@ -987,6 +989,7 @@ async def main(config=None):
                 response_diagnostic()
                 # No automatic remote page traversal: disclose incomplete coverage.
                 emit("calendar", rows=items, retrievedAt=calendar_time,
+                     traversal=calendar_traversal,
                      paginationComplete=not calendar_has_remote_pagination
                      and not calendar_result_limit_warning and len(items) < 500,
                      resultCapReached=calendar_result_limit_warning or len(items) >= 500, blockedAssets=blocked,

@@ -105,7 +105,9 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         if (permitId) return deny("ASSESSMENT_NOT_APPROVED");
         if (current.criteria.calendarPreviewOnly && !calendarPreviewRequestAllowed(requestPath, method))
           return deny("CALENDAR_DOCUMENT_REQUEST_FORBIDDEN");
-        const block = current.criteria.calendarPreviewOnly
+        const independentCalendar = current.criteria.resultVersion === 2
+          && calendarPreviewRequestAllowed(requestPath, method);
+        const block = current.criteria.calendarPreviewOnly || independentCalendar
           ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
         if (block) return deny(block);
       }

@@ -19,20 +19,40 @@ export interface WorkspaceSession {
   expiresInSeconds?: number;
 }
 
+/**
+ * Recorded monetary setting semantics; absent on legacy jobs.
+ */
+export type DiscoveryCriteriaResultVersion = typeof DiscoveryCriteriaResultVersion[keyof typeof DiscoveryCriteriaResultVersion];
+
+
+export const DiscoveryCriteriaResultVersion = {
+  NUMBER_2: 2,
+} as const;
+
 export interface DiscoveryMatchFilters {
   /**
-     * Local monetary TOTAL_BAIL maximum; null disables this filter.
-     * @minimum 1
+     * Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound.
+     * @minimum 0
      * @maximum 2147483647
      * @nullable
      */
   monetaryUpperBoundCents: number | null;
+  /**
+     * @minimum 0
+     * @maximum 2147483647
+     * @nullable
+     */
+  monetaryLowerBoundCents?: number | null;
   excludeShownPosted: boolean;
   /** Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved. */
   inclusiveMaximum?: boolean;
+  /** Historical operator criterion retained for legacy reports; not enabled by the simple search flow. */
+  requirePostedNotShown?: boolean;
 }
 
 export interface DiscoveryCriteria {
+  /** Recorded monetary setting semantics; absent on legacy jobs. */
+  resultVersion?: DiscoveryCriteriaResultVersion;
   /**
      * Exact source-displayed office choice, or ANY for no filter.
      * @maxLength 80
@@ -203,6 +223,7 @@ export type DiscoveryControlAction = typeof DiscoveryControlAction[keyof typeof 
 export const DiscoveryControlAction = {
   PAUSE: 'PAUSE',
   CANCEL: 'CANCEL',
+  RESUME: 'RESUME',
 } as const;
 
 export interface DiscoveryControl {
@@ -230,6 +251,20 @@ export const DiscoveryJobStatus = {
 } as const;
 
 export interface DiscoveryJob {
+  /** @nullable */
+  documentsAttempted?: number | null;
+  /** @nullable */
+  documentsRetrieved?: number | null;
+  /** @nullable */
+  documentsParsed?: number | null;
+  /** @nullable */
+  displayedRows?: number | null;
+  /** @nullable */
+  excluded?: number | null;
+  /** @nullable */
+  ambiguities?: number | null;
+  /** @nullable */
+  eventConflicts?: number | null;
   id: string;
   criteria: DiscoveryCriteria;
   status: DiscoveryJobStatus;
@@ -275,9 +310,34 @@ export const ExtractionOutcome = {
   MISSING_BAIL_SECTION: 'MISSING_BAIL_SECTION',
   UNREADABLE: 'UNREADABLE',
   UNSUPPORTED_LAYOUT: 'UNSUPPORTED_LAYOUT',
+  AMBIGUOUS_FINANCIAL_ASSOCIATION: 'AMBIGUOUS_FINANCIAL_ASSOCIATION',
   IDENTITY_MISMATCH: 'IDENTITY_MISMATCH',
   RETRIEVAL_FAILED: 'RETRIEVAL_FAILED',
 } as const;
+
+export interface MatchingEvent {
+  eventDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  eventType: string;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  eventTime?: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  sourceId?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  sourcePage?: number;
+}
 
 export type BailCategory = typeof BailCategory[keyof typeof BailCategory];
 
@@ -297,6 +357,7 @@ export type FinancialBasis = typeof FinancialBasis[keyof typeof FinancialBasis];
 
 export const FinancialBasis = {
   TOTAL_BAIL: 'TOTAL_BAIL',
+  RECORDED_BAIL_AMOUNT: 'RECORDED_BAIL_AMOUNT',
   CASH_DEPOSIT: 'CASH_DEPOSIT',
   SURETY_BOND: 'SURETY_BOND',
   UNSECURED_AMOUNT: 'UNSECURED_AMOUNT',
@@ -315,6 +376,10 @@ export interface DiscoveryEntry {
   originatingCourt?: string | null;
   /** @nullable */
   percentageCondition?: string | null;
+  /** @pattern ^[a-f0-9]{64}$ */
+  sourceEntryId?: string;
+  /** @maxLength 4000 */
+  excerpt?: string;
   /**
      * One-based PDF pages supporting this entry; absent for legacy evidence.
      * @items.minimum 1
@@ -355,6 +420,10 @@ export interface DiscoveryProvenance {
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @maxItems 500 */
+  matchingEvents?: MatchingEvent[];
+  /** @maxItems 500 */
+  pdfEvents?: MatchingEvent[];
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
   documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;

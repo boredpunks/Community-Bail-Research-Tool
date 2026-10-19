@@ -148,6 +148,9 @@ try {
       { name: "PARSER_ACCEPTED", sequence: 11 }],
   };
   check(validCalendarResponseDiagnostic(validatedEmptyDiagnostic));
+  check(validCalendarResponseDiagnostic({ ...validatedEmptyDiagnostic,
+    structure: { ...validatedEmptyDiagnostic.structure, searchButtonCount: 0, searchFormPresent: false },
+  }));
   const explicitEmptyLayout = {
     kind: "calendar_layout", version: 1, resultTables: 1, headerRows: 1, nonHeaderRows: 1,
     presentationRows: 1, recognizedDocumentLinks: 0, overflow: false, malformed: false,

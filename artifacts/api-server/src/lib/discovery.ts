@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type DiscoveryJobRow, type DiscoveryCriteriaData, type DiscoveryProvenanceData } from "@workspace/db";
 import { qualifyingMonetaryTotal, resultsDeadline } from "./discovery-safety";
 import { researchPacing } from "./research-pacing";
+import { matchesMonetaryResearch, projectQualifyingRows, matchingEvents, eventConflict } from "@workspace/bail-research";
 
 function policyInteger(key: string, initial: number, min: number, max: number): number {
   const raw = process.env[key];
@@ -21,7 +22,8 @@ export const discoveryPolicy = {
 
 export { easternToday, actualDate } from "./calendar-criteria";
 
-export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, filters: DiscoveryCriteriaData["matchFilters"]) {
+export function matchesDiscoveryFilters(provenance: DiscoveryProvenanceData, filters: DiscoveryCriteriaData["matchFilters"], resultVersion?: number) {
+  if (resultVersion === 2) return matchesMonetaryResearch(provenance, filters);
   if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(provenance.extractionOutcome)) return false;
   if (filters?.requirePostedNotShown && provenance.postedEntryState !== "NOT_SHOWN") return false;
   if (filters?.excludeShownPosted && provenance.postedEntryState === "SHOWN_POSTED") return false;
@@ -37,7 +39,7 @@ export async function jobSummary(job: DiscoveryJobRow) {
   ]);
   const unprocessed = items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").length;
   const failed = items.filter((item) => !["UNPROCESSED", "EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)).length;
-  const matching = items.filter((item) => matchesDiscoveryFilters(item.provenance, job.criteria.matchFilters)).length;
+  const matching = items.filter((item) => matchesDiscoveryFilters(item.provenance, job.criteria.matchFilters, job.criteria.resultVersion)).length;
   const counts = job.resultCounts ?? { discovered: items.length, processed: items.length - unprocessed, matching, failed, unprocessed };
   return {
     id: job.id, criteria: job.criteria, status: job.status,
@@ -53,6 +55,16 @@ export async function jobSummary(job: DiscoveryJobRow) {
     resultsExpiredAt: job.resultsExpiredAt?.toISOString() ?? null,
     candidateDockets: items.filter((item) => item.movedToCandidatesAt).length,
     isAssessment: !!job.assessmentId,
+    documentsAttempted: job.resultsExpiredAt ? null : requests.filter(request => ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(request.path)).length,
+    documentsRetrieved: job.resultsExpiredAt ? null : items.filter(item => item.sourceRetrievedAt && item.provenance.documentAcquisition !== "MANUAL_UPLOAD").length,
+    documentsParsed: job.resultsExpiredAt ? null : items.filter(item => ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)).length,
+    displayedRows: job.resultsExpiredAt ? null : projectQualifyingRows(items, {...job.criteria.matchFilters,
+      inclusiveMaximum: job.criteria.resultVersion === 2 || job.criteria.matchFilters?.inclusiveMaximum === true}).length,
+    excluded: job.resultsExpiredAt ? null : items.filter(item => ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)
+      && !matchesMonetaryResearch(item.provenance, {...job.criteria.matchFilters,
+        inclusiveMaximum: job.criteria.resultVersion === 2 || job.criteria.matchFilters?.inclusiveMaximum === true})).length,
+    ambiguities: job.resultsExpiredAt ? null : items.filter(item => item.provenance.extractionOutcome === "AMBIGUOUS_FINANCIAL_ASSOCIATION").length,
+    eventConflicts: job.resultsExpiredAt ? null : items.filter(item => matchingEvents(item.provenance).some(event => eventConflict(event, item.provenance))).length,
   };
 }
 

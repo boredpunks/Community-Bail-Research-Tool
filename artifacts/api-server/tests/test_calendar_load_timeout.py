@@ -390,7 +390,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_large_malformed_grid_is_not_repaired_into_acceptance(self):
         o = await self.run_fixture(large_page="malformed")
         self.assertEqual(o["calendars"], [])
-        self.assertIn("UNEXPECTED_RESPONSE", o["barriers"])
+        self.assertIn("UNSUPPORTED_LAYOUT", o["barriers"])
         self.assertEqual(o["responseDiagnostics"][-1]["parserOutcome"], "UNSUPPORTED_LAYOUT")
         self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
 

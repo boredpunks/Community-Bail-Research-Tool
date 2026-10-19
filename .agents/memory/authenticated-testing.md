@@ -40,3 +40,14 @@ response without reading the session back.
 **How to apply:** Test password entry, session readback, and a protected
 read-only endpoint in one browser context without invoking Search. Never log or
 persist the cookie or password. Keep the cookie clear operation partitioned too.
+
+Sanitize browser/API exceptions before they reach tool output; TLS request
+errors can include automatically attached Cookie headers even when the script
+never explicitly prints credentials.
+
+**Why:** An authenticated acceptance diagnostic exposed its in-memory session
+through an unsanitized transport exception.
+
+**How to apply:** Catch errors around authenticated requests and report only
+the exception type and nonsecret assertion context. Never print request objects,
+raw transport exceptions, headers, or debugging traces containing sessions.

@@ -9,6 +9,7 @@ import type { DiscoveryEntry } from './discoveryEntry';
 import type { DiscoveryProvenanceCourtType } from './discoveryProvenanceCourtType';
 import type { DiscoveryProvenanceDocumentAcquisition } from './discoveryProvenanceDocumentAcquisition';
 import type { ExtractionOutcome } from './extractionOutcome';
+import type { MatchingEvent } from './matchingEvent';
 import type { PostedEntryState } from './postedEntryState';
 
 export interface DiscoveryProvenance {
@@ -26,6 +27,10 @@ export interface DiscoveryProvenance {
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @maxItems 500 */
+  matchingEvents?: MatchingEvent[];
+  /** @maxItems 500 */
+  pdfEvents?: MatchingEvent[];
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
   documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
