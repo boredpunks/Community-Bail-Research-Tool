@@ -8,19 +8,27 @@ it does not mean live acceptance.
 Branch: `fix/public-http-document-step`, created at
 `3d0cca2fee706316e92589dee61f758765da348a`.
 
-Implementation commit:
+Initial implementation commit:
 `8cb87a6111f1d4c49091f15f393afbfd5d33389f`.
+Current-run capture correction commit:
+`e3979636437a8d750d5ed8aa1ba70f6709075e3c`.
 Initial proposal/evidence commit:
 `f800f55108cf3f5f1df2343fdc0209a4dd86c9bb`.
-The final reporting commit adds this report, an approval-identity clarification
-and database-separation memory; it changes no tested application code.
+The initial report was recorded in `35e01b1`. A later packaging commit,
+`4c67f9b`, is also on this branch and (as the owner noted) on `origin`; it
+commits the two probe scripts, the original work order, the three owner-supplied
+attached notes and agent asset metadata. The earlier statement that those files
+were not committed was wrong. All corrections are additive; no history was
+rewritten.
 
 Baseline tests ran on the clean exact-base worktree, with installed dependency
-links and local genuine PDFs available. Post-change tests started at that base
-plus the implementation changes, whose exact code/test bytes were subsequently
-committed as 8cb87a6. Documentation changed during verification; application
-and test code did not. The preview checkout is now on the requested branch.
-The original `fix/calendar-result-integration` branch was not advanced.
+links and local genuine PDFs available. The original post-change comparison
+used the implementation committed as 8cb87a6. During that verification,
+documentation changed but application and test code did not. A later additive
+commit, e397963, added the current-run calendar-capture stop and regression test;
+the latest complete rerun against that revision is recorded in Section 2.
+The preview checkout is on the requested branch. The original
+`fix/calendar-result-integration` branch was not advanced.
 
 ## Requirements
 
@@ -50,9 +58,12 @@ action, current source access, or an opaque action's lifetime.
 
 ### R-2: MET
 Evidence: `artifacts/api-server/src/lib/discovery-safety.ts:5` now specifies
-`playwright-calendar+public-http-pdf-v16`. Safety suite exited 0 and printed
+`playwright-calendar+public-http-pdf-v16`. The latest run printed
 `PASS: 986 offline checks; actual concurrent PostgreSQL grants; no court traffic or case fixtures.`
-Method comparisons remain exact, with no v15 compatibility path.
+and passed the 33 strict response checks. The combined `run-safety.mjs` command
+exited 1 because its embedded Python suite had 2 failures and 2 errors; see
+Section 2 for exact rerun results. Method comparisons remain exact, with no v15
+compatibility path.
 
 Not verified: no v16 live proof was established; old proof was not relabeled.
 
@@ -70,6 +81,11 @@ Evidence: no CalendarDocument import, instantiation, browser-document route
 hook or open call remains in normal worker.py. The module and all historical
 tests remain, with the requested superseded-v15 module label.
 The normal-worker tests reject any attempt to instantiate the v15 object.
+The worker also stops with `document_session_required` if pending document
+items exist but this process has no `calendar_links_captured_at` timestamp.
+The offline regression asserts no request, response, docket or downloader call
+in that condition; the existing parent pauses the job on this event. The
+specific regression passed in the full Python run.
 
 Not verified: historical v15 tests are not evidence for live v16 access.
 
@@ -121,8 +137,10 @@ Evidence: all required loopback cases are individually named in
 PDF; independently rejected path/host/query/docket; exact UA/no credentials;
 one request/no retry; byte-identical encoded opaque action.
 The real allowlist is not relaxed: only the test TCP connector is replaced by
-an explicit 127.0.0.1 connector, preserving the original request target.
-Post-change full suite: `Ran 217 tests in 266.039s`, `OK (skipped=5)`, exit 0.
+an explicit 127.0.0.1 connector, preserving the original request target. The
+latest direct Python rerun is not all-green: 218 tests, 6 failures, 4 errors and
+5 skips, exit 1. The safety entry point's embedded Python rerun also had
+failures and errors. Exact results and test names are in Section 2.
 
 Not verified: five existing real-PDF tests remain skipped because their
 specific local source files are unavailable. No files were fetched to fill
@@ -130,12 +148,12 @@ those gaps.
 
 ### R-10: MET
 Evidence: written-only `docs/public-http-owner-approval-proposal.md` identifies
-the missing specific-run in-app approval, named approver/method audit and
-post-success clear linkage. Current shared-password identity does not identify
-an individual approver. No new approval or authentication mechanism was coded.
+the minimum missing behavior: the explicit existing approve command records
+one permit's ID, office, event type, date window and method ID in the job event
+log. No approval or auth mechanism was coded.
 
-Not verified: named owner approval/clear cannot be accepted live yet. A CLI
-flag, shared workspace ID or typed approver name is not the required identity.
+Not verified: no approval event was written. Approval alone must not clear
+ACCESS_DENIED; the existing successful-pilot proof path is separate.
 
 ### R-11: NOT RUN
 Evidence: no fresh calendar or live job was started; source ledger unchanged.
@@ -195,20 +213,24 @@ tests do not satisfy A5.
 
 ## 1. Files changed
 
-Paths below are relative to the repository root. No probe, work-order,
-attached_assets, dependency manifest, lockfile, workflow or artifact configuration
-file was committed.
+Paths below are relative to the repository root and describe Phase 2's
+implementation/report changes. `artifacts/api-server/src/lib/discovery-candidates.ts`
+was part of the implementation but was omitted from the first list; this is
+corrected here. The branch separately includes the five owner-supplied files
+and metadata committed by 4c67f9b, listed above; they were not authored or
+modified by the Phase 2 implementation. No history was rewritten.
 
 | Path | Reason |
 |---|---|
 | artifacts/api-server/src/lib/discovery-safety.ts | v16 integrated method only. |
-| artifacts/api-server/src/ujs/worker.py | Public HTTP document call; remove live popup/session gate; bounded evidence and capture timing. |
+| artifacts/api-server/src/ujs/worker.py | Public HTTP document call; remove live popup path; require a calendar-link capture in this run; bounded evidence and capture timing. |
+| artifacts/api-server/src/lib/discovery-candidates.ts | Apply nonmonetary amount normalization at the candidate persistence boundary. |
 | artifacts/api-server/src/ujs/calendar_document.py | Historical-v15 label, module retained. |
 | artifacts/api-server/src/ujs/document_diagnostics.py | Conservative bounded refusal evidence and elapsed-time helper. |
 | artifacts/api-server/src/lib/document-response.ts | Strict response validator and safe event projection. |
 | artifacts/api-server/src/lib/discovery-worker.ts | Validate response, account unchanged scheduler path, publish safe duration/denial events. |
 | artifacts/api-server/build.mjs | Include the new Python helper in the packaged worker. |
-| artifacts/api-server/tests/test_public_http.py | Real loopback downloader matrix, diagnostics and normal-worker grant/disposal tests. |
+| artifacts/api-server/tests/test_public_http.py | Real loopback downloader matrix, diagnostics, grant/disposal and stale-link stop regression. |
 | artifacts/api-server/tests/document-response.test.ts | Closed contract, real Python output, timing/denial projection checks. |
 | artifacts/api-server/tests/safety.ts | Import/count new checks and update exact method assertion. |
 | artifacts/api-server/tests/test_calendar_load_timeout.py | Re-point refusal mock to worker.public_http.download; same “No PDFs” exception and assert_not_awaited. |
@@ -232,14 +254,18 @@ neither test was deleted, skipped or weakened.
 
 ## 2. Exact commands and results
 
-Commands ran from `/tmp/bail-public-http-phase2` unless a different directory
-is shown. The preview checkout was switched only after the implementation and
-proposal commits, with the owner's five later-added files restored byte-for-byte
-as untracked files, not staged.
+Historical commands ran from `/tmp/bail-public-http-phase2` unless a different
+directory is shown. The latest e397963 rerun ran from the current workspace at
+`/home/runner/workspace`. The preview checkout was switched only after the
+implementation and proposal commits, with the owner's five later-added files
+restored byte-for-byte as untracked files, not staged.
 
-### Baseline versus after
+### Historical baseline versus the initial implementation run
 
-| Command / working directory | Baseline at 3d0cca2 | After, code bytes of 8cb87a6 |
+The right-hand column records the earlier run on 8cb87a6, not the latest
+verification. The full rerun on e397963 follows this historical comparison.
+
+| Command / working directory | Baseline at 3d0cca2 | Initial post-change run on 8cb87a6 |
 |---|---|---|
 | `cd artifacts/api-server && python -m unittest discover -v -s tests -p 'test_*.py'` | 191 total: 184 pass / 2 fail / 5 skip; exit 1 | 217 total: 212 pass / 0 fail / 5 skip; exit 0 |
 | `cd artifacts/api-server && node tests/run-safety.mjs` | 953 counted TS checks passed; script exit 0 | 986 counted TS checks passed; script exit 0 |
@@ -250,10 +276,10 @@ as untracked files, not staged.
 | `pnpm --filter @workspace/community-bail-research run test:calendar-preview` | 1 script pass / 0 fail / 0 skip; exit 0 | 1 script pass / 0 fail / 0 skip; exit 0 |
 | `pnpm --filter @workspace/bail-research test` | 5 named tests pass / 0 fail / 0 skip; exit 0 | 6 named tests pass / 0 fail / 0 skip; exit 0 |
 
-There are **six TypeScript entry points, all passing before and after**, with
-zero failed/skipped entry points. The monetary native-test entry is one of
-those six. The other custom assertion scripts do not emit a unified native
-test-case total; their entry-point and explicit check counts above are exact.
+In that historical 8cb87a6 comparison, all six TypeScript entry points passed.
+The latest rerun invoked the same six: five exited 0; `run-safety.mjs` printed
+986 passing offline checks but exited 1 because its embedded Python suite
+reported failures and errors. The monetary native-test entry is one of the six.
 Do not add entry points, safety check counters and native tests into a
 fictional single “unique test” count.
 
@@ -264,12 +290,57 @@ through their scripts; calendar-preview/discovery-retention through web scripts;
 monetary through its native test runner.
 
 **Duplicate execution:** run-safety invokes the full Python suite, not extra
-unique coverage. research-workflow is also imported by safety and separately
-run by its script. Those repeats are disclosed, not added to unique totals.
-Baseline Python and run-safety were concurrent; post-change runs were
-sequential to avoid that extra test-load overlap.
+unique coverage. The latest run therefore executed Python once directly and
+once inside run-safety; those outcomes are reported separately below, not
+summed. research-workflow is also imported by safety and separately run by its
+script. Baseline Python and run-safety were concurrent; the latest runs were
+sequential.
 
-### Every existing test whose result differed
+### Latest complete rerun on e397963
+
+All commands ran sequentially on `e3979636437a8d750d5ed8aa1ba70f6709075e3c`.
+No source request, probe, approval, job run, source clear, resume, Phase 3,
+deployment, or production operation occurred.
+
+| Command | Result |
+|---|---|
+| `cd artifacts/api-server && python -m unittest discover -v -s tests -p 'test_*.py'` | 218 tests in 706.853s: 203 pass, 6 fail, 4 errors, 5 skipped; exit 1. |
+| `cd artifacts/api-server && node tests/run-safety.mjs` | 986 offline checks passed; 33 strict document-response checks passed; parent accepted 25 actual-worker diagnostics. Its embedded Python run: 218 tests in 712.038s, 209 pass, 2 fail, 2 errors, 5 skipped. Composite exit 1. |
+| `cd artifacts/api-server && node tests/run-completion.mjs` | Pass; exit 0. |
+| `cd artifacts/api-server && node tests/run-research-workflow.mjs` | Pass; exit 0. |
+| `pnpm --filter @workspace/community-bail-research run test:discovery-retention` | Pass; exit 0. |
+| `pnpm --filter @workspace/community-bail-research run test:calendar-preview` | Pass; exit 0. |
+| `pnpm --filter @workspace/bail-research test` | 6 pass, 0 fail, 0 skipped; exit 0. |
+
+The new current-run capture regression
+`test_pending_item_without_current_run_calendar_capture_stops_before_source_request`
+passed in the direct full Python run.
+
+Failures and errors observed in the direct Python run:
+
+- **Failures (6):** `test_case_information_headers_flow_through_production_diagnostics_and_parser`;
+  `test_changed_asset_version_does_not_reuse_bootstrap_bytes`;
+  `test_large_malformed_grid_is_not_repaired_into_acceptance`;
+  `test_large_response_validates_explicit_empty_early_and_late`;
+  `test_missing_result_grid_reports_honest_post_search_timeout`;
+  `test_no_room_scope_never_silently_uses_source_selected_room`.
+- **Errors (4):** `test_before_post_error_is_not_reported_as_after_response_and_prevents_transmission`;
+  `test_console_stop_aborts_new_browser_data_requests_without_another_grant`;
+  `test_large_warning_preserves_incomplete_coverage`;
+  `test_malformed_result_header_has_safe_parser_and_structure_outcomes`.
+
+Failures and errors in run-safety's embedded Python rerun:
+
+- **Failures (2):** `test_large_malformed_grid_is_not_repaired_into_acceptance`;
+  `test_large_response_validates_explicit_empty_early_and_late`.
+- **Errors (2):** `test_large_warning_preserves_incomplete_coverage`;
+  `test_new_limit_exceeded_is_unvalidated_not_truncated_success`.
+
+No test was disabled, skipped by code change, or weakened to produce these
+results. The runs do not establish a cause for the observed calendar
+form/response timeout failures.
+
+### Historical 8cb87a6 comparison: tests whose result differed
 
 1. `test_calendar_load_timeout.CalendarLoadTimeoutTests.test_large_response_validates_explicit_empty_early_and_late`:
    baseline FAIL (`CALENDAR_RESULT_LOAD_TIMEOUT` instead of no barriers);
@@ -278,12 +349,13 @@ sequential to avoid that extra test-load overlap.
    baseline FAIL in status=200/CHALLENGE subcase (`NETWORK_ERROR` instead of
    CHALLENGE); post-change PASS.
 
-Both already passed in the untouched-base Python rerun inside run-safety.
-No claim is made that v16 corrected those intermittent baseline failures.
-Their assertions and calendar implementation were not weakened.
-No existing PASS became FAIL/SKIPPED; all five existing skips are unchanged.
-There are 26 new Python tests and one additional native monetary test; the
-new imported TypeScript response checks contribute 33 to safety's check count.
+Both passed in the earlier untouched-base Python rerun inside run-safety. This
+historical comparison does not override the later e397963 results above. No
+claim is made that v16 corrected those baseline failures; their assertions and
+calendar implementation were not weakened. There are 27 new Python tests on
+the current branch (26 in the initial implementation plus the capture-stop
+regression) and one additional native monetary test. The imported TypeScript
+response checks contribute 33 to the safety assertion count.
 
 ### Unchanged skipped tests
 
@@ -355,6 +427,37 @@ Exact reproduction command and full acceptance inventory:
 
 Read-only row fingerprints before/after all work and local restart were equal:
 
+Each fingerprint is an MD5 comparison checksum of *all columns* in the selected
+rows, not a hash of only their count or IDs. For each table the query serialized
+each full row with `row_to_json(t)::text`, sorted rows by primary key `id`,
+joined those serialized rows with `|`, and computed `md5(string_agg(...))`.
+The `historical_items` scope restricts the rows to the single historical
+`job_id`. The queries returned only scope, row count and checksum—not row
+contents. This is a before/after equality check, not a cryptographic
+tamper-proof audit.
+
+The exact query used was:
+
+```sql
+SELECT 'source' AS scope, count(*) AS rows,
+       md5(string_agg(row_to_json(t)::text, '|' ORDER BY id)) AS fingerprint
+FROM public.discovery_source_control t
+UNION ALL
+SELECT 'requests', count(*),
+       md5(string_agg(row_to_json(t)::text, '|' ORDER BY id))
+FROM public.discovery_requests t
+UNION ALL
+SELECT 'historical_job', count(*),
+       md5(string_agg(row_to_json(t)::text, '|' ORDER BY id))
+FROM public.discovery_jobs t
+WHERE id='b0768e5d-a4d7-42df-861f-35754db30bc5'
+UNION ALL
+SELECT 'historical_items', count(*),
+       md5(string_agg(row_to_json(t)::text, '|' ORDER BY id))
+FROM public.discovery_items t
+WHERE job_id='b0768e5d-a4d7-42df-861f-35754db30bc5';
+```
+
 | Retained scope | Rows | MD5 fingerprint, before = after |
 |---|---:|---|
 | Source control | 1 | 4979c77a5648b55104b6a2274de91026 |
@@ -385,11 +488,11 @@ No source request was created, edited or deleted.
 
 ## 4. First unresolved problem
 
-**The required specific-run in-app owner approval and audit do not exist.**
-Current shared authentication cannot name an individual approver. The existing
-CLI's approval timestamp is not that audit, and approval alone does not clear
-ACCESS_DENIED. Live work must remain blocked pending review of the written
-identity/approval design and the A7 wording.
+**The existing approval command does not record the approved permit scope and
+method in the job event log.** This prevents an auditable connection between
+the owner's explicit approval and the one permit. The written proposal now
+specifies only the minimal command event; it does not propose per-person
+authentication. Approval alone must not clear ACCESS_DENIED.
 
 Also unresolved: the pilot verifier's global spacing predicate versus
 operation-specific asset pacing; pre-existing 200-record/500-request env
