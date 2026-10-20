@@ -1,630 +1,584 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetDiscoveryPolicy,
-  useListDiscoveryAssessments,
-  getListDiscoveryAssessmentsQueryKey,
+  useCreateDiscoveryJob,
   getGetDiscoveryPolicyQueryKey,
   useListDiscoveryJobs,
-  useCreateDiscoveryJob,
-  useCreateCalendarPreview,
   useGetDiscoveryJob,
   useControlDiscoveryJob,
   useSaveDiscoveryObservation,
-  useSaveDiscoveryCandidates,
   getListDiscoveryJobsQueryKey,
   getGetDiscoveryJobQueryKey,
   type DiscoveryItem,
   type DiscoveryControlAction,
-  CalendarPreviewInputCourtOffice,
-  CalendarPreviewInputEventType,
+  type DiscoveryJob,
 } from '@workspace/api-client-react';
+import { projectQualifyingRows, qualifyingRowsCsv, matchingEvents, eventConflict, type QualifyingRow, type MonetaryFilters } from '@workspace/bail-research';
 import { Shell, PageHead } from '@/components/shell';
-import { ExpiredResultsNotice, ResumeControl } from '@/components/discovery-retention';
-import { CalendarPreviewStatus } from '@/components/calendar-preview-status';
-import { CalendarResponseReview } from '@/components/calendar-response-review';
+import {
+  uploadLocalDocument, isHttpsPortal,
+  type ReportWithRequests, type EntryExt, type LocalUploadResult,
+} from '@/components/discovery-api';
 import { CATEGORY_LABEL, BASIS_LABEL, errMsg, formatCents, formatInstant, parseDollarsToCents } from '@/lib/money';
 
-const POLL_MS = 3000;
-
-function dayNum(d: string) { const [y, m, dd] = d.split('-').map(Number); return Date.UTC(y, m - 1, dd) / 86400000; }
-
-type Saved = DiscoveryItem['savedObservations'][number];
 const VERIF: Record<string, string> = {
-  PENDING: 'Saved, awaiting source verification',
+  PENDING: 'Saved, pending review',
   CONFIRMED: 'Source verified in review',
   REJECTED: 'Rejected in review',
 };
-function savedFor(it: DiscoveryItem, idx: number | null): Saved | undefined {
-  return it.savedObservations.find((o) => o.entryIndex === idx);
+
+function todayNY(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
-function isMonetaryTotal(e: DiscoveryItem['provenance']['entries'][number]) {
-  return e.bailCategory === 'MONETARY' && e.financialBasis === 'TOTAL_BAIL' && e.amountCents != null && Number.isInteger(e.amountCents);
+function readJobParam(): string {
+  return new URLSearchParams(window.location.search).get('job') ?? '';
 }
-function amountText(e: DiscoveryItem['provenance']['entries'][number]) {
+function writeJobParam(id: string) {
+  const u = new URL(window.location.href);
+  if (id) u.searchParams.set('job', id); else u.searchParams.delete('job');
+  window.history.replaceState(null, '', u.toString());
+}
+
+function extractionLabel(o: string): string {
+  switch (o) {
+    case 'UNPROCESSED': return 'No PDF processed';
+    case 'EXTRACTED': return 'Bail entries extracted';
+    case 'MISSING_BAIL_SECTION': return 'No bail section found';
+    case 'UNREADABLE': return 'Unreadable PDF';
+    case 'UNSUPPORTED_LAYOUT': return 'Unsupported layout (partial or no extraction)';
+    case 'AMBIGUOUS_FINANCIAL_ASSOCIATION': return 'Ambiguous financial association (amount not attributable)';
+    case 'IDENTITY_MISMATCH': return 'Docket identity did not match';
+    case 'RETRIEVAL_FAILED': return 'Retrieval failed';
+    default: return o;
+  }
+}
+function postingLabel(s: string): string {
+  if (s === 'SHOWN_POSTED') return 'SHOWN_POSTED: docket shows a posted entry (custody not verified)';
+  if (s === 'NOT_SHOWN') return 'NOT_SHOWN: no posted entry on this page; not proof of unpaid bail or custody';
+  return 'UNKNOWN: posting state uncertain';
+}
+function amountText(e: EntryExt) {
   if (e.amountCents != null) return formatCents(e.amountCents);
   return e.bailCategory === 'MONETARY' || e.bailCategory === 'UNKNOWN' ? 'Amount unknown' : 'No amount (unpriced)';
 }
 
-function canSaveCandidate(it: DiscoveryItem) {
-  if (!it.sourceRetrievedAt || !Number.isFinite(Date.parse(it.sourceRetrievedAt))) return false;
-  if (it.provenance.extractionOutcome === 'EXTRACTED') return it.provenance.entries.length > 0 && !!it.excerpt;
-  if (it.provenance.extractionOutcome === 'MISSING_BAIL_SECTION') return it.provenance.entries.length === 0 && !!it.detail;
-  return false;
-}
-
-function amountMatches(it: DiscoveryItem, boundCents: number): boolean {
-  return it.provenance.entries.some((e) => isMonetaryTotal(e) && (e.amountCents as number) < boundCents);
-}
-
-function ItemRow({ jobId, it, saving, onSave, err, selected, onSelect }: {
-  jobId: string; it: DiscoveryItem; saving: boolean; err: string | null;
+/* ---------- Row ---------- */
+function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded }: {
+  jobId: string; it: DiscoveryItem; saving: boolean; saveErr: string | null;
   onSave: (itemId: string, entryIndex: number | null) => void;
-  selected: boolean; onSelect: (itemId: string, checked: boolean) => void;
+  onUploaded: (r: LocalUploadResult) => void;
 }) {
   const p = it.provenance;
-  const saved = it.savedObservations.length > 0;
+  const entries = p.entries as EntryExt[];
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const upload = useMutation({
+    mutationFn: (f: File) => uploadLocalDocument(f, { docketNumber: it.docketNumber, jobId, itemId: it.id }),
+    onSuccess: (r) => {
+      const ok = r.extractionOutcome === 'EXTRACTED';
+      setUploadMsg({ ok, text: `Upload processed: ${extractionLabel(r.extractionOutcome)}.${r.detail ? ` ${r.detail}` : ''} Only extracted metadata is stored; keep your original PDF.` });
+      onUploaded(r);
+    },
+    onError: (e) => setUploadMsg({ ok: false, text: `Upload failed: ${errMsg(e)}` }),
+  });
+  const savedFor = (idx: number | null) => it.savedObservations.find((o) => o.entryIndex === idx);
+  const portal = isHttpsPortal(it.sourceUrl);
+
   return (
-    <li id={`item-${it.id}`} className="panel scroll-mt-4" data-testid={`row-item-${it.id}`}>
+    <li className="panel" data-testid={`row-item-${it.id}`}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        {canSaveCandidate(it) ? (
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={selected} onChange={(e) => onSelect(it.id, e.target.checked)} data-testid={`checkbox-candidate-${it.id}`} />
-            Select docket
-          </label>
-        ) : null}
-        <span className="mono text-sm">Source position {it.position + 1}</span>
-        <a className="mono font-bold underline text-primary break-all" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">{it.docketNumber}</a>
-        {saved
-          ? <span className="tag text-primary" data-testid={`status-saved-${it.id}`}>Saved: {it.savedObservations.length} observation{it.savedObservations.length === 1 ? '' : 's'}</span>
-          : <span className="tag text-warning" data-testid={`status-pending-${it.id}`}>Not yet saved</span>}
-        <span className="tag">{p.extractionOutcome}</span>
+        <span className="mono text-sm">Row {it.position + 1}</span>
+        <span className="mono font-bold break-all">{it.docketNumber}</span>
+        <span className="tag" data-testid={`text-extraction-${it.id}`}>PDF: {extractionLabel(p.extractionOutcome)}</span>
+        <span className={`tag ${p.postedEntryState === 'SHOWN_POSTED' ? 'text-warning' : ''}`}>Posting: {p.postedEntryState}</span>
       </div>
+      {p.documentAcquisition === 'MANUAL_UPLOAD' ? <p className="hint mt-2"><strong>Local PDF verification, not automated retrieval.</strong> File received {formatInstant(it.sourceRetrievedAt)}. Keep your original PDF. Chronology and custody remain unreviewed.</p> : null}
       <p className="hint mt-2">
-        Event {p.eventType}, {p.eventDate ?? 'date not recorded'}; filed {p.filingDate ?? 'not recorded'}; {p.courtOffice}. Posted entry state: <strong>{p.postedEntryState}</strong>
-        {p.postedEntryState === 'UNKNOWN' ? ' (uncertain: this does not mean not posted)' : p.postedEntryState === 'SHOWN_POSTED' ? ' (the docket shows a posted entry; custody is not verified)' : ' (no posted entry shown on this page; not proof of release or custody)'}.
+        Calendar: {p.eventType}, {p.eventDate ?? 'date not recorded'}; {p.courtOffice}{p.courtRoom ? `, room ${p.courtRoom}` : ''}; filed {p.filingDate ?? 'not recorded'}. {p.calendarUrl.startsWith('https://') ? `Calendar retrieved ${formatInstant(p.calendarRetrievedAt)}.` : 'No calendar retrieval is established for this local upload.'}
       </p>
-      {p.entries.length === 0 ? (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {portal ? (
+          <a className="btn" href={it.sourceUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-source-${it.id}`}>Open source docket</a>
+        ) : <span className="hint">No portal link available for this row.</span>}
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="sr-only" id={`file-${it.id}`}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setUploadMsg(null); upload.mutate(f); } }}
+          data-testid={`input-upload-${it.id}`} />
+        <button type="button" className="btn" disabled={upload.isPending} onClick={() => fileRef.current?.click()} data-testid={`button-upload-${it.id}`}>
+          {upload.isPending ? 'Extracting…' : 'Upload downloaded PDF'}
+        </button>
+      </div>
+      {uploadMsg ? <p className={uploadMsg.ok ? 'hint mt-2' : 'errbox mt-2'} role={uploadMsg.ok ? 'status' : 'alert'}>{uploadMsg.text}</p> : null}
+
+      {p.extractionOutcome === 'UNPROCESSED' ? (
+        <p className="hint mt-3">Calendar row only. Nothing can be saved until a PDF is uploaded and bail entries are extracted.</p>
+      ) : entries.length === 0 ? (
         <div className="mt-3 border border-dashed border-border rounded p-3">
           <p className="font-semibold">No bail entries extracted.</p>
-          <p className="hint">Extraction outcome: {p.extractionOutcome}. {it.detail ?? ''}</p>
-          {p.extractionOutcome === 'MISSING_BAIL_SECTION' ? (
-            savedFor(it, null)
-              ? <p className="mt-2 font-semibold" data-testid={`status-entry-${it.id}-none`}>Saved as UNKNOWN: {VERIF[savedFor(it, null)!.reviewStatus]}</p>
-              : <button type="button" className="btn mt-2" disabled={saving} onClick={() => onSave(it.id, null)} data-testid={`button-save-unknown-${it.id}`}>
-              Save as UNKNOWN (no bail section)
-            </button>
-          ) : null}
+          <p className="hint">{extractionLabel(p.extractionOutcome)}. {it.detail ?? ''}</p>
         </div>
       ) : (
         <ol className="mt-3 space-y-2">
-          {p.entries.map((e, i) => (
-            <li key={i} className="border border-border rounded p-3" data-testid={`entry-${it.id}-${i}`}>
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <span className="mono text-sm">Entry {i + 1} of {p.entries.length}</span>
-                  <p className="font-semibold">{e.action}; {e.orderDate ?? 'order date not recorded'}</p>
-                  <p>{CATEGORY_LABEL[e.bailCategory]}{e.financialBasis ? `, ${BASIS_LABEL[e.financialBasis]}` : ''}: <span className="mono font-semibold">{amountText(e)}</span></p>
-                  <p className="hint whitespace-pre-wrap">Wording: {e.wording}</p>
+          {entries.map((e, i) => {
+            const s = savedFor(i);
+            return (
+              <li key={i} className="border border-border rounded p-3" data-testid={`entry-${it.id}-${i}`}>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="mono text-sm">Entry {i + 1} of {entries.length}</span>
+                    <p className="font-semibold">{e.action}; {e.orderDate ?? 'date not recorded'}</p>
+                    <p>{CATEGORY_LABEL[e.bailCategory] ?? e.bailCategory}{e.financialBasis ? `, ${BASIS_LABEL[e.financialBasis]}` : ''}: <span className="mono font-semibold">{amountText(e)}</span></p>
+                    <p className="hint">Originating court: {e.originatingCourt ?? 'Not recorded'}. Percentage condition: {e.percentageCondition ?? 'None recorded'}.</p>
+                    <p className="hint">Source page{e.sourcePages?.length === 1 ? '' : 's'}: {e.sourcePages?.length ? e.sourcePages.join(', ') : 'Not recorded'}. Posting: {postingLabel(p.postedEntryState)}.</p>
+                    <p className="hint whitespace-pre-wrap">Excerpt: {e.excerpt ?? it.excerpt ?? e.wording ?? 'None captured'}</p>
+                  </div>
+                  {s ? (
+                    <p className="self-start text-right"><span className="tag text-primary">Saved</span><br /><span className="hint">{VERIF[s.reviewStatus] ?? s.reviewStatus}</span></p>
+                  ) : (
+                    <button type="button" className="btn btn-primary self-start" disabled={saving} onClick={() => onSave(it.id, i)} data-testid={`button-save-${it.id}-${i}`}>
+                      Save entry {i + 1} pending review
+                    </button>
+                  )}
                 </div>
-                {savedFor(it, i) ? (
-                  <p className="self-start text-right" data-testid={`status-entry-${it.id}-${i}`}>
-                    <span className="tag text-primary">Saved</span><br />
-                    <span className="hint">{VERIF[savedFor(it, i)!.reviewStatus]}</span>
-                  </p>
-                ) : (
-                  <button type="button" className="btn btn-primary self-start" disabled={saving} onClick={() => onSave(it.id, i)} data-testid={`button-save-${it.id}-${i}`}>
-                    Save entry {i + 1} as pending
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ol>
       )}
-      {err ? <p className="errbox mt-3" role="alert">{err}</p> : null}
-      {saved ? <p className="mt-2"><Link href="/review" className="underline text-primary" data-testid={`link-review-${it.id}`}>Open review queue</Link> <span className="hint">(saving creates a pending observation; verification against the source is a separate review step, and some saved entries may already be verified)</span></p> : null}
-      <details className="mt-2">
-        <summary className="cursor-pointer mono font-semibold text-primary">Source and evidence</summary>
-        <dl className="mt-3 grid gap-2 text-base md:grid-cols-[12rem_1fr]">
-          <dt className="mono text-sm">Docket page</dt><dd className="break-all"><a className="underline text-primary" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">{it.sourceUrl}</a></dd>
-          <dt className="mono text-sm">Docket retrieved</dt><dd>{formatInstant(it.sourceRetrievedAt)}</dd>
-          <dt className="mono text-sm">Calendar page</dt><dd className="break-all"><a className="underline text-primary" href={p.calendarUrl} target="_blank" rel="noopener noreferrer">{p.calendarUrl}</a></dd>
-          <dt className="mono text-sm">Calendar retrieved</dt><dd>{formatInstant(p.calendarRetrievedAt)}</dd>
-          <dt className="mono text-sm">Excerpt</dt><dd className="whitespace-pre-wrap">{it.excerpt ?? 'No excerpt captured.'}</dd>
-          <dt className="mono text-sm">Detail</dt><dd>{it.detail ?? 'None'}</dd>
-        </dl>
-        <p className="hint mt-2">All chronology is retained above. Nothing is marked latest or operative automatically; job {jobId.slice(0, 8)}.</p>
-      </details>
+      {saveErr ? <p className="errbox mt-3" role="alert">{saveErr}</p> : null}
+      {it.savedObservations.length ? <p className="mt-2"><Link href="/review" className="underline text-primary">Open review queue</Link></p> : null}
+      {p.documentSha256 ? <p className="hint mono mt-2 break-all">PDF SHA-256 {p.documentSha256}{p.documentPageCount ? `, ${p.documentPageCount} pages` : ''}</p> : null}
     </li>
   );
 }
 
+/* ---------- Helpers for search + results ---------- */
+const OFFICES: { value: string; label: string }[] = [
+  { value: 'CP-05-02-Crim', label: 'CP-05-02-Crim (Common Pleas criminal)' },
+  { value: 'ANY', label: 'ANY (all offices, including MDJ)' },
+];
+const EVENT_TYPES = ['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment'];
+const PUBLIC_CASE_SEARCH = 'https://ujsportal.pacourts.us/CaseSearch';
+
+/** Fixed collection filters recorded on the job. Legacy jobs keep strict maximum semantics. */
+function fixedFilters(j: DiscoveryJob): MonetaryFilters {
+  const f = j.criteria.matchFilters;
+  if (!f) return {};
+  return {
+    monetaryUpperBoundCents: f.monetaryUpperBoundCents,
+    monetaryLowerBoundCents: f.monetaryLowerBoundCents ?? null,
+    excludeShownPosted: f.excludeShownPosted,
+    requirePostedNotShown: f.requirePostedNotShown,
+    inclusiveMaximum: f.inclusiveMaximum ?? false,
+  };
+}
+function isLegacy(j: DiscoveryJob) { return j.criteria.resultVersion !== 2; }
+function criteriaText(j: DiscoveryJob): string {
+  const f = j.criteria.matchFilters;
+  const max = f?.monetaryUpperBoundCents == null ? 'no maximum'
+    : `maximum ${formatCents(f.monetaryUpperBoundCents)} (${(f.inclusiveMaximum ?? false) ? 'inclusive, ≤' : 'strict, <'})`;
+  return `${max}${f?.excludeShownPosted ? '; SHOWN_POSTED excluded' : '; posted included'}`;
+}
+function downloadCsv(rows: QualifyingRow[], name: string) {
+  const blob = new Blob([qualifyingRowsCsv(rows)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function DocketLink({ row }: { row: { docketNumber: string; sourceUrl: string; itemId: string } }) {
+  if (isHttpsPortal(row.sourceUrl)) {
+    return <a className="mono font-semibold underline text-primary break-all" href={row.sourceUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-docket-${row.itemId}`}>{row.docketNumber}</a>;
+  }
+  return (
+    <span className="break-all">
+      <span className="mono font-semibold">{row.docketNumber}</span>{' '}
+      <a className="hint underline" href={PUBLIC_CASE_SEARCH} target="_blank" rel="noopener noreferrer" data-testid={`link-public-search-${row.itemId}`}>search public case interface</a>
+    </span>
+  );
+}
+
+function EvidenceRow({ row, it }: { row: QualifyingRow; it: DiscoveryItem }) {
+  const e = row.entry as EntryExt;
+  const manual = it.provenance.documentAcquisition === 'MANUAL_UPLOAD';
+  return (
+    <div className="border-l-2 border-primary pl-3 py-2 space-y-1 text-sm" data-testid={`evidence-${row.itemId}-${row.entryIndex}`}>
+      <p><strong>Matching event:</strong> {row.event.eventType}, {row.event.eventDate}{row.event.eventTime ? ` at ${row.event.eventTime}` : ''}{row.event.sourcePage ? ` (PDF page ${row.event.sourcePage})` : ''}.</p>
+      <p><strong>Bail action:</strong> {e.action}; {e.orderDate ?? 'date not recorded'}. Category: {CATEGORY_LABEL[e.bailCategory] ?? e.bailCategory}.</p>
+      <p><strong>Recorded amount:</strong> <span className="mono">{formatCents(row.amountCents)}</span>{e.financialBasis ? ` (${BASIS_LABEL[e.financialBasis] ?? e.financialBasis})` : ''}. Percentage: {e.percentageCondition ?? 'None recorded'}.</p>
+      <p><strong>Supporting page{e.sourcePages?.length === 1 ? '' : 's'}:</strong> {e.sourcePages?.length ? e.sourcePages.join(', ') : 'Not recorded'}. Posting: {postingLabel(it.provenance.postedEntryState)}.</p>
+      <p className="whitespace-pre-wrap"><strong>Excerpt:</strong> {e.excerpt ?? e.wording ?? 'None captured'}</p>
+      <p className="hint">{manual ? `Local PDF received ${formatInstant(it.sourceRetrievedAt)}.` : `Docket retrieved ${formatInstant(it.sourceRetrievedAt)}.`} Historical, provisional observation from the docket record; not a reviewed operative order and not proof of current custody or unpaid bail.</p>
+    </div>
+  );
+}
+
+/* ---------- Page ---------- */
 export default function Discovery() {
   const qc = useQueryClient();
-  const policy = useGetDiscoveryPolicy({ query: { queryKey: getGetDiscoveryPolicyQueryKey(), refetchInterval: 30_000 } });
-  const assessments = useListDiscoveryAssessments({ query: { queryKey: getListDiscoveryAssessmentsQueryKey(), refetchInterval: 30_000 } });
+  const policy = useGetDiscoveryPolicy({ query: { queryKey: getGetDiscoveryPolicyQueryKey() } });
   const jobs = useListDiscoveryJobs({ query: {
     queryKey: getListDiscoveryJobsQueryKey(),
-    refetchInterval: (q) => q.state.data?.some((j) => j.status === 'QUEUED' || j.status === 'RUNNING') ? POLL_MS : false,
   } });
   const create = useCreateDiscoveryJob();
-  const createCalendarPreview = useCreateCalendarPreview();
   const control = useControlDiscoveryJob();
   const save = useSaveDiscoveryObservation();
-  const saveCandidates = useSaveDiscoveryCandidates();
 
-  const [jobId, setJobId] = useState<string>('');
-  const [startE, setStart] = useState<string | undefined>();
-  const [endE, setEnd] = useState<string | undefined>();
-  const [office, setOffice] = useState<CalendarPreviewInputCourtOffice>('CP-05-02-Crim');
-  const [event, setEvent] = useState<CalendarPreviewInputEventType>('Bail Hearing');
-  const [recCapE, setRecCap] = useState<string | undefined>();
-  const [reqCapE, setReqCap] = useState<string | undefined>();
+  const [jobId, setJobIdRaw] = useState<string>(() => readJobParam());
+  const setJobId = (id: string) => { setJobIdRaw(id); writeJobParam(id); };
+  useEffect(() => {
+    const h = () => setJobIdRaw(readJobParam());
+    window.addEventListener('popstate', h);
+    return () => window.removeEventListener('popstate', h);
+  }, []);
+
+  const today = todayNY();
+  const pol = policy.data;
+  const minDate = pol?.minimumDate && pol.minimumDate > today ? pol.minimumDate : today;
+  const [office, setOffice] = useState('CP-05-02-Crim');
+  const [eventType, setEventType] = useState('Formal Arraignment');
+  const [start, setStart] = useState(today);
+  const [end, setEnd] = useState(today);
+  const [formMax, setFormMax] = useState('');
+  const [target, setTarget] = useState('10');
   const [formErr, setFormErr] = useState<string | null>(null);
-  const [previewErr, setPreviewErr] = useState<string | null>(null);
+
   const [ctlMsg, setCtlMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<{ id: string; msg: string } | null>(null);
-  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
-  const [candidateMsg, setCandidateMsg] = useState<string | null>(null);
-  const [filterOn, setFilterOn] = useState(false);
-  const [postedOff, setPostedOff] = useState(false);
-  const [bound, setBound] = useState('500');
-  const [target, setTarget] = useState('1');
-  const [collectMonetary, setCollectMonetary] = useState(true);
-  const [collectBound, setCollectBound] = useState('500');
-  const [collectPosted, setCollectPosted] = useState(false);
+  const [maxBail, setMaxBail] = useState('');
+  const [excludePosted, setExcludePosted] = useState(false);
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const [soloDocket, setSoloDocket] = useState('');
+  const [soloMsg, setSoloMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const soloRef = useRef<HTMLInputElement>(null);
 
-  const pol = policy.data;
-  const start = startE ?? pol?.minimumDate ?? '';
-  const end = endE ?? start;
-  const tgtNum = Number(target);
-  const recCap = recCapE ?? (pol ? String(Math.min(pol.maxRecordCap, Math.max(pol.defaultRecordCap, Number.isInteger(tgtNum) ? tgtNum : 0))) : '');
-  const reqCap = reqCapE ?? (pol ? String(pol.defaultRequestCap) : '');
   const selected = jobId || jobs.data?.[0]?.id || '';
-
-  const report = useGetDiscoveryJob(selected, {
-    query: {
-      queryKey: getGetDiscoveryJobQueryKey(selected),
-      enabled: !!selected,
-      refetchInterval: (q) => {
-        const st = q.state.data?.job.status;
-        return st === 'QUEUED' || st === 'RUNNING' ? POLL_MS : false;
-      },
+  const report = useGetDiscoveryJob(selected, { query: {
+    queryKey: getGetDiscoveryJobQueryKey(selected),
+    enabled: !!selected,
+    refetchInterval: (q) => {
+      const st = (q.state.data as ReportWithRequests | undefined)?.job.status;
+      return st === 'QUEUED' || st === 'RUNNING' ? 3000 : false;
     },
-  });
-  const job = report.data?.job;
-  const isCalendarPreview = job?.criteria.calendarPreviewOnly === true;
+  } });
+  const data = report.data as ReportWithRequests | undefined;
+  const job = data?.job;
 
-  const boundCents = parseDollarsToCents(bound);
-  const filtering = filterOn && boundCents != null;
-  const items = report.data?.items ?? [];
-  const matching = useMemo(() => items.filter((i) =>
-    (!postedOff || i.provenance.postedEntryState !== 'SHOWN_POSTED') &&
-    (!filtering || amountMatches(i, boundCents as number))), [items, filtering, boundCents, postedOff]);
-  const anyFilter = filtering || postedOff;
-
-  function refreshJob(id: string) {
-    qc.invalidateQueries({ queryKey: getGetDiscoveryJobQueryKey(id) });
+  function refresh(id?: string) {
+    if (id) qc.invalidateQueries({ queryKey: getGetDiscoveryJobQueryKey(id) });
     qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetDiscoveryPolicyQueryKey() });
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setFormErr(null);
-    if (!pol) return;
-    if (!pol.collectionEnabled) return setFormErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
-    const rc = Number(recCap), qc2 = Number(reqCap);
-    const mt = Number(target), upper = parseDollarsToCents(collectBound);
-    if (!start || !end) return setFormErr('Choose a start and end date.');
-    if (start < pol.minimumDate) return setFormErr(`Start date cannot be before ${pol.minimumDate}. Earlier history is not proven.`);
-    if (end < start) return setFormErr('End date cannot be before start date.');
-    if (dayNum(end) - dayNum(start) > 6) return setFormErr('The date window can cover at most 7 days.');
-    if (!Number.isInteger(rc) || rc < 1 || rc > pol.maxRecordCap) return setFormErr(`Record budget must be a whole number from 1 to ${pol.maxRecordCap}.`);
-    if (!Number.isInteger(qc2) || qc2 < 8 || qc2 > pol.maxRequestCap) return setFormErr(`Request budget must be a whole number from 8 to ${pol.maxRequestCap}.`);
-    if (!Number.isInteger(mt) || mt < 1 || mt > pol.maxRecordCap) return setFormErr(`Number of matching dockets must be a whole number from 1 to ${pol.maxRecordCap}.`);
-    if (mt > rc) return setFormErr(`The processing safety cap (${rc}) is below the number of matches wanted (${mt}). Raise it under advanced details, up to ${pol.maxRecordCap}.`);
-    if (collectMonetary && (upper == null || upper < 1 || upper > 2147483647)) return setFormErr('Enter a positive monetary upper bound in whole cents, such as 500.00.');
-    create.mutate(
-      { data: { courtOffice: office, eventType: event, startDate: start, endDate: end,
-        recordCap: rc, requestCap: qc2, matchTarget: mt,
-        matchFilters: { monetaryUpperBoundCents: collectMonetary ? upper : null, excludeShownPosted: collectPosted, inclusiveMaximum: true } } },
-      {
-        onSuccess: (j) => { setJobId(j.id); setSelectedCandidateIds([]); setCandidateMsg(null); setCtlMsg(null); refreshJob(j.id); },
-        onError: (er) => setFormErr(errMsg(er)),
-      },
-    );
-  }
+  // Refresh job list when the selected job reaches a terminal state.
+  const lastStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (lastStatus.current && lastStatus.current !== job?.status) {
+      qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() });
+    }
+    lastStatus.current = job?.status;
+  }, [job?.status, qc]);
 
-  function submitCalendarPreview(e: FormEvent) {
-    e.preventDefault();
-    setPreviewErr(null);
-    if (!pol) return;
-    if (!pol.collectionEnabled) {
-      setPreviewErr(`Collection is blocked: ${pol.blockedReason}. No source request sent.`);
-      return;
-    }
-    if (!start || !end || start < pol.minimumDate || end < start || dayNum(end) - dayNum(start) > 6) {
-      setPreviewErr('Choose today-or-future dates covering at most seven days. No date will be substituted.');
-      return;
-    }
-    createCalendarPreview.mutate({
-      data: {
-        courtOffice: office,
-        eventType: event,
-        startDate: start,
-        endDate: end,
-      },
-    }, {
-      onSuccess: (j) => {
-        setJobId(j.id);
-        setSelectedCandidateIds([]);
-        setCandidateMsg(null);
-        setCtlMsg(null);
-        refreshJob(j.id);
-      },
-      onError: (er) => setPreviewErr(errMsg(er)),
+  function submitSearch(ev: React.FormEvent) {
+    ev.preventDefault();
+    setFormErr(null);
+    const cents = formMax.trim() ? parseDollarsToCents(formMax) : null;
+    if (formMax.trim() && cents == null) { setFormErr('Enter a valid maximum in dollars, for example 500 or 1500.00.'); return; }
+    const t = Number(target);
+    const maxT = Math.min(200, pol?.maxRecordCap ?? 200);
+    if (!Number.isInteger(t) || t < 1 || t > maxT) { setFormErr(`Matching dockets wanted must be a whole number from 1 to ${maxT}.`); return; }
+    if (!start || !end || end < start) { setFormErr('End date must be on or after start date.'); return; }
+    if (start < minDate) { setFormErr(`Start date must be ${minDate} or later.`); return; }
+    const recordCap = Math.min(pol?.maxRecordCap ?? 200, Math.max(pol?.defaultRecordCap ?? t, t));
+    const requestCap = Math.max(8, Math.min(pol?.maxRequestCap ?? 500, pol?.defaultRequestCap ?? 8));
+    create.mutate({ data: {
+      courtOffice: office, courtRoom: 'ANY', eventType, startDate: start, endDate: end,
+      recordCap, requestCap, matchTarget: t,
+      matchFilters: { monetaryUpperBoundCents: cents, excludeShownPosted: false, inclusiveMaximum: true },
+    } }, {
+      onSuccess: (j) => { setJobId(j.id); setMaxBail(''); setExcludePosted(false); setCtlMsg(null); refresh(j.id); },
+      onError: (er) => setFormErr(`Search not started: ${errMsg(er)}`),
     });
   }
+
+  const solo = useMutation({
+    mutationFn: (f: File) => uploadLocalDocument(f, { docketNumber: soloDocket }),
+    onSuccess: (r) => {
+      setSoloMsg({ ok: r.extractionOutcome === 'EXTRACTED', text: `Upload processed: ${extractionLabel(r.extractionOutcome)}.${r.detail ? ` ${r.detail}` : ''} Showing local job ${r.jobId.slice(0, 8)}. Keep your original PDF; only extracted metadata is stored.` });
+      setJobId(r.jobId); refresh(r.jobId);
+    },
+    onError: (e) => setSoloMsg({ ok: false, text: `Upload failed: ${errMsg(e)}` }),
+  });
 
   function act(action: DiscoveryControlAction) {
     if (!selected) return;
     setCtlMsg(null);
     control.mutate({ jobId: selected, data: { action } }, {
-      onSuccess: () => { setCtlMsg(`${action} accepted. Existing results and the original budget are kept.`); refreshJob(selected); },
-      onError: (er) => { setCtlMsg(`${action} failed: ${errMsg(er)}`); refreshJob(selected); },
+      onSuccess: () => { setCtlMsg(`${action} accepted.`); refresh(selected); },
+      onError: (er) => { setCtlMsg(`${action} failed: ${errMsg(er)}`); refresh(selected); },
     });
   }
 
   function doSave(itemId: string, entryIndex: number | null) {
+    if (entryIndex == null) return; // never save bare calendar rows
     setSaveErr(null);
     save.mutate({ jobId: selected, itemId, data: { entryIndex } }, {
       onSuccess: () => {
         qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('/api/records') });
-        refreshJob(selected);
+        refresh(selected);
       },
       onError: (er) => setSaveErr({ id: itemId, msg: `Not saved: ${errMsg(er)}` }),
     });
   }
 
-  function toggleCandidate(itemId: string, checked: boolean) {
-    setSelectedCandidateIds((current) => checked
-      ? current.includes(itemId) ? current : [...current, itemId]
-      : current.filter((id) => id !== itemId));
-  }
+  const maxCents = maxBail.trim() ? parseDollarsToCents(maxBail) : null;
+  const maxInvalid = !!maxBail.trim() && maxCents == null;
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
-  function selectVisibleCandidates() {
-    const visibleIds = matching.filter(canSaveCandidate).map((item) => item.id);
-    setSelectedCandidateIds((current) => [...new Set([...current, ...visibleIds])]);
-  }
+  // One shared projection: fixed collection criteria, then optional display-only narrowing intersected.
+  const fixed = useMemo(() => (job ? fixedFilters(job) : {}), [job]);
+  const fixedRows = useMemo(() => projectQualifyingRows(items, fixed), [items, fixed]);
+  const rows = useMemo(() => {
+    if (maxCents == null && !excludePosted) return fixedRows;
+    const narrowed = new Set(projectQualifyingRows(items, {
+      monetaryUpperBoundCents: maxCents, inclusiveMaximum: true, excludeShownPosted: excludePosted,
+    }).map((r) => r.key));
+    return fixedRows.filter((r) => narrowed.has(r.key));
+  }, [items, fixedRows, maxCents, excludePosted]);
+  const matchingIds = useMemo(() => new Set(fixedRows.map((r) => r.itemId)), [fixedRows]);
 
-  function saveSelectedCandidates() {
-    if (!selected || !selectedCandidateIds.length) return;
-    setCandidateMsg(null);
-    saveCandidates.mutate({ jobId: selected, data: { itemIds: selectedCandidateIds } }, {
-      onSuccess: (result) => {
-        setSelectedCandidateIds([]);
-        setCandidateMsg(`Saved ${result.docketCount} docket${result.docketCount === 1 ? '' : 's'} and ${result.observationCount} source-backed observation${result.observationCount === 1 ? '' : 's'} as candidates.`);
-        qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('/api/records') });
-        refreshJob(selected);
-      },
-      onError: (er) => {
-        setCandidateMsg(`Selected dockets were not saved: ${errMsg(er)}`);
-        refreshJob(selected);
-      },
-    });
-  }
+  const outcomes = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of items) m.set(i.provenance.extractionOutcome, (m.get(i.provenance.extractionOutcome) ?? 0) + 1);
+    return [...m.entries()];
+  }, [items]);
+  const conflicts = useMemo(() => items.filter((i) => matchingEvents(i.provenance).some((e) => eventConflict(e, i.provenance))), [items]);
+  const noEvent = useMemo(() => items.filter((i) => i.provenance.extractionOutcome === 'EXTRACTED' && matchingEvents(i.provenance).length === 0), [items]);
+  const excluded = useMemo(() => items.filter((i) => !matchingIds.has(i.id)), [items, matchingIds]);
 
-  const estimatedRequests = Number.isInteger(tgtNum) && tgtNum > 0 ? tgtNum + (pol?.calendarRequestAllowance ?? 8) : null;
-  const localCapReached = !!job && job.processed >= job.criteria.recordCap && job.unprocessed > 0;
-  const sourceFailed = !!job && (job.status === 'FAILED' || job.failedRequests > 0);
+  const requests = data?.requests ?? [];
+  const searchReq = requests.filter((r) => r.method.toUpperCase() === 'POST' && /\/CaseSearch/i.test(r.path));
+  const searchSubmitted = searchReq.some((r) => r.statusCode != null);
+  const explicitEmpty = data?.events.some((ev) => ev.message.startsWith('EMPTY_RESULTS_VALIDATED')) ?? false;
+  const rowState = !job ? '' : !job.calendarComplete ? 'Unknown: no validated calendar response'
+    : items.length === 0 ? (explicitEmpty ? 'Validated explicit empty result' : 'Unknown: zero rows without explicit-empty validation')
+    : `${items.length} validated row${items.length === 1 ? '' : 's'}`;
+  const distinctDockets = new Set(items.map((i) => i.docketNumber)).size;
   const active = job?.status === 'QUEUED' || job?.status === 'RUNNING';
+  const expired = !!job?.resultsExpiredAt;
+  const terminal = job && !active && job.status !== 'PAUSED';
+  const partial = !!job && (job.status === 'CANCELLED' || job.status === 'FAILED' || job.status === 'PAUSED' || job.unprocessed > 0 || !job.paginationComplete);
+  const targetN = job?.criteria.matchTarget;
+  const targetNote = !job || targetN == null ? null
+    : job.targetReached ? `Target of ${targetN} matching docket${targetN === 1 ? '' : 's'} reached.`
+    : active ? `Collecting toward ${targetN} matching docket${targetN === 1 ? '' : 's'}.`
+    : job.status === 'COMPLETED' && job.paginationComplete && job.unprocessed === 0 ? `Target unmet: candidates exhausted with ${job.matching} of ${targetN} matching dockets.`
+    : `Target unmet: the job stopped (${job.status}) before full coverage; ${job.matching} of ${targetN} matching dockets.`;
+  const pct = job && job.discovered > 0 ? Math.min(100, Math.round((job.processed / job.discovered) * 100)) : 0;
+  const blockers = pol ? [
+    !pol.collectionEnabled ? 'Automated collection is not enabled in the current policy.' : null,
+    pol.blockedReason ? `Blocked: ${pol.blockedReason}` : null,
+    pol.pausedUntil ? `Source paused until ${formatInstant(pol.pausedUntil)}.` : null,
+    pol.latencyWarning ? `Latency warning: ${pol.latencyWarning}` : null,
+  ].filter(Boolean) as string[] : [];
 
   return (
     <Shell>
-      <PageHead label="Search" title="Search court records">
-        Begin starts a bounded job on the server that reads public court pages and reports what it found. Results are provisional observations, not custody status and not an operative order. Nothing is saved until you choose an entry or select dockets to save together. Looking for records already saved here? <Link href="/candidates" className="underline text-primary" data-testid="link-research">Open saved candidates</Link>.
+      <PageHead label="Search" title="Calendar search and docket evidence">
+        Search the Allegheny–05 Calendar Event scope for recorded monetary bail observations, open each docket at its source, or upload a PDF you downloaded. Results are provisional historical observations, not operative orders. Saving is optional and creates a pending observation for review. <Link href="/candidates" className="underline text-primary">Open saved candidates</Link>.
       </PageHead>
 
-      <section className="panel mb-8" aria-labelledby="scope-h" data-testid="section-scope">
-        <h2 id="scope-h" className="mono text-xl font-bold mb-2">Source status</h2>
-        {policy.isLoading ? <div className="skel h-16" aria-busy="true" /> : policy.isError ? (
-          <div className="errbox" role="alert"><p>Could not load discovery policy. {errMsg(policy.error)}</p>
-            <button type="button" className="btn btn-danger mt-3" onClick={() => policy.refetch()} data-testid="button-retry-policy">Retry</button></div>
-        ) : pol ? (
-          <div className="space-y-2">
-            <p>Prior demonstrated result coverage: <span className="mono font-semibold">CP-05-02-Crim</span> (Common Pleas), <span className="mono font-semibold">Bail Hearing</span>. This is not fresh exact-client access proof.</p>
-            <p className="hint">Magisterial District Court (MDJ) searches are not implemented. Preliminary Arraignment is selectable for bounded validation but remains unproven end to end; nothing is substituted for it. History before {pol.minimumDate} is not covered.</p>
-            <p className="hint" data-testid="text-coverage">{pol.coverageNote}</p>
-            <p className="hint">Current pacing: at least {pol.currentSpacingMs / 1000} seconds after each response finishes, concurrency {pol.concurrency}, automatic retries {pol.automaticRetries}. Protected maxima: {pol.maxRecordCap} processed dockets, {pol.maxRequestCap} requests per job. These safeguards cannot guarantee access or prevent rate limits.</p>
-            <p className="mono text-sm" data-testid="text-rolling-budgets">Rolling hour: {pol.hourlyRequestsUsed}/{pol.hourlyRequestCap} requests. Rolling day: {pol.dailyRequestsUsed}/{pol.dailyRequestCap}. Required assets, failed attempts and uncertain transmissions all count.</p>
-            <p className="hint" data-testid="text-access-proof">Exact-client proof: {pol.accessVerifiedAt ? `${pol.verifiedMethod}, ${formatInstant(pol.accessVerifiedAt)}` : 'Not verified'}. Broader collection approval: {pol.collectionApprovedAt ? formatInstant(pol.collectionApprovedAt) : 'Not approved'}.</p>
-            <p className="hint">Request in flight: {pol.requestInFlight ? 'yes; no next request can start' : 'no'}. Last response duration: {pol.lastLatencyMs === null ? 'not measured' : `${(pol.lastLatencyMs / 1000).toFixed(1)} seconds`}. Throttles observed: {pol.throttleCount}.</p>
-            {pol.nextEligibleAt ? <p className="hint" data-testid="text-next-eligible">Earliest timing/quota eligibility: {formatInstant(pol.nextEligibleAt)}. This is not authorization and never resumes a stopped job automatically.</p> : null}
-            {pol.latencyWarning ? <p className="errbox" role="status">{pol.latencyWarning}</p> : null}
-            {pol.pausedUntil && Date.parse(pol.pausedUntil) > Date.now() ? <p className="errbox" role="status">Source cooldown until {formatInstant(pol.pausedUntil)}. No new requests permitted before then.</p> : null}
-            {!pol.collectionEnabled ? <p className="errbox" role="status">Collection is paused source-wide: {pol.blockedReason}. No new court requests will start. Access denial requires operator assessment, not an automatic retry.</p> : null}
-            <details className="border border-border rounded p-3" data-testid="details-pilot-status">
-              <summary className="mono cursor-pointer font-semibold">Staged verification: preparation is not approval</summary>
-              <p className="hint mt-2">Separate approvals are required for one identity-checked PDF, then 3, then 10 at a separate time. Each stage includes the exact browser calendar client and public HTTP PDF client, calendar overhead and fixed dates/budgets. The 10-document stage exceeds current protected limits and needs separate budget approval. Passing a pilot does not enable collection or start the 100-match sample.</p>
-              {assessments.isError ? <p className="errbox mt-2">Pilot status could not be loaded.</p> : assessments.isLoading ? <p className="hint">Loading pilot status…</p> : !assessments.data?.length ? <p className="hint mt-2">No scoped pilot prepared or approved. No court request authorized by this implementation.</p> : <ul className="mt-2 space-y-2">{assessments.data.map((pilot) => <li key={pilot.id} className="hint"><strong>{pilot.stage}: {pilot.state}</strong> — {pilot.criteria.startDate} to {pilot.criteria.endDate}; {pilot.criteria.recordCap} documents, {pilot.criteria.requestCap} total requests. {pilot.report?.reason ?? 'No completed access report.'}</li>)}</ul>}
-            </details>
-          </div>
+      <section className="panel mb-6" aria-labelledby="ops-h" data-testid="section-operations">
+        <h2 id="ops-h" className="mono text-xl font-bold mb-2">Source coverage</h2>
+        <ul className="space-y-1" role="status">
+          <li><span className="tag">Offline fixtures</span> Common Pleas and MDJ parsing verified against genuine PDF fixtures.</li>
+          <li><span className="tag text-warning">Live / deployed</span> Not yet established. Live calendar retrieval has not been verified end to end; treat zero or partial results as unverified coverage.</li>
+          {pol?.coverageNote ? <li className="hint">{pol.coverageNote}</li> : null}
+        </ul>
+        {policy.isLoading ? <div className="skel h-6 mt-2" /> : policy.isError ? (
+          <p className="errbox mt-2" role="alert">Collection policy unavailable. {errMsg(policy.error)} <button type="button" className="btn ml-2" onClick={() => policy.refetch()} data-testid="button-retry-policy">Retry</button></p>
+        ) : blockers.length ? (
+          <ul className="errbox mt-2 space-y-1" role="alert" data-testid="list-blockers">{blockers.map((b) => <li key={b}>{b}</li>)}</ul>
+        ) : null}
+        {pol ? (
+          <details className="mt-2">
+            <summary className="cursor-pointer mono font-semibold text-primary">Policy details</summary>
+            <p className="hint mt-1 mono">Adapter {pol.adapter}; pilot {pol.pilotState}; spacing {pol.currentSpacingMs} ms; concurrency {pol.concurrency}; requests {pol.hourlyRequestsUsed}/{pol.hourlyRequestCap} hourly, {pol.dailyRequestsUsed}/{pol.dailyRequestCap} daily; access verified {pol.accessVerifiedAt ? formatInstant(pol.accessVerifiedAt) : 'no'}; next eligible {pol.nextEligibleAt ? formatInstant(pol.nextEligibleAt) : 'now'}.</p>
+          </details>
         ) : null}
       </section>
 
-      <section className="panel mb-8" aria-label="Calendar search criteria">
-        <h2 className="mono text-xl font-bold mb-3">Calendar search criteria</h2>
-        <p className="hint mb-4">Both forms below use these exact choices. Office options were observed October 12, 2026; availability is checked again at run time. Only Common Pleas criminal results have prior validated coverage. Preliminary Arraignment and other offices are not yet proven end to end. Filing-date/MDJ search is not implemented here.</p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="lbl" htmlFor="d-court">Court office</label>
-            <select id="d-court" className="field" value={office} onChange={e => setOffice(e.target.value as CalendarPreviewInputCourtOffice)} data-testid="select-court">
-              {Object.values(CalendarPreviewInputCourtOffice).map(code => <option key={code} value={code}>{code}</option>)}
-            </select></div>
-          <div><label className="lbl" htmlFor="d-event">Event type</label>
-            <select id="d-event" className="field" value={event} onChange={e => setEvent(e.target.value as CalendarPreviewInputEventType)} data-testid="select-event">
-              {Object.values(CalendarPreviewInputEventType).map(label => <option key={label} value={label}>{label}</option>)}
-            </select></div>
-          <div><label className="lbl" htmlFor="d-start">Start date</label>
-            <input id="d-start" type="date" className="field" min={pol?.minimumDate} max="2999-12-31" value={start} onChange={e => setStart(e.target.value)} data-testid="input-start" /></div>
-          <div><label className="lbl" htmlFor="d-end">End date (at most seven days inclusive)</label>
-            <input id="d-end" type="date" className="field" min={start} max={start ? new Date((dayNum(start) + 6) * 86400000).toISOString().slice(0, 10) : undefined} value={end} onChange={e => setEnd(e.target.value)} data-testid="input-end" /></div>
-        </div>
-      </section>
-
-      <form onSubmit={submitCalendarPreview} className="panel mb-8" aria-label="Calendar-only preview" data-testid="form-calendar-preview">
-        <h2 className="mono text-xl font-bold mb-2">Calendar Event preview</h2>
-        <p className="hint mb-4">
-          One explicitly started Calendar Event search using the office, event and dates selected above.
-          This preview retains only validated calendar result rows. It does not request docket PDFs, extract bail evidence, or save candidates.
-          The shared source approval and request limiter still apply. While the source barrier is active, this button stays disabled.
-          A separately approved one-use operator permit is limited to its saved exact criteria, without clearing the barrier or enabling PDFs.
-        </p>
-        <p className="mono">{office} · {event} · {start} to {end}</p>
-        {previewErr ? <p className="errbox mt-3" role="alert" data-testid="text-calendar-preview-error">{previewErr}</p> : null}
-        <button type="submit" className="btn btn-primary mt-4"
-          disabled={!pol?.collectionEnabled || createCalendarPreview.isPending}
-          data-testid="button-calendar-preview">
-          {createCalendarPreview.isPending ? 'Starting preview…' : 'Start one calendar-only preview'}
-        </button>
-      </form>
-
-      <form onSubmit={submit} className="panel mb-8" aria-label="Start a discovery job" data-testid="form-job">
-        <h2 className="mono text-xl font-bold mb-3">What are you looking for?</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div><label className="lbl" htmlFor="d-match-bound">Maximum bail amount (dollars)</label>
-            <input id="d-match-bound" inputMode="decimal" className="field" disabled={!collectMonetary} value={collectBound} onChange={(e) => setCollectBound(e.target.value)} data-testid="input-collection-bound" /></div>
-          <div><label className="lbl" htmlFor="d-target">Number of matching dockets to return (max {pol?.maxRecordCap ?? '...'})</label>
-            <input id="d-target" inputMode="numeric" className="field" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-match-target" /></div>
-        </div>
-        <p className="hint mt-3">New matches include recorded monetary TOTAL_BAIL at or below the maximum, including exact equality. Legacy jobs retain their original strict comparison. The window covers at most 7 days and each docket counts once.</p>
-        {pol && estimatedRequests ? <p className="hint mt-3" data-testid="text-request-cost">Planning estimate: {pol.calendarRequestAllowance} calendar/asset requests + at least {tgtNum} PDF requests = {estimatedRequests} requests if every PDF matches. Allow at least {Math.ceil((estimatedRequests - 1) * pol.currentSpacingMs / 60_000)} minutes of pacing, plus response time and quota/cooldown waits. Nonmatches may require more PDFs; this is not a guaranteed completion estimate. {estimatedRequests > Number(reqCap) ? 'Your fixed request budget is below this planning estimate; expect a possible target shortfall.' : ''} A 100-match sample may require more than 100 PDFs and is not authorized here.</p> : null}
-        <details className="mt-4 border border-border rounded p-4" data-testid="details-advanced">
-          <summary className="cursor-pointer mono font-bold text-primary">Advanced details: budgets, court, event, filters</summary>
-          <div className="grid gap-4 sm:grid-cols-2 my-4">
-            <div><label className="lbl" htmlFor="d-rc">Processing safety cap (max {pol?.maxRecordCap ?? '...'})</label>
-              <input id="d-rc" inputMode="numeric" className="field" value={recCap} onChange={(e) => setRecCap(e.target.value)} data-testid="input-record-cap" /></div>
-            <div><label className="lbl" htmlFor="d-qc">Request budget (max {pol?.maxRequestCap ?? '...'})</label>
-              <input id="d-qc" inputMode="numeric" className="field" value={reqCap} onChange={(e) => setReqCap(e.target.value)} data-testid="input-request-cap" /></div>
+      <div className="grid gap-6 md:grid-cols-[3fr_2fr] mb-8">
+        <form className="panel space-y-3" data-testid="form-search" onSubmit={submitSearch}>
+          <h2 className="mono text-xl font-bold">Calendar Event search</h2>
+          <p className="hint">County: <strong>Allegheny – 05</strong>. Courtroom: ANY. Event labels are resolved against the live portal options when the job runs.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">Court office
+              <select className="input w-full" value={office} onChange={(e) => setOffice(e.target.value)} data-testid="select-office">
+                {OFFICES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="block">Event type
+              <select className="input w-full" value={eventType} onChange={(e) => setEventType(e.target.value)} data-testid="select-event">
+                {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
           </div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={collectMonetary} onChange={(e) => setCollectMonetary(e.target.checked)} data-testid="checkbox-collection-monetary" /> Require monetary total bail at or below the maximum amount</label>
-          <label className="flex items-center gap-2 mt-2"><input type="checkbox" checked={collectPosted} onChange={(e) => setCollectPosted(e.target.checked)} data-testid="checkbox-collection-posted" /> Exclude dockets explicitly showing a posted entry</label>
-          <p className="hint mt-3">Filters are evaluated locally after extraction and stay fixed for this job. Any recorded monetary TOTAL_BAIL entry may qualify; this is not a current operative-order finding. Unknown or nonmonetary amounts never count as zero. An unknown posted state is not excluded and does not prove custody.</p>
-          <p className="hint mt-2">The matching target is separate from the processing and request caps. The worker goes one docket at a time and stops when the target is reached, calendar results run out, or a cap is reached. Source failures pause collection. The target is not guaranteed and dates or budgets never expand automatically. Selectable form options do not establish validated results or PDF coverage; unrecognized layouts stop without substitution.</p>
-        </details>
-        {formErr ? <p className="errbox mt-3" role="alert" data-testid="text-form-error">{formErr}</p> : null}
-        <button type="submit" className="btn btn-primary mt-4" disabled={!pol?.collectionEnabled || create.isPending} data-testid="button-start-job">
-          {create.isPending ? 'Starting...' : 'Begin'}
-        </button>
-      </form>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">Start date<input type="date" className="input w-full" value={start} min={minDate} onChange={(e) => { setStart(e.target.value); if (end < e.target.value) setEnd(e.target.value); }} data-testid="input-start" /></label>
+            <label className="block">End date<input type="date" className="input w-full" value={end} min={start} onChange={(e) => setEnd(e.target.value)} data-testid="input-end" /></label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">Maximum bail, inclusive (optional, dollars)<input className="input w-full mono" inputMode="decimal" value={formMax} onChange={(e) => setFormMax(e.target.value)} placeholder="No maximum" data-testid="input-form-max" /></label>
+            <label className="block">Matching dockets wanted<input type="number" min={1} max={Math.min(200, pol?.maxRecordCap ?? 200)} className="input w-full mono" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-target" /></label>
+          </div>
+          <label className="flex items-center gap-2"><input type="checkbox" checked disabled data-testid="checkbox-scheduled" />Scheduled Events Only (enforced)</label>
+          <p className="hint">Posted bail is included. Target counts distinct dockets, not table rows. Budgets: record cap {pol ? `${pol.defaultRecordCap} default, ${pol.maxRecordCap} max` : 'loading'}; request cap {pol ? `${pol.defaultRequestCap} default, ${pol.maxRequestCap} max` : 'loading'}.</p>
+          {formErr ? <p className="errbox" role="alert" data-testid="text-form-error">{formErr}</p> : null}
+          <button type="submit" className="btn btn-primary" disabled={create.isPending || policy.isLoading} data-testid="button-search">
+            {create.isPending ? 'Starting…' : 'Start search'}
+          </button>
+        </form>
 
-      <section className="mb-8" aria-labelledby="jobs-h">
-        <h2 id="jobs-h" className="mono text-xl font-bold mb-3">Jobs</h2>
-        {jobs.isLoading ? <div className="skel h-16" aria-busy="true" /> : jobs.isError ? (
-          <div className="errbox" role="alert"><p>Could not load jobs. {errMsg(jobs.error)}</p>
-            <button type="button" className="btn btn-danger mt-3" onClick={() => jobs.refetch()} data-testid="button-retry-jobs">Retry</button></div>
-        ) : (jobs.data?.length ?? 0) === 0 ? (
-          <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-jobs">No jobs yet. Start one above; nothing is pre-loaded.</p>
-        ) : (
-          <ul className="space-y-2">
-            {jobs.data!.map((j) => (
-              <li key={j.id}>
-                <button type="button" className="btn w-full text-left" aria-pressed={j.id === selected} onClick={() => { setJobId(j.id); setSelectedCandidateIds([]); setCandidateMsg(null); }} data-testid={`button-job-${j.id}`}>
-                  <span className="mono font-semibold">{j.status}</span> &middot; {j.criteria.calendarPreviewOnly ? 'calendar-only preview' : 'bail discovery'} &middot; {j.criteria.startDate} to {j.criteria.endDate} &middot; {j.criteria.calendarPreviewOnly ? `${j.discovered} calendar rows` : `${j.processed}/${j.discovered} processed · ${j.matching}${j.criteria.matchTarget ? `/${j.criteria.matchTarget}` : ''} matching`} &middot; created {formatInstant(j.createdAt)}
-                </button>
-              </li>
+        <section className="panel space-y-3" data-testid="section-local-upload">
+          <h2 className="mono text-xl font-bold">Upload a docket PDF</h2>
+          <p className="hint">Works without a calendar search. The PDF is read for bail entries; only extracted metadata is stored, not the file. Keep your original.</p>
+          <label className="block">Expected docket number (optional)<input className="input w-full mono" value={soloDocket} onChange={(e) => setSoloDocket(e.target.value)} placeholder="CP-02-CR-0000000-2025" data-testid="input-solo-docket" /></label>
+          <input ref={soloRef} type="file" accept="application/pdf,.pdf" className="sr-only" id="solo-file"
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setSoloMsg(null); solo.mutate(f); } }} data-testid="input-solo-file" />
+          <button type="button" className="btn" disabled={solo.isPending} onClick={() => soloRef.current?.click()} data-testid="button-solo-upload">
+            {solo.isPending ? 'Extracting…' : 'Choose PDF'}
+          </button>
+          {soloMsg ? <p className={soloMsg.ok ? 'hint' : 'errbox'} role={soloMsg.ok ? 'status' : 'alert'}>{soloMsg.text}</p> : null}
+        </section>
+      </div>
+
+      <section className="mb-6" aria-labelledby="jobs-h">
+        <h2 id="jobs-h" className="mono text-xl font-bold mb-2">Jobs</h2>
+        {jobs.isLoading ? <div className="skel h-10" /> : jobs.isError ? (
+          <div className="errbox" role="alert">Could not load jobs. {errMsg(jobs.error)} <button type="button" className="btn ml-2" onClick={() => jobs.refetch()}>Retry</button></div>
+        ) : !jobs.data?.length ? <p className="hint">No saved jobs yet. Start a search or upload a PDF.</p> : (
+          <select className="input w-full" value={selected} onChange={(e) => { setJobId(e.target.value); setMaxBail(''); setExcludePosted(false); setOpenRow(null); }} data-testid="select-job">
+            {jobs.data.map((j) => (
+              <option key={j.id} value={j.id}>
+                {formatInstant(j.createdAt)} · {j.status} · {j.criteria.eventType} {j.criteria.startDate}{j.criteria.endDate !== j.criteria.startDate ? `–${j.criteria.endDate}` : ''} · {j.matching} matching / {j.discovered} rows{isLegacy(j) ? ' · legacy' : ''} · {j.id.slice(0, 8)}
+              </option>
             ))}
-          </ul>
+          </select>
         )}
       </section>
 
       {selected ? (
-        <section aria-labelledby="rep-h" data-testid="section-report">
-          <div className="bracket mb-1">Results</div>
-          <h2 id="rep-h" className="mono text-xl font-bold mb-3">Search results</h2>
-          {report.isLoading ? <div className="space-y-3" aria-busy="true"><div className="skel h-24" /><div className="skel h-24" /></div>
-          : report.isError ? (
-            <div className="errbox" role="alert"><p>Could not load this job. {errMsg(report.error)}</p>
-              <button type="button" className="btn btn-danger mt-3" onClick={() => report.refetch()} data-testid="button-retry-report">Retry</button></div>
-          ) : job ? (
-            <>
-              <div className="panel mb-6" role="status" aria-live="polite">
-                <p className="mono font-bold text-lg" data-testid="text-job-status">{job.status}</p>
-                <p>{job.criteria.courtOffice}{job.criteria.courtRoom ? `, ${job.criteria.courtRoom}` : ''}, {job.criteria.eventType === 'ANY' ? 'no event-type filter' : job.criteria.eventType}, {job.criteria.startDate} to {job.criteria.endDate}. Started {formatInstant(job.createdAt)}; updated {formatInstant(job.updatedAt)}.</p>
-                {job.message ? <p className="mt-1" data-testid="text-job-message">{job.message}</p> : null}
-                {!isCalendarPreview ? <p className="hint mt-2" data-testid="text-fixed-filters">{job.criteria.matchTarget
-                  ? `Fixed collection target: ${job.criteria.matchTarget} matching dockets. Monetary bound: ${job.criteria.matchFilters?.monetaryUpperBoundCents != null ? `${job.criteria.matchFilters.inclusiveMaximum ? 'at or below' : 'strictly under'} ${formatCents(job.criteria.matchFilters.monetaryUpperBoundCents)}` : 'off'}. Exclude shown-posted: ${job.criteria.matchFilters?.excludeShownPosted ? 'yes' : 'no'}.`
-                  : 'Legacy job: processing budget only; no matching target was selected. Its original criteria have not been changed.'}</p> : null}
-                {job.criteria.matchTarget && !job.targetReached && job.status === 'COMPLETED' ? <p className="hint text-warning" data-testid="text-target-shortfall">Target not reached: {job.matching} of {job.criteria.matchTarget}. Collection stopped within the original scope and safety limits.</p> : null}
-                {job.resultsExpiredAt ? <ExpiredResultsNotice resultsExpiredAt={job.resultsExpiredAt} items={items} /> : job.resultsExpireAt ? <p className="hint mt-2">Unsaved stopped-search results expire {formatInstant(job.resultsExpireAt)}. Save source-backed observations before then; saved candidates are retained.</p> : null}
-                {active ? <p className="hint mt-1">Working. This tab refreshes every {POLL_MS / 1000} seconds until the job stops; refreshing pauses if the tab is in the background.</p> : null}
-                <button type="button" className="btn mt-2" disabled={report.isFetching} onClick={() => report.refetch()} data-testid="button-refresh">{report.isFetching ? 'Refreshing...' : 'Refresh now'}</button>
-                <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                  {([
-                    ['Requests made', `${job.requestsUsed} of ${job.criteria.requestCap} cap`],
-                    ['Requests completed', job.completedRequests], ['Requests failed', job.failedRequests],
-                    ...(isCalendarPreview
-                      ? [['Calendar rows', job.discovered] as const]
-                      : [
-                        ['Record cap', job.criteria.recordCap] as const,
-                        ['Discovered', job.discovered] as const, ['Processed', job.processed] as const,
-                        ['Matching (fixed filters)', job.matching] as const, ['Target', job.criteria.matchTarget ?? 'legacy job'] as const,
-                        ['Failed', job.failed] as const, ['Unprocessed', job.unprocessed] as const,
-                      ]),
-                  ] as const).map(([l, v]) => (
-                    <div key={l} className="border border-border rounded p-2"><dt className="mono text-sm">{l}</dt><dd className="mono text-lg font-bold">{v}</dd></div>
-                  ))}
-                </dl>
-                {!isCalendarPreview ? <ul className="hint mt-3 list-disc pl-5">
-                  <li>Calendar table: {job.calendarComplete ? 'a returned calendar table was validated. This does not prove every docket in the window was listed.' : 'not validated; the calendar may not have been read, so results can be missing.'}</li>
-                  <li>Pagination: {job.paginationComplete ? 'complete for the pages read' : 'incomplete; more results may exist'}.</li>
-                  <li>Source result cap: {job.resultCapReached ? 'reached; the source stopped returning results, so more dockets may exist' : 'not reached'}.</li>
-                  <li>Local processing cap ({job.criteria.recordCap} records): {localCapReached ? `reached with ${job.unprocessed} discovered docket${job.unprocessed === 1 ? '' : 's'} left unprocessed` : 'not reached with unprocessed work remaining'}.</li>
-                </ul> : <p className="hint mt-3">Preview results are calendar rows only. A validated table does not establish that every event or docket in the date window was listed. No docket PDF is fetched from this screen.</p>}
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {active ? <button type="button" className="btn" disabled={control.isPending} onClick={() => act('PAUSE')} data-testid="button-pause">Pause</button> : null}
-                  {!isCalendarPreview ? <ResumeControl job={job} pending={control.isPending} collectionEnabled={!!pol?.collectionEnabled} onResume={() => act('RESUME')} /> : null}
-                  {active || job.status === 'PAUSED' ? <button type="button" className="btn btn-danger" disabled={control.isPending} onClick={() => act('CANCEL')} data-testid="button-cancel">Cancel</button> : null}
-                </div>
-                {!isCalendarPreview ? <p className="hint mt-2">Pause, cancel and resume keep results already found and the original budget. Resume can fail during a source cooldown, or with a conflict (409) when the budget or cap is already used up.</p> : <p className="hint mt-2">A preview cannot be resumed; interrupted or failed previews keep their partial history and require a new explicitly approved search.</p>}
-                {ctlMsg ? <p className="mt-2" role="status" data-testid="text-control-message">{ctlMsg}</p> : null}
-              </div>
-
-              {(() => {
-                const review = report.data?.events.find((event) => event.kind === 'CALENDAR_RESULT_REVIEW');
-                return review ? <CalendarResponseReview message={review.message} /> : null;
-              })()}
-
-              {isCalendarPreview ? (
-                <section className="panel mb-6" data-testid="section-calendar-preview-results">
-                  <h3 className="mono font-bold mb-2">Calendar rows only</h3>
-                  <p className="hint mb-3">These are source-linked rows retained from the validated calendar table. Dockets are shown as plain text here; this preview has no document links, bail extraction, or candidate-saving controls.</p>
-                  <CalendarPreviewStatus job={job} retainedRows={items.length} events={report.data?.events ?? []} />
-                  {items.length > 0 ? (
-                    <div className="overflow-x-auto" data-testid="calendar-preview-table-wrap">
-                      <table className="w-full text-left text-sm min-w-[44rem]" data-testid="calendar-preview-table">
-                        <caption className="text-left mono font-bold mb-2">{items.length} calendar row{items.length === 1 ? '' : 's'} in source order</caption>
-                        <thead className="mono"><tr className="border-b-2 border-border">
-                          <th scope="col" className="p-2">Pos.</th>
-                          <th scope="col" className="p-2">Docket</th>
-                          <th scope="col" className="p-2">Court office</th>
-                          <th scope="col" className="p-2">Courtroom filter</th>
-                          <th scope="col" className="p-2">Event type</th>
-                          <th scope="col" className="p-2">Event date</th>
-                          <th scope="col" className="p-2">Filing date</th>
-                        </tr></thead>
-                        <tbody>
-                          {items.map((item) => (
-                            <tr key={item.id} className="border-b border-border align-top" data-testid={`calendar-preview-row-${item.id}`}>
-                              <td className="p-2 mono">{item.position + 1}</td>
-                              <td className="p-2 mono font-semibold break-all">{item.docketNumber}</td>
-                              <td className="p-2">{item.provenance.courtOffice}</td>
-                              <td className="p-2">{item.provenance.courtRoom ?? 'Not recorded'}</td>
-                              <td className="p-2">{item.provenance.eventType}</td>
-                              <td className="p-2">{item.provenance.eventDate ?? 'Not recorded'}</td>
-                              <td className="p-2">{item.provenance.filingDate ?? 'Not recorded'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-calendar-preview">
-                      {active ? 'Preview is running; no calendar rows are available yet.' : !job.calendarComplete
-                        ? 'No validated calendar rows were retained. This is not proof that no events exist; the search may have stopped at a source or validation barrier.'
-                        : 'The validated results contained no rows. This preview does not classify an empty calendar unless the source provides a validated empty-state marker.'}
-                    </p>
-                  )}
-                </section>
-              ) : (
-                <>
-              <div className="panel mb-6" data-testid="section-filter">
-                <h3 className="mono font-bold mb-2">Provisional local filters</h3>
-                <p className="hint mb-3">Computed in your browser. They are not reviewed operative ranges. These display filters are independent and never change the job’s fixed matching filters or target.</p>
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={postedOff} onChange={(e) => setPostedOff(e.target.checked)} data-testid="checkbox-exclude-posted" /> Exclude rows where a posted entry is shown (SHOWN_POSTED)</label>
-                    <p className="hint">Off by default. UNKNOWN is never treated as not posted and stays visible. Posted state does not verify custody.</p>
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={filterOn} onChange={(e) => setFilterOn(e.target.checked)} data-testid="checkbox-filter" /> Only rows with a monetary total bail strictly below</label>
-                    <div className="mt-2"><label className="lbl" htmlFor="bound">Dollar upper bound</label>
-                      <input id="bound" inputMode="decimal" className="field max-w-xs" value={bound} onChange={(e) => setBound(e.target.value)} aria-invalid={filterOn && boundCents == null} data-testid="input-bound" /></div>
-                    <p className="hint">Uses only entries in the Monetary category with basis Total bail amount and a whole-cent amount. Unknown, missing, unpriced, nonmonetary, nominal and unsecured entries are not treated as zero; they are excluded from this comparison and nominal and unsecured stay separate categories. Enabling this does not exclude posted rows.</p>
-                  </div>
-                </div>
-                {filterOn && boundCents == null ? <p className="errbox mt-3" role="alert">Enter a dollar amount such as 500 or 500.00. The amount filter is not applied.</p> : null}
-                <p className="mt-3" data-testid="text-match-count">{anyFilter ? `${matching.length} of ${items.length} rows pass the active filters.` : `Showing all ${items.length} rows; no filters active.`}</p>
-                <div className="mt-4 border-t border-border pt-4" data-testid="bulk-candidate-selection">
-                  <p className="hint">Select identity-checked dockets to save every extracted bail observation together. Existing review statuses are kept.</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <button type="button" className="btn" onClick={selectVisibleCandidates} disabled={!matching.some(canSaveCandidate)} data-testid="button-select-visible-candidates">Select eligible visible dockets</button>
-                    <span className="mono text-sm">{selectedCandidateIds.length} selected</span>
-                    <button type="button" className="btn btn-primary" onClick={saveSelectedCandidates} disabled={!selectedCandidateIds.length || saveCandidates.isPending} data-testid="button-save-selected-candidates">
-                      {saveCandidates.isPending ? 'Saving candidates…' : 'Save selected as candidates'}
-                    </button>
-                  </div>
-                  {candidateMsg ? <p className={candidateMsg.startsWith('Selected dockets were not saved') ? 'errbox mt-3' : 'mt-3'} role="status" data-testid="text-candidate-save-result">{candidateMsg}</p> : null}
+        report.isLoading ? <div className="skel h-40" aria-busy="true" /> : report.isError ? (
+          <div className="errbox" role="alert">Could not load job. {errMsg(report.error)} <button type="button" className="btn ml-2" onClick={() => report.refetch()}>Retry</button></div>
+        ) : job ? (
+          <>
+            <section className="panel mb-6" data-testid="section-report">
+              <div className="flex flex-wrap justify-between gap-2">
+                <h2 className="mono text-xl font-bold">Job {job.id.slice(0, 8)}: <span data-testid="text-status">{job.status}</span>{isLegacy(job) ? <span className="tag ml-2" data-testid="tag-legacy">Legacy semantics</span> : null}</h2>
+                <div className="flex gap-2">
+                  {active ? <button type="button" className="btn" onClick={() => act('PAUSE')} disabled={control.isPending} data-testid="button-pause">Pause</button> : null}
+                  {job.status === 'PAUSED' ? <button type="button" className="btn btn-primary" onClick={() => act('RESUME')} disabled={control.isPending} data-testid="button-resume">Resume</button> : null}
+                  {active || job.status === 'PAUSED' ? <button type="button" className="btn btn-danger" onClick={() => act('CANCEL')} disabled={control.isPending} data-testid="button-cancel">Cancel</button> : null}
                 </div>
               </div>
+              {ctlMsg ? <p className="hint mt-1" role="status">{ctlMsg}</p> : null}
+              {job.message ? <p className="hint mt-1">{job.message}</p> : null}
+              <div className="mt-3" data-testid="progress-job">
+                <div className="h-2 rounded bg-border overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="h-full bg-primary origin-left transition-transform" style={{ transform: `scaleX(${pct / 100})` }} />
+                </div>
+                <p className="hint mt-1 mono">{job.processed}/{job.discovered} candidate dockets processed; {job.matching} matching{targetN != null ? ` of ${targetN} wanted` : ''}; {job.failed} failed; {job.unprocessed} unprocessed.{active ? ' Updating every few seconds.' : ''}</p>
+              </div>
+              {targetNote ? <p className={`mt-2 ${job.targetReached ? '' : 'font-semibold'}`} data-testid="text-target">{targetNote}</p> : null}
+              {expired ? <p className="errbox mt-2" role="alert" data-testid="text-expired">Results expired {formatInstant(job.resultsExpiredAt)}. Evidence detail is no longer available; run the search again.</p>
+                : job.resultsExpireAt ? <p className="hint mt-1">Results kept until {formatInstant(job.resultsExpireAt)}.</p> : null}
+              {partial && terminal ? <p className="errbox mt-2" role="status" data-testid="text-partial">Partial coverage: {!job.paginationComplete ? 'calendar pagination incomplete or unknown; ' : ''}{job.unprocessed > 0 ? `${job.unprocessed} candidates not processed; ` : ''}{job.resultCapReached ? 'record cap reached, more results possible. ' : ''}Rows shown are preserved partial results.</p> : null}
+              <dl className="mt-3 grid gap-x-4 gap-y-1 sm:grid-cols-[14rem_1fr]">
+                <dt className="mono text-sm">Criteria</dt><dd>{job.criteria.courtOffice} / room {job.criteria.courtRoom ?? 'ANY'} / {job.criteria.eventType}; {job.criteria.startDate} to {job.criteria.endDate}</dd>
+                <dt className="mono text-sm">Collection filter</dt><dd data-testid="text-fixed-filter">{criteriaText(job)}{isLegacy(job) ? '. Legacy job: strict maximum preserved.' : ''}</dd>
+                <dt className="mono text-sm">Rows</dt><dd data-testid="text-row-state">{rowState}</dd>
+                <dt className="mono text-sm">Distinct dockets</dt><dd>{distinctDockets} candidate; {matchingIds.size} matching ({fixedRows.length} observation row{fixedRows.length === 1 ? '' : 's'})</dd>
+                <dt className="mono text-sm">Outcomes</dt><dd data-testid="text-outcomes">{outcomes.length ? outcomes.map(([k, n]) => `${extractionLabel(k)}: ${n}`).join('; ') : 'None yet'}{conflicts.length ? `; event-date conflicts withheld: ${conflicts.length}` : ''}{noEvent.length ? `; no matching event date: ${noEvent.length}` : ''}</dd>
+                <dt className="mono text-sm">Coverage</dt><dd>Calendar {job.calendarComplete ? 'validated' : 'not validated'}; pagination {job.paginationComplete ? 'complete' : 'incomplete or unknown'}; result cap {job.resultCapReached ? 'reached, more results possible' : 'not reached'}.</dd>
+                <dt className="mono text-sm">Limits</dt><dd>{job.requestsUsed}/{job.criteria.requestCap} requests ({job.failedRequests} failed); record cap {job.criteria.recordCap}.</dd>
+                <dt className="mono text-sm">Document accounting</dt><dd data-testid="text-document-accounting">{job.documentsAttempted ?? 'Not retained'} attempted; {job.documentsRetrieved ?? 'not retained'} retrieved; {job.documentsParsed ?? 'not retained'} parsed; {job.excluded ?? 'not retained'} excluded; {job.ambiguities ?? 'not retained'} financial ambiguities. {job.displayedRows ?? 'Not retained'} fixed-criteria observation rows.</dd>
+              </dl>
+              <details className="mt-3">
+                <summary className="cursor-pointer mono font-semibold text-primary">Request ledger ({requests.length})</summary>
+                <p className="hint mt-1" data-testid="text-search-submitted">Search submitted: {searchReq.length === 0 ? 'No POST /CaseSearch in ledger' : searchSubmitted ? `Yes (POST /CaseSearch, HTTP ${searchReq[searchReq.length - 1].statusCode})` : `Attempted, not confirmed (${searchReq[searchReq.length - 1].outcome})`}</p>
+                {requests.length === 0 ? <p className="hint mt-2">No ledger entries reported.</p> : (
+                  <div className="overflow-x-auto mt-2"><table className="w-full text-sm mono">
+                    <thead><tr className="text-left"><th>Method</th><th>Path</th><th>Status</th><th>Outcome</th><th>Started</th><th>ms</th></tr></thead>
+                    <tbody>{requests.map((r, i) => (
+                      <tr key={i} className="border-t border-border"><td>{r.method}</td><td className="break-all">{r.path}</td><td>{r.statusCode ?? '–'}</td><td>{r.outcome}</td><td>{formatInstant(r.startedAt)}</td><td>{r.durationMs ?? '–'}</td></tr>
+                    ))}</tbody>
+                  </table></div>
+                )}
+              </details>
+              <details className="mt-2">
+                <summary className="cursor-pointer mono font-semibold text-primary">Events ({data?.events.length ?? 0})</summary>
+                <ul className="mt-2 space-y-1 text-sm">{data?.events.map((ev, i) => <li key={i}><span className="mono">{formatInstant(ev.createdAt)} {ev.kind}</span> {ev.message}</li>)}</ul>
+              </details>
+            </section>
 
-              {matching.length > 0 ? (
-                <div className="overflow-x-auto mb-6" data-testid="table-summary-wrap">
-                  <table className="w-full text-left text-sm min-w-[56rem]" data-testid="table-summary">
-                    <caption className="text-left mono font-bold mb-2">Results summary ({matching.length} row{matching.length === 1 ? '' : 's'}, source order)</caption>
-                    <thead className="mono"><tr className="border-b-2 border-border">
-                      <th scope="col" className="p-2">Pos.</th><th scope="col" className="p-2">Docket</th><th scope="col" className="p-2">Court</th><th scope="col" className="p-2">Event date</th>
-                      <th scope="col" className="p-2">Bail entries</th><th scope="col" className="p-2">Posted state</th><th scope="col" className="p-2">Extraction</th><th scope="col" className="p-2">Verification</th><th scope="col" className="p-2">Evidence</th>
-                    </tr></thead>
-                    <tbody>
-                      {matching.map((it) => (
-                        <tr key={it.id} className="border-b border-border align-top" data-testid={`summary-row-${it.id}`}>
-                          <td className="p-2 mono">{it.position + 1}</td>
-                          <td className="p-2 mono font-semibold break-all">{it.docketNumber}</td>
-                          <td className="p-2">{it.provenance.courtOffice}</td>
-                          <td className="p-2">{it.provenance.eventDate ?? 'Not recorded'}</td>
-                          <td className="p-2">{it.provenance.entries.length === 0 ? <span className="hint">None extracted</span> : (
-                            <ol className="space-y-1">{it.provenance.entries.map((e, i) => <li key={i}>{CATEGORY_LABEL[e.bailCategory]}{e.financialBasis ? ` / ${BASIS_LABEL[e.financialBasis]}` : ''}: <span className="mono">{amountText(e)}</span></li>)}</ol>)}</td>
-                          <td className="p-2">{it.provenance.postedEntryState}</td>
-                          <td className="p-2">{it.provenance.extractionOutcome}</td>
-                          <td className="p-2">{it.savedObservations.length === 0 ? 'Not saved' : (
-                            <ul className="space-y-1">{it.savedObservations.map((o) => <li key={o.recordId}>{o.entryIndex == null ? 'No bail section' : `Entry ${o.entryIndex + 1}`}: {VERIF[o.reviewStatus]}</li>)}</ul>)}</td>
-                          <td className="p-2"><a className="underline text-primary" href={`#item-${it.id}`}>Details</a><br /><a className="underline text-primary" href={it.sourceUrl} target="_blank" rel="noopener noreferrer">Source docket</a></td>
+            <section className="panel mb-4 flex flex-wrap items-end gap-4" data-testid="section-filters">
+              <label className="block">Narrow display: maximum (inclusive, dollars)<input className="input" value={maxBail} onChange={(e) => setMaxBail(e.target.value)} placeholder="e.g. 500" data-testid="input-max-bail" /></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={excludePosted} onChange={(e) => setExcludePosted(e.target.checked)} data-testid="checkbox-exclude-posted" />Hide SHOWN_POSTED</label>
+              <button type="button" className="btn" disabled={rows.length === 0 || maxInvalid} onClick={() => downloadCsv(rows, `bail-observations-${job.id.slice(0, 8)}.csv`)} data-testid="button-export-csv">Export displayed rows (CSV)</button>
+              <p className="hint w-full">{maxInvalid ? 'Enter a valid dollar amount.' : `Showing ${rows.length} of ${fixedRows.length} qualifying rows.`} Display narrowing never changes the job's criteria, target, or budget. NOT_SHOWN does not mean unpaid or incarcerated.</p>
+            </section>
+
+            {expired ? null : fixedRows.length === 0 ? (
+              <div className="panel border-dashed text-center mb-6" data-testid="empty-results">
+                <p className="font-semibold">{active ? 'No qualifying rows yet.' : 'No qualifying monetary observations.'}</p>
+                <p className="hint">{items.length === 0 ? rowState : 'Processed dockets are listed below with their outcomes. Missing amounts, nonmonetary entries, ambiguous associations and unresolved event dates are excluded from the table.'}</p>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="panel text-center mb-6"><p className="hint">No rows match the display narrowing.</p></div>
+            ) : (
+              <div className="panel mb-6 overflow-x-auto p-0">
+                <table className="w-full text-left" data-testid="table-results">
+                  <thead><tr className="mono text-sm border-b border-border"><th className="p-3">Hearing date</th><th className="p-3">Docket number</th><th className="p-3 text-right">Bail amount</th></tr></thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const it = itemById.get(r.itemId);
+                      const open = openRow === r.key;
+                      return (
+                        <tr key={r.key} className="border-b border-border align-top" data-testid={`row-result-${r.itemId}-${r.entryIndex}`}>
+                          <td className="p-3 mono whitespace-nowrap">
+                            <button type="button" className="underline text-primary" aria-expanded={open} onClick={() => setOpenRow(open ? null : r.key)} data-testid={`button-expand-${r.itemId}-${r.entryIndex}`}>{open ? '−' : '+'} {r.hearingDate}</button>
+                          </td>
+                          <td className="p-3">
+                            <DocketLink row={r} />
+                            {open && it ? <div className="mt-2"><EvidenceRow row={r} it={it} /></div> : null}
+                          </td>
+                          <td className="p-3 mono text-right whitespace-nowrap">{formatCents(r.amountCents)}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-              {items.length === 0 && job.resultsExpiredAt ? null : items.length === 0 ? (
-                <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-items">{active ? 'No dockets found yet.' : sourceFailed ? 'No records were retrieved: the source failed or requests failed. This says nothing about whether dockets exist.' : !job.calendarComplete ? 'No records were retrieved and the calendar table was not validated, so this may be a barrier rather than an empty calendar.' : 'The validated calendar table returned no matching dockets for this window and event.'}</p>
-              ) : matching.length === 0 ? (
-                <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-matches">No rows match the current filter. Turn it off to see every row.</p>
-              ) : (
-                <ul className="space-y-4">
-                  {matching.map((it) => (
-                    <ItemRow key={it.id} jobId={selected} it={it} saving={save.isPending} onSave={doSave} err={saveErr?.id === it.id ? saveErr.msg : null}
-                      selected={selectedCandidateIds.includes(it.id)} onSelect={toggleCandidate} />
+            {items.length > 0 && !expired ? (
+              <details className="mb-6" open={fixedRows.length === 0 && !active}>
+                <summary className="cursor-pointer mono font-semibold text-primary" data-testid="summary-dockets">All processed dockets, evidence, upload and saving ({items.length}; {excluded.length} not in table)</summary>
+                <ul className="space-y-4 mt-3">
+                  {items.map((it) => (
+                    <ItemRow key={it.id} jobId={job.id} it={it} saving={save.isPending}
+                      saveErr={saveErr?.id === it.id ? saveErr.msg : null} onSave={doSave}
+                      onUploaded={() => refresh(job.id)} />
                   ))}
                 </ul>
-              )}
-                </>
-              )}
-
-              {(report.data?.events.length ?? 0) > 0 ? (
-                <details className="mt-6">
-                  <summary className="cursor-pointer mono font-semibold text-primary">Job event log ({report.data!.events.length})</summary>
-                  <ul className="mt-2 space-y-1">
-                    {report.data!.events.map((ev, i) => <li key={i} className="hint"><span className="mono">{formatInstant(ev.createdAt)}</span> {ev.kind}: {ev.message}</li>)}
-                  </ul>
-                </details>
-              ) : null}
-            </>
-          ) : null}
-        </section>
+              </details>
+            ) : null}
+          </>
+        ) : null
       ) : null}
     </Shell>
   );

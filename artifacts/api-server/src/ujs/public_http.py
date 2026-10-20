@@ -23,7 +23,8 @@ class Response:
 
 
 def _download(url):
-    if not allowed(url, "GET") or "/Report/CpDocketSheet?" not in url:
+    if not allowed(url, "GET") or not any(path + "?" in url for path in (
+            "/Report/CpDocketSheet", "/Report/MdjDocketSheet")):
         raise ValueError("REQUEST_NOT_PERMITTED")
     opener = request.build_opener(NoRedirect())
     req = request.Request(url, headers={

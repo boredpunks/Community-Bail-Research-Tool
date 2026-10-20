@@ -14,8 +14,8 @@ from pathlib import Path
 root = Path.cwd()
 dist = root / "dist" / "ujs"
 sys.path.insert(0, str(dist))
-import worker, courtroom_observation, calendar_protocol, calendar_diagnostics
-for module in (worker, courtroom_observation, calendar_protocol, calendar_diagnostics):
+import worker, courtroom_observation, calendar_protocol, calendar_diagnostics, room_discovery
+for module in (worker, courtroom_observation, calendar_protocol, calendar_diagnostics, room_discovery):
     assert Path(module.__file__).parent == dist, "Test must use packaged modules"
 assert calendar_diagnostics.CalendarLifecycle().state == "BEFORE_POST_ATTEMPT"
 assert courtroom_observation.METHOD == "playwright-public-courtroom-observation-v2"

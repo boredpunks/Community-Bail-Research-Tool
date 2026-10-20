@@ -12,6 +12,8 @@ import type { DiscoveryCriteria } from './discoveryCriteria';
 
 export interface DiscoveryAssessment {
   id: string;
+  /** @nullable */
+  jobId?: string | null;
   stage: DiscoveryAssessmentStage;
   state: DiscoveryAssessmentState;
   criteria: DiscoveryCriteria;

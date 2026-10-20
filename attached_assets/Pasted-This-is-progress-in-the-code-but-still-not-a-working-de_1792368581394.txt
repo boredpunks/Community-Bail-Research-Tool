@@ -1,0 +1,57 @@
+This is progress in the code, but still not a working demonstration. The new blocker is **document access**: the integrated client received HTTP 401 for one docket request. That establishes failure of that request—not that automated docket access is impossible, and not that there are no matching cases.
+
+There are two unresolved issues in this report.
+
+## 1. Why was the calendar search still not submitted?
+
+The document-access failure does not explain the missing calendar demonstration. The agent should distinguish whether these were separate tests, whether Search remained blocked, or whether it simply was not attempted.
+
+Your application needs to return calendar cases even when their documents cannot be retrieved. Otherwise, one PDF failure prevents you from seeing the useful discovery results.
+
+## 2. Where did this docket and its request URL come from?
+
+`MJ-05003-CR-0004964-2026` is not either of the two docket examples you supplied earlier. That does not make it an invalid test, but its provenance matters.
+
+Before another request, the agent should establish whether it used:
+
+- A complete, current source-provided document link.
+- A link captured during the successful Computer run.
+- An older link or a reconstructed URL.
+- The same browser/session context that produced the link, or a separate document client.
+
+The 401 alone cannot distinguish those possibilities. It should not trigger retries, invented query parameters, or attempts to bypass an access restriction.
+
+## Send this to Replit
+
+> Acknowledge the successful push and offline changes, but separate the remaining acceptance work.
+>
+> ### Calendar discovery
+>
+> Explain exactly why Search was not submitted in this attempt: not attempted, blocked by validation, or prevented by another condition.
+>
+> Complete the separately authorized calendar-only demonstration independently of PDF access. Display validated rows, source-provided document actions, and truthful coverage status even when documents are unavailable. Obtain a fresh approval if required; do not reuse consumed permits.
+>
+> ### Document-access diagnosis
+>
+> Before requesting another live attempt, inspect the retained evidence for the single 401:
+>
+> - Where did docket `MJ-05003-CR-0004964-2026` come from?
+> - Was the complete document URL source-provided or constructed?
+> - Were its source-generated parameters preserved?
+> - Which client made the request?
+> - Did it use the browser/session context that obtained the link?
+> - Was 401 the actual upstream response, and was any redirect involved?
+>
+> Do not expose cookies, tokens, opaque link parameters, or personal records in the report.
+>
+> Compare this request path with the successful Perplexity Computer workflow, using its execution evidence if available. Do not assume the integrated document client reproduces a successful browser interaction.
+>
+> If the evidence indicates a supported browser-mediated document path, propose that specific integration and its required authorization. If the source denies access, stop; do not evade the restriction.
+>
+> ### Real-document regressions
+>
+> Request the previously downloaded PDFs as local fixtures if they are available. That can verify identity checks, bail extraction, posting interpretation, and page references without further court requests. Label those results as local-document verification—not live retrieval acceptance.
+>
+> Finish with separate statuses for calendar discovery, live document access, local PDF extraction, filtering, and pending saving. Do not collapse them into one “live run incomplete” status.
+
+The key is to stop making every stage wait on every other stage. Calendar discovery, document transport, and extraction each need their own evidence and failure handling.

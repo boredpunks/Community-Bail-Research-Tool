@@ -9,6 +9,20 @@ import type { DiscoveryCriteria } from './discoveryCriteria';
 import type { DiscoveryJobStatus } from './discoveryJobStatus';
 
 export interface DiscoveryJob {
+  /** @nullable */
+  documentsAttempted?: number | null;
+  /** @nullable */
+  documentsRetrieved?: number | null;
+  /** @nullable */
+  documentsParsed?: number | null;
+  /** @nullable */
+  displayedRows?: number | null;
+  /** @nullable */
+  excluded?: number | null;
+  /** @nullable */
+  ambiguities?: number | null;
+  /** @nullable */
+  eventConflicts?: number | null;
   id: string;
   criteria: DiscoveryCriteria;
   status: DiscoveryJobStatus;

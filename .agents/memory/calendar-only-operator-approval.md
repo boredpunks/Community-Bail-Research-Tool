@@ -3,6 +3,11 @@ name: Calendar-only operator approval
 description: Scoped court retrieval authority and operator boundaries while regular collection remains blocked.
 ---
 
+Historical pilot guidance only. The user's later direction in
+[ordinary research](ordinary-research-direction.md) removes per-run operator
+approval and single-use permits from ordinary authenticated searches.
+Do not apply this historical framework to the ordinary research UI.
+
 A user-approved one-use calendar gate is separate from general source access and collection approval. Approval to build it is not approval to run it.
 
 **Why:** The user approved a separate one-use operator gate only for the selected calendar search, with regular collection blocked and PDFs disabled.
@@ -51,3 +56,21 @@ Keep the exceptional gate operator-only rather than exposing it to every shared-
 **Why:** The shared workspace login does not distinguish an operator from other workspace users. The existing operator CLI preserves that boundary without creating a broader web permission.
 
 **How to apply:** Use the operator flow for exceptional checks unless the user separately requests and approves a role model. Ordinary web collection stays blocked.
+
+## Gate conflicts and stricter protections
+
+When an approved calendar scope cannot pass the current gate, explain the
+conflict before transmitting requests. Run authorization does not authorize
+changing admission rules or removing a source stop. Preserve stricter pacing,
+shared quotas, cooldowns and source restrictions; a proposed shorter spacing
+is not permission to lower them.
+
+**Why:** The user explicitly conditioned the calendar-only demonstration on
+preserving existing stricter protections and reporting gate conflicts before
+any source transmission.
+
+**How to apply:** Check persisted source state and the actual operator path
+first. Report an admission block separately from failed Search submission or
+validated empty results. Do not substitute the research/PDF path to obtain
+different pacing or quotas. Obtain an explicit policy decision before changing
+admission.

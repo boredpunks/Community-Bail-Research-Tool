@@ -20,3 +20,9 @@ A genuine UJS result page can also contain the original search form. Do not reje
 **Why:** A normal browser calendar submission returned a validated results table and the search form together, after direct form submissions had returned only forms.
 
 **How to apply:** Distinguish valid rows and structurally valid empty results from returned forms by the results table/header/link identities, not by the presence or absence of the form.
+
+Never declare zero matches because the parsed or retained row list is empty. Require an exact source-provided empty-status marker, tied to the submitted search and validated against the observed result layout and response diagnostics. An unvalidated or rejected response remains unknown.
+
+**Why:** The user explicitly prohibited inferring zero matches from an empty list; a presentation-shaped `NO_RESULTS_FOUND` row had previously been rejected as a missing docket link.
+
+**How to apply:** Preserve distinct outcomes for explicit validated empty status, valid docket rows, and no result proof. Do not guess a document link, substitute criteria, or silently convert parser failure into a zero-result claim.

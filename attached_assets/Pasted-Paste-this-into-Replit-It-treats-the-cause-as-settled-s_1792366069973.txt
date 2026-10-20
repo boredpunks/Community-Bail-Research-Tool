@@ -1,0 +1,72 @@
+Paste this into Replit. It treats the cause as settled, so Replit can't go back to "the cause is unknown", and it covers your latest checkpoint. That checkpoint separated "label not linked" from "wrong form" as a diagnosis. It didn't fix the binding.
+
+***
+
+# Fix the four confirmed blockers and run the engine
+
+The `COURT_ROOM / WRONG_FORM` cause is **established**. Do not request the read-only inspection permit. Do not add more diagnostic categories. Implement the fixes below, verify them, and run the live workflow.
+
+## Confirmed evidence (live portal, October 18, 2026)
+
+- In a real browser on `/CaseSearch`, `label.control` is **null for every field**: Room, Court Office, Calendar Event Type, Judicial District, Search By. `<label for="CourtRoomID">` points to an id that does not exist.
+- Each visible `<select>` has **no name or id**. It is found by its `title` attribute (`"Room"`, `"Court Office"`, `"Calendar Event Type"`, `"Judicial District"`, `"Search By"`). The submitted value comes from a hidden text input, for example `name="CourtRoomID"` with `id="CourtRoomID-HiddenField"`. All of these are inside `#btnSearch.form`.
+- A browser that chose options with `select[title="…"]`, filled the dates and clicked `#btnSearch` produced:
+  - one POST to `/CaseSearch`;
+  - a `caseSearchResultGrid` table with 3 rows that passes the repo's `RESPONSE_STRUCTURE` check;
+  - **zero console errors**.
+- Blocking images and fonts on the same page creates 2 `Failed to load resource: net::ERR_FAILED` console errors. These are the unmatched `NET_FAILED` errors from the earlier failed runs.
+
+## Required fixes
+
+1. **Control binding** (`calendar_protocol.py`)
+   - Delete every check that uses `label.control`: `validate_unfiltered_room_and_schedule` around line 361, `validate_unfiltered_calendar_room`, and the shared room discovery you just extracted.
+   - Find each control as exactly one `select[title="<label>"]` inside `#btnSearch.form`.
+   - After selecting, confirm with `new FormData(form).getAll("<HiddenName>")` that exactly one value is submitted and it matches.
+   - Blank (no filter) is valid for Court Office, Room and Event Type.
+2. **Console gate** (`worker.py`, `calendar_protocol.py`)
+   - The worker must not cause the errors it then fails on.
+   - Either let images and fonts load, or serve the local placeholder for **every** image or font request, not only some.
+   - Errors from the site that the worker didn't cause should still stop the run.
+3. **MDJ docket access** (`source_protocol.py` lines 34–40, `calendar_diagnostics.py`)
+   - Allow `GET /Report/MdjDocketSheet` with docket numbers matching `MJ-\d{5}-(CR|NT)-\d{7}-\d{4}` and the same `dnh` rule.
+   - Count `MdjDocketSheet` links in `RESPONSE_STRUCTURE`.
+   - Raise the results-page limits (10,000 elements, 1,000 rows, 2,000,000 characters) so a 1,004-row single-day search still counts as readable.
+4. **MDJ bail parser** (`evidence.py`)
+   - Accept the MDJ header ("Magisterial District Judge …", "Docket Number: MJ-…").
+   - Parse the `BAIL` section rows: Bail Action Type, Date, Bail Type, Percentage, Amount.
+   - Parse the `Bail Posted` table. If Posting Status is "Posted", mark the case posted.
+   - Keep the existing Common Pleas parser as it is.
+
+## Regression tests (real PDFs; download them in the run)
+
+| Docket | Expected |
+|---|---|
+| `MJ-05003-CR-0004964-2026` | Set, Monetary, $5,000, not posted |
+| `MJ-05003-CR-0005460-2026` | Unsecured, $1,000, posted |
+| `MJ-05003-CR-0004796-2026` | Unsecured, $5,000, posted |
+| `CP-02-CR-0005298-2024` | Denied, $0; Common Pleas layout still extracts |
+
+Also add a test page where `label.control` is null and the field is found by `title`. It must pass, not raise `WRONG_FORM`.
+
+## Live run: authorized
+
+I authorize this run now. No separate inspection permit or extra approval step.
+
+- **Criteria:** Calendar Event; Allegheny - 05; Court Office, Room and Event Type blank; Scheduled Events Only; Monday, October 19, 2026. If that date can no longer be searched, use the next weekday court date and tell me which date you used.
+- **Pacing:** keep it, 1–2 seconds between requests. No automatic retries.
+- **Stop when:** you have 3 dockets with **monetary bail of $1,000 or less and nothing posted**, or after 150 docket PDFs, whichever comes first.
+
+## Done means
+
+Report:
+
+1. Calendar row count.
+2. Docket PDFs retrieved.
+3. Each match: name, docket number, bail type, amount, posted status, hearing time and room, and docket link.
+4. Commit hashes pushed to `fix/calendar-result-integration`.
+
+If a step fails, give the exact control, request or PDF and the observed value. Then fix it and continue in this same task. Don't stop to request another approval.
+
+***
+
+Replit is currently suggesting its Power mode for this. The first fix changes behavior across several files, so it's probably worth switching.

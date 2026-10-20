@@ -27,6 +27,7 @@ export function errMsg(e: unknown): string {
 export const COURT_LABEL: Record<string, string> = { MDJ: 'Magisterial District Judge', COMMON_PLEAS: 'Common Pleas' };
 export const BASIS_LABEL: Record<string, string> = {
   TOTAL_BAIL: 'Total bail amount',
+  RECORDED_BAIL_AMOUNT: 'Recorded bail amount',
   CASH_DEPOSIT: 'Cash deposit amount',
   SURETY_BOND: 'Surety bond amount',
   UNSECURED_AMOUNT: 'Unsecured amount',

@@ -14,8 +14,11 @@ from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
-from public_http import download
+from calendar_document import CalendarDocument
+from optional_resources import IMAGE, FONT
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
+from calendar_response import CalendarStream, CalendarResponse, html_byte_limit
+from calendar_dom import DOM_PROJECTION, complete_result_framing, projection_rejection_reason
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, calendar_form_field_shape, wait_for_calendar_search_button, calendar_search_button_visible, validate_unfiltered_calendar_room
 from inspection_safety import (
     InspectionBrokerResponse, InspectionRequestGate, InspectionRequestRouter,
@@ -44,6 +47,18 @@ def submitted_calendar_payload_matches(request, expected_fields):
         return False
 
 
+def valid_bounded_engine_scope(criteria):
+    request_cap = criteria.get("requestCap")
+    return (
+        criteria.get("courtOffice") == "CP-05-02-Crim"
+        and criteria.get("eventType") == "Bail Hearing"
+        and criteria.get("courtRoom") == "Courtroom 506"
+        and type(request_cap) is int and 8 <= request_cap <= 12
+        and criteria.get("recordCap") == 5
+        and criteria.get("calendarPreviewOnly") is not True
+    )
+
+
 class SourceFailure(RuntimeError):
     def __init__(self, outcome, attempted=False):
         super().__init__(outcome)
@@ -52,6 +67,8 @@ class SourceFailure(RuntimeError):
 
 async def main(config=None):
     config = config if config is not None else json.loads(sys.stdin.readline())
+    # Fail configuration before starting any browser or requesting a grant.
+    calendar_html_limit = html_byte_limit()
     criteria = config["criteria"]
     inspection_only = config.get("inspectionOnly") is True
     if inspection_only:
@@ -77,12 +94,7 @@ async def main(config=None):
             or criteria.get("requestCap") != 3 or criteria.get("recordCap") != 1):
         emit("barrier", code="COURTROOM_OBSERVATION_SCOPE_INVALID")
         return
-    if bounded_engine_observation and (
-            criteria.get("courtOffice") != "CP-05-02-Crim"
-            or criteria.get("eventType") != "Bail Hearing"
-            or criteria.get("courtRoom") != "Courtroom 506"
-            or criteria.get("requestCap") != 12 or criteria.get("recordCap") != 5
-            or criteria.get("calendarPreviewOnly") is True):
+    if bounded_engine_observation and not valid_bounded_engine_scope(criteria):
         emit("barrier", code="BOUNDED_ENGINE_SCOPE_INVALID")
         return
     courtroom_observer = None
@@ -137,6 +149,7 @@ async def main(config=None):
     response_inspection_attempted = False
     response_parser_attempted = False
     response_parser_outcome = "NOT_RUN"
+    calendar_explicit_empty = False
     response_result_validation = {
         "outcome": "NOT_RUN", "observedRows": 0, "validatedRows": 0,
         "validatedDockets": 0, "documentLinks": "NOT_CHECKED",
@@ -144,6 +157,10 @@ async def main(config=None):
         "explicitEmptyResult": "NOT_CAPTURED",
     }
     calendar_has_remote_pagination = False
+    calendar_traversal = "STATIC_DOM"
+    calendar_result_limit_warning = False
+    calendar_source_framing = False
+    calendar_source_framing_reasons = []
     calendar_validated_headers = None
     criteria_validation = "NOT_VERIFIED"
     response_diagnostic_emitted = False
@@ -151,16 +168,19 @@ async def main(config=None):
     submission_payload_rejected = False
     post_response_read_only = False
     blocked_during_inspection = 0
+    calendar_handling_done = asyncio.Event()
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             executable_path=shutil.which("chromium"), headless=True,
             args=["--disable-background-networking", "--disable-component-update",
                   "--disable-sync", "--no-first-run", "--no-sandbox",
                   "--no-proxy-server",
-                  "--host-resolver-rules=MAP * ~NOTFOUND"],
+                  "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ujsportal.pacourts.us"],
         )
         context = await browser.new_context(service_workers="block", accept_downloads=False)
         context.set_default_timeout(60_000)
+        calendar_stream = None
+        browser_document = None
 
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
@@ -168,6 +188,7 @@ async def main(config=None):
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
             nonlocal calendar_post_attempt_started, calendar_post_attempt_order
             nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
+            nonlocal calendar_source_framing
 
             async def read_protocol_line():
                 reader = (asyncio.to_thread(read_inspection_protocol_line, sys.stdin)
@@ -188,7 +209,10 @@ async def main(config=None):
                     bounded_observation_limit_hit = True
                     raise SourceFailure("COURTROOM_OBSERVATION_REQUEST_LIMIT")
                 clock = asyncio.get_running_loop()
-                pause = response_pause(last_completed_clock, clock.time(), random.uniform(60, 90))
+                # The persisted parent scheduler grants each transmission only
+                # after operation-specific pacing, shared quotas and cooldowns.
+                # No second hidden 60–90s per-resource application floor.
+                pause = 0
                 if inspection_only:
                     remaining = inspection_gate.remaining_seconds()
                     if remaining <= 0:
@@ -269,11 +293,21 @@ async def main(config=None):
                     body = await response.body()
                     if response_recorder and method == "POST":
                         response_recorder.mark("RESPONSE_BODY_READ")
-                    outcome = classify_response(
+                    outcome = getattr(response, "outcome", "OK")
+                    if isinstance(response, CalendarResponse):
+                        emit("calendar_response_size", **response.metadata())
+                    if outcome == "OK":
+                        outcome = classify_response(
                         response.status, response.headers, body,
-                        pdf=urlsplit(url).path == "/Report/CpDocketSheet",
+                        pdf=urlsplit(url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet"),
                         path=urlsplit(url).path,
+                        calendar_limit=calendar_html_limit if response_recorder else 4_000_000,
                     )
+                    if (outcome == "OK" and method == "POST"
+                            and urlsplit(url).path == "/CaseSearch"):
+                        calendar_source_framing = complete_result_framing(
+                            body, response.headers.get("content-type", ""),
+                            calendar_source_framing_reasons)
                     if outcome != "OK":
                         source_stop_state = outcome
                         if response_recorder:
@@ -283,7 +317,7 @@ async def main(config=None):
                                 event_order=calendar_lifecycle.event_order(),
                                 request_start_state=calendar_lifecycle.request_start(tracked_key)[0],
                                 request_start_order=calendar_lifecycle.request_start(tracked_key)[1])
-                    emit("response", requestId=permission["requestId"], status=response.status,
+                    emit("response", requestId=permission["requestId"], status=response.status or None,
                          outcome=outcome, retryAfter=response.headers.get("retry-after"))
                     acknowledgement = json.loads(await read_protocol_line())
                     if method == "POST" and urlsplit(url).path == "/CaseSearch":
@@ -294,9 +328,8 @@ async def main(config=None):
                     last_completed_clock = clock.time()
                     if not acknowledgement.get("continue"):
                         stopped = True
-                        if inspection_only:
-                            await response.dispose()
-                            raise SourceFailure("SOURCE_STOPPED", attempted=True)
+                        await response.dispose()
+                        raise SourceFailure("SOURCE_STOPPED", attempted=True)
                     if outcome != "OK":
                         stopped = True
                         await response.dispose()
@@ -346,8 +379,21 @@ async def main(config=None):
             nonlocal criteria_validation, submission_payload_rejected
             nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
             request = route.request
+            if browser_document is not None and await browser_document.handle_route(route):
+                return
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
+            if request.resource_type in ("image", "font"):
+                # Fulfil EVERY optional image/font locally, in every phase.
+                # A valid font is required: an empty body creates OTS/console
+                # errors. No network reservation, transport or error exemption.
+                if response_recorder:
+                    response_recorder.decide(request, "CACHE")
+                await route.fulfill(status=200,
+                    content_type="image/svg+xml" if request.resource_type == "image" else "font/ttf",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                    body=IMAGE if request.resource_type == "image" else FONT)
+                return
             if (inspection_only or coverage_only or filing_inspection_only) and inspection_local and request.resource_type not in ("image", "font", "media"):
                 # Local observation ONLY. Never call retrieve/route.fetch here.
                 inspection_error = "INSPECTION_UNEXPECTED_LOCAL_REQUEST"
@@ -361,7 +407,7 @@ async def main(config=None):
                 await route.abort()
                 return
             if (not allowed(request.url, request.method)
-                    or calendar_preview_only and urlsplit(request.url).path == "/Report/CpDocketSheet"
+                    or calendar_preview_only and urlsplit(request.url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet")
                     or request.method == "POST" and not submission_armed
                     or request.resource_type not in ("document", "script", "stylesheet", "xhr", "fetch")):
                 blocked += 1
@@ -429,6 +475,9 @@ async def main(config=None):
                 response, body, _ = await retrieve(
                     request.url, request.method,
                     (lambda: None) if inspection_only else
+                    (lambda: calendar_stream.fetch(route)) if calendar_stream
+                    and request.resource_type == "document"
+                    and urlsplit(request.url).path == "/CaseSearch" else
                     (lambda: route.fetch(max_redirects=0, max_retries=0, timeout=45_000)),
                     resource_type=request.resource_type,
                     headers=await request.all_headers() if inspection_only else None,
@@ -436,7 +485,15 @@ async def main(config=None):
                 )
                 if inspection_only and urlsplit(request.url).path == "/CaseSearch":
                     inspection_gate.declare_document(request.url, body)
-                await route.fulfill(response=response)
+                if isinstance(response, CalendarResponse):
+                    await response.fulfill()
+                else:
+                    # Playwright's default response= path reads body() again.
+                    await route.fulfill(status=response.status, headers={
+                        key: value for key, value in response.headers.items()
+                        if key.lower() not in ("content-encoding", "content-length",
+                                               "transfer-encoding")},
+                        body=body)
                 if response_recorder and request.method == "POST":
                     response_recorder.mark("DOCUMENT_FULFILLED")
                 if (request.method == "POST" and urlsplit(request.url).path == "/CaseSearch"
@@ -470,6 +527,9 @@ async def main(config=None):
                 except Exception:
                     # A response may already have been fulfilled or aborted by CDP.
                     pass
+            finally:
+                if request.method == "POST" and urlsplit(request.url).path == "/CaseSearch":
+                    calendar_handling_done.set()
 
         if inspection_only:
             if not hasattr(context, "route_web_socket"):
@@ -480,12 +540,17 @@ async def main(config=None):
 
             await context.route_web_socket("**/*", block_websocket)
         page = await context.new_page()
+        browser_document = CalendarDocument(context, page)
         if inspection_only:
             inspection_cdp = await context.new_cdp_session(page)
             inspection_router = InspectionRequestRouter(inspection_cdp)
             await inspection_router.start(handle_route)
         else:
             await context.route("**/*", handle_route)
+            if response_recorder:
+                calendar_stream = CalendarStream(
+                    await context.new_cdp_session(page), calendar_html_limit)
+                await calendar_stream.start()
         page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
 
         def stop_if_observation_budget_exhausted():
@@ -614,7 +679,9 @@ async def main(config=None):
 
         async def validate_loaded_response():
             nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
-            nonlocal items, calendar_has_remote_pagination, calendar_validated_headers
+            nonlocal items, calendar_has_remote_pagination, calendar_validated_headers, calendar_traversal
+            nonlocal calendar_explicit_empty
+            nonlocal calendar_result_limit_warning
             if (not response_recorder or response_parser_attempted
                     or not calendar_post_observed or not calendar_post_completed
                     or response_inspection_status != "OBSERVED"
@@ -624,11 +691,28 @@ async def main(config=None):
             response_recorder.mark("PARSER_STARTED")
             parser = CalendarResults()
             try:
-                markup = await page.content()
-                if len(markup) > 2_000_000:
-                    raise ValueError("CALENDAR_RESPONSE_LIMIT")
-                parser.feed(markup)
+                if not calendar_source_framing:
+                    for reason in calendar_source_framing_reasons:
+                        parser.reject_structure(reason, malformed=True)
+                    parser.reject_structure("SOURCE_FRAMING_REJECTED", malformed=True)
+                    raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
+                try:
+                    projection = await page.evaluate(DOM_PROJECTION, {"limit": calendar_html_limit})
+                except Exception as error:
+                    reason = projection_rejection_reason(error)
+                    if reason:
+                        parser.reject_structure(reason)
+                    raise
+                # Only the bounded result-table serialization crosses back;
+                # no page.content() or full-page decoded Python string.
+                parser.feed(projection["html"])
+                parser.close()
+                parser.has_remote_pagination |= projection["pagination"]
+                calendar_result_limit_warning = projection["resultLimit"]
+                calendar_traversal = projection.get("traversal", "STATIC_DOM")
+                del projection
                 if len(parser.rows) != response_structure["dataRowCount"]:
+                    parser.reject_structure("SOURCE_STRUCTURE_MISMATCH")
                     raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
                 parsed_items = parser.validated(criteria)
             except Exception as error:
@@ -643,18 +727,24 @@ async def main(config=None):
                 response_recorder.mark("PARSER_REJECTED")
                 items = []
             else:
-                response_parser_outcome = "CANDIDATE_NONEMPTY" if parsed_items else "NO_EMPTY_PROOF"
+                calendar_explicit_empty = parser.explicit_empty_state
+                response_parser_outcome = (
+                    "CANDIDATE_NONEMPTY" if parsed_items
+                    else "EXPLICIT_EMPTY_RESULT" if calendar_explicit_empty
+                    else "NO_EMPTY_PROOF"
+                )
                 response_result_validation = {
-                    "outcome": "VALIDATED_NONEMPTY" if parsed_items else "EMPTY_NOT_PROVEN",
+                    "outcome": "VALIDATED_NONEMPTY" if parsed_items
+                    else "VALIDATED_EMPTY" if calendar_explicit_empty else "EMPTY_NOT_PROVEN",
                     "observedRows": response_structure["dataRowCount"],
                     "validatedRows": parser.validated_row_count,
                     "validatedDockets": len(parsed_items),
                     "documentLinks": "ALL_VALID" if parsed_items else "NO_ROWS",
                     "scope": "ALL_ROWS_MATCH" if parser.scope_validated else "NO_ROWS",
                     "dates": "ALL_WITHIN_REQUEST" if parser.dates_validated else "NO_ROWS",
-                    "explicitEmptyResult": "NOT_CAPTURED",
+                    "explicitEmptyResult": "SOURCE_STATUS_MARKER" if calendar_explicit_empty else "NOT_CAPTURED",
                 }
-                if parsed_items:
+                if parsed_items or calendar_explicit_empty:
                     response_recorder.mark("PARSER_ACCEPTED")
                 else:
                     response_recorder.mark("PARSER_REJECTED")
@@ -662,6 +752,9 @@ async def main(config=None):
                 calendar_validated_headers = parser.validated_column_headers
                 items = parsed_items
             finally:
+                emit("calendar_layout", **{
+                    key: value for key, value in parser.contract_observation().items() if key != "kind"
+                })
                 # Do not retain response markup, row cells, links, docket IDs,
                 # or URLs in the diagnostic path.
                 parser.rows.clear()
@@ -705,6 +798,8 @@ async def main(config=None):
                 return "BLOCKED_TRANSPORT"
             if console in ("UNCLASSIFIED_CONSOLE_ERRORS", "RUNTIME_EXCEPTIONS", "MIXED"):
                 return "BLOCKED_CONSOLE"
+            if response_result_validation["outcome"] == "VALIDATED_EMPTY":
+                return "VALIDATED_EMPTY"
             if response_result_validation["outcome"] != "VALIDATED_NONEMPTY":
                 return "BLOCKED_RESULT"
             return "ELIGIBLE"
@@ -759,6 +854,11 @@ async def main(config=None):
 
         try:
             items = config["pendingItems"]
+            if config["calendarComplete"] and items:
+                # A restarted browser does not have the calendar session that
+                # issued these actions. Do not silently use a different client.
+                emit("document_session_required")
+                return
             if not config["calendarComplete"]:
                 goto_timeout = 600_000
                 if inspection_only:
@@ -812,7 +912,9 @@ async def main(config=None):
                     await select_calendar_preview_controls(page, criteria)
                 else:
                     from calendar_protocol import select_bound_calendar_controls
-                    preview_values = await select_bound_calendar_controls(page, criteria)
+                    preview_values = (await select_calendar_preview_controls(page, criteria)
+                                      if config.get("ordinaryCalendar") else
+                                      await select_bound_calendar_controls(page, criteria))
                     if stop_if_observation_budget_exhausted():
                         return
                 if not inspection_only and not criteria.get("courtRoom"):
@@ -845,8 +947,9 @@ async def main(config=None):
                 # owner, action, method and submitted backing values instead.
                 await calendar_form_field_count(page)
                 from calendar_protocol import validate_bound_calendar_form
-                expected_calendar_post_fields = await validate_bound_calendar_form(
-                    page, criteria, preview_values)
+                expected_calendar_post_fields = (await validate_calendar_form(page, criteria, preview_values)
+                    if config.get("ordinaryCalendar") else
+                    await validate_bound_calendar_form(page, criteria, preview_values))
                 if stop_if_observation_budget_exhausted():
                     return
                 if bounded_engine_observation:
@@ -867,6 +970,10 @@ async def main(config=None):
                 submission_armed = True
                 response_recorder.mark("SEARCH_ARMED")
                 await submit_calendar_search(page)
+                if calendar_post_observed:
+                    # Native Chromium completion can precede the parent's
+                    # accounting acknowledgement. Never inspect in that gap.
+                    await asyncio.wait_for(calendar_handling_done.wait(), timeout=50)
                 await inspect_loaded_response()
                 await validate_loaded_response()
                 if not calendar_post_observed:
@@ -876,7 +983,7 @@ async def main(config=None):
                 response_diagnostic()
                 eligibility = response_eligibility(
                     response_transport_status(), response_console_status())
-                if eligibility != "ELIGIBLE":
+                if eligibility not in ("ELIGIBLE", "VALIDATED_EMPTY"):
                     emit("calendar_state", state="RESULTS_NOT_VALIDATED",
                          formVisible=await calendar_search_button_visible(page))
                     items = []
@@ -890,12 +997,12 @@ async def main(config=None):
                         "BLOCKED_CONSOLE": "CALENDAR_CONSOLE_ERROR",
                         "BLOCKED_RESULT": (
                             response_parser_outcome if response_parser_outcome not in
-                            ("CANDIDATE_NONEMPTY", "NO_EMPTY_PROOF", "NOT_RUN")
+                            ("CANDIDATE_NONEMPTY", "EXPLICIT_EMPTY_RESULT", "NO_EMPTY_PROOF", "NOT_RUN")
                             else "RESULTS_NOT_VALIDATED"),
                     }[eligibility])
                 state = calendar_result_state(
                     response_structure["resultTableCount"] == 1,
-                    items or [], explicit_empty_state=False)
+                    items or [], explicit_empty_state=calendar_explicit_empty)
                 emit("calendar_state", state=state,
                      formVisible=await page.locator("#btnSearch").is_visible())
                 if state not in ("RESULTS_VALIDATED", "EMPTY_RESULTS_VALIDATED"):
@@ -903,8 +1010,10 @@ async def main(config=None):
                 response_diagnostic()
                 # No automatic remote page traversal: disclose incomplete coverage.
                 emit("calendar", rows=items, retrievedAt=calendar_time,
-                     paginationComplete=not calendar_has_remote_pagination and len(items) < 500,
-                     resultCapReached=len(items) >= 500, blockedAssets=blocked,
+                     traversal=calendar_traversal,
+                     paginationComplete=not calendar_has_remote_pagination
+                     and not calendar_result_limit_warning and len(items) < 500,
+                     resultCapReached=calendar_result_limit_warning or len(items) >= 500, blockedAssets=blocked,
                      **({"columnHeaders": calendar_validated_headers}
                         if calendar_preview_only else {}))
                 if calendar_preview_only:
@@ -917,7 +1026,7 @@ async def main(config=None):
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
-                        lambda: download(item["sourceUrl"]),
+                        lambda: browser_document.open(item["sourceUrl"]),
                     )
                     try:
                         result = extract_bail(body, item["docketNumber"])
@@ -942,6 +1051,8 @@ async def main(config=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
+            if calendar_post_observed:
+                await asyncio.wait_for(calendar_handling_done.wait(), timeout=50)
             if (bounded_engine_observation and isinstance(error, SourceFailure)
                     and error.outcome == "COURTROOM_OBSERVATION_REQUEST_LIMIT"):
                 emit("bounded_engine_stopped", code="COURTROOM_OBSERVATION_REQUEST_LIMIT")
@@ -1009,6 +1120,7 @@ async def main(config=None):
                 "SUBMISSION_NOT_OBSERVED", "UNEXPECTED_RESPONSE",
                 "CALENDAR_DOCUMENT_LINK_MISSING", "UNSUPPORTED_CALENDAR_LAYOUT",
                 "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT", "UNSUPPORTED_EVENT_DATE_LAYOUT",
+                "UNSUPPORTED_LAYOUT",
                 "CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW",
             } else "UNEXPECTED_RESPONSE")
         finally:

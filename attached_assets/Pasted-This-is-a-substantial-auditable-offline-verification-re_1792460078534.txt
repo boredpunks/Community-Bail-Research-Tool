@@ -1,0 +1,121 @@
+This is a substantial, auditable offline-verification report. Accept it as evidence for the reported Batch 1 checks—not as proof of end-to-end completion.
+
+However, its closing status conflicts with the native-session assessment report you already supplied. **Reconciliation** is the next step, not another calendar request.
+
+## What this report establishes
+
+The report provides useful implementation evidence:
+
+- Narrow candidate-selection repairs.
+- Versioned structural diagnostics with explicit count definitions.
+- A complete passing safety command: 953 TypeScript checks and 191 Python tests, with five disclosed skips.
+- Passing build and packaged-import checks.
+- Clear separation between tested code, documentation, historical failures, and unavailable checks.
+
+The skips are explicitly accounted for. They do not invalidate the passing checks, but they must remain visible as coverage limitations.
+
+## Two material contradictions
+
+### 1. It misstates the known document-denial history
+
+The closing paragraph says:
+
+> “The prior 401 was from the separate no-cookie constructed MDJ request, not proof about the native-session method.”
+
+That was accurate before the later assessment. It is no longer a complete account.
+
+You subsequently supplied a report stating:
+
+```text
+Assessment:
+57f415a3-bb68-4fc1-84b6-ad24a531435e
+
+Job:
+b0768e5d-a4d7-42df-861f-35754db30bc5
+
+Method:
+playwright-calendar+native-session-pdf-v15
+
+Outcome:
+Calendar accepted; document GET returned HTTP 401.
+```
+
+There are therefore two reported denial events—not one event that can still be characterized solely as urllib-related.
+
+### 2. It proposes repeating a milestone reported as completed
+
+This report proposes a new calendar-only observation to obtain acceptance evidence.
+
+The later assessment report already states that 38 matching calendar rows passed validation with no parser rejection reasons. Before spending another request, Replit must determine whether that successful run used this repaired parser and diagnostic version.
+
+A different base commit and an uncommitted patch make that comparison necessary. They do not automatically mean either report is wrong.
+
+## Send Replit this
+
+> Accept the offline Batch 1 results as reported. Do not repeat those checks or run a new calendar observation solely because this document’s final section says live acceptance is outstanding.
+>
+> First reconcile this report against the subsequent native-session assessment.
+>
+> ### 1. Establish execution chronology and code identity
+>
+> Compare:
+>
+> - This report’s base commit `9745b3c2c61a139971dea6106c61dbece6a84b2b`.
+> - Its application patch identifier `a2c1174b15b09be66a1491b0d4cc9050d00d0f90249e63aa45562c8c99f3762c`.
+> - The reported native-session assessment’s base revision `2adb21f2cf51b4bf526db4893ad705e1e92022d3` and scope-construction edit.
+> - The current working tree.
+>
+> Determine which relevant parser, diagnostic, worker, and document implementations actually executed in assessment `57f415a3-bb68-4fc1-84b6-ad24a531435e`.
+>
+> Use retained timestamps, available revision metadata, and file differences. If historical uncommitted code cannot be reconstructed exactly, state that limit.
+>
+> ### 2. Inspect the existing successful-calendar/failed-document job
+>
+> Read retained events for:
+>
+> ```text
+> b0768e5d-a4d7-42df-861f-35754db30bc5
+> ```
+>
+> Establish:
+>
+> - Whether calendar acceptance is persisted.
+> - Validated row and distinct-docket counts.
+> - Diagnostic version and structural reasons.
+> - Candidate-selection evidence.
+> - Method identifier.
+> - Document request and HTTP outcome.
+>
+> Do not run another search to obtain evidence already retained.
+>
+> ### 3. Correct the denial history
+>
+> Record the urllib 401 and native-session 401 separately if the ledger confirms both.
+>
+> Do not continue saying that no native-session live attempt occurred if the recorded assessment establishes otherwise.
+>
+> Do not reinterpret the native-session 401 as a viewer failure.
+>
+> ### 4. Update the completion checklist
+>
+> Mark separately:
+>
+> - Offline parser/diagnostics verified.
+> - Live calendar acceptance verified for the actual executing revision, or revision attribution unresolved.
+> - Native-session document attempted and denied.
+> - PDF retrieval/extraction not established.
+> - Published signed-in acceptance not established.
+>
+> Only propose another calendar observation if you identify a specific unanswered question that the existing successful run cannot answer.
+>
+> ### 5. Continue document diagnosis
+>
+> If the native-session denial is confirmed, return to the requested action-preservation, context/session, navigation, interception, and cancellation investigation.
+>
+> The next report must contain new findings—not another request to repeat the calendar milestone.
+
+## Decision
+
+Accept the offline implementation evidence. Reject the closing “next gates” section as the current operational plan until its chronology is reconciled.
+
+The immediate problem is not a lack of tests or another missing approval narrative. It is that two reports describe different live states. Resolve that discrepancy, preserve the successful calendar work, and investigate the confirmed document failure without paying for the same milestone twice.

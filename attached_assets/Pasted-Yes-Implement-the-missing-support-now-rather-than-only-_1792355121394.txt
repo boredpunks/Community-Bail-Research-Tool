@@ -1,0 +1,49 @@
+Yes. Implement the missing support now, rather than only recording the requirement.
+
+One correction: this is Calendar Event search with no court-office filter—not an MDJ-only search. The screenshots show MDJ results, but the app must identify returned court types rather than assume them.
+
+Implementation scope
+
+Allow blank/no-filter Court Office, Room, and Calendar Event Type.
+
+Preserve Allegheny–05, Scheduled Events Only, and the one-day default.
+
+Support the Case Information results reached through Calendar Event search.
+
+Add MDJ docket recognition, source-linked document retrieval, identity verification, bail extraction, posting-evidence classification, and pending-observation storage.
+
+Preserve existing Common Pleas support and clearly report unsupported result types.
+
+Keep calendar results available even when document retrieval fails.
+
+Use the existing workflow with court-type-specific adapters where practical. A separate validation gate is acceptable; a disconnected demonstration that never feeds the application’s results and storage is not.
+
+Resolve the evidence gap
+
+First inspect existing source captures, submitted-field evidence, and fixtures. Do not invent blank-filter bindings or derive document URLs by guessing.
+
+If those materials are insufficient, identify the exact missing evidence and prepare the smallest bounded source-observation step that would obtain it. Present any required approval through the existing mechanism.
+
+Keep production execution disabled until the necessary bindings and retrieval checks pass, but do not create a circular requirement in which source validation is required while every means of obtaining that evidence remains disabled.
+
+The screenshots establish the intended workflow. They do not prove client compatibility. Verifying that compatibility is part of this implementation task.
+
+Bail rules
+
+Verify the supplied docket examples when their documents are available:
+
+Explicitly posted bail should be excluded when the shown-posted exclusion is selected.
+
+A percentage payment condition alone does not prove posting.
+
+No posting shown means “posting not shown in this document,” not “unpaid” or “currently incarcerated.”
+
+Apply the maximum-bail threshold to total bail, with deposit amounts stored separately.
+
+Deliverable
+
+Complete the independent code, tests, build, and authenticated UI integration now. Do not stop at project guidance or another request for permission to begin.
+
+Respect the scope of the prior approval: it was for calendar-only validation, not blanket authorization for PDF retrieval. Prepare any additional document-retrieval approval explicitly.
+
+Finish with the implemented changes, test results, branch and commit, and either a verified workflow or one precise remaining blocker. Distinguish offline verification from successful live execution.

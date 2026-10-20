@@ -6,7 +6,7 @@ import type { DiscoveryProvenanceData } from "./discovery";
 
 export const courtLevelEnum = pgEnum("bail_court_level", ["MDJ", "COMMON_PLEAS"]);
 export const bailCategoryEnum = pgEnum("bail_category", ["MONETARY", "NOMINAL", "UNSECURED", "NONMONETARY", "RECOGNIZANCE", "DENIED", "UNKNOWN"]);
-export const financialBasisEnum = pgEnum("bail_financial_basis", ["TOTAL_BAIL", "CASH_DEPOSIT", "SURETY_BOND", "UNSECURED_AMOUNT"]);
+export const financialBasisEnum = pgEnum("bail_financial_basis", ["TOTAL_BAIL", "CASH_DEPOSIT", "SURETY_BOND", "UNSECURED_AMOUNT", "RECORDED_BAIL_AMOUNT"]);
 export const reviewStatusEnum = pgEnum("bail_review_status", ["PENDING", "CONFIRMED", "REJECTED"]);
 export const orderInterpretationEnum = pgEnum("bail_order_interpretation", ["UNREVIEWED", "REVIEWED_OPERATIVE", "SUPERSEDED", "UNRESOLVED"]);
 

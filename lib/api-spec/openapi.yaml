@@ -15,6 +15,83 @@ tags:
   - name: workspace-access
     description: Shared password access to the research workspace
 paths:
+  /discovery/searches:
+    post:
+      operationId: startResearchCalendarSearch
+      tags: [bail-records]
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  /discovery/operations:
+    get:
+      operationId: getResearchOperations
+      tags: [bail-records]
+      summary: Calendar and document operation status and local pacing policy
+      responses:
+        "200":
+          description: Separately scoped operation status; never a global access proof
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  calendarEnabled: { type: boolean }
+                  calendarBlockedReason: { type: ["string", "null"] }
+                  documentEnabled: { type: boolean }
+                  documentBlockedReason: { type: string }
+                  pacing:
+                    type: object
+                    additionalProperties: { type: integer }
+                  notice: { type: string }
+                required: [calendarEnabled, calendarBlockedReason, documentEnabled, documentBlockedReason, pacing, notice]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /discovery/local-documents:
+    post:
+      operationId: uploadResearchDocument
+      tags: [bail-records]
+      summary: Verify a local PDF in memory; retain evidence metadata, not file bytes
+      parameters:
+        - in: query
+          name: docketNumber
+          schema: { type: string }
+        - in: query
+          name: jobId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: itemId
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Local identity-checked PDF evidence retained, without a court request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string, format: uuid }
+                  itemId: { type: string, format: uuid }
+                  extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
+                  detail: { type: ["string", "null"] }
+                required: [jobId, itemId, extractionOutcome, detail]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/BadRequest" }
   /workspace-access/session:
     get:
       operationId: getWorkspaceSession
@@ -83,44 +160,48 @@ paths:
     post:
       operationId: createDiscoveryJob
       tags: [bail-records]
+      summary: Start a bounded calendar-to-document monetary research job
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DiscoveryCriteria" }
+            schema: { $ref: "#/components/schemas/DiscoveryJobInput" }
       responses:
         "201":
-          description: Bounded live collection explicitly queued
+          description: Research job queued with fixed criteria and budgets
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DiscoveryJob" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "409":
+          description: Search is disabled; no source request was sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/calendar-previews:
     post:
       operationId: createCalendarPreview
       tags: [bail-records]
-      summary: Run one calendar-only preview without retrieving docket documents
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CalendarPreviewInput" }
       responses:
-        "201":
-          description: One explicitly initiated, paced Calendar Event preview was queued
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DiscoveryJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/assessments:
     get:
       operationId: listDiscoveryAssessments
       tags: [bail-records]
-      summary: Read operator-prepared pilot scopes and evidence status; never approve or run them
+      summary: Read only scopes explicitly delegated to this research workspace
       responses:
         "200":
           description: Pilot protocols, explicitly distinct from authorization to collect
@@ -128,6 +209,24 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscoveryAssessment" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /discovery/assessments/{assessmentId}/start:
+    post:
+      operationId: startDiscoveryAssessment
+      tags: [bail-records]
+      deprecated: true
+      summary: Disabled while the search implementation is rebuilt
+      parameters:
+        - in: path
+          name: assessmentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Search is disabled; no source request was sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
   /discovery/jobs/{jobId}:
     get:
       operationId: getDiscoveryJob
@@ -370,31 +469,43 @@ components:
     DiscoveryCriteria:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage." }
+        resultVersion: { type: integer, enum: [2], description: "Recorded monetary setting semantics; absent on legacy jobs." }
+        courtOffice: { type: string, maxLength: 80, description: "Exact source-displayed office choice, or ANY for no filter." }
         courtRoom: { type: string, maxLength: 80 }
-        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment, ANY] }
+        eventType: { type: string, maxLength: 80 }
         calendarPreviewOnly: { type: boolean }
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
         recordCap: { type: integer, minimum: 1, maximum: 200 }
-        requestCap: { type: integer, minimum: 8, maximum: 500 }
+        requestCap: { type: integer, minimum: 1, maximum: 500, description: "Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8." }
         matchTarget: { type: integer, minimum: 1, maximum: 200, description: "Requested distinct matching dockets. Absent only for legacy processing-cap jobs." }
         matchFilters: { $ref: "#/components/schemas/DiscoveryMatchFilters" }
       required: [courtOffice, eventType, startDate, endDate, recordCap, requestCap]
+    DiscoveryJobInput:
+      allOf:
+        - $ref: "#/components/schemas/DiscoveryCriteria"
+        - type: object
+          properties:
+            requestCap: { type: integer, minimum: 8, maximum: 500 }
+          required: [requestCap]
     CalendarPreviewInput:
       type: object
       properties:
-        courtOffice: { type: string, enum: [CP-05-02-Crim, CP-05-02-Fam, CP-05-02-Juv], description: "Observed October 12, 2026; runtime availability must be checked." }
-        eventType: { type: string, enum: [Bail Hearing, Preliminary Arraignment] }
+        courtOffice: { type: string, maxLength: 80, description: "Exact source-displayed office, or ANY." }
+        courtRoom: { type: string, maxLength: 80, description: "Exact source-displayed room, or ANY." }
+        eventType: { type: string, maxLength: 80, description: "Exact source-displayed event type, or ANY." }
         startDate: { type: string, format: date, description: "Real date, today or later in America/New_York." }
         endDate: { type: string, format: date, description: "Inclusive window of at most seven days." }
+        scheduledOnly: { type: boolean, const: true, default: true }
       required: [courtOffice, eventType, startDate, endDate]
     DiscoveryMatchFilters:
       type: object
       properties:
-        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 1, maximum: 2147483647, description: "Local monetary TOTAL_BAIL maximum; null disables this filter." }
+        monetaryUpperBoundCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647, description: "Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound." }
+        monetaryLowerBoundCents: { type: ["integer", "null"], minimum: 0, maximum: 2147483647 }
         excludeShownPosted: { type: boolean }
         inclusiveMaximum: { type: boolean, description: "Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved." }
+        requirePostedNotShown: { type: boolean, description: "Historical operator criterion retained for legacy reports; not enabled by the simple search flow." }
       required: [monetaryUpperBoundCents, excludeShownPosted]
     DiscoveryPolicy:
       type: object
@@ -432,6 +543,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        jobId: { type: ["string", "null"], format: uuid }
         stage: { type: string, enum: [SINGLE, SMALL, MODEST, BOUNDED_ENGINE] }
         state: { type: string, enum: [PREPARED, APPROVED, ATTEMPTED, FAILED, VERIFIED, BOUNDED_COMPLETED] }
         criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
@@ -480,6 +592,13 @@ components:
     DiscoveryJob:
       type: object
       properties:
+        documentsAttempted: { type: ["integer", "null"] }
+        documentsRetrieved: { type: ["integer", "null"] }
+        documentsParsed: { type: ["integer", "null"] }
+        displayedRows: { type: ["integer", "null"] }
+        excluded: { type: ["integer", "null"] }
+        ambiguities: { type: ["integer", "null"] }
+        eventConflicts: { type: ["integer", "null"] }
         id: { type: string, format: uuid }
         criteria: { $ref: "#/components/schemas/DiscoveryCriteria" }
         status: { type: string, enum: [QUEUED, RUNNING, PAUSED, CANCELLED, COMPLETED, FAILED] }
@@ -508,7 +627,16 @@ components:
       enum: [SHOWN_POSTED, NOT_SHOWN, UNKNOWN]
     ExtractionOutcome:
       type: string
-      enum: [UNPROCESSED, EXTRACTED, MISSING_BAIL_SECTION, UNREADABLE, UNSUPPORTED_LAYOUT, IDENTITY_MISMATCH, RETRIEVAL_FAILED]
+      enum: [UNPROCESSED, EXTRACTED, MISSING_BAIL_SECTION, UNREADABLE, UNSUPPORTED_LAYOUT, AMBIGUOUS_FINANCIAL_ASSOCIATION, IDENTITY_MISMATCH, RETRIEVAL_FAILED]
+    MatchingEvent:
+      type: object
+      properties:
+        eventDate: { type: string, format: date }
+        eventType: { type: string, minLength: 1, maxLength: 160 }
+        eventTime: { type: ["string", "null"], maxLength: 40 }
+        sourceId: { type: ["string", "null"], maxLength: 160 }
+        sourcePage: { type: integer, minimum: 1, maximum: 100 }
+      required: [eventDate, eventType]
     DiscoveryEntry:
       type: object
       properties:
@@ -518,6 +646,15 @@ components:
         bailCategory: { $ref: "#/components/schemas/BailCategory" }
         amountCents: { type: ["integer", "null"] }
         financialBasis: { oneOf: [{ $ref: "#/components/schemas/FinancialBasis" }, { type: "null" }] }
+        originatingCourt: { type: ["string", "null"] }
+        percentageCondition: { type: ["string", "null"] }
+        sourceEntryId: { type: string, pattern: "^[a-f0-9]{64}$" }
+        excerpt: { type: string, maxLength: 4000 }
+        sourcePages:
+          type: array
+          description: One-based PDF pages supporting this entry; absent for legacy evidence.
+          items: { type: integer, minimum: 1, maximum: 100 }
+          uniqueItems: true
       required: [action, wording, orderDate, bailCategory, amountCents, financialBasis]
     DiscoveryProvenance:
       type: object
@@ -529,9 +666,20 @@ components:
         eventDate: { type: ["string", "null"] }
         filingDate: { type: ["string", "null"], format: date }
         courtOffice: { type: string }
+        courtType: { type: string, enum: [MDJ, COMMON_PLEAS, UNSUPPORTED] }
         extractionOutcome: { $ref: "#/components/schemas/ExtractionOutcome" }
         postedEntryState: { $ref: "#/components/schemas/PostedEntryState" }
         entries: { type: array, items: { $ref: "#/components/schemas/DiscoveryEntry" } }
+        matchingEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
+        pdfEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
+        documentSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        documentAcquisition: { type: string, enum: [AUTOMATED, MANUAL_UPLOAD] }
+        documentPageCount: { type: integer, minimum: 1, maximum: 100 }
+        bailSectionPages:
+          type: array
+          description: One-based pages containing the inspected bail section.
+          items: { type: integer, minimum: 1, maximum: 100 }
+          uniqueItems: true
       required: [calendarUrl, calendarRetrievedAt, eventType, eventDate, filingDate, courtOffice, extractionOutcome, postedEntryState, entries]
     DiscoveryItem:
       type: object
@@ -568,6 +716,19 @@ components:
         job: { $ref: "#/components/schemas/DiscoveryJob" }
         items: { type: array, items: { $ref: "#/components/schemas/DiscoveryItem" } }
         events: { type: array, items: { $ref: "#/components/schemas/DiscoveryEvent" } }
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              method: { type: string }
+              path: { type: string }
+              statusCode: { type: ["integer", "null"] }
+              outcome: { type: string }
+              startedAt: { type: string, format: date-time }
+              completedAt: { type: ["string", "null"], format: date-time }
+              durationMs: { type: ["integer", "null"] }
+            required: [method, path, statusCode, outcome, startedAt, completedAt, durationMs]
       required: [job, items, events]
     HealthStatus:
       type: object
@@ -584,7 +745,7 @@ components:
       enum: [MONETARY, NOMINAL, UNSECURED, NONMONETARY, RECOGNIZANCE, DENIED, UNKNOWN]
     FinancialBasis:
       type: string
-      enum: [TOTAL_BAIL, CASH_DEPOSIT, SURETY_BOND, UNSECURED_AMOUNT]
+      enum: [TOTAL_BAIL, RECORDED_BAIL_AMOUNT, CASH_DEPOSIT, SURETY_BOND, UNSECURED_AMOUNT]
     ReviewStatus:
       type: string
       enum: [PENDING, CONFIRMED, REJECTED]

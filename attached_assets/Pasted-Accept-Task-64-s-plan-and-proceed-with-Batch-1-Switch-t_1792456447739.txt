@@ -1,0 +1,85 @@
+Accept Task #64’s plan and proceed with Batch 1. Switch to Build mode.
+
+Do not perform another broad inspection or revise the task plan again. Implement the narrowly established repairs and attributable parser diagnostics.
+
+Batch 1 scope
+
+Repair exact_docket_link() and candidate selection:
+
+Require supported docket-sheet routes.
+
+Require docket-family/report-family compatibility.
+
+Keep court-summary and search actions outside eligible document candidates.
+
+Resolve permitted relative URLs against the source origin.
+
+Deduplicate identical resulting action URLs.
+
+Preserve opaque query parameters.
+
+Keep genuinely distinct eligible actions ambiguous.
+
+Make structural rejection attributable:
+
+Instrument every current malformed-state branch with bounded closed-enum reasons.
+
+Accumulate applicable reasons.
+
+Distinguish raw anchor occurrences, unique representations, and unique eligible actions.
+
+Update both sides of the diagnostic contract and relevant tests.
+
+Preserve historical-report compatibility.
+
+Do not retain raw URLs or opaque values in diagnostics.
+
+Add focused regressions:
+
+Identical relative anchors collapse to one action.
+
+Relative/absolute aliases collapse to one action.
+
+Docket sheet plus summary selects the unique eligible sheet.
+
+Wrong report families remain ineligible.
+
+Different opaque action parameters remain ambiguous.
+
+Identity mismatches remain rejected.
+
+Each structural rejection reason is attributable.
+
+Existing date, malformed-table, incomplete-structure, and empty-state protections remain intact.
+
+Use the genuine supplied docket identifiers where needed. Do not create or save fabricated case records.
+
+Verification
+
+Run the affected parser, diagnostic-contract, and TypeScript checks. Record exact commands, revision tested, exit status, and relevant output.
+
+If a focused check fails, diagnose and repair within Batch 1. Do not weaken assertions to obtain a pass.
+
+Do not run new court searches or document retrieval during this batch.
+
+Required report
+
+Return:
+
+Files changed and a concise explanation of each change.
+
+Before/after regression results.
+
+The implemented diagnostic reason enum and candidate-count definitions.
+
+Actual test commands and outcomes.
+
+Whether existing retained evidence establishes the live malformed branch.
+
+If not, the exact smallest next observation required.
+
+Any remaining Batch 1 failure.
+
+Do not claim the retained 38-row failure fixed solely because the independently reproduced candidate defects are repaired.
+
+After Batch 1 passes, continue independent offline checks already covered by the task. Request only the specific live assessment or external action actually required for the next gated step.

@@ -1,0 +1,213 @@
+Paste this into Replit in implementation mode:
+
+***
+
+# Finish the functional calendar-to-docket-to-bail engine
+
+## Deliverable
+
+Make the existing Community Bail Research application work end to end for an authenticated user:
+
+Calendar search → validated calendar results → docket-document retrieval → identity verification → bail extraction → evidence display → pending-review storage.
+
+**Done** means this workflow has been demonstrated in the application, the integrated changes are committed and pushed to GitHub, and another checkout can reproduce the supported workflow using documented setup.
+
+A parser patch, green test suite, running landing page, safely stopped attempt, or operator-only CLI success does not alone satisfy this deliverable.
+
+## 1. Integrate the GitHub patch safely
+
+Repository: `boredpunks/Community-Bail-Research-Tool`
+
+Prepared branch: `fix/calendar-result-integration`
+
+Published patch commit: `825715d6ea1e4e1cf6f687a3b1817ad1ee5451ca`
+
+This commit changes:
+
+- `artifacts/api-server/src/ujs/evidence.py`
+- `artifacts/api-server/tests/test_calendar_parser_structure.py`
+
+Inspect the current branch, HEAD, and working tree first. Fetch and review the commit. Integrate it into the actual working branch without discarding local or newer changes. If already present, do not apply it twice.
+
+The patch improves table-structure handling and adds `layout_summary()`. It does not identify the latest live failure, establish a source empty-state marker, resolve document-link compatibility, or prove end-to-end operation.
+
+Its 15 tests were executed in a parser-only environment with the unrelated PDF import excluded. Run them normally with the project dependencies, alongside the relevant existing suites. Check for compatibility regressions before retaining the changes.
+
+Do not treat the patch as authoritative if a supported source layout contradicts one of its assumptions. Repair it using evidence.
+
+## 2. Restore service and diagnose the actual latest failure
+
+Restore the API and web workflows using the existing configuration. Do not resume a failed job or reuse a consumed permit during startup.
+
+Read the persisted report for the latest approved run, including permit:
+
+`0812596c-20db-42d6-b5eb-8d2aab8ba652`
+
+The last report said it failed after four requests with zero valid documents. Establish the actual failing stage and reason from the ledger and diagnostics—not from earlier runs.
+
+Determine:
+
+- Whether Search was transmitted.
+- Whether its response completed.
+- Whether the parser ran.
+- What structural and result-validation findings were retained.
+- Which gate prevented document retrieval.
+- Whether cancellation, process termination, or mode changes affected execution.
+
+Do not attribute the failure to an “offline brief” or to court denial without supporting evidence.
+
+Proceed directly from diagnosis to the necessary repair.
+
+## 3. Resolve the Search-response contract
+
+Finish the boundary between received Search response and usable calendar results.
+
+The current parser assumes a specific table, fixed column positions, and relative docket-document links. Verify those assumptions against permitted source-backed evidence.
+
+Distinguish:
+
+- Returned search form.
+- Header-only table.
+- Presentation or status row.
+- Explicit source empty-state.
+- Supported calendar data row.
+- Unsupported or ambiguous layout.
+
+Do not treat a presentation row as a case or infer zero matches from missing links.
+
+Resolve document-link recognition using the forms actually demonstrated by the source. Preserve strict source-host, route, docket-identity, and query validation. Do not guess URLs or accept arbitrary links.
+
+Keep console/runtime diagnostics separate from passive response inspection. Unclassified console observations must not erase the structural evidence, but they must not be silently exempted or treated as proof of valid results.
+
+If retained evidence cannot answer a necessary layout question, define the minimum sanitized evidence needed and obtain it through an approved run. Do not repeat another attempt designed to retain only the same inconclusive counts.
+
+## 4. Finish downstream integration now
+
+Complete all independent offline work while resolving calendar interpretation:
+
+- Calendar-result serialization and display.
+- Result-to-document handoff.
+- Document retrieval through existing supported routes.
+- Docket identity validation.
+- Bail extraction.
+- Source evidence and page/section references.
+- Pending-observation construction and storage.
+- Duplicate prevention.
+- Authenticated result and review display.
+
+Use permitted real documents already available where possible. Do not invent docket records, parties, bail amounts, or source-proof fixtures.
+
+Preserve multiple bail entries and distinguish total bail, deposit requirements, posted amounts, fees, and nonmonetary conditions. Unknown is not zero. Do not infer current custody or automatically identify an operative order.
+
+If page references are not currently preserved, carry them through the necessary schema/API/UI changes rather than merely claiming provenance is complete.
+
+## 5. Make the supported engine available in the authenticated app
+
+An operator assessment that works only through the CLI is not the intended final interface.
+
+Inspect the ordinary application routes and reconcile any mismatch between:
+
+- Courtroom selection in the UI.
+- API validation.
+- Worker criteria.
+- Operator assessment permissions.
+- Normal collection permissions.
+- Job ownership and result visibility.
+
+Provide an appropriately authorized user-facing route for the supported workflow. Do not simply remove restrictions, clear the global source barrier, or expose operator controls to every authenticated account.
+
+The authenticated user must be able to initiate supported work, observe progress, inspect results, and save eligible observations without asking an agent to run commands for each ordinary job.
+
+Verify owner/role access where relevant. A public landing-page screenshot is not authenticated acceptance testing.
+
+## 6. Authority and live execution
+
+Routine local implementation, integration, controlled tests, builds, and service restoration are authorized. Do not ask again for each ordinary offline action.
+
+I also authorize progress toward live retrieval—not an offline-only deliverable. Apply live authority through the existing mandatory controls:
+
+- Never reuse or reset a consumed permit.
+- A failed attempt does not authorize an automatic repeat.
+- If fresh exact approval is required, finish all independent preparation, then present the actual approval interaction immediately.
+- Do not ask whether you should prepare an approval proposal.
+
+For the next proposed bounded run, use:
+
+- Allegheny - 05.
+- `CP-05-02-Crim`.
+- Bail Hearing.
+- Courtroom 506.
+- October 18–23, 2026, America/New_York, while that window remains valid.
+- Twelve total source requests shared across observation, Search, assets, results, and documents.
+- Up to five distinct docket documents, subject to the remaining request budget.
+- Existing pacing, one-request concurrency, cooldowns, and no automatic retries.
+
+Do not silently substitute dates if the window becomes stale. Do not widen courtroom, event type, document count, or budget.
+
+Use in-session observation and continuation where supported and verified, avoiding unnecessary repeated bootstrap retrieval. If stages require separate permits, enforce one aggregate budget.
+
+Preserve access barriers and stop on denial, challenge, rate limit, uncertain transmission, identity conflict, invalid results, or budget exhaustion. Do not circumvent access restrictions.
+
+## 7. Verify the complete workflow
+
+Run integrated tests against the resulting revision, including the GitHub patch tests and relevant existing suites, type checks, and builds.
+
+Demonstrate:
+
+1. Correct public criteria and intercepted submission.
+2. Honest calendar-result classification.
+3. Valid docket/document handoff.
+4. Identity-matched document processing.
+5. Source-supported bail extraction or an explicit missing/unsupported outcome.
+6. Evidence and page/section display.
+7. Pending save, duplicate prevention, and owner-scoped retrieval.
+8. Safe interruption and accurate request accounting.
+
+Verify the authenticated application using an available authorized session. Do not bypass authentication or fabricate screenshots. If a login action from me is necessary, request that specific action once.
+
+Fixtures establish implementation behavior, not live source success. Report them separately.
+
+## 8. Commit, push, and provide a reproducible handoff
+
+The task is not complete while necessary changes exist only locally.
+
+Commit the integrated changes and push them to the agreed GitHub branch using the repository’s normal workflow. Do not overwrite unrelated remote work or merge into `main` without the required authority.
+
+Provide:
+
+- Repository, branch, and final commit.
+- Exact pull/update instructions.
+- Necessary environment, dependency, migration, and build steps.
+- Test commands and actual results.
+- Supported criteria and known limitations.
+- Where the authenticated user starts the engine and inspects results.
+
+Never include credentials or secrets.
+
+## 9. Execution discipline
+
+Do not return another broad plan or create more tasks merely restating known blockers.
+
+Work through diagnosis, repair, integration, and verification until:
+
+- The supported engine is demonstrated and pushed; or
+- A concrete external dependency or consequential decision prevents continuation.
+
+If blocked, report the exact operation, evidence, work already completed, recommended resolution, and the single action needed from me. Continue other independent authorized work first.
+
+Do not claim completion if the calendar returned zero matches and document retrieval/extraction therefore remained untested. Report which milestones are established and which remain open.
+
+## Start now
+
+Integrate and verify the GitHub patch, restore the services, diagnose the latest four-request failure, and finish the actual application path through docket and bail extraction.
+
+Your next substantive handoff must be:
+
+- A verified, pushed implementation with acceptance evidence;
+- The mandatory exact live approval;
+- A necessary authenticated-login action; or
+- A demonstrated blocker requiring a specific decision.
+
+Not another promise to begin.
+
+---

@@ -1,0 +1,198 @@
+Do not prepare another assessment yet. Investigate the failed document request and return a concrete diagnosis.
+
+Trace the captured docket-sheet action through selection, worker handoff, and CalendarDocument.open(). Verify that the URL and opaque parameters remain unchanged.
+
+Check the original browser context, session lifetime, navigation sequence, referrer behavior, and request interception for any demonstrated mismatch.
+
+Review the existing Chromium tests and add focused regressions for uncovered behavior.
+
+Investigate why the CLI reported “Cancelled” while the assessment continued. Establish whether cancellation affected only the caller’s wait or failed to stop the process.
+
+If retained evidence cannot identify the cause, propose the smallest comparison between an ordinary manual document-opening action and the automated action. State exactly what that comparison would distinguish.
+
+Return findings, changed files if any, actual test results, and the specific next experiment. Do not repeat the assessment summary or ask whether to prepare an unchanged attempt.
+
+The next deliverable is diagnosis, not another permit.
+
+be encouraging but ridiculously strict on this. i dont want to be taken for a ride
+
+Send this to Replit:
+
+Calendar search is now reported working for the tested scope. Preserve that progress. The remaining task is to diagnose and fix document retrieval—not to restart the project or repeat the assessment report.
+
+From here forward, use an evidence-first completion standard. Be resourceful and continue independent work, but distinguish what you observed, what you inferred, and what remains unknown.
+
+1. No repeated summaries as progress
+The last report repeated the same assessment outcome without new diagnostic findings.
+
+Your next report must contain at least one of:
+
+A newly established fact that eliminates a specific hypothesis.
+
+A demonstrated defect with a targeted repair.
+
+A focused test result that changes our understanding.
+
+A precisely defined experiment necessary to distinguish the remaining hypotheses.
+
+A concrete external blocker, with evidence showing why independent work cannot proceed.
+
+Reading more files counts as investigation activity, not a completed result. Explain what the inspection established.
+
+2. Freeze the established findings
+Unless new evidence contradicts them:
+
+Calendar submission and acceptance succeeded for the reported scope.
+
+Thirty-eight calendar rows were validated.
+
+Those are not thirty-eight verified monetary results.
+
+The native-session document request returned HTTP 401.
+
+No PDF was received or extracted.
+
+The assessment is failed and consumed.
+
+The earlier denial remains recorded.
+
+The CLI’s “Cancelled” message did not mean execution had stopped.
+
+Do not reopen resolved calendar problems without evidence. Do not describe the document 401 as a viewer issue without establishing that connection.
+
+3. Produce a hypothesis-and-evidence table
+For each plausible explanation, report:
+
+Hypothesis	Evidence supporting it	Evidence against it	Test or inspection	Result	Remaining uncertainty
+Start with:
+
+Wrong document action selected.
+
+Action URL or opaque parameters changed during handoff.
+
+Original browser context not actually preserved.
+
+Session state required by the document request missing or unavailable.
+
+Navigation/referrer behavior differs from ordinary opening.
+
+Request interception changes relevant behavior.
+
+The source rejects the ordinary manual action too.
+
+Local response handling misreports the actual outcome.
+
+Do not pad this list with unsupported possibilities. Eliminate hypotheses where the evidence permits it.
+
+4. Inspect before requesting another live attempt
+Use current code, retained events, and offline tests first.
+
+Verify:
+
+Exact action identity at each handoff.
+
+Correct docket-sheet route and docket identity.
+
+Original context and page lifecycle.
+
+The actual production navigation sequence.
+
+Relevant request/response handling.
+
+What the existing tests cover versus what they merely assume.
+
+Do not expose cookies, credentials, or opaque action values in the report. Report comparison outcomes and bounded diagnostic facts.
+
+A test is relevant only if it exercises the behavior in question. A simplified test that omits the suspected failure mechanism does not establish production correctness.
+
+5. Investigate the cancellation discrepancy
+Determine exactly why the CLI reported “Cancelled” while execution continued.
+
+Show:
+
+Which process or operation was cancelled.
+
+Which process continued.
+
+Whether cancellation reached the worker.
+
+Whether the operator could reliably determine that source activity was still running.
+
+If the behavior is misleading, fix it and add a regression. Do not dismiss it as cosmetic: the operator must know whether a live assessment is running, stopped, or merely no longer being watched.
+
+6. No unchanged retry
+Do not prepare another identical assessment just because the previous one failed.
+
+Before proposing another live attempt, provide:
+
+The unresolved question.
+
+Why retained evidence and offline tests cannot answer it.
+
+The exact action proposed.
+
+What differs from the failed attempt, if anything.
+
+Expected outcomes and what each would establish.
+
+Request/document budget and stopping point.
+
+Do not promise the experiment will fix the problem. Explain what it will prove or rule out.
+
+If ordinary manual opening is needed as a comparison, define that comparison precisely. Do not turn it into open-ended browsing or a sequence of client substitutions.
+
+7. Completion claims must match the evidence
+Use these labels accurately:
+
+Implemented: the code exists.
+
+Tested offline: named checks passed against the stated code.
+
+Verified live: the actual source interaction passed.
+
+Verified deployed: the published signed-in workflow passed.
+
+Do not substitute one for another.
+
+For tests, report:
+
+text
+Command:
+Revision and relevant uncommitted changes:
+Exit status:
+What the check establishes:
+What it does not establish:
+Do not say “the safety suite passed” if only one portion passed. Separate newly run checks from historical results.
+
+8. Finish independent work
+Document access does not excuse leaving unrelated, unblocked completion work idle.
+
+Check the accepted calendar-results display, persistence, reload, failure states, and release preparation where these can be verified without another court request.
+
+Do not rebuild functioning components or invent extra work to appear productive.
+
+9. Required next report
+Keep it concrete:
+
+New findings since the last report.
+
+Hypotheses eliminated and remaining.
+
+Exact defect found, if any.
+
+Files changed and why.
+
+Actual tests and results.
+
+Cancellation diagnosis.
+
+Live requests made during this work, if any.
+
+Smallest justified next action.
+
+Remaining completion checklist.
+
+If no root cause is established, say so plainly. That is acceptable. Repeating the failure, implying a fix without proof, or presenting another approval cycle as technical progress is not.
+
+You have a working calendar milestone to build on. Preserve it, narrow the remaining problem, and bring back evidence that moves the project forward.
+

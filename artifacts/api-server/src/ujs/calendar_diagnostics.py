@@ -241,7 +241,7 @@ RESPONSE_STRUCTURE = r"""() => {
   const walker = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT);
   let node, visited = 0, table = null;
   while ((node = walker.nextNode())) {
-    if (++visited > 10000) { out.countsCapped = true; return out; }
+    if (++visited > 200000) { out.countsCapped = true; return out; }
     if (node.id === "btnSearch") {
       out.searchButtonCount = Math.min(2, out.searchButtonCount + 1);
       out.searchFormPresent ||= !!node.form;
@@ -256,23 +256,28 @@ RESPONSE_STRUCTURE = r"""() => {
   for (const row of table.rows) {
     if (row.querySelector("th")) headers = [...row.cells];
     else if (row.querySelector("td")) out.dataRowCount++;
-    if (out.dataRowCount > 1000 || headers.length > 128) { out.countsCapped = true; break; }
+    if (out.dataRowCount > 5000 || headers.length > 128) { out.countsCapped = true; break; }
   }
-  out.dataRowCount = cap(out.dataRowCount, 1000);
+  out.dataRowCount = cap(out.dataRowCount, 5000);
   out.headerCellCount = cap(headers.length, 128);
+  const labels = headers.map(cell => {
+    const text = cell?.textContent;
+    return typeof text === "string" && text.length <= 128 ? text.trim() : "";
+  });
+  const caseInformation = !labels.some(text => text.startsWith("Event Type"))
+    && ["Docket Number", "Court Type", "Filing Date", "County", "Court Office"].every(label =>
+      labels.filter(text => text.startsWith(label)).length === 1);
   const expected = [[2,"Docket Number"],[3,"Court Type"],[6,"Filing Date"],
     [9,"County"],[10,"Court Office"],[14,"Event Type"]];
-  out.expectedHeaders = expected.every(([i,label]) => {
-    const text = headers[i]?.textContent;
-    return typeof text === "string" && text.length <= 128 && text.trim().startsWith(label);
-  });
+  out.expectedHeaders = caseInformation || expected.every(([i,label]) => labels[i]?.startsWith(label));
   const links = table.querySelectorAll("a[href]");
-  if (links.length > 1000) out.countsCapped = true;
-  for (let i=0; i<Math.min(links.length,1000); i++) {
+  if (links.length > 20000) out.countsCapped = true;
+  for (let i=0; i<Math.min(links.length,20000); i++) {
     const raw = links[i].getAttribute("href") || "";
-    if (raw.length <= 2048 && raw.startsWith("/Report/CpDocketSheet?")) out.documentLinkCount++;
+    if (raw.length <= 2048 && /^\/Report\/(?:Cp|Mdj)DocketSheet\?/.test(raw)) out.documentLinkCount++;
   }
-  if ((document.documentElement?.outerHTML?.length ?? 0) > 2000000) out.countsCapped = true;
+  // Size is enforced during streaming receipt and bounded DOM projection.
+  // Do not create a full document serialization merely to measure its length.
   return out;
 }"""
 
@@ -285,6 +290,7 @@ def parser_outcome(error):
         "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT": "IDENTITY_OR_SCOPE_REJECTED",
         "UNSUPPORTED_EVENT_DATE_LAYOUT": "DATE_REJECTED",
         "CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW": "DATE_REJECTED",
+        "CASE_INFORMATION_SCOPE_UNSUPPORTED": "UNSUPPORTED_LAYOUT",
         "CALENDAR_RESPONSE_LIMIT": "PARSER_ERROR",
         "CALENDAR_STRUCTURE_MISMATCH": "PARSER_ERROR",
     }.get(str(error), "PARSER_ERROR")

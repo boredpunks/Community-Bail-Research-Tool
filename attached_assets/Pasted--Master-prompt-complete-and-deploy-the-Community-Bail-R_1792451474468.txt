@@ -1,0 +1,716 @@
+# Master prompt: complete and deploy the Community Bail Research Tool
+
+## Objective
+
+Finish the existing application so a signed-in user can enter court-calendar criteria, run a search, and receive verified docket-backed monetary bail observations.
+
+The completed workflow is:
+
+```text
+Calendar criteria
+→ validated court search results
+→ associated docket PDFs
+→ verified event and bail extraction
+→ qualifying results
+→ expandable evidence
+→ CSV export
+```
+
+The main results table contains exactly:
+
+| Hearing date | Docket number | Bail amount |
+|---|---|---|
+
+Posted monetary bail qualifies. No explicit qualifying monetary bail amount means no row in the main table.
+
+Your job is to deliver a **functioning deployed app**, not a plan, mockup, parser-only demonstration, or collection of disconnected components.
+
+## 1. Execution authority and working method
+
+Proceed through inspection, implementation, testing, live verification, correction, and deployment without repeated conversational approval.
+
+Use the project’s existing permissions, operator workflows, and controls as implemented. Do not duplicate or redesign them.
+
+Authorized project work includes:
+
+- Editing application code and configuration.
+- Installing necessary dependencies.
+- Updating schemas and applying migrations.
+- Regenerating API contracts and clients.
+- Repairing calendar search and document retrieval.
+- Running live searches and retrieving associated docket PDFs.
+- Testing Common Pleas and MDJ workflows.
+- Restarting services.
+- Deploying updates.
+- Diagnosing failures, correcting defects, and rerunning affected checks.
+
+Make ordinary implementation decisions autonomously. Choose the smallest effective change compatible with the existing architecture.
+
+Ask only when an actual missing credential, unavailable permission, required external action, or unresolved product decision prevents progress. Complete independent work before escalating.
+
+Before implementation, create a task checklist covering the applicable work below, its dependencies, and how each task will be verified. Then execute it. Do not stop after presenting the checklist.
+
+Update the checklist as actual findings reveal additional necessary tasks. Avoid unrelated improvements.
+
+## 2. Repository baseline and required inspection
+
+Work in:
+
+```text
+boredpunks/Community-Bail-Research-Tool
+```
+
+The previously inspected baseline was:
+
+```text
+633e180ad4b31bb1c1a15fb1b373d1282ea54b41
+```
+
+Inspect the current checkout and account for newer changes. Do not reset the project to that baseline.
+
+The existing architecture includes:
+
+- pnpm workspaces.
+- Express/TypeScript API.
+- React frontend.
+- PostgreSQL/Drizzle.
+- Clerk authentication.
+- OpenAPI-generated clients and validators.
+- Python/Playwright court adapter.
+- Persisted jobs, request accounting, checkpoints, and recovery.
+- Saved candidates and source-review workflows.
+
+Reuse those components.
+
+Read:
+
+```text
+replit.md
+.agents/memory/no-fabricated-records.md
+.agents/memory/date-only-response-validation.md
+docs/calendar-preview-readiness-repair.md
+docs/selectable-calendar-criteria.md
+docs/completion-offline-checks.md
+docs/ujs-source-access-assessment.md
+```
+
+Inspect:
+
+```text
+artifacts/api-server/src/routes/discovery.ts
+artifacts/api-server/src/ujs/evidence.py
+artifacts/api-server/src/ujs/worker.py
+artifacts/api-server/src/ujs/calendar_protocol.py
+artifacts/api-server/src/ujs/source_protocol.py
+artifacts/api-server/src/lib/calendar-criteria.ts
+artifacts/api-server/src/lib/discovery-worker.ts
+artifacts/api-server/src/lib/discovery-scheduler.ts
+artifacts/api-server/src/lib/discovery-safety.ts
+artifacts/api-server/src/lib/discovery-source-status.ts
+artifacts/api-server/src/lib/discovery-retention.ts
+artifacts/community-bail-research/src/pages/discovery.tsx
+lib/api-spec/openapi.yaml
+```
+
+Follow dependencies into database schemas, matching logic, generated packages, application routing, deployment configuration, and tests.
+
+Determine:
+
+1. What currently works.
+2. What is broken or incomplete.
+3. Which reviewed findings remain applicable.
+4. Which commands run the app, tests, migrations, and production build.
+5. What is required to complete and deploy the requested workflow.
+
+Keep inspection focused. Do not spend the project writing another architecture report.
+
+## 3. Product definition
+
+### Search criteria
+
+Provide the criteria needed for the implemented Calendar Event workflow:
+
+- Judicial district: Allegheny – 05.
+- Start date.
+- End date.
+- Court office, where applicable.
+- Event type.
+- Scheduled events only.
+
+Initial target coverage:
+
+- Common Pleas criminal / Formal Arraignment.
+- MDJ criminal / Preliminary Hearing.
+
+Retain existing working modes, including Bail Hearing.
+
+Offer an unfiltered event-type choice only if the source and adapter support it correctly.
+
+Use actual observed portal labels and submitted values. Do not invent option values.
+
+Keep existing amount-filter and matching-target controls. Do not add unrelated filters.
+
+### User journey
+
+The primary interface should make these steps obvious:
+
+1. Select calendar criteria.
+2. Set an optional maximum bail amount.
+3. Choose the number of matching dockets wanted.
+4. Start search.
+5. Observe progress.
+6. Inspect qualifying rows.
+7. Expand evidence or open the source docket.
+8. Export the displayed results.
+
+Saving candidates and reviewing observations remain available, but are not prerequisites for viewing provisional search results.
+
+## 4. Monetary inclusion and interpretation
+
+### Include
+
+Include an unambiguous explicit monetary bail-setting observation associated with a matching calendar event.
+
+Posted bail qualifies.
+
+Historical monetary setting observations may qualify. Their inclusion does not mean they remain operative.
+
+### Exclude from the main table
+
+- Missing monetary bail amount.
+- Nonmonetary, recognizance, unsecured, nominal, or denied entries outside the monetary-setting scope.
+- Unreadable documents.
+- Wrong docket identity.
+- Unsupported or ambiguous amount association.
+- Missing or unresolved matching-event date.
+- Amounts outside the selected monetary filter.
+
+Show exclusions and failures in the job outcome report.
+
+### Extract the recorded amount
+
+Use the bail entry’s recorded Amount field.
+
+Keep separate:
+
+- Percentage.
+- Posted-security amount.
+- Fines, fees, costs, restitution, and other dollar figures.
+
+Do not calculate a replacement amount from the percentage.
+
+Do not substitute posted security for bail.
+
+Use integer cents internally and two-decimal currency formatting in the interface.
+
+If the current financial-basis model cannot accurately represent a verified recorded amount, make the smallest compatible additive change. Do not force it into `TOTAL_BAIL` merely to satisfy existing matching logic.
+
+### Multiple bail actions
+
+Extract the relevant chronology.
+
+For the simple table:
+
+- Include qualifying setting and modification-setting observations.
+- Preserve revocation, denial, and other actions as context.
+- Do not treat repeated amounts on revocation or denial rows as new setting observations.
+- Do not select the largest or latest amount as the operative amount.
+- Collapse exact duplicate representations of the same entry.
+- Display distinct qualifying observations separately.
+
+Keep source review and operative-order interpretation separate from discovery.
+
+## 5. Calendar retrieval and immediate blocker
+
+Use the actual UJS Calendar Event workflow:
+
+1. Open Case Search.
+2. Select Calendar Event.
+3. Select Allegheny.
+4. Apply the requested office, event type, dates, and supported scheduling criteria.
+5. Submit.
+6. Validate results.
+7. Collect associated docket identities and document controls.
+
+Inspect Case Information and Calendar Events views where needed.
+
+Do not assume all result rows are available in the initial HTML. Determine how the actual interface exposes its rows, additional pages, or virtualized content. Implement the traversal necessary for the bounded job and accurately report any unexamined coverage.
+
+### Known readiness issue
+
+The reviewed implementation stopped with:
+
+```text
+CONTROL_SELECTION:
+CALENDAR_CONTROL_STATE_MISMATCH:
+COURT_ROOM / MISSING
+```
+
+It expected:
+
+```text
+select[name="CourtRoomID"]
+```
+
+Determine whether the current checkout still has this issue.
+
+Use existing evidence or an actual observation to establish:
+
+- The real room-control structure.
+- Its widget/native-control association.
+- Its form ownership.
+- The no-filter selection.
+- Its submitted binding.
+
+Repair the existing adapter using that evidence. Add a regression test matching the observed structure.
+
+Complete the operator steps required by the existing implementation to verify the corrected method. If your available permissions cannot perform a required step, report the exact missing action and finish other work.
+
+Do not build a parallel inspection or collection system.
+
+## 6. Common Pleas and MDJ support
+
+Treat document retrieval and parsing as separate capabilities.
+
+For each supported court scope, verify and implement:
+
+- Search criteria.
+- Actual source options.
+- Result layout.
+- Docket identity format.
+- Document-opening behavior.
+- Document route.
+- Request allowlist compatibility.
+- PDF identity validation.
+- PDF parsing.
+- Event extraction.
+- Evidence representation.
+- UI coverage labels.
+- Tests.
+
+The previously inspected parser was Common Pleas-specific. MDJ requires its own verified identity and document-layout handling.
+
+The previously inspected parser also rejected percentage-bearing financial rows. Extend it to correctly handle the supplied Common Pleas sample.
+
+Update every affected layer together:
+
+```text
+UI
+→ OpenAPI
+→ generated clients and validators
+→ stored criteria/provenance types
+→ worker protocol
+→ adapter
+→ parser
+→ result projection
+→ tests
+```
+
+Do not claim live MDJ support solely because an uploaded MDJ PDF parses successfully.
+
+## 7. Event dates, row identity, and deduplication
+
+“Hearing date” means the scheduled date of the event matching the submitted calendar criteria.
+
+Never substitute:
+
+- Filing date.
+- Bail-action date.
+- Arrest date.
+- PDF print date.
+
+Use validated calendar event data as the primary event source. Cross-check against the corresponding PDF event when identifiable.
+
+An absent PDF event is not automatically a contradiction. A conflicting corresponding event must be reported and withheld pending resolution.
+
+Preserve date-only values without timezone conversion changing the day.
+
+### Internal representation
+
+- Download each unique docket once per job.
+- Preserve all distinct matching calendar events.
+- Deduplicate identical events using date, type, time, and source identifier where available.
+- Preserve each distinct qualifying bail-setting observation.
+- Pair matching events with qualifying observations for display.
+
+One displayed row represents:
+
+```text
+One matching event
++
+one distinct qualifying monetary setting observation
+```
+
+Matching targets count distinct dockets, not displayed rows.
+
+Keep legacy reports and checkpoints readable.
+
+## 8. PDF processing and evidence
+
+Support the supplied Common Pleas and MDJ layouts with deterministic parsing.
+
+Validate the primary docket and court header before accepting extracted evidence.
+
+Do not confuse an originating-docket reference with the primary docket.
+
+Use layout-aware text extraction where necessary to associate labels, amounts, percentages, and actions.
+
+Retain per observation:
+
+- Stable source-entry identity.
+- Bail action.
+- Action date.
+- Bail category.
+- Recorded amount in cents.
+- Percentage when present.
+- Accurate financial basis.
+- One-based PDF page number.
+- Minimal supporting excerpt.
+
+Keep setting and posting sections distinct.
+
+Classify:
+
+- Readable document without qualifying monetary bail.
+- Unsupported layout.
+- Ambiguous financial association.
+- Image-only or unreadable document.
+- Identity mismatch.
+- Failed retrieval.
+
+Do not collapse these into one no-match outcome.
+
+## 9. Matching and filtering
+
+Inspect existing collection and display predicates.
+
+The reviewed frontend used a strict display comparison while new-job collection required an inclusive maximum. Correct that inconsistency for new searches.
+
+For new searches:
+
+- Maximum means less than or equal to.
+- An existing minimum, if supported, means greater than or equal to.
+- Missing amounts never satisfy a monetary comparison.
+- No-bound monetary searches still require qualifying monetary observations.
+- Percentages and posted-security amounts do not participate as replacement bail amounts.
+
+Use one shared, tested definition for:
+
+- Collection matching.
+- Matching-docket counts.
+- Main table projection.
+- CSV selection.
+
+Keep fixed collection criteria distinct from optional display-only narrowing.
+
+Changing display filters must not change the collection target, original criteria, or budget.
+
+Preserve legacy comparison semantics for legacy jobs and label them where relevant.
+
+Default posted exclusion off in the simple search flow.
+
+## 10. Backend jobs and API tasks
+
+Reuse the existing job engine.
+
+Verify and complete:
+
+- Input validation.
+- Job creation.
+- Duplicate-submission handling.
+- Fixed matching criteria.
+- Distinct matching-docket targets.
+- Candidate discovery.
+- One-time docket processing.
+- Checkpoint updates.
+- Progress polling.
+- Cancellation and pause/resume.
+- Interrupted-work recovery.
+- Partial-result preservation.
+- Final outcome calculation.
+- Expired-result handling.
+- Owner-scoped job, evidence, and export access.
+
+Use existing runtime collection policy and budgets.
+
+Ensure accounting distinguishes:
+
+- Candidate dockets discovered.
+- Documents attempted.
+- Documents retrieved.
+- Documents parsed.
+- Matching dockets.
+- Displayed observation rows.
+- Exclusions.
+- Ambiguities.
+- Failures.
+- Unprocessed candidates.
+
+Explain when a target is unmet because candidates were exhausted or the job stopped before full coverage.
+
+Update OpenAPI and regenerate affected clients whenever contracts change.
+
+Use the established migration process and preserve compatibility with stored jobs and observations.
+
+## 11. Frontend tasks
+
+Refine the existing `/discovery` page instead of replacing the application.
+
+Implement:
+
+- Clear calendar form.
+- Monetary filter and matching target.
+- Search action.
+- Active-job progress.
+- Stop/pause/resume controls as applicable.
+- Three-column qualifying-results table.
+- Expandable evidence.
+- CSV export.
+- Empty, excluded, ambiguous, failed, partial, and expired-result states.
+- Reloaded-job restoration.
+- Clear per-scope coverage status.
+
+Move detailed operator diagnostics into expandable sections. Keep actionable blockers and incomplete-coverage messages visible.
+
+Preserve existing styling conventions and navigation.
+
+Do not add names, birth dates, addresses, or charges to the main table.
+
+Do not require candidate saving before showing results.
+
+## 12. Source links and CSV
+
+Make each docket number open its verified source.
+
+Determine whether direct PDF links work outside the backend session. If not, provide an accurate working source-opening path through the existing application or public case interface.
+
+Do not fabricate durable document URLs.
+
+The evidence view shows:
+
+- Matching event date and type.
+- Bail action and date.
+- Bail category.
+- Amount and percentage.
+- Supporting page.
+- Supporting excerpt.
+- Retrieval time.
+- Historical/provisional qualification.
+
+CSV exports exactly the displayed qualifying rows:
+
+```csv
+Hearing date,Docket number,Bail amount
+```
+
+Formatting:
+
+- Date: `YYYY-MM-DD`.
+- Amount: two decimal places.
+- No currency symbol.
+- No thousands separators.
+
+Export must work without starting another court search.
+
+## 13. Genuine PDF acceptance fixtures
+
+Locate the supplied PDFs in the workspace.
+
+If absent, request the missing files once and continue independent implementation.
+
+### Fixture A — MDJ monetary bail, posted
+
+```text
+Docket: MJ-05317-CR-0000264-2026
+Event: Preliminary Hearing
+Hearing date: 2026-10-19
+Amount: 1000.00
+Bail evidence page: 2
+Expected: included despite posted bail
+```
+
+### Fixture B — Common Pleas monetary bail with percentage
+
+```text
+Docket: CP-02-CR-0005845-2026
+Event: Formal Arraignment
+Hearing date: 2026-10-20
+Amount: 100.00
+Percentage: 10%
+Bail evidence page: 1
+Expected: included with amount 100.00, not 10.00
+```
+
+### Fixture C — no monetary bail
+
+```text
+Docket: MJ-05310-NT-0000228-2026
+Event: Summary Trial
+Hearing date: 2026-10-20
+Amount: absent
+Expected: excluded from monetary results; never converted to 0.00
+```
+
+Use separate fixture criteria for their different event types.
+
+These are historical offline test inputs, not current live-search dates.
+
+## 14. Additional test matrix
+
+Add or extend tests for:
+
+### Parsing
+
+- Bail amount versus unrelated dollar amounts.
+- Amount versus percentage.
+- Amount versus posted security.
+- Monetary settings followed by revocation or denial.
+- Multiple distinct settings.
+- Duplicate source entries.
+- Unsupported layouts.
+- Wrong primary docket.
+- Missing bail section.
+- Image-only PDF.
+- Invalid PDF or HTML response.
+
+### Events and filters
+
+- Filing date is not hearing date.
+- Date-window boundaries.
+- Multiple events on one docket.
+- Duplicate calendar rows.
+- Exact maximum equality.
+- Existing minimum equality.
+- No-bound monetary-only searches.
+- Matching-docket count versus displayed-row count.
+- Legacy semantics.
+
+### Application integration
+
+- API response validation.
+- Generated-client compatibility.
+- Progress and terminal states.
+- CSV/table equivalence.
+- Owner-scoped access.
+- Expired results.
+- Interrupted job recovery.
+- Reloaded job state.
+- Candidate saving and review remain functional.
+- Ordinary saved-record search does not start collection.
+
+Use actual PDFs for case-level fixture tests and structural fixtures for controls and error paths. Keep test data out of ordinary research records.
+
+## 15. Live verification
+
+After offline correctness is established:
+
+1. Verify the corrected calendar-control handling.
+2. Submit exact current criteria.
+3. Validate genuine search results.
+4. Retrieve an associated docket PDF.
+5. Verify primary identity.
+6. Verify matching event date.
+7. Verify amount and supporting page.
+8. Verify the displayed row.
+9. Verify CSV.
+10. Verify reload and retained job state.
+
+Verify Common Pleas and MDJ separately.
+
+Use a small relevant search. If the source returns no qualifying monetary observations, report that result accurately and verify extraction through the genuine fixtures; do not mislabel absence of live matches as successful verification of a live positive result.
+
+Fix diagnosed defects and repeat affected checks.
+
+## 16. Build, migration, and deployment
+
+Use the repository’s actual scripts, including where applicable:
+
+```text
+pnpm --filter @workspace/api-spec run codegen
+pnpm run typecheck
+pnpm --filter @workspace/api-server run test:safety
+PORT=5173 BASE_PATH=/ pnpm run build
+git diff --check
+```
+
+Also:
+
+- Run focused new tests.
+- Verify migrations.
+- Verify the Python adapter is included in the production build.
+- Verify production dependencies and browser availability.
+- Verify required runtime configuration.
+- Restart affected services.
+- Check API health.
+- Deploy through the existing deployment setup.
+- Test frontend/API routing in the deployed environment.
+- Verify authenticated search, evidence, export, and reload.
+
+A successful development run does not establish deployed success.
+
+## 17. Task completion checklist
+
+Track each item as:
+
+```text
+Not started / In progress / Passed / Blocked / Not applicable
+```
+
+Include at least:
+
+- [ ] Current-checkout inspection.
+- [ ] Dependency and runtime verification.
+- [ ] Calendar-control repair.
+- [ ] Common Pleas search criteria.
+- [ ] MDJ search criteria.
+- [ ] Result and document-link handling.
+- [ ] Common Pleas PDF parsing.
+- [ ] MDJ PDF parsing.
+- [ ] Percentage-bearing amount handling.
+- [ ] Setting/posting separation.
+- [ ] Historical-action handling.
+- [ ] Event preservation and deduplication.
+- [ ] Shared monetary matching.
+- [ ] Job/API integration.
+- [ ] Schema and generated-contract updates.
+- [ ] Three-column results.
+- [ ] Evidence with page references.
+- [ ] Working source links.
+- [ ] CSV export.
+- [ ] Outcome and progress states.
+- [ ] Legacy compatibility.
+- [ ] Genuine fixture tests.
+- [ ] Regression suite.
+- [ ] Live Common Pleas verification.
+- [ ] Live MDJ verification.
+- [ ] Production build.
+- [ ] Deployment.
+- [ ] Deployed signed-in journey.
+- [ ] Final documentation and delivery report.
+
+Add necessary discovered tasks, but do not expand into unrelated product work.
+
+## 18. Completion standard and final report
+
+Continue until the requested application works in deployment or a concrete external blocker prevents completion.
+
+Report readiness separately for each scope:
+
+| Scope | Offline parsing | Live calendar | Live PDF retrieval | Deployed full flow |
+|---|---|---|---|---|
+| Common Pleas / Formal Arraignment | Actual status | Actual status | Actual status | Actual status |
+| MDJ / Preliminary Hearing | Actual status | Actual status | Actual status | Actual status |
+| Existing retained modes | Actual status | Actual status | Actual status | Actual status |
+
+Final delivery must include:
+
+1. Implemented changes and affected files.
+2. Actual commands run and test outcomes.
+3. Migration and deployment status.
+4. Verified workflows.
+5. Remaining limitations.
+6. Any blocked task, its cause, and the exact action needed.
+
+Do not return only a plan. Do not claim completion from mocked data, historical reports, parser tests alone, or a development-only demonstration.
+
+Complete the implementation, verify the deployed workflow, and report what actually works.

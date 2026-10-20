@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "mlSbtefLVxO3FH3ARz41U"
+uri = "file://docs/calendar-acceptance-verification.md"
+type = "text"
+title = "Calendar implementation and verification ledger"
+description = "Changed files, exact tested checkout, before/after regressions, diagnostic definitions, all check outcomes, historical uncertainty, and remaining approval gates."
+logical_id = "02664117-9c10-425c-94f1-67ae9a50023d"
+content_hash = "sha256:ff258b0f924bde46f24ece0e63c265598adbfa460e6352e0535f33127a3dadda"
+size = 14655
+mtime_ms = 1792458025373
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/02664117-9c10-425c-94f1-67ae9a50023d/7111567a-42cc-422b-b92a-21a58e3e63c5"
+storage_version_token = "1792458051538640"
+content_type = "text/markdown"

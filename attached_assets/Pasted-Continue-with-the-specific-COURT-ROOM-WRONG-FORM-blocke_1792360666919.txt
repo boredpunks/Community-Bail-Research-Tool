@@ -1,0 +1,69 @@
+Continue with the specific COURT_ROOM / WRONG_FORM blocker. Do not repeat the full workflow until that precondition is resolved.
+
+1. Diagnose from retained evidence first
+
+Inspect the response captures from the three bootstrap requests, if retained. Establish:
+
+Which form the Search action actually submits.
+
+Which room control the validator selected.
+
+That control’s actual form owner, including any explicit form attribute.
+
+Whether duplicate, hidden, inactive, or stale controls caused the selection.
+
+Whether the no-filter room value belongs to the active search form and how it is submitted.
+
+Distinguish a genuine source-form change from an overly broad selector or incorrect form-ownership check.
+
+Do not disable WRONG_FORM, remove room validation, or silently omit the field merely to make the run pass.
+
+2. Implement and test the correction
+
+Use evidence-backed control selection and submission behavior. Add regression fixtures covering the observed mismatch, duplicate controls where applicable, blank filters, and rejection of a genuinely wrong-form control.
+
+Preserve the source barrier, request accounting, and single-use permits.
+
+3. Request only the missing live evidence
+
+If retained captures cannot answer the form-ownership question, prepare one bounded, read-only inspection approval. Specify the exact requests, maximum request count, and stop conditions. No Search submission or PDFs in that inspection.
+
+After the correction passes offline verification, prepare a fresh calendar-only approval for:
+
+Calendar Event.
+
+Allegheny–05.
+
+Court Office, Room, and Event Type blank.
+
+Scheduled Events Only.
+
+October 19, 2026 only.
+
+The consumed permit must not be reused. Obtain any required approval through the existing mechanism.
+
+4. Verify the stages separately
+
+First demonstrate a submitted Search and validated calendar-result handling, including source warnings and coverage status.
+
+Then prepare the separately authorized MDJ document-access test using the supplied docket examples. Do not bundle document requests into calendar-only approval.
+
+If the calendar response has no matching rows, report that accurately; do not call document retrieval verified or quietly broaden the query.
+
+5. Finish delivery
+
+Push the implementation and blocker-fix commits to origin/fix/calendar-result-integration, subject to any required repository approval. Report the remote commit and push result—not just local commit IDs.
+
+Return:
+
+The evidenced cause of WRONG_FORM.
+
+The correction and regression-test results.
+
+Whether Search was actually submitted.
+
+Whether calendar rows and document retrieval were each live-verified.
+
+The exact remaining blocker, if any.
+
+Do not substitute another full safety-suite summary for resolving the specific integration failure.

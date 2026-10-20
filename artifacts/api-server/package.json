@@ -8,19 +8,20 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "pilot": "node --enable-source-maps ./dist/pilot.mjs",
-    "test:safety": "node ./tests/run-safety.mjs"
+    "test:safety": "node ./tests/run-safety.mjs",
+    "test:completion": "node ./tests/run-completion.mjs",
+    "test:research-workflow": "node ./tests/run-research-workflow.mjs"
   },
   "dependencies": {
     "@clerk/express": "^2.1.75",
     "@clerk/shared": "^4.38.0",
     "@workspace/api-zod": "workspace:*",
+    "@workspace/bail-research": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",
-    "express": "^5.2.1",
-    "http-proxy-middleware": "^4.2.0",
+    "express": "^5.3.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0"
   },

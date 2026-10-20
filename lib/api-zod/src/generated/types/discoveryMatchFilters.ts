@@ -8,13 +8,21 @@
 
 export interface DiscoveryMatchFilters {
   /**
-     * Local monetary TOTAL_BAIL maximum; null disables this filter.
-     * @minimum 1
+     * Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound.
+     * @minimum 0
      * @maximum 2147483647
      * @nullable
      */
   monetaryUpperBoundCents: number | null;
+  /**
+     * @minimum 0
+     * @maximum 2147483647
+     * @nullable
+     */
+  monetaryLowerBoundCents?: number | null;
   excludeShownPosted: boolean;
   /** Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved. */
   inclusiveMaximum?: boolean;
+  /** Historical operator criterion retained for legacy reports; not enabled by the simple search flow. */
+  requirePostedNotShown?: boolean;
 }

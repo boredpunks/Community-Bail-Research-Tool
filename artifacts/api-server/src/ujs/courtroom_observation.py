@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 from calendar_protocol import select_calendar_preview_controls, wait_for_calendar_search_button, calendar_form_field_count
+from room_discovery import PUBLIC_ROOM_HELPERS
 
 METHOD = "playwright-public-courtroom-observation-v2"
 LOCAL_TIMEOUT_SECONDS = 15
@@ -10,7 +11,7 @@ STABLE_SECONDS = 0.5
 
 # Field names/IDs and option values are used ephemerally for association/readback.
 # None are returned. No private widget APIs, source text, HTML or tokens emitted.
-PROBE = r"""({select506, includeSubmissionField}) => {
+PROBE = "({select506, includeSubmissionField}) => {" + PUBLIC_ROOM_HELPERS + r"""
   const buttons = [...document.querySelectorAll("#btnSearch")];
   const form = buttons.length === 1 ? buttons[0].form : null;
   if (!form) return {error: "COURTROOM_OBSERVATION_FORM_MISSING"};
@@ -20,51 +21,16 @@ PROBE = r"""({select506, includeSubmissionField}) => {
       || (buttons[0].getAttribute("formenctype") || form.enctype).toLowerCase()
         !== "application/x-www-form-urlencoded")
     return {error: "UNSUPPORTED_CALENDAR_FORM_TARGET"};
-  const ownedLabels = [...document.querySelectorAll("label")].filter(label =>
-    form.contains(label) || label.control?.form === form);
-  if (form.elements.length > 256 || ownedLabels.length > 128)
-    return {error: "COURTROOM_OBSERVATION_LIMIT"};
   const normalize = text => text.trim().replace(/\s+/g, " ");
-  const roomLabel = text => /^(?:court\s*room|room)(?:\s*(?:number|no\.?))?\s*:?\s*$/i.test(normalize(text));
-  const safeLabel = node => {
-    const text = node?.textContent || "";
-    return text.length <= 128 && roomLabel(text);
-  };
-  const all = [...form.elements];
-  const labels = ownedLabels.filter(safeLabel);
-  const candidates = new Map();
-  for (const label of labels) {
-    let select = label.control?.tagName === "SELECT" ? label.control : null;
-    let group = label.parentElement;
-    if (!select) {
-      for (let depth = 0; group && group !== form && depth < 8; depth++, group = group.parentElement) {
-        const selects = [...group.querySelectorAll("select")];
-        // Do not bind an unrelated control by climbing across other public labels.
-        if (group.querySelectorAll("label").length > 1) break;
-        if (selects.length > 1) break;
-        if (selects.length === 1) { select = selects[0]; break; }
-      }
-    }
-    if (select) candidates.set(select, group && group !== form ? group : select.parentElement);
-  }
-  for (const select of all.filter(el => el.tagName === "SELECT")) {
-    const aria = select.getAttribute("aria-label");
-    const ids = (select.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
-    if (ids.length > 8) return {error: "COURTROOM_OBSERVATION_LIMIT"};
-    if (aria && aria.length <= 128 && roomLabel(aria)
-        || ids.some(id => safeLabel(document.getElementById(id)))) {
-      if (!candidates.has(select)) candidates.set(select, select.parentElement);
-    }
-  }
-  const observedLabels = Math.max(labels.length, candidates.size);
-  const snapshot = {labels: Math.min(observedLabels, 2), controls: Math.min(candidates.size, 2),
+  const discovered = discoverPublicRoom(form);
+  if (discovered.limit) return {error: "COURTROOM_OBSERVATION_LIMIT"};
+  const snapshot = {labels: Math.min(discovered.labels, 2), controls: Math.min(discovered.controls, 2),
     enabled: false, sameForm: false,
     busy: !!form.querySelector('[aria-busy="true"],[role="progressbar"]'),
     options: 0, room506Options: 0, room506Enabled: false, room506Selected: false,
     namedBindings: 0, nativeMatches: false};
-  if (observedLabels !== 1 || candidates.size !== 1) return snapshot;
-  const [select, group] = [...candidates][0];
-  if (select.options.length > 512) return {error: "COURTROOM_OBSERVATION_LIMIT"};
+  if (discovered.labels !== 1 || discovered.controls !== 1 || !discovered.select) return snapshot;
+  const {select, group} = discovered;
   snapshot.options = select.options.length;
   snapshot.enabled = !select.matches(":disabled");
   snapshot.sameForm = select.form === form;
@@ -82,22 +48,12 @@ PROBE = r"""({select506, includeSubmissionField}) => {
   }
   snapshot.room506Selected = matches.length === 1 && select.selectedOptions.length === 1
     && select.selectedOptions[0] === matches[0];
-  const secret = /token|password|secret|session|cookie|captcha|verification|auth/i;
-  const backing = select.name ? [select] : group
-    ? [...group.querySelectorAll("input[name],select[name]")].filter(el =>
-      el !== select && ["hidden", "text", "number"].includes(el.type)
-      && el.form === form && !el.matches(":disabled") && !secret.test(el.name + el.id))
-    : [];
-  if (backing.length > 32) return {error: "COURTROOM_OBSERVATION_LIMIT"};
-  snapshot.namedBindings = backing.length;
-  if (backing.length === 1 && backing[0].form === form && !backing[0].matches(":disabled")
-      && !secret.test(backing[0].name + backing[0].id)) {
-    const entries = new FormData(form).getAll(backing[0].name);
-    snapshot.nativeMatches = entries.length === 1 && entries[0] === select.value
-      && backing[0].value === select.value;
-    if (includeSubmissionField && snapshot.nativeMatches)
-      snapshot.submittedBinding = {name: backing[0].name, value: entries[0]};
-  }
+  const binding = publicRoomBinding(form, select, group);
+  if (binding.count > 32) return {error: "COURTROOM_OBSERVATION_LIMIT"};
+  snapshot.namedBindings = binding.count;
+  snapshot.nativeMatches = !binding.reason && snapshot.sameForm;
+  if (includeSubmissionField && snapshot.nativeMatches)
+    snapshot.submittedBinding = {name: binding.name, value: binding.value};
   return snapshot;
 }"""
 

@@ -18,7 +18,6 @@ async function buildAll() {
   await esbuild({
     entryPoints: {
       index: path.resolve(artifactDir, "src/index.ts"),
-      pilot: path.resolve(artifactDir, "src/ujs/pilot.ts"),
     },
     platform: "node",
     bundle: true,
@@ -123,13 +122,15 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
-  for (const file of ["worker.py", "evidence.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "calendar_diagnostics.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
+  await copyFile(path.join(artifactDir, "src/ujs/bail_table.py"), path.join(distDir, "ujs/bail_table.py"));
+  await copyFile(path.join(artifactDir, "src/ujs/calendar_structure.py"), path.join(distDir, "ujs/calendar_structure.py"));
+  for (const file of ["worker.py", "calendar_document.py", "calendar_response.py", "calendar_dom.py", "evidence.py", "mdj_bail.py", "mdj_table.py", "local_document.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "calendar_diagnostics.py", "room_discovery.py", "optional_resources.py", "document_regression.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }
   // Check the actual packaged import path, without launching a browser/network.
   // Source-only tests cannot detect an omitted dynamically imported module.
   const smoke = spawnSync("python", ["-c",
-    "from worker import main; from courtroom_observation import observe; from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form; from calendar_diagnostics import CalendarDiagnosticRecorder, CalendarLifecycle, RESPONSE_STRUCTURE"], {
+    "from worker import main; from bail_table import read_bail_tables; from mdj_table import read_originating_tables; from courtroom_observation import observe; from calendar_protocol import select_bound_calendar_controls, validate_bound_calendar_form; from calendar_diagnostics import CalendarDiagnosticRecorder, CalendarLifecycle, RESPONSE_STRUCTURE"], {
     cwd: path.join(distDir, "ujs"), stdio: "inherit",
   });
   if (smoke.status !== 0) throw new Error("Packaged Python worker import verification failed.");

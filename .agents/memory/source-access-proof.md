@@ -3,6 +3,18 @@ name: Source proof is client-specific
 description: Calendar and PDF access must be proven using the same request methods used by the live adapter.
 ---
 
+The user reports that PDFs can sometimes be accessed only by right-clicking
+the calendar document link and choosing “Open link in new tab,” and directed:
+“access the pdf from the calendar search.”
+
+**Why:** A separate no-cookie request is not the browser flow the user observes
+working. This report does not establish that a recorded HTTP denial was only
+a viewer failure.
+
+**How to apply:** Use the actual calendar-provided action in that calendar's
+browser context; distinguish native document navigation/download from viewer
+display. Preserve genuine denials and exact-method assessment controls.
+
 Treat a source-access proof as specific to the HTTP/browser methods actually tested. Calendar access alone does not establish docket access, and a successful standard HTTP PDF download does not prove Playwright's request client will work.
 
 **Why:** On October 6, 2026, ordinary browser calendar submission and a standard HTTP docket download succeeded during assessment. The integrated browser-calendar job later received HTTP 403 for its Playwright-client PDF request. The cause of the denial was not established.
@@ -288,3 +300,20 @@ ambiguous.
 Attach request-failure observation to each page (including newly opened pages)
 without adding a second context-wide request-registration path; test that
 response diagnostics retain unique request matches.
+
+## Current all-unfiltered room association
+
+As of October 18, 2026, the current-method all-unfiltered Calendar Event preflight
+found the room control associated with a different form during final validation.
+It made three bootstrap GETs, stopped before Search, and consumed its one-use
+permit; this is not proof that the room filter was blank or that the result set
+was empty.
+
+**Why:** The approved one-day run reported the fixed `COURT_ROOM / WRONG_FORM`
+diagnostic with the source-wide barrier unchanged and no document requests.
+
+**How to apply:** Do not retry the consumed permit or infer no-filter behavior.
+Require a fresh exact approval for any later source action, and first establish
+the room control's public form ownership with a separately approved read-only
+observation. Keep Search and PDF retrieval blocked until their respective
+checks pass.

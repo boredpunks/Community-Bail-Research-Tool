@@ -40,18 +40,18 @@ A research workspace for a small group of community volunteers to inspect verifi
 
 ## Product
 
-Sign in, search saved observations, explicitly start a bounded live-discovery job, save selected source observations as pending, review them, and inspect minimum/median/maximum ranges from confirmed reviewed-operative numeric observations. Source consultation time, source-owned timestamp, and order date remain distinct. Calendar date inputs are today/future only, at most seven days; unsupported MDJ, Preliminary Arraignment and historical coverage is not silently substituted. Local discovery amount filters are provisional, not operative ranges.
+Sign in, submit an ordinary Calendar Event search for Allegheny–05 with optional office/room/event filters and Scheduled Events Only, inspect validated rows independently of PDFs, and open source-provided document actions or upload local PDFs. No per-run operator approval, single-use permit or fixed Courtroom 506/Bail Hearing scope applies to ordinary searches. Unfiltered searches default to one day; filtered windows are at most seven days. Eligible evidence is saved pending review, never automatically confirmed or operative. Source consultation time, local-file receipt and order dates remain distinct. See `docs/research-workflow.md` for current operation-scoped access and pacing policy; older pilot notes are historical.
 
-New discovery jobs fix a desired number of distinct matching dockets and collection filters at creation. Download one docket at a time, check matches, and continue past nonmatches until the target, returned-page exhaustion, or a safety cap stops the job. Unknown/nonmonetary amounts never satisfy the monetary comparison; any extracted monetary TOTAL_BAIL entry may qualify, without an operative-order claim. Shown-posted exclusion never excludes UNKNOWN as though it meant not posted. Independent report display filters cannot change the job's fixed filters or target. Legacy jobs retain their original processing-only criteria.
+Ordinary calendar searches do not automatically download PDFs. Automated document retrieval remains unverified and disabled in that workflow; local uploads are explicitly labelled and do not prove live retrieval. Unknown/nonmonetary/deposit-ambiguous amounts never satisfy the monetary TOTAL_BAIL maximum. Shown-posted exclusion tests SHOWN_POSTED only; NOT_SHOWN is not proof of nonpayment or custody. Legacy processing jobs retain their original criteria and history.
 
 This is a private-per-account research prototype, not a complete production team workspace. Shared permissions, correction/suppression and retention operations, general imports/exports, and unproven live coverage are not implemented.
 
 ## Live collection controls
 
 - Python dependencies are in `pyproject.toml`/`uv.lock`; Chromium is in the Nix system dependencies. The API build copies its Python adapter into `dist/ujs/`.
-- Initial defaults: five processed documents and twelve requests per job, one concurrent source request, zero automatic retries. The limiter now waits at least thirty seconds after the previous response completes (also respecting its start). These controls are not permission or a verified safe rate.
-- Operator-only server settings: `UJS_MAX_RECORDS` (1–200), `UJS_MAX_REQUESTS` (8–500), `UJS_SPACING_MS` (30000–3600000), `UJS_RATE_LIMIT_COOLDOWN_MS` (900000–86400000). Shared operator ceilings now permit up to 200 processed dockets/500 requests; new-job defaults remain 5/12 and require explicit user budgets. The UI cannot change operator policy. Raising policy never enlarges an existing job.
-- Collection can run slowly at larger approved budgets. Pause/cancel retain checkpoints; restart pauses interrupted jobs for explicit resume. Rate limits pause source-wide; challenges/access denial/redirects require operator assessment, not another networking workaround.
+- Ordinary calendar searches have eight total transmission slots, one Search submission, one in-flight source request and zero automatic retries/PDF requests. Results are not limited to eight rows.
+- Pacing is configurable per operation: navigation 1s, required assets 250ms, Search 2s, future supported documents 3s. Each setting is bounded 250–3600000ms; configured shared/documented minima and observed backoff win. These are application defaults, not published court rates. Shared hourly/daily quotas and server-directed waits remain.
+- Preserve checkpoints and historical failures. A proven report-only document denial is not a permanent calendar ban, but calendar denials/challenges, unknown origins, active cooldowns and uncertainty still stop admission. Do not bypass restrictions, invent source parameters or reopen consumed historical permits.
 - See `docs/ujs-source-access-assessment.md` for proof, accounting, limitations, and operator recovery. Retired standalone probes must not be used to bypass the shared limiter.
 
 ## User preferences
@@ -62,6 +62,7 @@ This is a private-per-account research prototype, not a complete production team
 
 ## Gotchas
 
+- Calendar HTML response policy and offline/live evidence boundaries: see `docs/calendar-response-handling.md` (`UJS_CALENDAR_HTML_MAX_BYTES`; PDF limits are separate).
 - See `.agents/memory/date-only-response-validation.md` before changing date serialization or generated response validation.
 - Use managed Clerk configuration and its proxy middleware; do not create `.env` files.
 - Do not describe the application as current/countywide data or as custody verification.

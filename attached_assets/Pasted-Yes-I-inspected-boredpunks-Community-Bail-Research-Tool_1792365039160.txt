@@ -1,0 +1,71 @@
+Yes—I inspected `boredpunks/Community-Bail-Research-Tool`, including the `fix/calendar-result-integration` branch, the calendar validator, the existing courtroom-discovery code, and its tests. There is a concrete **diagnostic** improvement to make before another live attempt.
+
+I have not changed the repository or sent any court requests.
+
+## What the code actually shows
+
+### 1. `WRONG_FORM` does not establish that the room belongs to another form
+
+In `artifacts/api-server/src/ujs/calendar_protocol.py`, `validate_unfiltered_room_and_schedule()` contains this check:
+
+```javascript
+const control = label.control;
+if (!control || control.form !== form)
+  return {control: controlName, reason: "WRONG_FORM"};
+```
+
+That combines two different failures:
+
+- The label has no associated control.
+- A control exists, but belongs to a different form.
+
+Consequently, the earlier explanation—“the room control was associated with a different form”—was stronger than the diagnostic justified. The agent’s latest correction is accurate. [Calendar validator](https://github.com/boredpunks/Community-Bail-Research-Tool/blob/fix/calendar-result-integration/artifacts/api-server/src/ujs/calendar_protocol.py)
+
+### 2. The existing Common Pleas room discovery already handles more association patterns
+
+`courtroom_observation.py` does not rely exclusively on `label.control`. Its `PROBE` also examines bounded nearby structure and ARIA labeling, then checks the actual control’s form ownership and submitted binding.
+
+By contrast, the new unfiltered-room validator requires `label.control` directly. That inconsistency is a plausible explanation for why the new path fails where the existing room-discovery approach can succeed—but it is not proof of the live cause. [Existing courtroom discovery](https://github.com/boredpunks/Community-Bail-Research-Tool/blob/fix/calendar-result-integration/artifacts/api-server/src/ujs/courtroom_observation.py)
+
+The useful repair is to extract shared, bounded room discovery—not copy the Courtroom 506-specific selection behavior into the unfiltered path.
+
+### 3. The positive no-filter test assumes the association that failed in production
+
+The inspected test uses:
+
+```html
+<label for="room">Room</label>
+<select id="room" name="CourtRoomID">
+```
+
+That guarantees `label.control` resolves successfully. It verifies the happy path, but does not test the ambiguity behind the reported live failure. The existing tests also exercise a UI-only room select backed by a hidden input in the Courtroom 506 path; the unfiltered validator currently requires the select itself to have a name. [Calendar protocol tests](https://github.com/boredpunks/Community-Bail-Research-Tool/blob/fix/calendar-result-integration/artifacts/api-server/tests/test_calendar_protocol.py)
+
+## What I would ask Replit to do now
+
+Send this more targeted instruction:
+
+> I had the GitHub code inspected. Please address the following specific findings rather than starting another general audit.
+>
+> 1. In `validate_unfiltered_room_and_schedule()`, distinguish an unresolved label/control association from a proven different-form owner. Do not report both as `WRONG_FORM`.
+>
+> 2. Extract reusable, bounded public-room discovery from the existing `courtroom_observation.PROBE`. Keep Courtroom 506 option selection separate. For the unfiltered path, prove the blank option, actual form ownership, and actual submitted binding without guessing field names.
+>
+> 3. Support a UI-only select with a uniquely proven backing field only when the association, form ownership, and blank submitted value are validated. Continue rejecting ambiguous or unrelated candidates.
+>
+> 4. Add offline regression tests for:
+>    - A label with no `label.control` association.
+>    - A genuinely wrong-form room control.
+>    - An explicitly form-associated control outside the form’s DOM subtree.
+>    - Duplicate or hidden room controls.
+>    - An unnamed UI select with a valid blank backing field.
+>    - A missing submitted field versus one submitted with an empty value.
+>
+> 5. Keep the proposed live inspection narrowly read-only. If local filter selection needs an additional blocked request, report that the intended state could not be reached; do not diagnose the original failure from that incomplete state.
+>
+> Complete the diagnostic distinctions and offline tests before spending another live permit. Do not weaken form-ownership validation or infer the live cause from synthetic fixtures.
+
+## Repository status
+
+The GitHub branch is present at `df261b81dbd8aceeda590745e815c9fbff8033e5`. That tip commit adds a pasted instruction asset, not a runtime fix. I would therefore judge the next delivery by changes to the validator/discovery code and regression tests—not another guidance-file commit. [Inspected branch-tip commit](https://github.com/boredpunks/Community-Bail-Research-Tool/commit/df261b81dbd8aceeda590745e815c9fbff8033e5)
+
+The read-only inspection is still useful to establish the live markup. But GitHub already provides enough evidence to improve the diagnostics and tests immediately, without another court request.

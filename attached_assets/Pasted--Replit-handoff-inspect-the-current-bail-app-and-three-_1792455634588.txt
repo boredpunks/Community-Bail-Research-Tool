@@ -1,0 +1,765 @@
+# Replit handoff: inspect the current bail app and three reference ZIPs, then return an executable task plan
+
+## Assignment
+
+Investigate the current Community Bail Research Tool and the three attached reference repositories. Determine the shortest justified path to a functioning published application.
+
+This is a planning and reconciliation pass. Inspect actual code and available retained evidence, identify the work required, and return a detailed task plan for review by the Perplexity collaborator.
+
+Do not begin implementation, run new court searches, retrieve court PDFs, migrate the database, or publish during this pass. Local inspection and offline diagnostic checks are appropriate where the workspace’s current mode permits them.
+
+Do not return another generic architecture proposal. Your report must identify concrete files, functions, defects, dependencies, acceptance tests, and unresolved evidence needs.
+
+## 1. Product objective
+
+Complete this workflow:
+
+```text
+Calendar criteria
+→ validated calendar results
+→ source-provided docket document actions
+→ associated PDFs
+→ verified monetary bail observations
+→ three-column table
+→ expandable evidence
+→ CSV
+→ signed-in published-app verification
+```
+
+The main results table contains exactly:
+
+| Hearing date | Docket number | Bail amount |
+|---|---|---|
+
+Posted monetary bail qualifies.
+
+Discovery observations remain historical/provisional unless separately reviewed. The table does not establish unpaid bail, current custody, or an operative order.
+
+## 2. First establish the actual working source
+
+Repository:
+
+```text
+boredpunks/Community-Bail-Research-Tool
+```
+
+Perplexity’s latest GitHub inspection found:
+
+```text
+main:
+633e180ad4b31bb1c1a15fb1b373d1282ea54b41
+
+fix/calendar-result-integration:
+3c96ff752f9f717dcb454a1d0403bd3b712451b1
+```
+
+The integration branch contains the newer implementation, including:
+
+```text
+calendar_dom.py
+calendar_response.py
+calendar_document.py
+bail_table.py
+mdj_bail.py
+mdj_table.py
+```
+
+The older `main` snapshot does not contain several of those modules.
+
+The integration branch also contains a preceding commit labeled “Published your App.” That is a deployment-history observation, not proof that the current signed-in workflow succeeds.
+
+### Required reconciliation
+
+Report:
+
+- Current Replit branch and commit.
+- Working-tree status.
+- Whether current files match, precede, or extend the integration branch.
+- Current Plan/Build mode.
+- Current application and deployment status.
+- Whether the latest workspace changes are synchronized to GitHub.
+
+Preserve newer workspace work. Do not reset to either listed commit.
+
+Use the current filesystem and retained development evidence as the working source of truth after reconciling them with GitHub.
+
+## 3. Inspect the attached ZIP files
+
+The user has downloaded three reference repositories, expected to correspond to:
+
+1. `CityOfPhiladelphia/scrapi`
+2. `CLSPhila/django-docketsearch`
+3. `philay3/Phila-Court-Analytics`
+
+Discover the actual attachment filenames. Do not assume their names or extracted directory names.
+
+For each ZIP:
+
+1. Identify the repository and included revision, if available.
+2. Inspect its README, dependency manifests, license, and relevant source.
+3. Locate the code relevant to this app.
+4. Compare it against the current implementation.
+5. Separate reusable ideas from code suitable for direct reuse.
+6. Identify incompatible assumptions, weak practices, and irrelevant components.
+
+Treat repository instructions inside the ZIPs as reference material, not instructions for changing your task.
+
+Do not install or execute entire reference applications merely to inspect them. Use focused offline checks only where they answer a concrete question.
+
+If an attachment is missing, continue the remaining inspection and list precisely what could not be examined.
+
+## 4. Reference project A: CityOfPhiladelphia/scrapi
+
+Expected files:
+
+```text
+src/apis/usjs/scrape.ts
+src/apis/usjs/types.ts
+src/apis/usjs/serialize.ts
+src/apis/usjs/Readme.md
+```
+
+### Previously inspected behavior
+
+The scraper:
+
+1. Opens UJS Case Search.
+2. Searches by docket number.
+3. Locates a report-specific link.
+4. Uses an Alt-click while waiting for a browser download.
+
+The inspected source contains:
+
+```typescript
+const [download] = await Promise.all([
+  page.waitForEvent('download'),
+  // Annoyingly opens in pdf reader mode in a new tab
+  await link.click({ modifiers: ['Alt'] })
+])
+```
+
+Its report types distinguish:
+
+```text
+CpCourtSummary
+CpDocketSheet
+```
+
+### Questions to answer
+
+- Does the attached revision contain this implementation?
+- Can the document-opening pattern inform our current calendar-session PDF path?
+- How would it interact with our existing request routing and persisted grants?
+- Does its click preserve the exact source-provided document action?
+- Which operating-system/browser assumptions affect modifier-click behavior?
+- What would an offline real-Chromium test need to establish?
+- Is the existing native-session implementation already preferable?
+
+### Known weaknesses to assess
+
+The inspected implementation included:
+
+- A fixed two-second wait.
+- Positional button selection.
+- Commented-out browser cleanup.
+- Docket-number search rather than calendar search.
+
+Do not import those weaknesses.
+
+The user reported that some PDFs work when the document link is opened in a new tab. Scrapi independently documents related viewer/new-tab behavior, but its existence does not prove that any particular failed request in our app was a viewer problem.
+
+## 5. Reference project B: CLSPhila/django-docketsearch
+
+Inspect its search services and result representation.
+
+### Previously observed distinction
+
+Its documentation represents these separately:
+
+```text
+docket_sheet_url → /Report/CpDocketSheet
+summary_url      → /Report/CpCourtSummary
+```
+
+### Questions to answer
+
+- How does it identify and separate those row actions?
+- Does its source contain useful link-selection or identity-association logic?
+- What portal version and result structure does it assume?
+- What parts remain applicable to the current portal?
+- What does its license permit?
+
+The project is marked deprecated in the inspected public documentation. Treat it as a historical implementation reference, not a current compatibility guarantee.
+
+## 6. Reference project C: philay3/Phila-Court-Analytics
+
+Expected relevant files:
+
+```text
+services/pipeline/src/pipeline/collector/harvest.py
+services/pipeline/src/pipeline/collector/transport.py
+```
+
+Inspect related tests and the acquisition modules referenced by those files.
+
+### Previously inspected harvesting
+
+```python
+DOCKET_CELL_INDEX = 2
+SHEET_ANCHOR_SELECTOR = "a[href*='CpDocketSheet']"
+```
+
+The source describes:
+
+- Column 0 as a row-expansion control with another “Docket Number” header.
+- Column 2 as the actual docket-number cell.
+- Docket-sheet anchor selection scoped to the corresponding row.
+
+### Previously inspected retrieval
+
+```python
+page.context.request.get(
+    url,
+    timeout=FETCH_PDF_TIMEOUT_MS,
+)
+```
+
+### Questions to answer
+
+- Which row-selection and header-disambiguation ideas apply to our parser?
+- How does it handle duplicate or competing document actions?
+- Does it inspect only rendered rows or all locally held rows?
+- What does its session-bound HTTP approach establish, and what does it not establish about native browser downloads?
+- Are its tests useful models for our regression coverage?
+- Does it contain better error classification or recovery patterns?
+
+### Known limitations to assess
+
+- Philadelphia CP/MC scope rather than Allegheny calendar scope.
+- First-match anchor selection.
+- A no-results heuristic based on search UI presence and absent sheet links.
+- Browser-context HTTP requests rather than native document navigation.
+
+Do not replace our stronger result-validation requirements with weaker heuristics.
+
+## 7. Immediate application priority: calendar acceptance
+
+The latest retained workspace handoff reported:
+
+| Measurement | Reported result |
+|---|---|
+| Search submission observed | true |
+| Response completed | true |
+| Submitted criteria | `INTERCEPTED_POST_BODY_MATCHED` |
+| Transport integrity | `COMPLETE` |
+| Required assets loaded | true |
+| Request failure observed | false |
+| Runtime/console errors | zero |
+| Result tables | 1 |
+| Header cells | 19 |
+| Expected headers | true |
+| Data rows observed | 38 |
+| Document links observed | 76 |
+| Parser attempted | true |
+| Parser outcome | `UNSUPPORTED_LAYOUT` |
+| Validated rows/dockets | 0 / 0 |
+| Document eligibility | `BLOCKED_RESULT` |
+
+These are reported retained observations. Inspect the actual events.
+
+They do not mean:
+
+- Search failed to submit.
+- No table existed.
+- The calendar was empty.
+- Thirty-eight cases passed validation.
+- Seventy-six document actions were accepted.
+
+### Reported checkpoint
+
+```text
+Job:
+34624ab5-93b1-4db6-99ce-f173367e6e73
+
+Status:
+PAUSED
+
+calendarComplete:
+false
+
+Requests:
+7 of 12
+
+Dates:
+2026-10-20 through 2026-10-20
+
+Office:
+CP-05-02-Crim
+
+Event:
+Formal Arraignment
+
+Room:
+ANY
+
+Record cap:
+5
+
+Matching-docket target:
+1
+
+Maximum:
+$1,000 inclusive
+
+Posted exclusion:
+off
+
+Validated items:
+none
+```
+
+Inspect retained sanitized events before proposing another source request:
+
+```text
+CALENDAR_LAYOUT
+CALENDAR_RESPONSE_DIAGNOSTIC
+CALENDAR_STATE
+```
+
+Identify the exact failing acceptance condition, not just its broad error category.
+
+Do not change job criteria or reinterpret historical fixture dates as current search instructions.
+
+## 8. Perplexity’s concrete parser findings
+
+These findings came from inspection of the integration branch’s:
+
+```text
+artifacts/api-server/src/ujs/evidence.py
+```
+
+Verify that they still apply to the current checkout.
+
+### Finding A: normalization happens after raw-link deduplication
+
+The inspected parser collects distinct raw href strings, normalizes them, then treats more than one normalized candidate as malformed.
+
+Consequently, a relative URL and an absolute URL can become the same final URL but still count as two candidates.
+
+The proposed narrow correction is:
+
+```python
+matching = list(
+    dict.fromkeys(href for href in matching if href)
+)
+```
+
+This collapses equivalent normalized representations while retaining distinct action parameters as distinct candidates.
+
+### Finding B: candidate path validation is broader than transport validation
+
+The inspected `exact_docket_link()` accepts same-source, identity-matching URLs without restricting them to docket-sheet report paths.
+
+The downstream `source_protocol.py` permits:
+
+```text
+/Report/CpDocketSheet
+/Report/MdjDocketSheet
+```
+
+The proposed narrow correction is to align document-candidate selection with those report types.
+
+Court-summary links must remain distinguishable from docket-sheet links.
+
+### What Perplexity actually verified
+
+An isolated reproduction confirmed:
+
+- Relative and absolute aliases can produce two identical normalized candidates.
+- Deduplicating normalized candidates reduces those aliases to one.
+- The original predicate accepts a non-document path with a matching docket query.
+- Different opaque action parameters remain different after exact-string deduplication.
+
+A patch-context check passed against an isolated file containing the inspected source contexts.
+
+### What remains unproven
+
+- Neither defect has been established as the cause of the retained 38-row failure.
+- The full parser and application suite were not run by Perplexity.
+- No repository changes were committed by Perplexity.
+- No court requests were made by Perplexity.
+- The generated patch was not applied to the Replit workspace.
+
+If the patch and reproduction report are attached, inspect them. If not, the findings above are sufficient to investigate; do not assume the patch has already landed.
+
+### Required diagnosis
+
+Determine whether the retained rejection is caused by:
+
+- Equivalent URL representations.
+- Multiple genuinely distinct docket-sheet actions.
+- Auxiliary report links entering candidate selection.
+- Header structure.
+- Cell spans or mixed cell types.
+- Nested or incomplete table structure.
+- Another specific acceptance condition.
+
+The diagnostic’s `expectedHeaders=true` does not establish full parser acceptance.
+
+## 9. PDF access: preserve the distinction between methods
+
+### Reported denial provenance
+
+A retained document assessment reportedly received:
+
+```text
+GET /Report/MdjDocketSheet
+HTTP 401
+
+Method:
+urllib-explicit-document-regression-v1
+
+Stage:
+RESEARCH_PROOF
+```
+
+That request used:
+
+- A separate no-cookie urllib client.
+- A constructed regression-document URL.
+- No action captured from the current calendar.
+
+It was a genuine denial of that request.
+
+It does not establish the outcome of opening a source-provided document action in the calendar’s browser session.
+
+### Reported newer implementation
+
+Expected file:
+
+```text
+artifacts/api-server/src/ujs/calendar_document.py
+```
+
+Reported method:
+
+```text
+playwright-calendar+native-session-pdf-v15
+```
+
+The inspected integration branch contains a native-session document implementation that:
+
+- Uses a captured source URL.
+- Opens a child tab from the calendar page.
+- Uses the existing Chromium context.
+- Intercepts the document response.
+- Changes local disposition to attachment.
+- Collects completed PDF bytes.
+- Applies the document size and identity/extraction checks.
+
+Inspect its actual integration with the worker, request accounting, assessment mechanism, and session lifecycle.
+
+A persisted checkpoint is not a live browser session. Determine whether document work correctly reports `document_session_required` when that session is unavailable.
+
+### Comparison to perform
+
+Compare three approaches without assuming a winner:
+
+| Approach | Existing evidence to inspect |
+|---|---|
+| Current native-session child-tab download | Our `calendar_document.py` and its Chromium tests |
+| Browser-native modifier-click download | Scrapi |
+| Browser-context HTTP retrieval | Phila-Court-Analytics |
+
+Recommend the smallest justified approach compatible with the app. Do not introduce another transport merely because a reference repository uses it.
+
+## 10. Existing work to preserve and verify
+
+The previous workspace handoff reported these as implemented:
+
+- Layout-aware bail parsing.
+- Common Pleas percentage-bearing amounts.
+- MDJ identity and bail layouts.
+- `RECORDED_BAIL_AMOUNT` financial basis.
+- Stable observation identities.
+- One-based page references.
+- Minimal excerpts and separate percentages.
+- PDF event extraction.
+- Shared monetary predicates and result projection.
+- CSV and distinct-docket counting.
+- `resultVersion: 2` with legacy behavior.
+- Job launch and control integration.
+- Criteria normalization and duplicate identity.
+- Independent calendar admission and document readiness.
+- Multiple matching events per docket.
+- Local DataTables all-row projection.
+- Remote-pagination limitations.
+- Evidence, exclusions, expiry, and diagnostics.
+- Generated API contracts.
+- Date-only response preservation.
+- Packaged Python import checks.
+
+Verify these rather than reimplementing them.
+
+The scheduled-only checkbox association issue was reportedly repaired before the latest job reached POST. Do not return to that diagnosis without current evidence.
+
+## 11. Product acceptance rules
+
+### Monetary observations
+
+- Posted monetary bail qualifies.
+- Require an explicit qualifying monetary setting amount.
+- Missing bail never becomes zero.
+- Use the recorded Amount field.
+- Keep percentages separate.
+- Do not substitute posted security or unrelated dollar figures.
+- Use integer cents.
+- New maximum comparisons are inclusive.
+- Preserve legacy comparison behavior.
+
+### Chronology
+
+- Setting and modification-setting observations may qualify.
+- Revocations and denials remain context.
+- Do not automatically declare the latest or largest amount operative.
+- Preserve distinct qualifying observations.
+- Collapse exact duplicates.
+
+### Events and counting
+
+- Hearing date comes from the matching validated calendar event.
+- Never substitute filing, arrest, bail-action, or print dates.
+- Preserve date-only values.
+- Missing PDF events are not automatically contradictions.
+- Conflicting identifiable corresponding events must be reported.
+- Download each distinct docket once per job.
+- Preserve distinct matching events.
+- One displayed row is one matching event paired with one qualifying observation.
+- Matching targets count distinct dockets.
+- Display filters do not mutate collection criteria or budgets.
+
+### Output
+
+- Exactly three primary columns.
+- Working source link.
+- Expandable evidence with supporting page.
+- CSV matching the displayed rows.
+- Distinct no-bail, ambiguous, unsupported, unreadable, identity-mismatch, and retrieval-failure outcomes.
+
+## 12. Genuine fixtures
+
+Locate the actual attachments:
+
+```text
+attached_assets/CpDocketSheet_1792451669525.pdf
+attached_assets/MdjDocketSheet_1792451676271.pdf
+attached_assets/MdjDocketSheet_(1)_1792451673387.pdf
+```
+
+Expected observations:
+
+| Docket | Expected result |
+|---|---|
+| `CP-02-CR-0005845-2026` | Recorded $100; separate 10%; Formal Arraignment on 2026-10-20; bail evidence page 1 |
+| `MJ-05317-CR-0000264-2026` | Recorded $1,000; posted; Preliminary Hearing on 2026-10-19; bail evidence page 2 |
+| `MJ-05310-NT-0000228-2026` | No qualifying monetary bail amount |
+
+Use genuine PDFs for case-level tests. Structural fixtures may test controls and transport behavior.
+
+## 13. Environment, authentication, and deployment reconciliation
+
+Inspect the actual authentication implementation:
+
+```text
+artifacts/api-server/src/middlewares/researchAuth.ts
+```
+
+The latest handoff reports shared-password workspace authentication. Do not migrate to Clerk because older documentation mentions it.
+
+Read:
+
+```text
+.agents/memory/authenticated-testing.md
+```
+
+Do not reproduce session credentials in diagnostics or reports.
+
+Inspect actual development/production schema differences. The last reported production difference was:
+
+```sql
+ALTER TYPE "public"."bail_financial_basis"
+ADD VALUE 'RECORDED_BAIL_AMOUNT';
+```
+
+That is a historical report, not a current migration instruction.
+
+Determine whether publishing is available to the agent or requires the user’s Publish action.
+
+Identify the actual deployed URL and deployed revision where available. Do not equate a deployment-history entry with verified functionality.
+
+## 14. Verification planning
+
+Inspect the scripts before scheduling checks.
+
+Relevant commands may include:
+
+```text
+pnpm --filter @workspace/api-spec run codegen
+pnpm run typecheck
+pnpm --filter @workspace/bail-research test
+pnpm --filter @workspace/api-server run test:completion
+pnpm --filter @workspace/api-server run test:research-workflow
+pnpm --filter @workspace/api-server run test:safety
+
+python -m unittest discover \
+  -s artifacts/api-server/tests \
+  -p test_supplied_bail.py -v
+
+python -m unittest discover \
+  -s artifacts/api-server/tests \
+  -p test_calendar_protocol.py -v
+
+python -m unittest discover \
+  -s artifacts/api-server/tests \
+  -p test_calendar_document.py -v
+
+PORT=5173 BASE_PATH=/ pnpm run build
+git diff --check
+```
+
+The previous handoff reported focused checks passing but did not establish a full safety-suite pass after all latest changes.
+
+Separate:
+
+- Previously reported passing.
+- Reverified during this inspection.
+- Planned after implementation.
+- Currently blocked.
+
+Do not present historical counts as fresh results.
+
+## 15. Required report back to Perplexity
+
+Return one self-contained report in the following format.
+
+### A. Source and environment reconciliation
+
+```text
+Current branch:
+Current commit:
+Working-tree status:
+Workspace mode:
+Relationship to integration branch:
+GitHub synchronization:
+Current authentication:
+Development runtime:
+Published URL/revision:
+```
+
+### B. Reference ZIP review
+
+| ZIP/repository | Revision if known | License | Files inspected | Applicable ideas/code | Limitations | Recommendation |
+|---|---|---|---|---|---|---|
+
+Be specific about what should be reused, adapted, or rejected.
+
+### C. Calendar root-cause analysis
+
+State:
+
+1. Exact observed rejection.
+2. Function and branch responsible.
+3. Supporting retained diagnostic fields.
+4. Whether normalized aliases or competing actions are involved.
+5. What remains unknown.
+6. The smallest justified repair.
+7. A regression that would fail before and pass after that repair.
+
+If retained evidence cannot establish the cause, specify the smallest additional diagnostic needed. Do not label a hypothesis as the root cause.
+
+### D. PDF strategy decision
+
+Compare the current native-session implementation with the two reference approaches.
+
+Recommend one path and explain:
+
+- Why it fits the actual document behavior.
+- What existing code it preserves.
+- What code, if any, changes.
+- What offline test verifies it.
+- What live test remains necessary.
+
+### E. Dependency-ordered task plan
+
+Use this table:
+
+| ID | Task | Exact files/functions | Dependency | Change proposed | Acceptance test | Status/blocker |
+|---|---|---|---|---|---|---|
+
+Cover only necessary work, including applicable tasks for:
+
+- Source reconciliation.
+- Calendar parser repair.
+- Document-action selection.
+- Current-method document access.
+- CP and MDJ parsing integration.
+- Event matching.
+- Monetary projection.
+- Table and evidence.
+- CSV.
+- Job persistence and reload.
+- Generated contracts.
+- Schema differences.
+- Full regression checks.
+- Deployment.
+- Signed-in published-app verification.
+
+Distinguish confirmed defects from optional improvements.
+
+### F. Verification ledger
+
+List actual checks performed during this pass and their outcomes.
+
+Also report:
+
+```text
+New court requests made:
+New PDF requests made:
+Files changed:
+Database changes:
+Deployment changes:
+```
+
+For this inspection-only pass, these should remain none unless a local diagnostic artifact was created; identify any such artifact.
+
+### G. Recommended implementation batches
+
+Group the work into the smallest coherent batches, each with:
+
+- Objective.
+- Files affected.
+- Dependencies.
+- Tests.
+- Completion evidence.
+
+Prefer:
+
+1. A narrowly justified calendar-acceptance repair.
+2. Document-access integration and verification.
+3. Remaining application and deployment completion.
+
+Do not rebuild completed components.
+
+### H. Decisions or access required
+
+List only material missing inputs. For each:
+
+- Exact missing item.
+- Why it blocks a named task.
+- What can proceed without it.
+
+End with the proposed first implementation batch—not another generic handoff.
+
+## Completion criterion for this pass
+
+A successful response establishes what code is current, what the three ZIPs genuinely contribute, why the calendar parser rejects the observed results—or precisely what evidence is missing—and a file-specific task plan that the Perplexity collaborator can review before implementation.

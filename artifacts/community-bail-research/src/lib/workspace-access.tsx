@@ -26,7 +26,7 @@ export function WorkspaceAccessProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const session = useQuery({
     queryKey: ACCESS_QUERY_KEY,
-    queryFn: () => getWorkspaceSession(),
+    queryFn: () => getWorkspaceSession({ credentials: 'include' }),
     retry: false,
     refetchInterval: (query) => query.state.data?.authenticated ? 60_000 : false,
     refetchIntervalInBackground: true,
@@ -42,12 +42,19 @@ export function WorkspaceAccessProvider({ children }: { children: ReactNode }) {
   }, [queryClient, session.data?.authenticated]);
 
   const enter = useMutation({
-    mutationFn: (password: string) => enterWorkspace({ password }),
+    mutationFn: async (password: string) => {
+      await enterWorkspace({ password }, { credentials: 'include' });
+      const verifiedSession = await getWorkspaceSession({ credentials: 'include' });
+      if (!verifiedSession.authenticated) {
+        throw new Error('The password was accepted, but this browser did not keep the workspace session. Allow cookies for this preview or open the workspace in a new tab, then try again.');
+      }
+      return verifiedSession;
+    },
     onSuccess: (data) => queryClient.setQueryData(ACCESS_QUERY_KEY, data),
   });
 
   const lock = useMutation({
-    mutationFn: () => lockWorkspace(),
+    mutationFn: () => lockWorkspace({ credentials: 'include' }),
     onSuccess: () => {
       queryClient.clear();
       queryClient.setQueryData(ACCESS_QUERY_KEY, { authenticated: false });

@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
+import "./document-locations.test";
+import "./calendar-layout.test";
+import "./job-criteria.test";
+import "./research-workflow";
+import { boundedLaunchChecks } from "./bounded-launch.test";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
+import { makeResearchCriteria, validResearchCriteria, proofMethod, researchMethod, proofUrls } from "../src/lib/research-scope";
 import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
+import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
+import { discoveryPolicy } from "../src/lib/discovery";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
 
@@ -113,6 +121,68 @@ try {
       readOnlyInspection: true, readOnlyInspectionOrder: 5, orderOverflow: false },
   };
   check(validCalendarResponseDiagnostic(responseDiagnostic));
+  const validatedEmptyDiagnostic = {
+    ...responseDiagnostic,
+    parserAttempted: true,
+    parserOutcome: "EXPLICIT_EMPTY_RESULT",
+    consoleDiagnostics: {
+      status: "CLEAN", consoleErrors: 0, runtimeExceptions: 0, provenOptionalErrors: 0,
+    },
+    classifications: [],
+    stopGate: "NONE",
+    structure: { ...responseDiagnostic.structure, headerCellCount: 19, dataRowCount: 1 },
+    resultValidation: {
+      ...responseDiagnostic.resultValidation,
+      outcome: "VALIDATED_EMPTY",
+      observedRows: 1,
+      validatedRows: 1,
+      documentLinks: "NO_ROWS",
+      scope: "NO_ROWS",
+      dates: "NO_ROWS",
+      explicitEmptyResult: "SOURCE_STATUS_MARKER",
+    },
+    documentEligibility: "VALIDATED_EMPTY",
+    eventSequence: 11,
+    milestones: [...responseDiagnostic.milestones,
+      { name: "PARSER_STARTED", sequence: 10 },
+      { name: "PARSER_ACCEPTED", sequence: 11 }],
+  };
+  check(validCalendarResponseDiagnostic(validatedEmptyDiagnostic));
+  check(validCalendarResponseDiagnostic({ ...validatedEmptyDiagnostic,
+    structure: { ...validatedEmptyDiagnostic.structure, searchButtonCount: 0, searchFormPresent: false },
+  }));
+  const explicitEmptyLayout = {
+    kind: "calendar_layout", version: 1, resultTables: 1, headerRows: 1, nonHeaderRows: 1,
+    presentationRows: 1, recognizedDocumentLinks: 0, overflow: false, malformed: false,
+    complete: true, rowsOmitted: false, rows: [{
+      shape: "PRESENTATION_SHAPED", cells: 1, spanTotal: 19, docketShapedCell: false,
+      statusLabel: "NO_RESULTS_FOUND", interactive: 0,
+      links: { relativeDocket: 0, absoluteSourceDocket: 0, other: 0, identityMatched: 0, strictQuery: 0 },
+    }],
+  };
+  check(isValidatedExplicitEmptyResult(
+    explicitEmptyLayout, validatedEmptyDiagnostic, "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    explicitEmptyLayout, validatedEmptyDiagnostic, "RESULTS_NOT_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    { ...explicitEmptyLayout, rows: [{ ...explicitEmptyLayout.rows[0], statusLabel: "OTHER" }] },
+    validatedEmptyDiagnostic, "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!isValidatedExplicitEmptyResult(
+    explicitEmptyLayout,
+    { ...validatedEmptyDiagnostic, structure: { ...validatedEmptyDiagnostic.structure, headerCellCount: 18 } },
+    "EMPTY_RESULTS_VALIDATED; Search button visible=false.",
+  ));
+  check(!validCalendarResponseDiagnostic({
+    ...validatedEmptyDiagnostic,
+    resultValidation: { ...validatedEmptyDiagnostic.resultValidation, explicitEmptyResult: "NOT_CAPTURED" },
+  }));
+  check(!validCalendarResponseDiagnostic({
+    ...validatedEmptyDiagnostic,
+    documentEligibility: "BLOCKED_RESULT",
+  }));
   const prePostDiagnostic = {
     ...responseDiagnostic,
     submissionObserved: false, responseCompleted: false,
@@ -141,7 +211,7 @@ try {
     { version: 1 }, { version: 2 }, { version: 3 }, { parserAttempted: true }, { responseCompleted: false },
     { parserOutcome: "RESULTS_VALIDATED" }, { stopGate: "arbitrary" },
     { structure: { ...responseDiagnostic.structure, text: "not permitted" } },
-    { structure: { ...responseDiagnostic.structure, dataRowCount: 1001 } },
+    { structure: { ...responseDiagnostic.structure, dataRowCount: 5001 } },
     { structure: { ...responseDiagnostic.structure, expectedHeaders: "true" } },
     { classifications: [{ ...responseDiagnostic.classifications[0], message: "not permitted" }] },
     { classifications: [{ ...responseDiagnostic.classifications[0], alias: "/private?token=not permitted" }] },
@@ -203,9 +273,55 @@ try {
   for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
     await pool.query(`CREATE TABLE ${namespace}.${name} (LIKE public.${name} INCLUDING ALL)`);
   }
+  await boundedLaunchChecks(store, {
+    layout: explicitEmptyLayout,
+    diagnostic: validatedEmptyDiagnostic,
+  });
+  await reset(false);
+  // The new source scope remains operator-only, one-use, exact-URL and capped.
+  // No court traffic or docket/case rows are created in this disposable schema.
+  const proofCriteria = makeResearchCriteria("2026-10-19");
+  check(validResearchCriteria(proofCriteria, true));
+  check(!validResearchCriteria({...proofCriteria, requestCap: 5}, true));
+  check(!validResearchCriteria({...proofCriteria, recordCap: 150}, true));
+  await store.update(sources).set({blockedReason: "SOURCE_VALIDATION_BARRIER"}).where(eq(sources.id, "UJS"));
+  const [proofPermit] = await store.insert(pilots).values({stage: "RESEARCH_PROOF",
+    expectedMethod: proofMethod, criteria: proofCriteria, state: "ATTEMPTED",
+    approvedAt: new Date(time), expiresAt: new Date(time + 86400000)}).returning();
+  const proofJob = await createJob({criteria: proofCriteria, assessmentId: proofPermit!.id});
+  await store.update(pilots).set({jobId: proofJob.id}).where(eq(pilots.id, proofPermit!.id));
+  for (const url of proofUrls) {
+    const grant = await reserveSourceRequest(proofJob, new URL(url).pathname, "GET", proofPermit!.id, url, () => false, context);
+    assert.ok(grant.allow && "requestId" in grant);
+    check(await response(proofJob, grant.requestId!));
+  }
+  check((await store.select().from(requests)).length === 4);
+  check(!(await reserveSourceRequest(proofJob, "/Report/MdjDocketSheet", "GET", proofPermit!.id, proofUrls[0], () => false, context)).allow);
+  check((await store.select().from(requests)).length === 4);
+  check((await store.select().from(sources))[0]!.blockedReason === "SOURCE_VALIDATION_BARRIER");
+  const engineCriteria = makeResearchCriteria("2026-10-19", proofPermit!.id);
+  check(validResearchCriteria(engineCriteria));
+  check(!validResearchCriteria({...engineCriteria, recordCap: 147}));
+  check(!validResearchCriteria({...engineCriteria, matchTarget: 4}));
+  const [enginePermit] = await store.insert(pilots).values({stage: "RESEARCH_RUN",
+    expectedMethod: researchMethod, criteria: engineCriteria, state: "ATTEMPTED",
+    approvedAt: new Date(time), expiresAt: new Date(time + 86400000)}).returning();
+  const engineJob = await createJob({criteria: engineCriteria, assessmentId: enginePermit!.id});
+  await store.update(pilots).set({jobId: engineJob.id}).where(eq(pilots.id, enginePermit!.id));
+  check(!(await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context)).allow);
+  await store.update(jobs).set({status: "RUNNING"}).where(eq(jobs.id, engineJob.id));
+  await store.update(pilots).set({state: "REGRESSION_VERIFIED"}).where(eq(pilots.id, proofPermit!.id));
+  const researchGrant = await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context);
+  assert.ok(researchGrant.allow && "requestId" in researchGrant);
+  check(await response(engineJob, researchGrant.requestId!));
+  check(!(await reserveSourceRequest(engineJob, "/CaseSearch", "GET", enginePermit!.id, requestUrl, () => false, context)).allow);
+  check((await store.select().from(requests)).length === 5);
+  await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v14");
+  check(integratedSourceMethod === "playwright-calendar+native-session-pdf-v15");
+  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
+    verifiedMethod: "playwright-calendar+urllib-pdf-v14" }) === "ACCESS_UNVERIFIED");
   check(calendarPreviewMethod === "playwright-calendar-preview-v9");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));
@@ -299,7 +415,7 @@ try {
   const b = await bPromise;
   assert.ok(b.allow && b.requestId);
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
-  check(reserved!.startedAt.getTime() >= completed + 60_000);
+  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs);
   await response(second, b.requestId);
 
   // Stop racing with a waiting grant: no post-stop request is reserved.
@@ -319,6 +435,16 @@ try {
   check(rateState!.pausedUntil!.getTime() >= time + 900_000);
   check(rateState!.adaptiveSpacingMs === 120_000);
   check((await store.select().from(requests)).length === 1);
+
+  // Server-directed waits apply even to an otherwise successful response.
+  await reset();
+  const directed = await createJob();
+  const directedGrant = await reserve(directed);
+  assert.ok(directedGrant.allow && directedGrant.requestId);
+  check(await response(directed,directedGrant.requestId,"OK",200,"120"));
+  const [directedState] = await store.select().from(sources);
+  check(directedState!.pausedUntil!.getTime() >= time + 120_000);
+  check(!(await reserve(await createJob())).allow);
 
   for (const [outcome, status] of [["ACCESS_DENIED", 403], ["CHALLENGE", 200], ["LOGIN_PROMPT", 200], ["REDIRECT", 302], ["TIMEOUT", null], ["INVALID_PDF", 200]] as const) {
     await reset();
@@ -678,6 +804,24 @@ try {
   const selectedPreview = makeCalendarPreviewCriteria(selectedCriteria, minimumDate);
   check(isCalendarPreviewCriteria(selectedPreview));
   check(selectedPreview.eventType === selectedCriteria.eventType && selectedPreview.endDate === selectedCriteria.endDate);
+  // Retain a source-provided URL without enabling an unverified document route.
+  const redactedDocketLink = "https://ujsportal.pacourts.us/source-returned/path?docketNumber=REDACTED";
+  check(validCalendarDocketLink(redactedDocketLink, "REDACTED"));
+  check(!allowedSourceRequest(redactedDocketLink, "GET"));
+  check(!validCalendarDocketLink(
+    "https://ujsportal.pacourts.us/source-returned/path?docketNumber=REDACTED&docketNumber=REDACTED",
+    "REDACTED",
+  ));
+  const noFilterPreview = makeCalendarPreviewCriteria({
+    courtOffice: "ANY", eventType: "ANY", courtRoom: "ANY",
+    startDate: minimumDate, endDate: minimumDate,
+  }, minimumDate);
+  check(noFilterPreview.courtOffice === "ANY" && noFilterPreview.eventType === "ANY"
+    && noFilterPreview.courtRoom === "ANY" && isCalendarPreviewCriteria(noFilterPreview));
+  assert.throws(() => makeCalendarPreviewCriteria({
+    courtOffice: "ANY", eventType: "ANY", courtRoom: "ANY",
+    startDate: minimumDate, endDate: "2026-10-17",
+  }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
   // Exercise the exact parser date projection -> parent worker guard handoff.
   // Only date cells exist here: no docket, identity, case record or result claim.
   const projectedDates = spawnSync("python", ["-c", `
@@ -709,17 +853,25 @@ print(json.dumps(projections))
     { endDate: "2026-10-14" },
   ]) {
     check(!validCalendarCriteria({ ...selectedCriteria, ...change }, minimumDate));
-    assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
+    if ("courtOffice" in change || "eventType" in change) {
+      // Ordinary calendar choices are validated exactly against live controls,
+      // not rejected by a stale local enumeration or silently substituted.
+      const scoped = makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate);
+      check(scoped.courtOffice === (change.courtOffice ?? selectedCriteria.courtOffice));
+      check(scoped.eventType === (change.eventType ?? selectedCriteria.eventType));
+    } else {
+      assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, ...change }, minimumDate), /INVALID_CALENDAR_CRITERIA/);
+    }
   }
   check(!isCalendarPreviewCriteria({ ...selectedPreview, requestCap: 9 }));
   check(!isCalendarPreviewCriteria({ ...selectedPreview, recordCap: 2 }));
-  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
+  check(isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 506" }));
   check(isCalendarPreviewCriteria({ ...selectedPreview, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }));
-  check(!isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 507" }));
+  check(isCalendarPreviewCriteria({ ...selectedPreview, courtRoom: "Courtroom 507" }));
   const roomPreview = makeCalendarPreviewCriteria({ ...selectedCriteria, eventType: "Bail Hearing", courtRoom: "Courtroom 506" }, minimumDate);
   check(roomPreview.courtRoom === "Courtroom 506" && isCalendarPreviewCriteria(roomPreview));
   assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "" }, minimumDate));
-  assert.throws(() => makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "Courtroom 507" }, minimumDate));
+  check(makeCalendarPreviewCriteria({ ...selectedCriteria, courtRoom: "Courtroom 507" }, minimumDate).courtRoom === "Courtroom 507");
   check(!calendarPreviewRequestAllowed("/Report/CpDocketSheet", "GET"));
   check(!calendarPreviewRequestAllowed("/resource/js/sitemain.min.js", "POST"));
   const previewSource = {
@@ -777,10 +929,14 @@ print(json.dumps(projections))
 
   for (const changed of [
     { startDate: "2026-10-14" }, { endDate: "2026-10-16" }, { courtRoom: "Courtroom 507" },
-    { courtRoom: undefined }, { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
+    { eventType: "Preliminary Arraignment" as const }, { calendarPreviewOnly: false },
     { requestCap: 9 }, { recordCap: 2 }, { matchTarget: 1 },
   ]) {
-    preview = await preparePreview(changed);
+    preview = await preparePreview();
+    // Changes to the JOB must not inherit the permit's saved authorization.
+    // A separately created ordinary search may use different public filters.
+    await store.update(jobs).set({criteria:{...calendarPreviewCriteria,...changed}})
+      .where(eq(jobs.id,preview.job.id));
     check(!(await previewReserve(preview.job, preview.permit.id)).allow);
     check((await store.select().from(requests)).length === 0);
   }
@@ -852,11 +1008,19 @@ print(json.dumps(projections))
   const outsideBoundedEndDate = outsideBoundedEnd.toISOString().slice(0, 10);
   assert.throws(() => makeBoundedEngineCriteria("2000-01-01", "2000-01-07"));
   check(validBoundedEngineCriteria(boundedCriteria));
+  const remainingScopeCriteria = makeBoundedEngineCriteria(factoryDay, factoryDay, 8);
+  check(validBoundedEngineCriteria(remainingScopeCriteria));
+  check(remainingScopeCriteria.requestCap === 8);
+  assert.throws(() => makeBoundedEngineCriteria(factoryDay, factoryDay, 0));
+  assert.throws(() => makeBoundedEngineCriteria(factoryDay, factoryDay, 13));
   check(boundedEngineRequestsRemaining(0) === 12);
   check(boundedEngineRequestsRemaining(3) === 9);
   check(boundedEngineRequestsRemaining(11) === 1);
   check(boundedEngineRequestsRemaining(12) === 0);
   check(boundedEngineRequestsRemaining(13) === 0);
+  check(boundedEngineRequestsRemaining(4, 8) === 4);
+  check(boundedEngineRequestsRemaining(8, 8) === 0);
+  check(boundedEngineRequestsRemaining(9, 8) === 0);
   check(boundedObservationCanContinue("BOUND_506", 1));
   check(boundedObservationCanContinue("BOUND_506", 3));
   check(!boundedObservationCanContinue("BINDING_UNPROVEN", 1));

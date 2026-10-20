@@ -3,7 +3,8 @@ const categories = ["JAVASCRIPT_EXCEPTION", "REQUIRED_RESOURCE_FAILURE",
 const aliases = ["MAIN_DOCUMENT", "MAIN_SCRIPT", "MAIN_STYLESHEET", "BLOCKED_OPTIONAL", "OTHER", "UNKNOWN"];
 const signals = ["RESOURCE_ABORT", "RESOURCE_LOAD_ERROR", "CONSOLE_ERROR", "UNCLASSIFIED", "SCRIPT_EXCEPTION", "REQUEST_FAILED"];
 const outcomes = ["NOT_RUN", "CANDIDATE_NONEMPTY", "NO_EMPTY_PROOF", "MISSING_TABLE",
-  "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED", "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
+  "EXPLICIT_EMPTY_RESULT", "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED",
+  "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
 const gates = ["NONE", "SOURCE_STOPPED", "CALENDAR_REQUIRED_RESOURCE_BLOCKED",
   "CALENDAR_REQUIRED_ASSET_MISSING", "CALENDAR_SCRIPT_ERROR", "CALENDAR_CONSOLE_ERROR",
   "CALENDAR_RESPONSE_DIAGNOSTIC_UNAVAILABLE", "CALENDAR_UNCLASSIFIED_RESOURCE_FAILURE"];
@@ -12,17 +13,17 @@ const stages = ["BEFORE_SEARCH", "SEARCH_ARMED", "POST_ATTEMPT", "RESPONSE_RECEI
   "PARSER_STARTED", "PARSER_ACCEPTED", "PARSER_REJECTED"];
 const resources = ["document", "script", "stylesheet", "image", "font", "media",
   "xhr", "fetch", "eventsource", "websocket", "manifest", "texttrack", "other", "UNKNOWN"];
-const decisions = ["UNKNOWN", "OPTIONAL_ABORT", "POLICY_ABORT", "READ_ONLY_STOP", "CACHE", "FETCH_ATTEMPT"];
+const decisions = ["UNKNOWN", "OPTIONAL_ABORT", "LOCAL_IMAGE", "POLICY_ABORT", "READ_ONLY_STOP", "CACHE", "FETCH_ATTEMPT"];
 const failures = ["UNKNOWN", "NET_FAILED", "NET_ABORTED", "NET_BLOCKED_CLIENT", "DNS", "CONNECT",
   "TIMEOUT", "HTTP_DENIED", "HTTP_RATE_LIMIT", "HTTP_CLIENT", "HTTP_SERVER", "HTTP_OTHER", "OTHER"];
 const transportStatuses = ["RESPONSE_INCOMPLETE", "SOURCE_STOPPED", "REQUIRED_RESOURCE_FAILURE",
   "REQUIRED_ASSET_MISSING", "UNCLASSIFIED_REQUEST_FAILURE", "DIAGNOSTIC_OVERFLOW", "COMPLETE"];
 const consoleStatuses = ["CLEAN", "PROVEN_OPTIONAL_ONLY", "UNCLASSIFIED_CONSOLE_ERRORS",
   "RUNTIME_EXCEPTIONS", "MIXED"];
-const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "EMPTY_NOT_PROVEN", "MISSING_TABLE",
+const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "VALIDATED_EMPTY", "EMPTY_NOT_PROVEN", "MISSING_TABLE",
   "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED", "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
 const eligibilityStates = ["BLOCKED_INTEGRITY", "BLOCKED_CRITERIA", "BLOCKED_TRANSPORT",
-  "BLOCKED_CONSOLE", "BLOCKED_RESULT", "ELIGIBLE"];
+  "BLOCKED_CONSOLE", "BLOCKED_RESULT", "ELIGIBLE", "VALIDATED_EMPTY"];
 const lifecycleStates = ["BEFORE_POST_ATTEMPT", "POST_ATTEMPT_IN_PROGRESS",
   "RESPONSE_ACKNOWLEDGED", "BROWSER_FULFILLED", "READ_ONLY_INSPECTION"];
 const requestStartStates = [...lifecycleStates, "NOT_ASSOCIATED", "UNAVAILABLE"];
@@ -123,7 +124,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     || m.parserAttempted !== marks.has("PARSER_STARTED")
     || m.inspectionStatus === "OBSERVED" && !marks.has("INSPECTION")
     || m.inspectionStatus === "OBSERVED" && !lifecycle.readOnlyInspection
-    || marks.has("PARSER_ACCEPTED") && (marks.has("PARSER_REJECTED") || m.parserOutcome !== "CANDIDATE_NONEMPTY")) return false;
+    || marks.has("PARSER_ACCEPTED") && (marks.has("PARSER_REJECTED")
+      || !["CANDIDATE_NONEMPTY", "EXPLICIT_EMPTY_RESULT"].includes(String(m.parserOutcome)))) return false;
   if (m.responseCompleted && !m.submissionObserved
     || m.parserAttempted !== (m.parserOutcome !== "NOT_RUN")
     || m.parserAttempted && (!m.responseCompleted || m.inspectionStatus !== "OBSERVED")) return false;
@@ -134,8 +136,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       "dataRowCount", "documentLinkCount", "countsCapped"])
       || !["bodyPresent", "searchFormPresent", "expectedHeaders", "countsCapped"].every(k => typeof s[k] === "boolean")
       || !count(s.searchButtonCount, 2) || !count(s.resultTableCount, 2)
-      || !count(s.headerCellCount, 128) || !count(s.dataRowCount, 1000)
-      || !count(s.documentLinkCount, 1000)
+      || !count(s.headerCellCount, 128) || !count(s.dataRowCount, 5000)
+      || !count(s.documentLinkCount, 20000)
       || s.expectedHeaders && s.resultTableCount !== 1) return false;
   } else if (m.structure !== null) return false;
   const transport = m.transportIntegrity;
@@ -158,13 +160,13 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       "outcome", "observedRows", "validatedRows", "validatedDockets",
       "documentLinks", "scope", "dates", "explicitEmptyResult"])
     || !oneOf(result.outcome, resultOutcomes)
-    || !count(result.observedRows, 1000) || !count(result.validatedRows, 1000)
-    || !count(result.validatedDockets, 1000)
+    || !count(result.observedRows, 5000) || !count(result.validatedRows, 5000)
+    || !count(result.validatedDockets, 5000)
     || Number(result.validatedRows) > Number(result.observedRows)
     || !oneOf(result.documentLinks, ["NOT_CHECKED", "NO_ROWS", "ALL_VALID", "REJECTED"])
     || !oneOf(result.scope, ["NOT_CHECKED", "NO_ROWS", "ALL_ROWS_MATCH", "REJECTED"])
     || !oneOf(result.dates, ["NOT_CHECKED", "NO_ROWS", "ALL_WITHIN_REQUEST", "REJECTED"])
-    || result.explicitEmptyResult !== "NOT_CAPTURED"
+    || !oneOf(result.explicitEmptyResult, ["NOT_CAPTURED", "SOURCE_STATUS_MARKER"])
     || !oneOf(m.criteriaValidation, [
       "NOT_VERIFIED", "PRE_SUBMISSION_FORMDATA_MATCHED", "INTERCEPTED_POST_BODY_MATCHED"])
     || !oneOf(m.documentEligibility, eligibilityStates)) return false;
@@ -194,6 +196,19 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
         || validatedRows !== 0 || validatedDockets !== 0
         || result.documentLinks !== "NO_ROWS" || result.scope !== "NO_ROWS" || result.dates !== "NO_ROWS"))
       return false;
+    if (result.outcome === "VALIDATED_EMPTY"
+      && (m.parserOutcome !== "EXPLICIT_EMPTY_RESULT" || observedRows !== 1
+        || validatedRows !== 1 || validatedDockets !== 0
+        || result.documentLinks !== "NO_ROWS" || result.scope !== "NO_ROWS" || result.dates !== "NO_ROWS"
+        || result.explicitEmptyResult !== "SOURCE_STATUS_MARKER"
+        || !object(m.structure) || m.structure.bodyPresent !== true
+         || m.structure.searchFormPresent !== (m.structure.searchButtonCount === 1)
+         || ![0, 1].includes(Number(m.structure.searchButtonCount)) || m.structure.resultTableCount !== 1
+        || m.structure.headerCellCount !== 19 || m.structure.dataRowCount !== 1
+        || m.structure.documentLinkCount !== 0 || m.structure.expectedHeaders !== true
+        || m.structure.countsCapped !== false)) return false;
+    if (result.outcome !== "VALIDATED_EMPTY"
+      && result.explicitEmptyResult !== "NOT_CAPTURED") return false;
     if (["MISSING_TABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED",
       "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"].includes(String(result.outcome))
       && (m.parserOutcome !== result.outcome || validatedRows !== 0
@@ -211,6 +226,15 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       || !["CLEAN", "PROVEN_OPTIONAL_ONLY"].includes(String(console.status))
       || runtime || consoleErrors || result.outcome !== "VALIDATED_NONEMPTY"
       || validatedRows < 1)) return false;
+  if (m.documentEligibility === "VALIDATED_EMPTY"
+    && (!m.responseCompleted || !m.parserAttempted
+      || m.criteriaValidation !== "INTERCEPTED_POST_BODY_MATCHED"
+      || transport.status !== "COMPLETE" || !transport.requiredAssetsLoaded
+      || transport.requestFailureObserved || m.classificationOverflow
+      || !["CLEAN", "PROVEN_OPTIONAL_ONLY"].includes(String(console.status))
+      || runtime || consoleErrors || result.outcome !== "VALIDATED_EMPTY"
+      || result.explicitEmptyResult !== "SOURCE_STATUS_MARKER")) return false;
+  if (m.documentEligibility === "VALIDATED_EMPTY" && result.outcome !== "VALIDATED_EMPTY") return false;
   if (m.documentEligibility !== "ELIGIBLE"
     && m.documentEligibility === "BLOCKED_CONSOLE" && !runtime && !consoleErrors) return false;
   if (m.documentEligibility !== "ELIGIBLE"
@@ -220,6 +244,7 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     && m.criteriaValidation === "INTERCEPTED_POST_BODY_MATCHED") return false;
   if (m.documentEligibility !== "ELIGIBLE"
     && m.documentEligibility === "BLOCKED_RESULT" && result.outcome === "VALIDATED_NONEMPTY") return false;
+  if (m.documentEligibility === "BLOCKED_RESULT" && result.outcome === "VALIDATED_EMPTY") return false;
   if (transport.status === "COMPLETE"
     && (!m.responseCompleted || !transport.requiredAssetsLoaded || transport.requestFailureObserved))
     return false;

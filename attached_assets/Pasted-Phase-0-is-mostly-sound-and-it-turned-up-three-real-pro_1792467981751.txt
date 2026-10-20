@@ -1,0 +1,33 @@
+Phase 0 is mostly sound, and it turned up three real problems the work order didn't anticipate. I spot-checked the citations that matter against the code, and they hold.
+
+## What I verified myself
+- **Assessment command is broken.** `assess-download.ts:61` calls `grant(job, path, method, expected)`, where `expected` is a number. `discovery-scheduler.ts:26–28` rejects any numeric permit and requires a URL, and line 40 requires the job to be RUNNING. The command needs a PAUSED job. So it cannot make its request as written, which means my Phase 3 Step B can't use it.
+- **A database enum is missing a value the code produces.** `bail_table.py:135` emits `RECORDED_BAIL_AMOUNT` for conditional bail, such as the $100 / 10% fixture. The generated API schema accepts it, but the production database enum `bail_financial_basis` does not list it. Saving that result would likely fail.
+- **The repo already clears the stop by itself.** `pilot.ts` sets proof and clears `blockedReason` automatically when a pilot run is "verified". That means every document valid, zero failures, every request under 20 seconds, and the record cap met. So the only clear is an automatic side effect of a successful run, with no separate owner action.
+
+## Corrections to my own work order
+- **Step B has to change.** It cannot use `assess-download.ts`. I will not have Replit patch the scheduler to make that command pass. The grant rules are safety code.
+- **The R-0.9 evidence is incomplete.** Replit showed only the one enum with four values. It did not say which database type should hold `RECORDED_BAIL_AMOUNT`, or whether development and production differ.
+- **The 2026-10-18 MDJ 401 was a hand-built URL.** It had no `dnh` token, so it says little about Replit's network. The only document 401 from a real link is 2026-10-20 01:09:16 UTC, 4.4 seconds after the search.
+
+## Open items
+- **Stop-clear gap:** Treat the pilot's automatic clear as acceptable only if you explicitly approve each pilot run. The work order's rule F-11 said nothing may clear the stop except an explicit owner action. I'm relaxing that to this: the pilot may clear it only after you approve the run, and the audit event must name who approved it.
+- **Published revision unknown:** So all live steps run in the development environment. Nothing gets published until you've reviewed results.
+- **Cancel doesn't kill the assessment child:** This matters only if that command is used. It won't be.
+
+## Next message for Replit
+```
+Phase 0 accepted with the following rulings. Proceed to Phase 2 (R-2 to R-9, R-15) on branch fix/public-http-document-step, offline only. Do not start Phase 3.
+
+Rulings:
+1. R-0.6: Do NOT modify discovery-scheduler.ts, reserveSourceRequest, or the grant interface. Do NOT repair assess-download.ts. Remove it from the plan. Work order Step B (R-12) is replaced: before any live step, deliver a written proposal (no code) for the smallest way to make exactly one real document request through the normal worker path under the existing limiter, with recordCap 1 and the source stop untouched until an approved run succeeds. State which existing pilot stage or admission rule would allow it, given that ACCESS_DENIED is currently set, and quote the file:line.
+2. R-0.9: Identify every place RECORDED_BAIL_AMOUNT is produced or accepted (bail_table.py:135, api-zod, openapi, schema). State which database column/type would receive it. Compare development and production for that type, read-only, and print the enum labels for both. Then, as part of Phase 2, add the migration that adds RECORDED_BAIL_AMOUNT to the enum, plus a test that stores and reads back the CP-02-CR-0005845-2026 fixture ($100, 10%, page 1). Do not run the migration against production. Give me the exact command and rollback note.
+3. R-10: Write (do not implement) the explicit owner-approval requirement for any clear. Rule: the pilot's automatic clear (pilot.ts:399-429) may happen only after the owner approves the specific run in the app, and the audit event must record the approval and the method id. State whether that approval step already exists; if not, specify the smallest addition.
+4. R-0.11: The published revision is unknown. All live work stays in the development environment. Nothing gets published.
+5. Phase 2 test suites: after changes, run all Python tests and all TypeScript tests and report exact pass/fail/skipped counts. If a suite cannot run, say why.
+6. R-15 stays: Denied or nonmonetary at $0.00 must never be stored or shown as a bail amount.
+
+Report in the section 10 format. Stop after Phase 2 and wait for my reply. Make no court requests during Phase 2, including no reruns of the probe.
+```
+
+Send me Replit's Phase 2 report when it arrives. I'll check it against the repo, including re-running the new tests myself.

@@ -1,4 +1,4 @@
-- [No fabricated records](no-fabricated-records.md) — Never create synthetic docket or case records in this product.
+- [No fabricated or inferred records](no-fabricated-records.md) — No synthetic case data or zero-match claims from an empty parsed list.
 - [Date-only response validation](date-only-response-validation.md) — Generated Zod date coercion can change calendar-date output; validate without replacing the response payload.
 - [Discovery-method choice](calendar-first-discovery.md) — Users choose filing dates or exact calendar events; never substitute methods, courts or dates after failure.
 - [Paced collection](paced-collection.md) — Support slow, resumable automation for useful research scale; a small access-check budget is not a permanent product limit.
@@ -6,6 +6,17 @@
 - [pnpm CLI arguments](pnpm-cli-arguments.md) — Pass script subcommands directly; an extra standalone separator is forwarded to the CLI in this workspace.
 - [Deferred pipeline options](deferred-pipeline-options.md) — Keep unused pipeline ideas ready for a later requested safeguard revision, without enabling them now.
 - [Inspector network boundary](inspection-network-boundary.md) — Workspace-first review, Unix datagram relay pitfalls, and a separate deployed-readiness gate.
-- [Calendar-only operator approval](calendar-only-operator-approval.md) — Building a one-use gate is not run approval; retain the global barrier and exclude PDFs.
+- [Ordinary research direction](ordinary-research-direction.md) — User-driven searches supersede pilot-only approvals and fixed scopes; preserve genuine restrictions and evidence.
+- [Historical operator approval](calendar-only-operator-approval.md) — Historical pilot boundaries only; ordinary searches follow the newer research direction.
 - [Playwright completion](playwright-teardown.md) — Pinned Response.finished leaves a target-close task pending; prefer pre-registered public completion events.
 - [Pre-POST fixture ordering](pre-post-wait-ordering.md) — A zero-delay form-submit timer can fire before the routed Search request event; assert local sequence bounds in wait tests.
+- [Engine completion and GitHub access](engine-completion.md) — Prioritize calendar-to-document integration; request private-repository reconnection immediately, alongside independent work.
+- [Authenticated test execution](authenticated-testing.md) — If the browser runtime lacks secrets, authenticate in process-level Playwright with shared in-memory cookies, never copied credentials.
+- [Portal control evidence](portal-control-evidence.md) — User-observed live comboboxes use titles and hidden model inputs, not label-for associations.
+- [Independent research stages](independent-research-stages.md) — Calendar discovery must not wait for PDFs; verify transport, local extraction, filtering and saving separately.
+- [Browser stream integrity](browser-stream-integrity.md) — Body-stream EOF is not transport completion; native request continuation also needs a redirect header gate.
+- [Scoped size-limit recovery](scoped-size-limit-recovery.md) — Recover a calendar-only operation from a proven old HTML cap without clearing broader source or document barriers.
+- [Single-attempt ownership](single-attempt-ownership.md) — Verify execution ownership and transmitted requests; isolated-task activity cannot be inferred from the main ledger.
+- [Concise source-access updates](source-access-communication.md) — Keep access safeguards, but don't repeat no-request caveats unless they explain a concrete block or are needed for acceptance evidence.
+- [Reference repository review](reference-repository-review.md) — Inspect same-portal workflows before judging applicability; different search modes do not make a reference irrelevant.
+- [Calendar structural evidence](calendar-structural-evidence.md) — Raw anchors do not prove distinct actions; an offline parser defect does not establish a historical live failure cause.

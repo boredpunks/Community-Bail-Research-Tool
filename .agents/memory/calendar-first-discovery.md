@@ -40,3 +40,16 @@ never infer current custody from a docket, hearing, or bail amount. The current
 pilot accepts only today/future dates and stops if the source form's minimum
 excludes a requested date. Do not bypass that check; verify historical access
 offline and obtain the exact scope and fresh approval before any source request.
+
+When court office, courtroom, and event type are all blank in an Allegheny
+calendar-event search, limit the search window to one day to avoid the portal's
+Common Pleas result cap omitting cases.
+
+**Why:** The user demonstrated that a multi-day, unfiltered search displayed a
+Common Pleas result-cap warning, while the single-day version showed the
+relevant case rows.
+
+**How to apply:** Use a one-day default or require one-day windows for this
+unfiltered scope; never describe a capped multi-day result as complete. This
+does not authorize MDJ traffic or establish the source's native form bindings.
+Keep the scope behind the exact operator permit and validate MDJ separately.

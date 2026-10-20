@@ -5,15 +5,26 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
-import type { CalendarPreviewInputCourtOffice } from './calendarPreviewInputCourtOffice';
-import type { CalendarPreviewInputEventType } from './calendarPreviewInputEventType';
 
 export interface CalendarPreviewInput {
-  /** Observed October 12, 2026; runtime availability must be checked. */
-  courtOffice: CalendarPreviewInputCourtOffice;
-  eventType: CalendarPreviewInputEventType;
+  /**
+     * Exact source-displayed office, or ANY.
+     * @maxLength 80
+     */
+  courtOffice: string;
+  /**
+     * Exact source-displayed room, or ANY.
+     * @maxLength 80
+     */
+  courtRoom?: string;
+  /**
+     * Exact source-displayed event type, or ANY.
+     * @maxLength 80
+     */
+  eventType: string;
   /** Real date, today or later in America/New_York. */
   startDate: Date;
   /** Inclusive window of at most seven days. */
   endDate: Date;
+  scheduledOnly?: true;
 }

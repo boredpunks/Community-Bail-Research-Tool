@@ -8,9 +8,11 @@
 import type { DiscoveryEvent } from './discoveryEvent';
 import type { DiscoveryItem } from './discoveryItem';
 import type { DiscoveryJob } from './discoveryJob';
+import type { DiscoveryReportRequestsItem } from './discoveryReportRequestsItem';
 
 export interface DiscoveryReport {
   job: DiscoveryJob;
   items: DiscoveryItem[];
   events: DiscoveryEvent[];
+  requests?: DiscoveryReportRequestsItem[];
 }

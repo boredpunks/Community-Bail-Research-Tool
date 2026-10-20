@@ -27,7 +27,8 @@ CHANGED_ASSET_VERSION = "fixture_new_version_0001"
 class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def run_fixture(self, *, missing_grid=False, changed_version=False,
                           dependent_replacement=False, initialize_button=False,
-                          hidden_button=False, selected_room=False, post_case=None):
+                          hidden_button=False, selected_room=False, post_case=None, bounded=False,
+                          large_page=None):
         # Scale the real completion-to-start pacing and click deadline together:
         # 80 logical seconds per request, a 180-logical-second navigation limit.
         scale = 0.02
@@ -46,12 +47,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         initial = public_fixture().replace(
             '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL">', ''
         ).replace('</form>',
-                  '<select name="CourtRoomID"><option value="" selected></option>'
+                  '<select title="Room" name="CourtRoomID"><option value="" selected></option>'
                   '<option value="fixture-room">Courtroom 506</option></select>'
                   '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></form>')
         if selected_room:
             initial = initial.replace('<option value="" selected>', '<option value="">').replace(
                 '<option value="fixture-room">', '<option value="fixture-room" selected>')
+        if bounded:
+            initial = initial.replace('<select title="Room" name="CourtRoomID"', '<select title="Room" aria-label="Courtroom" name="CourtRoomID"')
         # This shared fixture originally displayed internal diagnostic tokens
         # instead of public labels. Exact-label selection must remain strict;
         # use the already documented public labels in this local fixture only.
@@ -120,8 +123,35 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             '<table id="caseSearchResultGrid"><thead><tr>'
             + ''.join('<th>' + text + '</th>' for text in headers)
             + '</tr></thead><tbody></tbody></table>')
+        if large_page:
+            # Only explicit empty/status structures, never synthetic cases.
+            from test_calendar_response_size import PADDING, empty_grid
+            results = (
+                '<link rel="stylesheet" href="/resource/css/sitemain.min.css">'
+                '<script src="/resource/js/sitemain.min.js"></script>' +
+                (empty_grid() + PADDING if large_page == "early" else PADDING + empty_grid()))
+            if large_page == "warning":
+                results += ('<p>Not all results are shown for Common Pleas. Please narrow your search.</p>'
+                            '<a href="?pageIndex=2">Next</a>')
+            if large_page == "case_information":
+                info_headers = ["Column"] * 12
+                for index, label in {0: "Docket Number", 1: "Court Type", 4: "Filing Date",
+                                     7: "County", 8: "Court Office"}.items():
+                    info_headers[index] = label
+                results = (
+                    '<link rel="stylesheet" href="/resource/css/sitemain.min.css">'
+                    '<script src="/resource/js/sitemain.min.js"></script>'
+                    '<table id="caseSearchResultGrid"><thead><tr>'
+                    + ''.join('<th>' + label + '</th>' for label in info_headers)
+                    + '</tr></thead><tbody></tbody></table>')
+            if large_page == "oversized":
+                results += PADDING * 3
+            if large_page == "malformed":
+                results = results.replace("</table>", "")
         if missing_grid:
             results = results.replace('id="caseSearchResultGrid"', 'id="fixtureMissingResult"')
+        if post_case == "duplicate_grids":
+            results += '<table id="caseSearchResultGrid"><tr><th>Column</th></tr></table>'
         if changed_version:
             results = results.replace('href="/resource/css/sitemain.min.css"',
                                       f'href="/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}"')
@@ -195,6 +225,14 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             target = parsed_url.path + ("?" + parsed_url.query if parsed_url.query else "")
             return await original_fetch(route, url=f"http://127.0.0.1:{port}{target}", **kwargs)
 
+        async def fixture_calendar_fetch(stream, route):
+            # Only this local worker fixture replaces transport; the real CDP
+            # bounded stream is separately exercised against a loopback server.
+            return await local_fetch(route, max_redirects=0, max_retries=0, timeout=45_000)
+
+        async def fixture_calendar_start(stream):
+            pass  # Real response interception is covered by loopback stream tests.
+
         def scaled_pause(last_completed, now, interval):
             return original_pause(None if last_completed is None else last_completed / scale,
                                   now / scale, interval) * scale
@@ -210,6 +248,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
 
         def observe_feed(parser, html):
             parsed.append(True)
+            if post_case == "projection_extra_row":
+                html = html.replace("</table>", "<tr><td></td></tr></table>")
             return original_feed(parser, html)
 
         async def observe_field_count(page):
@@ -226,6 +266,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         port = server.sockets[0].getsockname()[1]
         config = {"criteria": CRITERIA, "calendarComplete": False, "pendingItems": [],
                   "remainingRecords": 0, "calendarPreviewOnly": True}
+        if bounded:
+            config.update(calendarPreviewOnly=False, boundedEngineObservation=True)
+            config["criteria"] = {**CRITERIA, "courtRoom": "Courtroom 506",
+                                  "recordCap": 5, "requestCap": 12}
         protocol = []
         for index in range(8):
             protocol.extend([json.dumps({"allow": True, "requestId": f"offline-{index}"}),
@@ -243,10 +287,24 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 loop.default_exception_handler(context)
 
         loop.set_exception_handler(capture_unhandled)
+        class ParentPacedProtocol(io.StringIO):
+            reads = 0
+
+            def readline(self, *args, **kwargs):
+                # Simulate the shared parent's pre-POST pacing wait, rather
+                # than relying on the retired child-side 60–90-second floor.
+                if post_case == "pre_post_wait_error" and self.reads == 6:
+                    import time
+                    time.sleep(0.15)
+                self.reads += 1
+                return super().readline(*args, **kwargs)
+
         try:
             with ExitStack() as stack:
                 stack.enter_context(patch.object(Route, "fetch", local_fetch))
-                stack.enter_context(patch.object(worker.sys, "stdin", io.StringIO('\n'.join(protocol) + '\n')))
+                stack.enter_context(patch.object(worker.CalendarStream, "fetch", fixture_calendar_fetch))
+                stack.enter_context(patch.object(worker.CalendarStream, "start", fixture_calendar_start))
+                stack.enter_context(patch.object(worker.sys, "stdin", ParentPacedProtocol('\n'.join(protocol) + '\n')))
                 stack.enter_context(patch.object(worker, "emit", lambda kind, **values:
                                                 messages.append({"kind": kind, **values})))
                 stack.enter_context(patch.object(worker, "response_pause", scaled_pause))
@@ -262,8 +320,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
                 stack.enter_context(patch.object(Response, "finished",
                                                 side_effect=AssertionError("Use the public requestfinished waiter")))
-                stack.enter_context(patch.object(worker, "download", side_effect=AssertionError("No PDFs")))
+                document_open = stack.enter_context(patch.object(
+                    worker.CalendarDocument, "open", side_effect=AssertionError("No PDFs")))
                 await worker.main(config)
+                document_open.assert_not_awaited()
         finally:
             server.close()
             await server.wait_closed()
@@ -286,7 +346,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "formContainerHasBox": container_visibility,
             "formStates": [row for row in messages if row["kind"] == "calendar_state"],
             "responseDiagnostics": [row for row in messages if row["kind"] == "calendar_response_diagnostic"],
+            "layoutDiagnostics": [row for row in messages if row["kind"] == "calendar_layout"],
             "checkpointEmitted": any(row["kind"] in ("calendar", "docket", "calendar_preview_finished") for row in messages),
+            "calendars": [row for row in messages if row["kind"] == "calendar"],
+            "sizes": [row for row in messages if row["kind"] == "calendar_response_size"],
         }
         capture = os.environ.get("CALENDAR_DIAGNOSTIC_CAPTURE")
         if capture:
@@ -301,6 +364,64 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
         self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
         return observations
+
+    async def test_large_response_validates_explicit_empty_early_and_late(self):
+        for position in ("early", "late"):
+            o = await self.run_fixture(large_page=position)
+            self.assertEqual(o["requestGrants"], 4)
+            self.assertEqual(o["responseAccounts"], 4)
+            self.assertEqual(o["barriers"], [])
+            self.assertEqual(o["calendars"][0]["rows"], [])
+            self.assertTrue(o["calendars"][0]["paginationComplete"])
+            self.assertFalse(o["calendars"][0]["resultCapReached"])
+            self.assertIn("EMPTY_RESULTS_VALIDATED", o["states"])
+
+    async def test_large_warning_preserves_incomplete_coverage(self):
+        o = await self.run_fixture(large_page="warning")
+        self.assertFalse(o["calendars"][0]["paginationComplete"])
+        self.assertTrue(o["calendars"][0]["resultCapReached"])
+
+    async def test_case_information_headers_flow_through_production_diagnostics_and_parser(self):
+        # Header-only is deliberately not empty-result evidence; no synthetic
+        # docket or personal row is added to exercise this production path.
+        o = await self.run_fixture(large_page="case_information")
+        self.assertEqual(o["calendars"], [])
+        self.assertTrue(o["responseDiagnostics"][-1]["structure"]["expectedHeaders"])
+        self.assertEqual(o["responseDiagnostics"][-1]["structure"]["headerCellCount"], 12)
+        self.assertEqual(o["responseDiagnostics"][-1]["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["outcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["documentEligibility"], "BLOCKED_RESULT")
+        self.assertIn("UNSUPPORTED_LAYOUT", o["barriers"])
+
+    async def test_large_malformed_grid_is_not_repaired_into_acceptance(self):
+        o = await self.run_fixture(large_page="malformed")
+        self.assertEqual(o["calendars"], [])
+        self.assertIn("UNSUPPORTED_LAYOUT", o["barriers"])
+        self.assertEqual(o["responseDiagnostics"][-1]["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
+        layout = o["layoutDiagnostics"][-1]
+        self.assertEqual(layout["version"], 2)
+        self.assertIn("SOURCE_FRAMING_REJECTED", layout["rejectionReasons"])
+        self.assertIn("UNCLOSED_RESULT_CONTENT", layout["rejectionReasons"])
+
+    async def test_projection_table_count_rejection_is_attributable(self):
+        o = await self.run_fixture(post_case="duplicate_grids")
+        self.assertEqual(o["calendars"], [])
+        layout = o["layoutDiagnostics"][-1]
+        self.assertIn("RESULT_TABLE_COUNT", layout["rejectionReasons"])
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
+
+    async def test_projection_row_count_disagreement_is_attributable(self):
+        o = await self.run_fixture(post_case="projection_extra_row")
+        self.assertEqual(o["calendars"], [])
+        self.assertIn("SOURCE_STRUCTURE_MISMATCH", o["layoutDiagnostics"][-1]["rejectionReasons"])
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
+
+    async def test_oversized_response_stops_without_empty_proof(self):
+        o = await self.run_fixture(large_page="oversized")
+        self.assertEqual(o["calendars"], [])
+        self.assertIn("SIZE_LIMIT", o["barriers"])
+        self.assertEqual(o["requestGrants"], 4)
 
     async def test_before_post_error_is_not_reported_as_after_response_and_prevents_transmission(self):
         o = await self.run_fixture(post_case="pre_post_console")
@@ -326,13 +447,25 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(row["code"] == "CALENDAR_SUBMITTED_VALUES_MISMATCH"
                             for row in o["formDiagnostics"]))
 
-    async def test_post_optional_abort_has_proof_and_does_not_become_required_failure(self):
+    async def test_bounded_local_image_never_transmits_or_weakens_console_gate(self):
+        o = await self.run_fixture(post_case="optional_abort", selected_room=True, bounded=True)
+        d = o["responseDiagnostics"][-1]
+        self.assertEqual(o["requestGrants"], 4)
+        self.assertEqual(d["consoleDiagnostics"]["status"], "CLEAN")
+        self.assertEqual(d["transportIntegrity"]["status"], "COMPLETE")
+        self.assertEqual(d["documentEligibility"], "BLOCKED_RESULT")
+        self.assertEqual(d["parserOutcome"], "NO_EMPTY_PROOF")
+        self.assertEqual(len(o["layoutDiagnostics"]), 1)
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_post_optional_image_is_local_and_causes_no_console_failure(self):
         o = await self.run_fixture(post_case="optional_abort")
         d = o["responseDiagnostics"][-1]
         self.assertTrue(o["parserReached"])
         self.assertEqual(d["parserOutcome"], "NO_EMPTY_PROOF")
         self.assertEqual(d["stopGate"], "NONE")
-        self.assertTrue(any(r["category"] == "BLOCKED_OPTIONAL_RESOURCE_ERROR" for r in d["classifications"]))
+        self.assertEqual(d["consoleDiagnostics"]["status"], "CLEAN")
+        self.assertFalse(any(r["category"] == "BLOCKED_OPTIONAL_RESOURCE_ERROR" for r in d["classifications"]))
         self.assertFalse(any(r["category"] == "REQUIRED_RESOURCE_FAILURE" for r in d["classifications"]))
         self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(o["checkpointEmitted"])
@@ -371,7 +504,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(lifecycle["browserFulfilled"])
         self.assertFalse(lifecycle["readOnlyInspection"])
         self.assertFalse(d["submissionObserved"])
-        self.assertEqual(o["requestGrants"], 3)
+        # The parent's granted-but-untransmitted slot is conservatively
+        # consumed and accounted uncertain; it cannot be silently reused.
+        self.assertEqual(o["requestGrants"], 4)
         self.assertFalse(any(method == "POST" for method, _path in o["network"]))
         self.assertGreater(row["firstEventOrder"], lifecycle["browserRequestStartOrder"])
 

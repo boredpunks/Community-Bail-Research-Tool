@@ -1,0 +1,59 @@
+Stop extending the pilot approval framework. Refactor the application into the user-driven research tool described below.
+
+Remove unnecessary application restrictions
+
+Remove the per-run operator approval and single-use permit requirements for ordinary authenticated searches, unless an actual applicable external requirement mandates them. Remove the fixed Courtroom 506/Bail Hearing scope.
+
+Support:
+
+Calendar Event search, Allegheny–05.
+
+Optional Court Office, Room, and Event Type filters.
+
+Scheduled Events Only.
+
+A one-day default for unfiltered searches.
+
+Calendar results displayed independently of document retrieval.
+
+Review the saved ACCESS_DENIED state. Preserve the historical failure, but do not treat a failed constructed PDF request as a permanent ban on unrelated calendar operations unless the evidence or applicable policy requires that scope. Replace inappropriate global blocking with explicit operation-specific status and recovery.
+
+Remove the hard-coded 60-second delay if it is only an application default. Use configurable, conservative sequential pacing, bounded request counts, and server-directed waiting periods. Do not claim a particular rate is court-approved without evidence.
+
+Keep the protections that make results trustworthy
+
+Retain authentication, secret protection, source-link validation, PDF identity checks, evidence references, and honest coverage reporting.
+
+Stop on access denial or challenges. Do not bypass them, rotate identities, invent access parameters, or automatically retry blocked requests.
+
+Do not manufacture document URLs. Use complete source-provided document actions.
+
+Make the actual workflow work
+
+An authenticated user submits a calendar search directly.
+
+The app displays validated rows, coverage limitations, and source-document actions.
+
+Supported documents can be retrieved through a verified, permitted access method.
+
+Document failures remain attached to the affected docket; they do not erase calendar results.
+
+Bail amount, posting evidence, and page references are displayed.
+
+The user’s maximum-bail and shown-posted filters are applied.
+
+Eligible observations can be saved pending review.
+
+Fix the uploaded PDF’s Originating Court layout using its actual headers and entry structure. Verify the extraction against the document. Do not silently discard the column or guess amounts.
+
+If automated document retrieval remains unavailable, provide working “Open source document” and PDF-upload paths so the user can continue research. Label manual uploads accurately; do not present that fallback as completed automated retrieval.
+
+Deliver, do not propose another framework
+
+Complete the independent implementation and regression tests now. Remove obsolete pilot-only controls from the ordinary user workflow rather than leaving a confusing second approval system.
+
+Make no court requests solely to investigate code that can be inspected locally. Before live execution, identify any actual remaining external restriction—not merely a limitation inherited from the pilot.
+
+Push through the required repository approval process and demonstrate the authenticated workflow. Report working features, actual live outcomes, and specific remaining failures separately.
+
+Do not return another request for permission to begin this refactor. This is the implementation direction.

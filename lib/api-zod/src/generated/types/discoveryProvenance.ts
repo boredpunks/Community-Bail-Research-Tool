@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DiscoveryEntry } from './discoveryEntry';
+import type { DiscoveryProvenanceCourtType } from './discoveryProvenanceCourtType';
+import type { DiscoveryProvenanceDocumentAcquisition } from './discoveryProvenanceDocumentAcquisition';
 import type { ExtractionOutcome } from './extractionOutcome';
+import type { MatchingEvent } from './matchingEvent';
 import type { PostedEntryState } from './postedEntryState';
 
 export interface DiscoveryProvenance {
@@ -20,7 +23,26 @@ export interface DiscoveryProvenance {
   /** @nullable */
   filingDate: Date | null;
   courtOffice: string;
+  courtType?: DiscoveryProvenanceCourtType;
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @maxItems 500 */
+  matchingEvents?: MatchingEvent[];
+  /** @maxItems 500 */
+  pdfEvents?: MatchingEvent[];
+  /** @pattern ^[a-f0-9]{64}$ */
+  documentSha256?: string;
+  documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  documentPageCount?: number;
+  /**
+     * One-based pages containing the inspected bail section.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  bailSectionPages?: number[];
 }

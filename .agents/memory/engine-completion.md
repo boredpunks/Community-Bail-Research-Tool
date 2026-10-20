@@ -1,0 +1,34 @@
+---
+name: Engine completion and private GitHub access
+description: User's completion standard, repair priority, and GitHub reconnection instructions.
+---
+
+Completion requires demonstrating the authenticated calendar → docket → bail → evidence → pending-review workflow, pushing the integrated changes, and providing reproducible setup. Parser-only tests, a running landing page, and operator-only CLI success are not completion.
+
+**Why:** The user explicitly specified this deliverable and rejected another broad planning handoff.
+
+**How to apply:** Continue independent implementation until acceptance is demonstrated or a specific approval, login action, or external dependency prevents continuation. Keep fixture behavior separate from live source proof.
+
+The following permit requirement is historical pilot guidance only, superseded for ordinary authenticated research by [ordinary research direction](ordinary-research-direction.md). Historical pilot launch was explicitly owner/workspace-delegated to an exact approved permit and stored criteria, with duplicate/concurrent launch prevented. Launch-only acceptance and improved diagnostics must never stand in for actual document retrieval, identity checks, extraction, page-reference display and pending storage.
+
+**Why:** The user repeated these functional acceptance requirements while authorizing independent implementation and testing, with exact fresh live approval only after offline preparation.
+
+**How to apply:** Preserve source barriers and consumed permits; finish and push the integrated offline work, verify authenticated behavior, and present the exact mandatory approval when live source evidence is still needed. Never report the engine complete on a build or launch endpoint alone.
+
+The primary repair must distinguish presentation/status rows, explicit source empty-state rows, and data rows with unsupported document links using source-backed evidence. Console eligibility is a separate gate. Page references must not replace this integration repair.
+
+**Why:** The user explicitly reiterated this priority after ancillary page-reference work began.
+
+**How to apply:** Never skip the unresolved row, guess a document URL, or infer zero matches. When retained evidence is insufficient, define the minimum distinguishing observation and obtain exact approval through existing controls.
+
+Request GitHub reconnection immediately when authenticated access fails while continuing independent offline work. This repository is private: use the supported authenticated connection, never try anonymous access, ask for pasted credentials, change visibility, or reconstruct an unavailable published patch from its description.
+
+**Why:** The user explicitly corrected postponing the reconnection action.
+
+**How to apply:** Fetch and inspect the exact published commit once access is restored, preserve newer local work, and continue implementation without another planning handoff.
+
+When the Replit GitHub connection is active but HTTPS pushes still reject authentication, inspect which helper Git selects after running `gh auth setup-git --hostname github.com`. A generic workspace helper can override or precede the authenticated GitHub CLI helper; if so, use a repository-local empty reset followed by `!gh auth git-credential`. Keep tokens out of remotes, commands, logs, and commits. Verify PR head SHA through the GitHub REST API if `gh pr view` reports a stale head.
+
+**Why:** A present `GIT_URL` and authenticated GitHub CLI session did not ensure Git used the right credential source; this workspace selected a wrapper until the repository-local GitHub CLI helper was set. The PR summary also briefly lagged the pushed branch head.
+
+**How to apply:** Check the redacted remote, active GitHub CLI session and repository-write scope; run the setup command; inspect the effective GitHub helper and URL rewrites; then make one normal push. A healthy integration or present secret does not prove which helper Git selected. Do not change repository visibility, embed credentials, or rewrite history to work around authentication.

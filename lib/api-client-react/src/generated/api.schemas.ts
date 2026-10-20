@@ -20,45 +20,48 @@ export interface WorkspaceSession {
 }
 
 /**
- * Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage.
+ * Recorded monetary setting semantics; absent on legacy jobs.
  */
-export type DiscoveryCriteriaCourtOffice = typeof DiscoveryCriteriaCourtOffice[keyof typeof DiscoveryCriteriaCourtOffice];
+export type DiscoveryCriteriaResultVersion = typeof DiscoveryCriteriaResultVersion[keyof typeof DiscoveryCriteriaResultVersion];
 
 
-export const DiscoveryCriteriaCourtOffice = {
-  'CP-05-02-Crim': 'CP-05-02-Crim',
-  'CP-05-02-Fam': 'CP-05-02-Fam',
-  'CP-05-02-Juv': 'CP-05-02-Juv',
-} as const;
-
-export type DiscoveryCriteriaEventType = typeof DiscoveryCriteriaEventType[keyof typeof DiscoveryCriteriaEventType];
-
-
-export const DiscoveryCriteriaEventType = {
-  Bail_Hearing: 'Bail Hearing',
-  Preliminary_Arraignment: 'Preliminary Arraignment',
-  ANY: 'ANY',
+export const DiscoveryCriteriaResultVersion = {
+  NUMBER_2: 2,
 } as const;
 
 export interface DiscoveryMatchFilters {
   /**
-     * Local monetary TOTAL_BAIL maximum; null disables this filter.
-     * @minimum 1
+     * Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound.
+     * @minimum 0
      * @maximum 2147483647
      * @nullable
      */
   monetaryUpperBoundCents: number | null;
+  /**
+     * @minimum 0
+     * @maximum 2147483647
+     * @nullable
+     */
+  monetaryLowerBoundCents?: number | null;
   excludeShownPosted: boolean;
   /** Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved. */
   inclusiveMaximum?: boolean;
+  /** Historical operator criterion retained for legacy reports; not enabled by the simple search flow. */
+  requirePostedNotShown?: boolean;
 }
 
 export interface DiscoveryCriteria {
-  /** Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage. */
-  courtOffice: DiscoveryCriteriaCourtOffice;
+  /** Recorded monetary setting semantics; absent on legacy jobs. */
+  resultVersion?: DiscoveryCriteriaResultVersion;
+  /**
+     * Exact source-displayed office choice, or ANY for no filter.
+     * @maxLength 80
+     */
+  courtOffice: string;
   /** @maxLength 80 */
   courtRoom?: string;
-  eventType: DiscoveryCriteriaEventType;
+  /** @maxLength 80 */
+  eventType: string;
   calendarPreviewOnly?: boolean;
   startDate: string;
   endDate: string;
@@ -68,7 +71,8 @@ export interface DiscoveryCriteria {
      */
   recordCap: number;
   /**
-     * @minimum 8
+     * Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.
+     * @minimum 1
      * @maximum 500
      */
   requestCap: number;
@@ -81,34 +85,35 @@ export interface DiscoveryCriteria {
   matchFilters?: DiscoveryMatchFilters;
 }
 
-/**
- * Observed October 12, 2026; runtime availability must be checked.
- */
-export type CalendarPreviewInputCourtOffice = typeof CalendarPreviewInputCourtOffice[keyof typeof CalendarPreviewInputCourtOffice];
-
-
-export const CalendarPreviewInputCourtOffice = {
-  'CP-05-02-Crim': 'CP-05-02-Crim',
-  'CP-05-02-Fam': 'CP-05-02-Fam',
-  'CP-05-02-Juv': 'CP-05-02-Juv',
-} as const;
-
-export type CalendarPreviewInputEventType = typeof CalendarPreviewInputEventType[keyof typeof CalendarPreviewInputEventType];
-
-
-export const CalendarPreviewInputEventType = {
-  Bail_Hearing: 'Bail Hearing',
-  Preliminary_Arraignment: 'Preliminary Arraignment',
-} as const;
+export type DiscoveryJobInput = DiscoveryCriteria & {
+  /**
+     * @minimum 8
+     * @maximum 500
+     */
+  requestCap: number;
+};
 
 export interface CalendarPreviewInput {
-  /** Observed October 12, 2026; runtime availability must be checked. */
-  courtOffice: CalendarPreviewInputCourtOffice;
-  eventType: CalendarPreviewInputEventType;
+  /**
+     * Exact source-displayed office, or ANY.
+     * @maxLength 80
+     */
+  courtOffice: string;
+  /**
+     * Exact source-displayed room, or ANY.
+     * @maxLength 80
+     */
+  courtRoom?: string;
+  /**
+     * Exact source-displayed event type, or ANY.
+     * @maxLength 80
+     */
+  eventType: string;
   /** Real date, today or later in America/New_York. */
   startDate: string;
   /** Inclusive window of at most seven days. */
   endDate: string;
+  scheduledOnly?: true;
 }
 
 export interface DiscoveryPolicy {
@@ -181,6 +186,8 @@ export interface DiscoveryAssessmentResult {
 
 export interface DiscoveryAssessment {
   id: string;
+  /** @nullable */
+  jobId?: string | null;
   stage: DiscoveryAssessmentStage;
   state: DiscoveryAssessmentState;
   criteria: DiscoveryCriteria;
@@ -244,6 +251,20 @@ export const DiscoveryJobStatus = {
 } as const;
 
 export interface DiscoveryJob {
+  /** @nullable */
+  documentsAttempted?: number | null;
+  /** @nullable */
+  documentsRetrieved?: number | null;
+  /** @nullable */
+  documentsParsed?: number | null;
+  /** @nullable */
+  displayedRows?: number | null;
+  /** @nullable */
+  excluded?: number | null;
+  /** @nullable */
+  ambiguities?: number | null;
+  /** @nullable */
+  eventConflicts?: number | null;
   id: string;
   criteria: DiscoveryCriteria;
   status: DiscoveryJobStatus;
@@ -289,9 +310,34 @@ export const ExtractionOutcome = {
   MISSING_BAIL_SECTION: 'MISSING_BAIL_SECTION',
   UNREADABLE: 'UNREADABLE',
   UNSUPPORTED_LAYOUT: 'UNSUPPORTED_LAYOUT',
+  AMBIGUOUS_FINANCIAL_ASSOCIATION: 'AMBIGUOUS_FINANCIAL_ASSOCIATION',
   IDENTITY_MISMATCH: 'IDENTITY_MISMATCH',
   RETRIEVAL_FAILED: 'RETRIEVAL_FAILED',
 } as const;
+
+export interface MatchingEvent {
+  eventDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  eventType: string;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  eventTime?: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  sourceId?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  sourcePage?: number;
+}
 
 export type BailCategory = typeof BailCategory[keyof typeof BailCategory];
 
@@ -311,6 +357,7 @@ export type FinancialBasis = typeof FinancialBasis[keyof typeof FinancialBasis];
 
 export const FinancialBasis = {
   TOTAL_BAIL: 'TOTAL_BAIL',
+  RECORDED_BAIL_AMOUNT: 'RECORDED_BAIL_AMOUNT',
   CASH_DEPOSIT: 'CASH_DEPOSIT',
   SURETY_BOND: 'SURETY_BOND',
   UNSECURED_AMOUNT: 'UNSECURED_AMOUNT',
@@ -325,7 +372,38 @@ export interface DiscoveryEntry {
   /** @nullable */
   amountCents: number | null;
   financialBasis: FinancialBasis | null;
+  /** @nullable */
+  originatingCourt?: string | null;
+  /** @nullable */
+  percentageCondition?: string | null;
+  /** @pattern ^[a-f0-9]{64}$ */
+  sourceEntryId?: string;
+  /** @maxLength 4000 */
+  excerpt?: string;
+  /**
+     * One-based PDF pages supporting this entry; absent for legacy evidence.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  sourcePages?: number[];
 }
+
+export type DiscoveryProvenanceCourtType = typeof DiscoveryProvenanceCourtType[keyof typeof DiscoveryProvenanceCourtType];
+
+
+export const DiscoveryProvenanceCourtType = {
+  MDJ: 'MDJ',
+  COMMON_PLEAS: 'COMMON_PLEAS',
+  UNSUPPORTED: 'UNSUPPORTED',
+} as const;
+
+export type DiscoveryProvenanceDocumentAcquisition = typeof DiscoveryProvenanceDocumentAcquisition[keyof typeof DiscoveryProvenanceDocumentAcquisition];
+
+
+export const DiscoveryProvenanceDocumentAcquisition = {
+  AUTOMATED: 'AUTOMATED',
+  MANUAL_UPLOAD: 'MANUAL_UPLOAD',
+} as const;
 
 export interface DiscoveryProvenance {
   calendarUrl: string;
@@ -338,9 +416,28 @@ export interface DiscoveryProvenance {
   /** @nullable */
   filingDate: string | null;
   courtOffice: string;
+  courtType?: DiscoveryProvenanceCourtType;
   extractionOutcome: ExtractionOutcome;
   postedEntryState: PostedEntryState;
   entries: DiscoveryEntry[];
+  /** @maxItems 500 */
+  matchingEvents?: MatchingEvent[];
+  /** @maxItems 500 */
+  pdfEvents?: MatchingEvent[];
+  /** @pattern ^[a-f0-9]{64}$ */
+  documentSha256?: string;
+  documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  documentPageCount?: number;
+  /**
+     * One-based pages containing the inspected bail section.
+     * @items.minimum 1
+     * @items.maximum 100
+     */
+  bailSectionPages?: number[];
 }
 
 export type ReviewStatus = typeof ReviewStatus[keyof typeof ReviewStatus];
@@ -395,10 +492,24 @@ export interface DiscoveryEvent {
   createdAt: string;
 }
 
+export type DiscoveryReportRequestsItem = {
+  method: string;
+  path: string;
+  /** @nullable */
+  statusCode: number | null;
+  outcome: string;
+  startedAt: string;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  durationMs: number | null;
+};
+
 export interface DiscoveryReport {
   job: DiscoveryJob;
   items: DiscoveryItem[];
   events: DiscoveryEvent[];
+  requests?: DiscoveryReportRequestsItem[];
 }
 
 export interface HealthStatus {
@@ -595,6 +706,32 @@ export type TooManyRequestsResponse = ApiError;
  * Workspace password or session signing secret is not configured
  */
 export type UnavailableResponse = ApiError;
+
+export type GetResearchOperations200Pacing = {[key: string]: number};
+
+export type GetResearchOperations200 = {
+  calendarEnabled: boolean;
+  /** @nullable */
+  calendarBlockedReason: string | null;
+  documentEnabled: boolean;
+  documentBlockedReason: string;
+  pacing: GetResearchOperations200Pacing;
+  notice: string;
+};
+
+export type UploadResearchDocumentParams = {
+docketNumber?: string;
+jobId?: string;
+itemId?: string;
+};
+
+export type UploadResearchDocument201 = {
+  jobId: string;
+  itemId: string;
+  extractionOutcome: ExtractionOutcome;
+  /** @nullable */
+  detail: string | null;
+};
 
 export type ListBailRecordsParams = {
 /**

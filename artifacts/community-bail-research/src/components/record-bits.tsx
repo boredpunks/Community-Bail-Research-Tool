@@ -42,10 +42,12 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
           <p className="hint">{r.discoveryEvidence.courtOffice}; {r.discoveryEvidence.eventType}; event date {r.discoveryEvidence.eventDate ?? 'not recorded'}; extraction {r.discoveryEvidence.extractionOutcome}; posted entry state {r.discoveryEvidence.postedEntryState}</p>
           <ul className="mt-2 space-y-1 text-base">
             {r.discoveryEvidence.entries.map((e, i) => (
-              <li key={i}>Entry {i + 1}: {e.action}, {e.orderDate ?? 'no date'}, {CATEGORY_LABEL[e.bailCategory]}{e.amountCents != null ? ` ${formatCents(e.amountCents)}` : ''}. <span className="hint">{e.wording}</span></li>
+              <li key={i}>Entry {i + 1}: {e.action}, {e.orderDate ?? 'no date'}, {CATEGORY_LABEL[e.bailCategory]}{e.amountCents != null ? ` ${formatCents(e.amountCents)}` : ''}. <span className="hint">{e.wording} Supporting PDF pages: {e.sourcePages?.length ? e.sourcePages.join(', ') : 'Not recorded in legacy evidence'}.</span></li>
             ))}
             {r.discoveryEvidence.entries.length === 0 ? <li className="hint">No bail entries were extracted.</li> : null}
           </ul>
+          <p className="hint">Bail section pages: {r.discoveryEvidence.bailSectionPages?.length ? r.discoveryEvidence.bailSectionPages.join(', ') : r.discoveryEvidence.extractionOutcome === 'MISSING_BAIL_SECTION' ? 'No bail section found' : 'Not recorded'}.</p>
+          <p className="hint break-all">Document SHA-256: {r.discoveryEvidence.documentSha256 ?? 'Not recorded in legacy evidence'}</p>
         </div>
       ) : null}
     </details>

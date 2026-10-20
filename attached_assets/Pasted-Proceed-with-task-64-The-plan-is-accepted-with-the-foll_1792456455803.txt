@@ -1,0 +1,115 @@
+Proceed with task #64. The plan is accepted with the following execution amendments.
+
+First implementation batch: candidate selection and attributable rejection
+
+Implement this batch now using the integration checkout.
+
+Repair the independently reproduced candidate-selection defects:
+
+Restrict eligible actions to supported docket-sheet report routes.
+
+Enforce docket identity and report-family compatibility.
+
+Keep court-summary actions separate from docket-sheet candidates.
+
+Deduplicate relative/absolute representations only after resolving them to the same absolute serialized URL.
+
+Preserve opaque query values and distinct action URLs.
+
+Continue rejecting genuinely competing eligible actions.
+
+Make every current structural rejection attributable:
+
+Inspect each branch that sets malformed state or rejects table structure.
+
+Add bounded closed-enum reason flags.
+
+Preserve multiple applicable reasons rather than overwriting them.
+
+Add candidate-count categories distinguishing duplicate representations from distinct eligible actions.
+
+Update Python emission, TypeScript validation, persistence, API contracts, and display only where required by the existing diagnostic path.
+
+Keep existing report compatibility.
+
+Add regressions for:
+
+Duplicate identical relative anchors.
+
+Relative/absolute aliases.
+
+Docket sheet plus court summary.
+
+Wrong report family.
+
+Different opaque action parameters.
+
+Each structural rejection reason.
+
+Diagnostic contract acceptance and rejection.
+
+Existing empty-state and malformed-structure protections.
+
+Inspect the retained events for the paused Formal Arraignment job:
+
+State whether they establish the exact malformed branch.
+
+Do not claim aliases caused the retained failure.
+
+Do not infer distinct actions from raw anchor counts.
+
+If historical evidence is insufficient, identify the smallest additional observation needed to distinguish the remaining causes.
+
+Do not delay this offline batch for a new source request. Do not repeat the ZIP review or broad architecture inspection unless a specific implementation question requires it.
+
+Verification ledger
+
+Maintain one table containing:
+
+text
+Command/check
+Revision tested
+Outcome
+Relevant failure or evidence
+
+Distinguish focused parser tests, protocol tests, complete safety suite, typecheck, production build, and published verification.
+
+Run the relevant focused checks after the first batch. Run the complete required suites and build after integration. Resolve failures without weakening assertions merely to obtain green output.
+
+Subsequent batches
+
+After the first batch:
+
+Establish current calendar acceptance using the repaired method and attributable diagnostics.
+
+Verify the existing native-session document path through the applicable current-method assessment.
+
+Recheck genuine CP/MDJ extraction, monetary projection, evidence, CSV, persistence, and legacy behavior.
+
+Prepare the release with the verified schema difference stated explicitly.
+
+After the user publishes, verify the actual released revision and signed-in workflow.
+
+Keep calendar acceptance, document readiness, application release, and published live-source acceptance as separate statuses.
+
+Next report
+
+Return implementation evidence, not another plan:
+
+Branch, commit, and working-tree state.
+
+Files changed and why.
+
+Candidate-selection behavior before and after.
+
+Structural reason flags implemented.
+
+Actual commands and results.
+
+Whether the retained live root cause is established.
+
+Any exact additional observation required.
+
+Remaining tasks and their dependencies.
+
+Complete the first batch before requesting further direction unless an actual workspace permission prevents code changes.

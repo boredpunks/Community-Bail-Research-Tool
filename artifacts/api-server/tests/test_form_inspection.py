@@ -49,7 +49,8 @@ def public_fixture():
         '<input type="text" name="CalendarEventType" value="Bail Hearing" style="display:none">'
         '<input type="hidden" name="__RequestVerificationToken" value="REDACTION_SENTINEL"></div>',
     ])
-    return ('<!-- hypothetical public form; no case data -->'
+    from public_title_fixture import titled
+    return titled('<!-- hypothetical public form; no case data -->'
             '<link rel="stylesheet" href="/resource/css/sitemain.min.css">'
             '<script src="/resource/js/sitemain.min.js"></script>'
             '<form method="post" action="https://ujsportal.pacourts.us/CaseSearch">'
@@ -76,7 +77,8 @@ def inspection_scope_fixture():
                           f'<input type="text" name="{key}" value="{value}" style="display:none"></div>')
         else:
             groups.append(f'<input type="date" name="{key}" value="{value}">')
-    return ('<!-- hypothetical public form; no case data -->'
+    from public_title_fixture import titled
+    return titled('<!-- hypothetical public form; no case data -->'
             '<form method="post" action="https://ujsportal.pacourts.us/CaseSearch">'
             + "".join(groups) + '<button id="btnSearch">Search</button></form>')
 
@@ -137,11 +139,15 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(worker, "response_pause", return_value=0), \
                 patch("courtroom_observation.LOCAL_TIMEOUT_SECONDS", 0.65), \
                 patch("courtroom_observation.STABLE_SECONDS", 0.05), \
-                patch.object(worker, "download", side_effect=AssertionError("PDFs prohibited")):
+                patch.object(worker.CalendarDocument, "open",
+                             side_effect=AssertionError("PDFs prohibited")) as document_open:
             await worker.main()
+            document_open.assert_not_awaited()
         return messages, fetches
 
     def courtroom_fixture(self, room=""):
+        room = room.replace("<select", '<select title="Room"')
+        room = room.replace('name="unpredictableNative"', 'name="CourtRoomID"')
         html = public_fixture()
         for value, token, label in (
             ("CalendarEvent", "SEARCH_MODE", "Calendar Event"),
@@ -185,6 +191,7 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
             setTimeout(() => {
               const old = document.querySelector("#roomGroup select");
               const select = document.createElement("select");
+              select.title = "Room";
               select.innerHTML = '<option value="private-value-507">507</option><option value="private-value-506">506</option>';
               const model = document.querySelector("#roomGroup input");
               model.value = select.value;
@@ -220,8 +227,8 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
     async def test_room_ambiguous_backing_does_not_claim_binding(self):
         rows, _ = await self.courtroom_result("""<div><label>Courtroom</label>
           <select><option value="private-value-506">506</option></select>
-          <input type="hidden" name="one" value="private-value-506">
-          <input type="hidden" name="two" value="private-value-506"></div>""")
+          <input type="hidden" name="CourtRoomID" value="private-value-506">
+          <input type="hidden" name="CourtRoomID" value="private-value-506"></div>""")
         self.assertEqual(rows[0]["outcome"], "BINDING_UNPROVEN")
         self.assertEqual(rows[0]["afterSelection"]["namedBindings"], 2)
 

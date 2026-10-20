@@ -11,6 +11,7 @@ export type FinancialBasis = typeof FinancialBasis[keyof typeof FinancialBasis];
 
 export const FinancialBasis = {
   TOTAL_BAIL: 'TOTAL_BAIL',
+  RECORDED_BAIL_AMOUNT: 'RECORDED_BAIL_AMOUNT',
   CASH_DEPOSIT: 'CASH_DEPOSIT',
   SURETY_BOND: 'SURETY_BOND',
   UNSECURED_AMOUNT: 'UNSECURED_AMOUNT',

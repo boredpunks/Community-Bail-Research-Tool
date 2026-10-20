@@ -11,14 +11,25 @@ try {
   const out = path.join(dir, "checks.mjs");
   await build({
     entryPoints: ["tests/safety.ts"], outfile: out, bundle: true, platform: "node", format: "esm",
-    external: ["pg-native"], logLevel: "warning",
+    external: ["pg-native"], logLevel: "warning", sourcemap: "inline",
     banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   });
-  const check = spawnSync("node", [out], { stdio: "inherit" });
+  const check = spawnSync("node", ["--enable-source-maps", out], { stdio: "inherit" });
   if (check.status) process.exitCode = check.status;
   const capture = path.join(dir, "calendar-diagnostics.jsonl");
-  const python = spawnSync("python", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"], {
-    stdio: "inherit", env: { ...process.env, CALENDAR_DIAGNOSTIC_CAPTURE: capture },
+  // Keep the full suite as the default, but allow one named offline regression
+  // to use the same real-worker → parent-validator harness.
+  const target = process.env.CALENDAR_PYTHON_TEST_TARGET;
+  if (target && !/^test_[a-z0-9_]+\.[A-Za-z_][A-Za-z_0-9]*\.[A-Za-z_][A-Za-z_0-9]*$/.test(target))
+    throw new Error("Invalid CALENDAR_PYTHON_TEST_TARGET.");
+  const pythonArgs = target ? ["-m", "unittest", target]
+    : ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"];
+  const python = spawnSync("python", pythonArgs, {
+    stdio: "inherit", env: {
+      ...process.env,
+      PYTHONPATH: [path.resolve("tests"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
+      CALENDAR_DIAGNOSTIC_CAPTURE: capture,
+    },
   });
   if (python.status) process.exitCode = python.status;
   const wire = path.join(dir, "wire.mjs");

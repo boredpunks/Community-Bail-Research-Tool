@@ -5,6 +5,8 @@ import { bailRecordsTable, bailReviewsTable, db, discoveryJobsTable } from "@wor
 export const WORKSPACE_OWNER_ID = "community-bail-research-shared-workspace";
 export const WORKSPACE_COOKIE_NAME = "cbr_workspace";
 export const WORKSPACE_SESSION_TTL_SECONDS = 12 * 60 * 60;
+// Invalidate previously issued sessions after an acceptance-run token exposure.
+export const WORKSPACE_SESSION_VERSION = 2;
 
 export interface WorkspaceIdentity {
   ownerId: string;
@@ -25,7 +27,7 @@ export function createWorkspaceSession(nowSeconds = Math.floor(Date.now() / 1000
   if (!secret) throw new Error("Workspace sessions are not configured.");
 
   const payload = Buffer.from(JSON.stringify({
-    v: 1,
+    v: WORKSPACE_SESSION_VERSION,
     issuedAt: nowSeconds,
     expiresAt: nowSeconds + WORKSPACE_SESSION_TTL_SECONDS,
     nonce: randomBytes(24).toString("base64url"),
@@ -55,7 +57,7 @@ export function hasValidWorkspaceSession(req: Request, nowSeconds = Math.floor(D
     const data: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (!data || typeof data !== "object") return false;
     const session = data as { v?: unknown; issuedAt?: unknown; expiresAt?: unknown; nonce?: unknown };
-    return session.v === 1
+    return session.v === WORKSPACE_SESSION_VERSION
       && typeof session.issuedAt === "number"
       && Number.isSafeInteger(session.issuedAt)
       && session.issuedAt <= nowSeconds + 60
@@ -89,22 +91,24 @@ export function workspacePasswordMatches(candidate: string): boolean {
   return timingSafeEqual(actualDigest, expectedDigest);
 }
 
-export function setWorkspaceSessionCookie(res: Response, req: Request, token: string): void {
-  const expires = new Date((Math.floor(Date.now() / 1000) + WORKSPACE_SESSION_TTL_SECONDS) * 1000);
+function workspaceCookieTransportAttributes(req: Request): string {
   const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const secure = req.secure || forwardedProto === "https";
+  return secure ? "; SameSite=None; Secure; Partitioned" : "; SameSite=Lax";
+}
+
+export function setWorkspaceSessionCookie(res: Response, req: Request, token: string): void {
+  const expires = new Date((Math.floor(Date.now() / 1000) + WORKSPACE_SESSION_TTL_SECONDS) * 1000);
   res.append(
     "Set-Cookie",
-    `${WORKSPACE_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${WORKSPACE_SESSION_TTL_SECONDS}; Expires=${expires.toUTCString()}${secure ? "; Secure" : ""}`,
+    `${WORKSPACE_COOKIE_NAME}=${token}; Path=/; HttpOnly${workspaceCookieTransportAttributes(req)}; Max-Age=${WORKSPACE_SESSION_TTL_SECONDS}; Expires=${expires.toUTCString()}`,
   );
 }
 
 export function clearWorkspaceSessionCookie(res: Response, req: Request): void {
-  const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  const secure = req.secure || forwardedProto === "https";
   res.append(
     "Set-Cookie",
-    `${WORKSPACE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT${secure ? "; Secure" : ""}`,
+    `${WORKSPACE_COOKIE_NAME}=; Path=/; HttpOnly${workspaceCookieTransportAttributes(req)}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
   );
 }
 

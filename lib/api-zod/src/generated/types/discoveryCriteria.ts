@@ -5,16 +5,21 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
-import type { DiscoveryCriteriaCourtOffice } from './discoveryCriteriaCourtOffice';
-import type { DiscoveryCriteriaEventType } from './discoveryCriteriaEventType';
+import type { DiscoveryCriteriaResultVersion } from './discoveryCriteriaResultVersion';
 import type { DiscoveryMatchFilters } from './discoveryMatchFilters';
 
 export interface DiscoveryCriteria {
-  /** Calendar options observed October 12, 2026; not proof of criminal result or PDF coverage. */
-  courtOffice: DiscoveryCriteriaCourtOffice;
+  /** Recorded monetary setting semantics; absent on legacy jobs. */
+  resultVersion?: DiscoveryCriteriaResultVersion;
+  /**
+     * Exact source-displayed office choice, or ANY for no filter.
+     * @maxLength 80
+     */
+  courtOffice: string;
   /** @maxLength 80 */
   courtRoom?: string;
-  eventType: DiscoveryCriteriaEventType;
+  /** @maxLength 80 */
+  eventType: string;
   calendarPreviewOnly?: boolean;
   startDate: Date;
   endDate: Date;
@@ -24,7 +29,8 @@ export interface DiscoveryCriteria {
      */
   recordCap: number;
   /**
-     * @minimum 8
+     * Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.
+     * @minimum 1
      * @maximum 500
      */
   requestCap: number;

@@ -1,3 +1,4 @@
+import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
@@ -6,11 +7,15 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
-  allowedSourceRequest, calendarAuditHeaders, calendarPreviewMethod, isCalendarPreviewCriteria,
+  allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod,
+  calendarPreviewRequestAllowed, isCalendarPreviewCriteria,
   validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
+import { documentLocations } from "./document-locations";
+import { isExplicitEmptyCalendarLayout, validCalendarLayout } from "./calendar-layout";
+import { finishBoundedRun } from "./bounded-report";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
 import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
@@ -24,6 +29,7 @@ import { courtroomObservationMethod, courtroomObservationDeadlineMs, validCourtr
 import { boundedEngineMethod, boundedObservationCanContinue, boundedObservationRequestAllowed,
   validBoundedEngineCriteria } from "./bounded-engine";
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
+import { researchMethod, validResearchCriteria } from "./research-scope";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -72,6 +78,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
   const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
   const boundedEngine = permit?.stage === "BOUNDED_ENGINE" && permit.expectedMethod === boundedEngineMethod;
+  const researchRun = permit?.stage === "RESEARCH_RUN" && permit.expectedMethod === researchMethod
+    && validResearchCriteria(job.criteria);
+  if (permit?.stage === "RESEARCH_RUN" && !researchRun) throw new Error("Invalid research-run scope");
   if (permit?.stage === "CALENDAR_ONLY"
       && (!calendarOnlyPermit || !calendarPreviewOnly || !isCalendarPreviewCriteria(job.criteria))) {
     throw new Error("Invalid calendar-only operator permit scope");
@@ -122,18 +131,23 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   let boundedObservationRequests = 0;
   let boundedObservationSeen = false;
   let boundedObservationComplete = false;
+  let explicitEmptyLayoutSeen = false;
+  let explicitEmptyDiagnosticSeen = false;
+  let calendarLayoutSeen = false;
+  let calendarResponseDiagnosticSeen = false;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
     criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
-     calendarPreviewOnly, courtroomObservationOnly, boundedEngineObservation: boundedEngine,
+     calendarPreviewOnly, ordinaryCalendar: calendarPreviewOnly && !job.assessmentId,
+     courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
     remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
   }) + "\n");
   try {
     const lines = createInterface({ input: child.stdout });
     for await (const line of lines) {
-      if (line.length > 2_000_000) throw new Error("Worker message exceeds bound");
+      if (line.length > 4_000_000) throw new Error("Worker message exceeds bound");
       const message = JSON.parse(line) as Record<string, unknown>;
       if (finished) throw new Error("Worker message after completion");
       if (inspectionOnly && !["request", "response", "inspection_metadata",
@@ -153,9 +167,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           child.stdin.write(JSON.stringify({ allow: false, reason: "COURTROOM_OBSERVATION_REQUEST_LIMIT" }) + "\n");
           continue;
         }
-        if (calendarPreviewOnly && message.method === "GET"
-            && typeof message.url === "string"
-            && new URL(message.url).pathname === "/Report/CpDocketSheet")
+        if (calendarPreviewOnly && !calendarPreviewRequestAllowed(message.path, message.method))
           throw new Error("Calendar preview cannot retrieve docket documents");
         const permission = inspectionOnly
           ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
@@ -167,6 +179,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
           throw new Error("Inspection response accounting mismatch");
         child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
+      } else if (message.kind === "calendar_response_size") {
+        if (diagnosticOnly || !validCalendarResponseSize(message))
+          throw new Error("Invalid calendar response-size metadata");
+        await discoveryEvent(job, "CALENDAR_RESPONSE_SIZE", JSON.stringify(message));
       } else if (message.kind === "filing_metadata") {
         if (!filingInspectionOnly || !validFilingInventoryMetadata(message) || message.phase !== filingPhases[filingPhase])
           throw new Error("Invalid filing metadata");
@@ -190,6 +206,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (!boundedEngine || !["COURTROOM_BINDING_NOT_ESTABLISHED", "COURTROOM_OBSERVATION_REQUEST_LIMIT"].includes(String(message.code))
           || job.calendarComplete) throw new Error("Invalid bounded engine stop");
         await pause(job, `${String(message.code)}: no Search or document request was authorized.`);
+        finished = true;
+      } else if (message.kind === "document_session_required") {
+        if (!job.calendarComplete || diagnosticOnly || Object.keys(message).length !== 1)
+          throw new Error("Invalid document session checkpoint");
+        await pause(job, "The original calendar browser session has ended. Start a new search with the same criteria to obtain fresh document links, or verify a user-supplied PDF. Existing results, budgets, and source restrictions are retained.");
         finished = true;
       } else if (message.kind === "coverage_metadata") {
         if (!coverageOnly || courtroomObservationOnly || !validCoverageMetadata(message) || message.phase !== coveragePhases[coveragePhase])
@@ -220,6 +241,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           || !(typeof message.formVisible === "boolean" || message.formVisible === null)) {
           throw new Error("Invalid calendar state evidence");
         }
+        if (message.state === "EMPTY_RESULTS_VALIDATED"
+          && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen))
+          throw new Error("Explicit empty-result status lacks matching validated source evidence");
         await discoveryEvent(job, "CALENDAR_STATE",
           `${String(message.state)}; Search button visible=${message.formVisible === null ? "not observed" : message.formVisible}. No form values, row identifiers, or response content retained.`);
       } else if (message.kind === "calendar_form_diagnostic") {
@@ -231,8 +255,22 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR_DIAGNOSTIC",
           `${message.phase}: known script loaded=${message.scriptLoaded}; stylesheet loaded=${message.stylesheetLoaded}; blocked scripts=${message.blockedScripts}, stylesheets=${message.blockedStylesheets}, document/data requests=${message.blockedRequests}; script errors=${message.pageErrors}, unclassified console errors=${message.consoleErrors}, proven optional-abort console errors=${message.optionalConsoleErrors}; network requests=${message.networkRequests ?? "not reported"}, cached asset responses=${message.cachedResponses ?? "not reported"}. Counts only; no source content retained.`);
       } else if (message.kind === "calendar_response_diagnostic") {
-        if (diagnosticOnly || boundedEngine && !boundedObservationComplete || !validCalendarResponseDiagnostic(message))
+        if (diagnosticOnly || boundedEngine && !boundedObservationComplete
+          || calendarResponseDiagnosticSeen || !validCalendarResponseDiagnostic(message))
           throw new Error("Invalid calendar response diagnostic");
+        calendarResponseDiagnosticSeen = true;
+        if (message.documentEligibility === "VALIDATED_EMPTY") {
+          const result = message.resultValidation as Record<string, unknown>;
+          const structure = message.structure as Record<string, unknown>;
+          if (!explicitEmptyLayoutSeen || result.outcome !== "VALIDATED_EMPTY"
+            || result.explicitEmptyResult !== "SOURCE_STATUS_MARKER")
+            throw new Error("Empty-result diagnostic lacks the observed source status row");
+          if (structure.resultTableCount !== 1 || structure.headerCellCount !== 19
+            || structure.dataRowCount !== 1 || structure.documentLinkCount !== 0
+            || structure.expectedHeaders !== true || structure.countsCapped !== false)
+            throw new Error("Empty-result diagnostic conflicts with the observed table structure");
+          explicitEmptyDiagnosticSeen = true;
+        }
         await discoveryEvent(job, "CALENDAR_RESPONSE_DIAGNOSTIC", JSON.stringify(message));
         const transport = message.transportIntegrity as {
           status: string; requiredAssetsLoaded: boolean; requestFailureObserved: boolean;
@@ -251,32 +289,61 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
+      } else if (message.kind === "calendar_layout") {
+        if (diagnosticOnly || calendarLayoutSeen || !validCalendarLayout(message))
+          throw new Error("Invalid calendar layout projection");
+        calendarLayoutSeen = true;
+        explicitEmptyLayoutSeen = isExplicitEmptyCalendarLayout(message);
+        await discoveryEvent(job, "CALENDAR_LAYOUT", JSON.stringify(message));
       } else if (message.kind === "calendar") {
         if (boundedEngine && !boundedObservationComplete) throw new Error("Courtroom observation gate missing before Search results");
         if (calendarPreviewOnly !== (job.criteria.calendarPreviewOnly === true)) throw new Error("Calendar mode mismatch");
-        const rows = message.rows as { docketNumber: string; position: number; sourceUrl: string; eventDate: string | null; filingDate: string | null; eventType: string }[];
-        if (!Array.isArray(rows) || rows.length > 1000 || typeof message.retrievedAt !== "string"
+        const rows = message.rows as {
+          docketNumber: string; position: number; sourceUrl: string; eventDate: string | null;
+          filingDate: string | null; eventType: string; courtOffice: string;
+          courtType: "MDJ" | "COMMON_PLEAS" | "UNSUPPORTED";
+          matchingEvents?: NonNullable<import("@workspace/db").DiscoveryProvenanceData["matchingEvents"]>;
+        }[];
+        if (!Array.isArray(rows) || rows.length > 5000 || typeof message.retrievedAt !== "string"
           || !Number.isFinite(Date.parse(message.retrievedAt))
+          || rows.length === 0 && (!explicitEmptyLayoutSeen || !explicitEmptyDiagnosticSeen)
           || calendarPreviewOnly && !validCalendarAuditHeaders(message.columnHeaders)) {
           throw new Error("Invalid calendar checkpoint");
         }
         await db.transaction(async (tx) => {
           for (const row of rows) {
-            if (!/^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) || !allowedSourceRequest(row.sourceUrl, "GET")
-              || new URL(row.sourceUrl).searchParams.get("docketNumber") !== row.docketNumber
+            const docketType = /^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "COMMON_PLEAS"
+              : /^MJ-\d{5}-(CR|NT)-\d{7}-\d{4}$/.test(row.docketNumber) ? "MDJ" : null;
+            if (!validCalendarDocketLink(row.sourceUrl, row.docketNumber)
+              || !["MDJ", "COMMON_PLEAS", "UNSUPPORTED"].includes(row.courtType)
+              || docketType !== null && row.courtType !== "UNSUPPORTED" && row.courtType !== docketType
+              || typeof row.courtOffice !== "string" || !row.courtOffice.trim()
+              || row.courtOffice.length > 80 || /[\u0000-\u001f\u007f]/.test(row.courtOffice)
               || !Number.isSafeInteger(row.position) || row.position < 0
-               || !validCalendarRowDates(row, job.criteria, calendarPreviewOnly || permit?.stage === "BOUNDED_ENGINE")
+               || !validCalendarRowDates(row, job.criteria,
+                  (job.criteria.resultVersion === 2 || calendarPreviewOnly && !!job.assessmentId || permit?.stage === "BOUNDED_ENGINE")
+                   && !(job.criteria.courtOffice === "ANY" && job.criteria.eventType === "ANY"
+                     && job.criteria.courtRoom === "ANY"))
               || typeof row.eventType !== "string" || !row.eventType.length || row.eventType.length > 160
               || job.criteria.eventType !== "ANY" && row.eventType !== job.criteria.eventType)
               throw new Error("Calendar identity conflict");
+            const { courtOffice, courtType, matchingEvents, ...itemRow } = row;
+            if (matchingEvents !== undefined && (!Array.isArray(matchingEvents) || !matchingEvents.length
+              || matchingEvents.length > 500 || matchingEvents.some(event =>
+                !actualDate(event.eventDate) || event.eventDate < job.criteria.startDate || event.eventDate > job.criteria.endDate
+                || typeof event.eventType !== "string" || !event.eventType.length || event.eventType.length > 160
+                || job.criteria.eventType !== "ANY" && event.eventType !== job.criteria.eventType
+                || event.eventTime != null && (typeof event.eventTime !== "string" || event.eventTime.length > 40)))) throw new Error("Invalid matching calendar events");
             await tx.insert(discoveryItemsTable).values({
-              jobId: job.id, ownerId: job.ownerId, ...row,
+              jobId: job.id, ownerId: job.ownerId, ...itemRow,
               provenance: {
                 calendarUrl: "https://ujsportal.pacourts.us/CaseSearch", calendarRetrievedAt: message.retrievedAt as string,
-                courtOffice: job.criteria.courtOffice, eventType: row.eventType,
-                courtRoom: job.criteria.courtRoom ?? null,
-                eventDate: row.eventDate, filingDate: row.filingDate, extractionOutcome: "UNPROCESSED",
+                courtOffice, courtType, eventType: row.eventType,
+                courtRoom: job.criteria.courtRoom === "ANY" ? null : job.criteria.courtRoom ?? null,
+                eventDate: row.eventDate, filingDate: row.filingDate,
+                extractionOutcome: courtType === "UNSUPPORTED" ? "UNSUPPORTED_LAYOUT" : "UNPROCESSED",
                 postedEntryState: "UNKNOWN", entries: [],
+                ...(matchingEvents ? { matchingEvents } : {}),
               },
             }).onConflictDoNothing({ target: [discoveryItemsTable.jobId, discoveryItemsTable.docketNumber] });
           }
@@ -288,7 +355,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         await discoveryEvent(job, "CALENDAR",
           `Validated ${rows.length} distinct result-linked dockets in source order. ${calendarPreviewOnly
             ? `Validated column headers (allowlisted labels only): ${calendarAuditHeaders.join(", ")}. `
-            : ""}${message.paginationComplete ? "All rows in this returned table inspected; no remote pagination detected." : "Pagination or source result cap limits coverage."} Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
+            : ""}${message.paginationComplete ? "All locally available rows inspected; no remote pagination detected." : "Pagination or source result cap limits coverage; additional remote pages were not examined."} Traversal: ${["STATIC_DOM", "LOCAL_DATATABLES", "REMOTE_PAGINATION_NOT_TRAVERSED"].includes(String(message.traversal)) ? message.traversal : "LEGACY_UNREPORTED"}. Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
       } else if (message.kind === "calendar_preview_finished") {
         if (!calendarPreviewOnly || !job.calendarComplete || Object.keys(message).length !== 1)
           throw new Error("Invalid calendar preview completion");
@@ -298,8 +365,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.docketNumber, String(message.docketNumber))));
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
-        if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
-        extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries });
+        const locations = documentLocations(message);
+        if (!["EXTRACTED", "MISSING_BAIL_SECTION", "UNREADABLE", "UNSUPPORTED_LAYOUT", "AMBIGUOUS_FINANCIAL_ASSOCIATION", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"].includes(outcome)) throw new Error("Invalid extraction outcome");
+        extractionProvenance.parse({ ...item.provenance, extractionOutcome: outcome, postedEntryState: message.postedEntryState, entries: message.entries, pdfEvents: message.pdfEvents });
+        if (message.pdfEvents !== undefined && (!Array.isArray(message.pdfEvents) || message.pdfEvents.some(event =>
+          !event || !actualDate(event.eventDate) || typeof event.eventType !== "string" || !event.eventType.trim()
+          || event.sourcePage !== undefined && (!Number.isInteger(event.sourcePage) || event.sourcePage < 1 || event.sourcePage > Number(message.documentPageCount))))) throw new Error("Invalid PDF calendar events");
         // Validate, never replace raw calendar-date strings with Zod's coerced Dates.
         if (!(message.retrievedAt === null || typeof message.retrievedAt === "string" && Number.isFinite(Date.parse(message.retrievedAt)))
           || !(message.excerpt === null || typeof message.excerpt === "string" && message.excerpt.length <= 200_000)
@@ -314,13 +385,15 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           excerpt: typeof message.excerpt === "string" ? message.excerpt : null,
           detail: typeof message.detail === "string" ? message.detail : null,
           provenance: { ...item.provenance,
+            ...locations,
             extractionOutcome: outcome as typeof item.provenance.extractionOutcome,
             postedEntryState: message.postedEntryState as typeof item.provenance.postedEntryState,
             entries: message.entries as DiscoveryEntryData[],
+            ...(message.pdfEvents ? {pdfEvents: message.pdfEvents as import("@workspace/db").DiscoveryProvenanceData["pdfEvents"]} : {}),
           },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
-        if (!["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) await validationStop("DOCUMENT_VALIDATION_FAILED");
+        if (outcome === "IDENTITY_MISMATCH") await validationStop("DOCUMENT_VALIDATION_FAILED");
       } else if (message.kind === "checkpoint") {
         const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
         const counts = current ? await jobSummary(current) : null;
@@ -393,6 +466,9 @@ export async function startDiscoveryWorker() {
       // Recovery never retries source work silently. Consumed slots stay consumed.
       const interrupted = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "RUNNING"));
       for (const job of interrupted) await pause(job, "Application restarted during collection. Partial results and consumed request slots preserved. Resume explicitly.");
+      await db.update(discoveryJobsTable).set({ status: "PAUSED", updatedAt: new Date(),
+        message: "Application restarted before queued collection. Resume explicitly; criteria and budgets preserved." })
+        .where(eq(discoveryJobsTable.status, "QUEUED"));
       await recoverUncertainRequests();
       // Holding the worker lease proves no pilot runner is active. Interrupted
       // single-use permits are failed, never returned to the approval queue.
@@ -416,12 +492,30 @@ export async function startDiscoveryWorker() {
           await clearExpiredDiscoveryResults();
           cleanupAt = Date.now() + 60_000;
         }
-        const [job] = await db.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.status, "QUEUED"), isNull(discoveryJobsTable.assessmentId))).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
+        const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.status, "QUEUED")).orderBy(asc(discoveryJobsTable.createdAt)).limit(1);
         if (job) {
-          try { await runJob(job); }
+          try {
+            if (job.assessmentId) {
+              const [permit] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, job.assessmentId));
+              if (!permit || permit.state !== "ATTEMPTED" || permit.jobId !== job.id
+                || permit.executionOwnerId !== job.ownerId || permit.stage !== "BOUNDED_ENGINE"
+                || permit.expectedMethod !== boundedEngineMethod || !validBoundedEngineCriteria(job.criteria)
+                || JSON.stringify(permit.criteria) !== JSON.stringify(job.criteria))
+                throw new Error("Queued assessment is not an exact delegated bounded scope");
+              await runJob(job, permit.id);
+              await finishBoundedRun(job.id, permit.id);
+            } else await runJob(job);
+          }
           catch (error) {
             logger.error({ err: error instanceof Error ? { name: error.name, message: error.message.slice(0, 180) } : undefined }, "Discovery worker stopped a job");
             await pause(job, "Local worker failure. No fabricated results or automatic retries. Operator should inspect setup.");
+            if (job.assessmentId) {
+              await db.update(discoveryAssessmentsTable).set({
+                state: "FAILED", completedAt: new Date(),
+                report: { requests: (await db.select().from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))).length,
+                  validDocuments: 0, failures: 0, reason: "Local worker failure. Permit consumed; inspect retained evidence. No automatic retry." },
+              }).where(and(eq(discoveryAssessmentsTable.id, job.assessmentId), eq(discoveryAssessmentsTable.state, "ATTEMPTED")));
+            }
           }
         } else await delay(1000);
       }

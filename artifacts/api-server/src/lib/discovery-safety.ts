@@ -1,8 +1,8 @@
 // This identifies the actual clients, not just the source domain. Changing
 // either retrieval method invalidates prior proof and requires fresh approval.
-import { validCalendarCriteria } from "./calendar-criteria";
+import { validCalendarPreviewCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+urllib-pdf-v14";
+export const integratedSourceMethod = "playwright-calendar+native-session-pdf-v15";
 export const calendarPreviewMethod = "playwright-calendar-preview-v9";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
@@ -27,17 +27,19 @@ export function isCalendarPreviewCriteria(value: unknown): boolean {
   const candidate = value as Record<string, unknown>;
   // Historical reports keep their exact old shape. This is not a freshness
   // check: admission/approval/run/scheduler separately reject stale dates.
-  const legacy = candidate.eventType === "ANY";
+  const legacy = candidate.eventType === "ANY"
+    && candidate.courtOffice === "CP-05-02-Crim"
+    && candidate.courtRoom === "Courtroom 506"
+    && candidate.startDate === "2026-10-15" && candidate.endDate === "2026-10-15";
+  const noFilter = candidate.courtOffice === "ANY" && candidate.eventType === "ANY"
+    && candidate.courtRoom === "ANY";
   const keys = ["courtOffice", "eventType", "calendarPreviewOnly", "startDate", "endDate", "recordCap", "requestCap"];
   const scopedRoom = candidate.courtRoom === "Courtroom 506"
     && candidate.courtOffice === "CP-05-02-Crim" && candidate.eventType === "Bail Hearing";
-  if (legacy || scopedRoom) keys.push("courtRoom");
+  if ("courtRoom" in candidate) keys.push("courtRoom");
   return Object.keys(candidate).length === keys.length && keys.every(key => key in candidate)
     && candidate.calendarPreviewOnly === true && candidate.recordCap === 1 && candidate.requestCap === 8
-    && (legacy
-      ? candidate.courtOffice === "CP-05-02-Crim" && candidate.courtRoom === "Courtroom 506"
-        && candidate.startDate === "2026-10-15" && candidate.endDate === "2026-10-15"
-      : validCalendarCriteria(candidate));
+    && (legacy || validCalendarPreviewCriteria(candidate));
 }
 
 export function calendarPreviewSourceAllowed(source: {
@@ -148,10 +150,24 @@ export function allowedSourceRequest(raw: unknown, method: unknown) {
       return url.search.length <= 257 && !url.search.includes("&") && entries.length === 1 && entries[0]![0] === "v"
         && version.length >= 16 && version.length <= 128 && !/[^A-Za-z0-9_-]/.test(version);
     }
-    if (url.pathname !== "/Report/CpDocketSheet" || method !== "GET") return false;
-    return url.searchParams.getAll("docketNumber").length === 1
-      && /^CP-02-CR-\d{7}-\d{4}$/.test(url.searchParams.get("docketNumber") ?? "")
+    if (!["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(url.pathname) || method !== "GET") return false;
+    const docket = url.searchParams.get("docketNumber") ?? "";
+    return (url.pathname === "/Report/CpDocketSheet" ? /^CP-02-CR-\d{7}-\d{4}$/.test(docket)
+      : /^MJ-\d{5}-(CR|NT)-\d{7}-\d{4}$/.test(docket)) && url.searchParams.getAll("docketNumber").length === 1
       && url.searchParams.getAll("dnh").length <= 1
+      && [...url.searchParams.keys()].every((key) => ["docketNumber", "dnh"].includes(key));
+  } catch { return false; }
+}
+
+export function validCalendarDocketLink(raw: unknown, docketNumber: string): boolean {
+  if (typeof raw !== "string" || raw.length > 2048) return false;
+  try {
+    const url = new URL(raw);
+    const docketPattern = /^[A-Za-z0-9][A-Za-z0-9/-]{1,79}$/;
+    return url.origin === "https://ujsportal.pacourts.us" && !url.username && !url.password && !url.hash
+      && url.pathname.startsWith("/") && !url.pathname.split("/").some((part) => part === "." || part === "..")
+      && docketPattern.test(docketNumber) && url.searchParams.get("docketNumber") === docketNumber
+      && url.searchParams.getAll("docketNumber").length === 1 && url.searchParams.getAll("dnh").length <= 1
       && [...url.searchParams.keys()].every((key) => ["docketNumber", "dnh"].includes(key));
   } catch { return false; }
 }
@@ -171,7 +187,8 @@ export function validCalendarFormDiagnostic(message: Record<string, unknown>) {
     ? ["MISSING", "WRONG_FORM", "DISABLED", "UNNAMED", "VALUE_MISMATCH",
       "BACKING_CONTROL_MISSING", "BACKING_CONTROL_AMBIGUOUS", "BACKING_VALUE_MISMATCH",
       "OPTION_MISSING", "OPTION_AMBIGUOUS", "OPTION_DISABLED",
-      "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN"]
+      "CONTROL_AMBIGUOUS", "NO_FILTER_NOT_SELECTED", "HIDDEN",
+      "ASSOCIATION_UNPROVEN", "SUBMITTED_FIELD_MISSING", "DISCOVERY_LIMIT"]
     : message.code === "CALENDAR_SUBMITTED_VALUES_MISMATCH"
     ? ["SUBMITTED_COUNT_MISMATCH", "SUBMITTED_VALUE_MISMATCH"]
     : message.code === "CALENDAR_FORM_MISSING"
@@ -185,7 +202,7 @@ export function validCalendarFormDiagnostic(message: Record<string, unknown>) {
   return Object.keys(message).every((key) => ["kind", "code", "control", "reason", "phase"].includes(key))
     && (message.kind === undefined || message.kind === "calendar_form_diagnostic")
     && (message.phase === undefined || ["INITIALIZATION", "CONTROL_SELECTION", "DATE_ENTRY", "FINAL_VALIDATION", "SUBMISSION"].includes(String(message.phase)))
-    && ["SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
+    && ["SEARCH_BUTTON", "FORM", "SEARCH_MODE", "JUDICIAL_DISTRICT", "COURT_OFFICE", "COURT_ROOM", "SCHEDULED_EVENTS_ONLY", "START_DATE", "END_DATE", "EVENT_TYPE"].includes(String(message.control))
     && reasons.includes(String(message.reason));
 }
 

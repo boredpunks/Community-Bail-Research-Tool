@@ -1,0 +1,203 @@
+Paste this into Replit in implementation mode:
+
+***
+
+# Resolve LINK_REJECTED and finish the usable engine
+
+The app now reports a specific failure:
+
+- Permit: `0af27cb8-f6c0-454c-871c-9ce4b26f07fc`
+- Scope: Allegheny - 05 / `CP-05-02-Crim` / Bail Hearing / Courtroom 506
+- Dates: October 18–23, 2026
+- Parser: `LINK_REJECTED`
+- Document eligibility: `BLOCKED_RESULT`
+- Separate stop gate: `NONE`
+- Valid documents: 0
+
+The priority is **completion**: resolve this actual calendar-to-document failure and demonstrate docket-number and bail extraction in the authenticated application. Do not expand the permission system, rewrite coverage notices, or produce another general audit instead.
+
+## 1. Own the repair through integration
+
+Routine offline investigation, implementation, tests, builds, service restoration, and safe integration are authorized. Do not ask whether to start them.
+
+Inspect current HEAD and the exact failed job’s persisted evidence. Identify the production function and condition behind `LINK_REJECTED`; do not assume it means the same thing as an earlier error.
+
+Keep the failed permit consumed. Preserve source barriers, historical accounting, and approval controls.
+
+## 2. Establish what the rejected row actually represents
+
+Determine whether the response contains:
+
+- A genuine calendar data row.
+- A presentation, status, or grouping row.
+- A source-backed explicit empty-result marker.
+- An unsupported document-link representation.
+- A returned form or another unsupported response.
+
+Trace the full path:
+
+Search response → parsed table → row classification → docket identity → link recognition → validated retrieval target.
+
+Inspect the actual handling of:
+
+- Header and column mapping.
+- `colspan` and presentation rows.
+- Relative versus absolute URLs.
+- HTML-decoded link attributes.
+- Multiple links in a row.
+- Any source-demonstrated script-driven document action.
+
+These are possibilities to investigate, not facts about the source. Do not implement guessed layouts or reconstruct undocumented endpoints.
+
+A diagnostic count such as “one row, zero recognized links” is not a sufficient diagnosis.
+
+## 3. Resolve missing evidence decisively
+
+Use retained source-backed evidence first.
+
+If the exact row/link representation was not retained, stop trying to infer it from counts. Prepare one narrowly scoped observation that captures the minimum evidence necessary to resolve the parser contract.
+
+The evidence must distinguish row type and document-link structure—not merely add another counter. Use bounded in-memory inspection and retain only approved, sanitized structural information. Do not save tokens, credentials, unrelated case details, full pages, or arbitrary console text.
+
+If the current sanitization policy prevents retaining the information necessary to repair the feature, propose one specific, minimally expanded evidence scope for explicit approval. Do not silently weaken privacy controls.
+
+Complete the observation implementation and offline tests before presenting the mandatory live approval. Do not ask whether you should prepare it.
+
+## 4. Fix interpretation without weakening identity checks
+
+Implement only the layout and link behavior demonstrated by evidence.
+
+- Do not treat every non-header row as a docket.
+- Do not silently discard an unknown row.
+- Do not treat missing document links as proof of zero matches.
+- Do not guess a docket number or document URL.
+- Do not broaden URL acceptance beyond the supported source origin and document route.
+- If a source-demonstrated URL needs normalization, validate it before retrieval.
+- Preserve exact docket agreement between the calendar row, retrieval target, and document.
+
+An identified presentation row may be handled separately. An empty search requires an explicit validated source empty-state. Unsupported cases must remain clearly unsupported.
+
+Integrate useful parser findings into the worker report, but do not make reporting the endpoint of this task.
+
+## 5. Finish the downstream path in parallel
+
+While resolving calendar interpretation, complete all independent work necessary for:
+
+1. Calendar-result display.
+2. Docket-document selection and retrieval.
+3. Document identity verification.
+4. Bail-entry extraction.
+5. Page/section provenance.
+6. Pending-observation construction.
+7. Duplicate-resistant saving.
+8. Authenticated inspection of the saved result.
+
+Use permitted real documents already available to verify extraction independently. Do not invent court records or claim that local extraction proves live calendar discovery.
+
+Keep total bail, deposit requirements, posted payments, fees, and nonmonetary conditions distinct. Unknown is not zero. Preserve multiple entries and ambiguity. Do not infer current custody or automatically determine an operative order.
+
+If partial extraction is not supported by the existing data model, do not silently introduce it or save incomplete chronology as complete.
+
+## 6. Test the actual boundaries
+
+Add regression coverage for the demonstrated failure and the supported repair. Exercise the production parser and worker path, not only a replacement helper.
+
+Where permitted source-backed artifacts are available, verify:
+
+- Supported calendar row recognition.
+- Explicit empty-result recognition.
+- Presentation-row handling.
+- Document-link validation.
+- Docket mismatch rejection.
+- Document processing and bail extraction.
+- API serialization.
+- Evidence display and pending save.
+
+Run the integrated suites, type checks, and builds against the same resulting revision. Report positive acceptance evidence separately from negative safety tests.
+
+Keep transport, console/runtime diagnostics, result validation, and document eligibility separate. Do not suppress unresolved errors merely to permit continuation.
+
+## 7. Execute the smallest meaningful acceptance run
+
+The acceptance target remains:
+
+- Allegheny - 05 / `CP-05-02-Crim`
+- Bail Hearing
+- Courtroom 506
+- October 18–23, 2026, while that window remains valid
+- Twelve total source requests across all stages
+- Up to five distinct docket documents, limited by the remaining request budget
+- Existing pacing, concurrency, cooldowns, and no automatic retries
+
+Do not silently change dates, criteria, budgets, or access methods. Do not repeat the consumed failed attempt.
+
+If fresh live approval is required, present the actual exact approval interaction as soon as all independent preparation is complete. Where the existing mechanism supports it, combine the necessary observation, calendar search, and bounded document retrieval under one explicit scope and shared ceiling.
+
+If they must be separate stages, make them part of one coherent execution plan—not a series of conversational readiness handoffs.
+
+Once authorized, continue automatically through successful stages within scope. Stop only for a genuine barrier, failed validation, uncertainty, or exhausted budget.
+
+If the supported search produces no matching dockets, report a validated empty result. Do not alter criteria to manufacture a positive extraction demonstration. Identify the minimum additional authorized input needed to verify the remaining path.
+
+## 8. Demonstrate use in the authenticated app
+
+Verify that the authorized user can:
+
+- Launch the exact approved job.
+- See progress and accurate accounting.
+- Inspect validated calendar results.
+- Inspect retrieved document identity and extraction outcomes.
+- Follow the source/page evidence.
+- Save eligible observations pending review.
+- Find the saved observations afterward.
+
+Preserve owner/role boundaries and prevent duplicate launch. The shared workspace password must not be represented as individual identity.
+
+If my login interaction is necessary, request that specific action once. A healthy API or public landing page is not authenticated acceptance evidence.
+
+## 9. Commit and push the actual integrated fix
+
+Preserve newer local and remote work. Commit and push the completed implementation through the repository’s approved workflow.
+
+The deliverable cannot remain only in the Replit workspace.
+
+Provide:
+
+- Final branch and commit.
+- Whether changes are on `main` or still awaiting merge.
+- Exact update and setup instructions.
+- Tests actually run.
+- Authenticated acceptance results.
+- Live request/document counts.
+- Extracted evidence or the precise unmet acceptance criterion.
+
+Do not promise that pulling guarantees court access. Do demonstrate what the code supports and what was verified.
+
+## 10. Allowed handoffs
+
+Continue working until one of these applies:
+
+### Completed
+
+The integrated workflow is demonstrated, committed, and pushed, with honest limitations.
+
+### Mandatory approval needed
+
+All independent work is complete, and you present the exact approval required for the next source-backed operation.
+
+### Specific external blocker
+
+You identify the exact operation that cannot proceed, supporting evidence, the smallest resolution, and one necessary user action.
+
+Do not return:
+
+- “I propose another investigation.”
+- “Would you like me to prepare the fix?”
+- Another test total without explaining whether `LINK_REJECTED` is resolved.
+- Another completed task whose only outcome is a more detailed failure message.
+
+Start with the precise `LINK_REJECTED` condition and carry the repair through the real application path. Keep the end-to-end objective open until its acceptance criteria are actually met.
+
+---
+
+Sources
