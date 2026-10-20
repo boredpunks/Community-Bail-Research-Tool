@@ -66,7 +66,7 @@ class SourceFailure(RuntimeError):
         self.attempted = attempted
 
 
-async def main(config=None):
+async def main(config=None, *, _test_calendar_links_captured_at=None):
     config = config if config is not None else json.loads(sys.stdin.readline())
     # Fail configuration before starting any browser or requesting a grant.
     calendar_html_limit = html_byte_limit()
@@ -113,7 +113,9 @@ async def main(config=None):
     bounded_observation_limit_hit = False
     blocked = 0
     calendar_time = None
-    calendar_links_captured_at = None
+    # Only the offline unit-test seam can seed this value. The JSON worker
+    # entry point never accepts it; live runs set the instant after parsing.
+    calendar_links_captured_at = _test_calendar_links_captured_at
     last_completed_clock = None
     loaded_assets = set()
     asset_cache = {}
@@ -1023,6 +1025,12 @@ async def main(config=None):
                 if calendar_preview_only:
                     emit("calendar_preview_finished")
                     return
+            if items[:config["remainingRecords"]] and calendar_links_captured_at is None:
+                # A persisted result can outlive its browser session, but its
+                # action link is not authorized for this run. The parent turns
+                # this into a pause; do not emit a request/grant or download.
+                emit("document_session_required")
+                return
             for item in items[:config["remainingRecords"]]:
                 if stopped:
                     break

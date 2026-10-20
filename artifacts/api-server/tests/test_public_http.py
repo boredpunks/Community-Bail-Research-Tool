@@ -256,7 +256,7 @@ class DenialDiagnosticTests(unittest.TestCase):
 
 
 class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
-    async def run_document(self, *, allow=True, status=200):
+    async def run_document(self, *, allow=True, status=200, capture_this_run=True):
         import worker
         import calendar_document
         messages = []
@@ -280,13 +280,18 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
                   "recordCap": 1, "requestCap": 8},
                   "calendarComplete": True, "pendingItems": [{"docketNumber": CP, "sourceUrl": source_url}],
                   "remainingRecords": 1}
+        if not capture_this_run:
+            # A serialized checkpoint timestamp from an older run is not the
+            # worker's in-memory proof of a current-run calendar capture.
+            config["calendarLinksCapturedAt"] = asyncio.get_running_loop().time()
         with patch.object(worker.sys, "stdin", stdin), \
                 patch.object(worker, "emit", lambda kind, **values: messages.append({"kind": kind, **values})), \
                 patch.object(worker.public_http, "download", side_effect=fetch) as download, \
                 patch.object(calendar_document.CalendarDocument, "__init__",
                              side_effect=AssertionError("v15 object instantiated")):
-            await worker.main(config)
-            self.assertEqual(download.await_count, 1 if allow else 0)
+            capture_time = asyncio.get_running_loop().time() if capture_this_run else None
+            await worker.main(config, _test_calendar_links_captured_at=capture_time)
+            self.assertEqual(download.await_count, 1 if allow and capture_this_run else 0)
         return messages, response
 
     async def test_parent_grant_precedes_exact_public_download_extraction_and_disposal(self):
@@ -295,14 +300,23 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["entries"][0]["amountCents"], 10000)
         self.assertEqual(result["extractionOutcome"], "EXTRACTED")
         self.assertIsNone(response._body)
-        self.assertIsNone(next(v for v in messages if v["kind"] == "response")["linkCaptureToGetSeconds"])
+        self.assertGreaterEqual(
+            next(v for v in messages if v["kind"] == "response")["linkCaptureToGetSeconds"], 0,
+        )
+
+    async def test_pending_item_without_current_run_calendar_capture_stops_before_source_request(self):
+        messages, _ = await self.run_document(capture_this_run=False)
+        self.assertIn({"kind": "document_session_required"}, messages)
+        self.assertFalse(any(v["kind"] == "request" for v in messages))
+        self.assertFalse(any(v["kind"] == "response" for v in messages))
+        self.assertFalse(any(v["kind"] == "docket" for v in messages))
 
     async def test_refusal_has_safe_response_unknown_capture_no_next_request(self):
         messages, response = await self.run_document(status=401)
         account = next(v for v in messages if v["kind"] == "response")
         self.assertEqual(account["outcome"], "ACCESS_DENIED")
         self.assertEqual(account["denialEvidence"]["excerpt"], "Unauthorized request")
-        self.assertIsNone(account["linkCaptureToGetSeconds"])
+        self.assertGreaterEqual(account["linkCaptureToGetSeconds"], 0)
         self.assertEqual(sum(v["kind"] == "request" for v in messages), 1)
         self.assertEqual(next(v for v in messages if v["kind"] == "docket")["entries"], [])
         self.assertIsNone(response._body)
