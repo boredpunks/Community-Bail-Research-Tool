@@ -1,0 +1,37 @@
+The successful queries show no queued/running jobs and a retained `ACCESS_DENIED` source state with no active request or verified method. The latest listed assessment is still the failed urllib regression—not a new native-session assessment.
+
+The item needing inspection is **`Edited pilot.ts`**. This excerpt does not show what changed or why.
+
+## What the log establishes
+
+| Evidence | Interpretation |
+|---|---|
+| Active-job query returned no rows | No jobs were `QUEUED` or `RUNNING` at that query’s instant. |
+| Query ordered by `prepared_at` failed; query using `created_at` succeeded | A schema/column mismatch is plausible, but the omitted SQL error is needed to establish the cause. |
+| Source row remains `ACCESS_DENIED` | The earlier denial has not been cleared in the shown state. |
+| `active_request_id` is blank | No source request was registered as active at that query’s instant. |
+| Latest three assessments are historical failures | The shown records do not establish preparation, approval, or execution of a fresh native-session assessment. |
+
+Nothing here establishes a new court request, PDF retrieval, or successful assessment.
+
+## Send Replit this
+
+> Before continuing, show the exact `pilot.ts` diff and explain the defect it corrects.
+>
+> Distinguish a CLI or schema compatibility repair from a change to assessment eligibility, approval, or source admission. Do not modify those semantics merely to make this attempt run.
+>
+> Inspect the actual assessment schema and use its real columns. Capture the SQL error category for failed queries without exposing credentials; do not retry unchanged queries blindly.
+>
+> If `pilot.ts` required a legitimate repair, run the affected focused tests and typecheck before using it.
+>
+> Then report:
+>
+> - Current native-session method identifier and revision.
+> - Exact proposed date range, office, Formal Arraignment event, and all-rooms binding.
+> - Request budget and one-PDF limit.
+> - Whether the existing assessment mechanism supports that method while preserving the retained denial.
+> - The new assessment ID and its preparation/approval state, if created through the established process.
+>
+> Do not describe the historical urllib assessment as native-session proof. If no new assessment has been prepared, say so explicitly.
+
+The SQL failures are not the main concern. The unexplained code edit immediately before an access assessment is the point to resolve.

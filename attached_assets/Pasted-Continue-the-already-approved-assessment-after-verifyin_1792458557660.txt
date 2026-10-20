@@ -1,0 +1,69 @@
+Continue the already approved assessment after verifying the scope-construction repair.
+
+1. Verify the CLI change
+
+Run focused checks confirming that:
+
+Formal Arraignment and courtRoom: "ANY" survive preparation unchanged.
+
+The approved criteria, job criteria, and worker criteria agree.
+
+Invalid criteria remain rejected.
+
+Existing stage budgets, approval checks, and historical defaults remain unchanged.
+
+Run the relevant TypeScript check. Record the base revision and the exact uncommitted diff used for this attempt.
+
+2. Resolve the managed-worker lease through the existing workflow
+
+Identify the lease holder. If the normal managed API worker holds the lease while idle, use the established procedure to stop that worker temporarily, allow it to release the lease, and run the assessment through the intended operator command.
+
+Do not delete or force-clear a live lease, change locking semantics, or start a competing worker.
+
+Restore the managed workflow afterward and verify API health, including if the assessment fails.
+
+3. Execute the existing approved assessment
+
+Use assessment:
+
+text
+57f415a3-bb68-4fc1-84b6-ad24a531435e
+
+Recheck that it remains approved, unused, unexpired, and bound to:
+
+text
+Method: playwright-calendar+native-session-pdf-v15
+Date: 2026-10-20 only
+Office: CP-05-02-Crim
+Event: Formal Arraignment
+Room: ANY
+Budget: 12 total requests
+PDF limit: 1
+
+If those checks pass and the CLI repair does not invalidate the approval’s code binding, execute without another conversational approval cycle.
+
+If the approval no longer matches the executing revision or scope, report that specific mismatch rather than silently replacing the assessment.
+
+4. Report actual outcomes
+
+Return:
+
+Focused test results.
+
+Lease-release and managed-workflow restoration results.
+
+Assessment and job IDs.
+
+Actual request ledger and consumed budget.
+
+Calendar validation result and any parser rejection reasons.
+
+Whether the captured document action was requested in the original browser context.
+
+HTTP/download outcome.
+
+PDF identity and extraction outcome, with evidence page if successful.
+
+Final assessment, retained-denial, and collection-readiness states.
+
+A lease failure before execution is not a source request. A completed single-document assessment is not ordinary collection approval or published end-to-end verification.

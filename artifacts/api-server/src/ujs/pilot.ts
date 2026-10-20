@@ -131,9 +131,15 @@ async function main() {
       || endDate < startDate || Date.parse(endDate) - Date.parse(startDate) > 6 * 86_400_000
       || !Number.isInteger(requestCap) || requestCap < (diagnostic(stage) ? 3 : 8)
       || requestCap > (diagnostic(stage) ? 3 : 500)) throw new Error("Specify --stage SINGLE/SMALL/MODEST (8–500 requests) or INSPECT/COVERAGE/FILING_INSPECT (exactly 3 GETs, zero PDFs/remote POSTs), with today/future dates up to 7 days. Use prepare-calendar-only --office <observed-code> --event \"Bail Hearing\" or \"Preliminary Arraignment\" --start YYYY-MM-DD --end YYYY-MM-DD for an exact one-use preview scope.");
+    const selected = makeCalendarPreviewCriteria({
+      courtOffice: value("office") ?? "CP-05-02-Crim",
+      eventType: value("event") ?? "Bail Hearing",
+      courtRoom: value("room") ?? "ANY", startDate, endDate,
+    });
     const [row] = await db.insert(discoveryAssessmentsTable).values({
       stage, expectedMethod: currentMethod(stage),
-      criteria: { courtOffice: "CP-05-02-Crim", eventType: "Bail Hearing", startDate, endDate,
+      criteria: { courtOffice: selected.courtOffice, eventType: selected.eventType,
+        courtRoom: selected.courtRoom, startDate: selected.startDate, endDate: selected.endDate,
         recordCap: stageCaps[stage], requestCap, matchTarget: stageCaps[stage],
         matchFilters: { monetaryUpperBoundCents: null, excludeShownPosted: false, inclusiveMaximum: true } },
     }).returning();
