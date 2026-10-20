@@ -1,0 +1,26 @@
+I can't verify any of that yet, because none of it is on GitHub. The remote has only `main`, `fix/bounded-engine-safety-test-leak` and `fix/calendar-result-integration` (still at 339cf49). The branch `fix/public-http-document-step` and `docs/public-http-phase-two-report.md` aren't there. They may exist only inside Replit.
+
+That means I have not seen the report, so I can't confirm:
+- the test counts
+- the claim that the three commits contain only files changed for this work
+- the "matching before/after fingerprints" for the source, the 106 ledger rows, the historical job and its 38 items
+
+Replit's summary may be accurate, but a summary of a report isn't the report.
+
+## Next step
+Paste this to Replit to push the branch. This is a normal push of the new branch only, with no force and no changes to `main` or the integration branch:
+
+```
+Push fix/public-http-document-step to origin as a new branch (git push origin fix/public-http-document-step). Do not force-push. Do not touch main or fix/calendar-result-integration. Do not open a pull request. Then print: the branch name, the head SHA, the output of `git log --oneline 3d0cca2..HEAD`, and `git status --short`. Do not publish or deploy anything.
+```
+
+If pushing from Replit is a problem, paste the full text of `docs/public-http-phase-two-report.md` here instead. That gives me the report but not the code.
+
+## What I'll do once I can see it
+1. Read the report against the A1–A7 list. Every A-item must be NOT RUN.
+2. Check out the branch and run the new loopback tests, the existing Python suites and the typecheck myself. I'll compare my counts to the reported ones.
+3. Confirm the protected files are unchanged: `discovery-scheduler.ts`, `reserveSourceRequest`, the grant interface and `assess-download.ts`.
+4. Confirm `CalendarDocument` is no longer instantiated by the normal worker, and that the byte-identical `dnh` test passes.
+5. Read the two written proposals for the single-document live path and for owner approval.
+
+I won't treat "all 106 ledger rows have matching fingerprints" as verified until I see how the fingerprint was computed. A hash of rows only means something if it covers the right columns.
