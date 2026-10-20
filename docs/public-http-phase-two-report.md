@@ -243,7 +243,7 @@ modified by the Phase 2 implementation. No history was rewritten.
 | lib/db/migrations/20261021_recorded_bail_amount.sql | Idempotent additive development SQL artifact. |
 | docs/public-http-enum-development.md | Separation, inventory, actual operation, readback and rollback boundaries. |
 | docs/public-http-step-b-proposal.md | Unexecuted SINGLE proposal, timing predicates and throughput. |
-| docs/public-http-owner-approval-proposal.md | Unimplemented specific-run identity/approval/audit requirement. |
+| docs/public-http-owner-approval-proposal.md | Written-only specific-permit scope and method approval-event requirement; no per-person authentication. |
 | docs/public-http-calendar-v17-note.md | Conditional one-page v17 design only; no fallback implemented. |
 | docs/public-http-phase-two-report.md | This section 10 report. |
 | .agents/memory/MEMORY.md | Index the non-obvious database identity lesson. |
