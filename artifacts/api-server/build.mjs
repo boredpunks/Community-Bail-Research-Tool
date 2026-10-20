@@ -123,6 +123,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
   await copyFile(path.join(artifactDir, "src/ujs/bail_table.py"), path.join(distDir, "ujs/bail_table.py"));
+  await copyFile(path.join(artifactDir, "src/ujs/calendar_structure.py"), path.join(distDir, "ujs/calendar_structure.py"));
   for (const file of ["worker.py", "calendar_document.py", "calendar_response.py", "calendar_dom.py", "evidence.py", "mdj_bail.py", "mdj_table.py", "local_document.py", "public_http.py", "source_protocol.py", "calendar_protocol.py", "calendar_diagnostics.py", "room_discovery.py", "optional_resources.py", "document_regression.py", "form_inspection.py", "inspection_safety.py", "network_sandbox.py", "coverage_inspection.py", "courtroom_observation.py", "filing_inventory.py"]) {
     await copyFile(path.join(artifactDir, "src/ujs", file), path.join(distDir, "ujs", file));
   }

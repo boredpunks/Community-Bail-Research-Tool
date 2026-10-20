@@ -4,9 +4,11 @@ from decimal import Decimal
 from html.parser import HTMLParser
 import hashlib
 import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pymupdf
+from source_protocol import allowed
+from calendar_structure import STRUCTURE_REASONS, CANDIDATE_COUNT_KEYS, bounded_candidate_counts
 
 CP_DOCKET = re.compile(r"CP-02-CR-\d{7}-\d{4}")
 MDJ_DOCKET = re.compile(r"MJ-\d{5}-(?:CR|NT)-\d{7}-\d{4}")
@@ -62,7 +64,10 @@ def exact_docket_link(href, docket):
                 or len(query.get("dnh", [])) > 1
                 or set(query) - {"docketNumber", "dnh"}):
             return None
-        return "https://ujsportal.pacourts.us" + href if relative else href
+        resolved = urljoin("https://ujsportal.pacourts.us", href) if relative else href
+        # Share the transport's exact report routes and docket/report families.
+        # Do not rebuild, decode, reorder, or strip opaque query values.
+        return resolved if allowed(resolved, "GET") else None
     except (TypeError, ValueError):
         return None
 
@@ -137,13 +142,31 @@ class CalendarResults(HTMLParser):
         self._recognized_links = 0
         self._malformed = False
         self._row_observations = []
+        self._rejection_reasons = set()
+        self._candidate_counts = dict.fromkeys(CANDIDATE_COUNT_KEYS, 0)
+
+    def reject_structure(self, reason, malformed=False):
+        if reason not in STRUCTURE_REASONS:
+            raise ValueError("UNKNOWN_CALENDAR_STRUCTURE_REASON")
+        self._rejection_reasons.add(reason)
+        self._malformed |= malformed
+
+    def structural_reasons(self):
+        reasons = set(self._rejection_reasons)
+        if self.in_table or self.in_row or self.in_cell:
+            reasons.add("UNCLOSED_RESULT_CONTENT")
+        if self._table_count > 1:
+            reasons.add("RESULT_TABLE_COUNT")
+        if self._header_rows > 1:
+            reasons.add("HEADER_ROW_COUNT")
+        return sorted(reasons)
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag == "table":
             self._table_depth += 1
             if self.in_table:
-                self._malformed = True
+                self.reject_structure("NESTED_TABLE", malformed=True)
             if a.get("id") == "caseSearchResultGrid":
                 self._table_count += 1
                 self.table_found = True
@@ -153,7 +176,7 @@ class CalendarResults(HTMLParser):
         if self.in_table and self._table_depth == self._result_depth:
             if tag == "tr":
                 if self.in_row:
-                    self._malformed = True
+                    self.reject_structure("ROW_OPENED_BEFORE_CLOSE", malformed=True)
                 self.in_row = True
                 self.in_cell = False
                 self.cells, self.link = [], None
@@ -161,7 +184,7 @@ class CalendarResults(HTMLParser):
                 self._all_hrefs, self._interactive = [], 0
             elif self.in_row and tag in ("td", "th"):
                 if self.in_cell:
-                    self._malformed = True
+                    self.reject_structure("CELL_OPENED_BEFORE_CLOSE", malformed=True)
                 self.in_cell = True
                 self.cells.append("")
                 self._cell_types.append(tag)
@@ -171,7 +194,7 @@ class CalendarResults(HTMLParser):
                 except (TypeError, ValueError):
                     span, row_span = 0, 0
                 if not 1 <= span <= 128 or row_span != 1:
-                    self._malformed = True
+                    self.reject_structure("INVALID_CELL_SPAN", malformed=True)
                 self._cell_spans.append(span)
             if self.in_row and tag == "a":
                 href = a.get("href", "")
@@ -191,41 +214,50 @@ class CalendarResults(HTMLParser):
         if self.in_table and self._table_depth == self._result_depth:
             if tag in ("td", "th"):
                 if not self.in_cell or not self._cell_types or self._cell_types[-1] != tag:
-                    self._malformed = True
+                    self.reject_structure("CELL_CLOSE_MISMATCH", malformed=True)
                 self.in_cell = False
             elif tag == "tr" and self.in_row:
                 if self.in_cell:
-                    self._malformed = True
+                    self.reject_structure("ROW_CLOSED_WITH_OPEN_CELL", malformed=True)
                 kinds = set(self._cell_types)
                 if kinds == {"th"}:
                     self._header_rows += 1
                     if any(span != 1 for span in self._cell_spans):
-                        self._malformed = True
+                        self.reject_structure("HEADER_CELL_SPAN", malformed=True)
                     self.headers = [cell.strip() for cell in self.cells]
                 elif kinds == {"td"}:
                     docket = docket_from_cells(self.cells, self.headers)
                     matching = [exact_docket_link(href, docket) for href in self._links] if docket else []
                     matching = [href for href in matching if href]
+                    eligible_representations = len(matching)
+                    matching = list(dict.fromkeys(matching))
+                    candidate_counts = dict(zip(CANDIDATE_COUNT_KEYS, (
+                        len(self._all_hrefs), len(self._links),
+                        eligible_representations, len(matching))))
+                    for key, value in candidate_counts.items():
+                        self._candidate_counts[key] += value
                     self._recognized_links += len(matching)
                     if len(matching) == 1:
                         self.link = matching[0]
                     elif len(matching) > 1:
-                        self._malformed = True
-                    self._row_observations.append(calendar_row_observation(
-                        self.cells, self._cell_spans, self._all_hrefs, self._interactive))
+                        self.reject_structure("COMPETING_DOCUMENT_ACTIONS", malformed=True)
+                    observation = calendar_row_observation(
+                        self.cells, self._cell_spans, self._all_hrefs, self._interactive)
+                    observation["candidateCounts"] = bounded_candidate_counts(candidate_counts)
+                    self._row_observations.append(observation)
                     if len(self.cells) == 1 and self._cell_spans[0] > 1 and not self._links:
                         self._presentation_rows += 1
                     # Presentation-shaped rows remain unverified, never empty proof.
                     self.rows.append((self.cells, self.link))
                     if len(self.cells) > 1 and any(span != 1 for span in self._cell_spans):
-                        self._malformed = True
+                        self.reject_structure("DATA_CELL_SPAN", malformed=True)
                 elif kinds:
-                    self._malformed = True
+                    self.reject_structure("MIXED_CELL_TYPES", malformed=True)
                 self.in_row = self.in_cell = False
         if tag == "table":
             if self._table_depth == self._result_depth:
                 if self.in_row or self.in_cell:
-                    self._malformed = True
+                    self.reject_structure("TABLE_CLOSED_WITH_OPEN_CONTENT", malformed=True)
                 self.in_table = False
                 self._result_depth = None
             self._table_depth = max(0, self._table_depth - 1)
@@ -243,19 +275,29 @@ class CalendarResults(HTMLParser):
             "recognizedDocumentLinks": self._recognized_links,
         }
         return {**{key: min(10_000, value) for key, value in counts.items()},
-                "overflow": any(value > 10_000 for value in counts.values()),
+                "overflow": any(value > 10_000 for value in (
+                    *counts.values(), *self._candidate_counts.values())),
                 "malformed": self._malformed,
-                "complete": self.table_found and not self.in_table and not self.in_row}
+                "complete": self.table_found and not self.in_table and not self.in_row and not self.in_cell}
 
     def contract_observation(self):
-        return {"kind": "calendar_layout", "version": 1, **self.layout_summary(),
+        return {"kind": "calendar_layout", "version": 2, **self.layout_summary(),
+                "rejectionReasons": self.structural_reasons(),
+                "candidateCounts": bounded_candidate_counts(self._candidate_counts),
                 "rows": self._row_observations[:8],
                 "rowsOmitted": len(self._row_observations) > 8}
 
     def validated(self, criteria):
         if not self.table_found:
+            self.reject_structure("RESULT_TABLE_MISSING")
             raise ValueError("RESULTS_NOT_VALIDATED")
         # Never combine separate grids or accept a partial/ambiguous parse.
+        if self._table_count != 1:
+            self.reject_structure("RESULT_TABLE_COUNT")
+        if self._header_rows != 1:
+            self.reject_structure("HEADER_ROW_COUNT")
+        if self.in_table or self.in_row or self.in_cell:
+            self.reject_structure("UNCLOSED_RESULT_CONTENT")
         if (self._table_count != 1 or self._header_rows != 1 or self._malformed
                 or self.in_table or self.in_row or self.in_cell):
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
@@ -269,6 +311,7 @@ class CalendarResults(HTMLParser):
                     9: "County", 10: "Court Office", 14: "Event Type"}
         if any(len(self.headers) <= i or not self.headers[i].startswith(label)
                for i, label in expected.items()):
+            self.reject_structure("UNSUPPORTED_EVENT_HEADERS")
             raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
         # A single, exact source status row is an explicit empty result only
         # when it spans the demonstrated 19-column grid and contains no
@@ -291,7 +334,10 @@ class CalendarResults(HTMLParser):
                 return []
         result, seen = [], {}
         for cells, link in self.rows:
+            if len(cells) < 18:
+                self.reject_structure("ROW_TOO_SHORT")
             if not link:
+                self.reject_structure("DOCUMENT_ACTION_MISSING")
                 raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
             if len(cells) < 18:
                 raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
@@ -309,7 +355,12 @@ class CalendarResults(HTMLParser):
                     or not event_type
                     or event_type_filter not in (None, "", "ANY") and event_type != event_type_filter):
                 raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
-            date_fields = calendar_date_fields(cells, criteria)
+            try:
+                date_fields = calendar_date_fields(cells, criteria)
+            except ValueError as error:
+                if str(error) == "UNSUPPORTED_EVENT_DATE_LAYOUT":
+                    self.reject_structure("EVENT_DATE_LAYOUT_UNSUPPORTED")
+                raise
             time_columns = [i for i, header in enumerate(self.headers)
                             if header.strip().casefold() in ("start time", "event time", "time")]
             time_text = (cells[time_columns[0]].strip() if len(time_columns) == 1 else
@@ -353,10 +404,15 @@ class CalendarResults(HTMLParser):
             self.scope_validated = True
             # This layout omits scheduled event date/type; filing date alone
             # cannot establish a match for the Calendar Event workflow.
+            self.reject_structure("CASE_INFORMATION_EVENT_DATE_MISSING")
             raise ValueError("UNSUPPORTED_EVENT_DATE_LAYOUT")
         result, seen = [], set()
         for cells, link in self.rows:
             if not link or len(cells) != len(self.headers):
+                if not link:
+                    self.reject_structure("DOCUMENT_ACTION_MISSING")
+                if len(cells) != len(self.headers):
+                    self.reject_structure("CASE_INFORMATION_ROW_WIDTH")
                 raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
             docket = re.sub(r"\s+", "", cells[columns["Docket Number"]])
             row_type = cells[columns["Court Type"]].strip()

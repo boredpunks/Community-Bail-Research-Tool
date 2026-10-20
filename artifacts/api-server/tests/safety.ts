@@ -319,7 +319,9 @@ try {
   await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+urllib-pdf-v14");
+  check(integratedSourceMethod === "playwright-calendar+native-session-pdf-v15");
+  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
+    verifiedMethod: "playwright-calendar+urllib-pdf-v14" }) === "ACCESS_UNVERIFIED");
   check(calendarPreviewMethod === "playwright-calendar-preview-v9");
   check(validCalendarAuditHeaders(calendarAuditHeaders));
   check(!validCalendarAuditHeaders([...calendarAuditHeaders, "unrecognized"]));

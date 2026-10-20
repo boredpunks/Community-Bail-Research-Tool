@@ -69,7 +69,9 @@ class CalendarPolicyTests(unittest.TestCase):
         self.assertNotIn("await page.content()", worker)
         self.assertNotIn("document.documentElement?.outerHTML", RESPONSE_STRUCTURE)
         # Only the bounded grid, not documentElement, may be serialized.
-        self.assertIn("table.outerHTML", DOM_PROJECTION)
+        self.assertIn("const html=projected.outerHTML", DOM_PROJECTION)
+        self.assertIn("projected=table.cloneNode(true)", DOM_PROJECTION)
+        self.assertIn("api.rows().nodes().toArray()", DOM_PROJECTION)
 
     def test_buffered_cdp_prefix_decodes_in_bounded_chunks_without_a_second_body_copy(self):
         raw = b"x" * 5_000_000

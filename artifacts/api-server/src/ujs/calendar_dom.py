@@ -1,6 +1,7 @@
 """Passive bounded projection of a loaded calendar, not full-page HTML."""
 import codecs
 from html.parser import HTMLParser
+from calendar_structure import STRUCTURE_REASONS
 
 
 class ResultFraming(HTMLParser):
@@ -11,44 +12,61 @@ class ResultFraming(HTMLParser):
         self.result_depth = None
         self.row = self.cell = None
         self.bad = False
+        self.rejection_reasons = set()
+
+    def reject(self, reason):
+        assert reason in STRUCTURE_REASONS
+        self.bad = True
+        self.rejection_reasons.add(reason)
 
     def handle_starttag(self, tag, attrs):
         if tag == "table":
             self.depth += 1
             if self.result_depth is not None:
-                self.bad = True
+                self.reject("NESTED_TABLE")
             if dict(attrs).get("id") == "caseSearchResultGrid":
                 self.result_depth = self.depth
         if self.result_depth is not None:
             if tag == "tr":
-                self.bad |= self.row is not None
+                if self.row is not None:
+                    self.reject("ROW_OPENED_BEFORE_CLOSE")
                 self.row = tag
             elif tag in ("td", "th"):
-                self.bad |= self.row is None or self.cell is not None
+                if self.row is None:
+                    self.reject("CELL_OUTSIDE_ROW")
+                if self.cell is not None:
+                    self.reject("CELL_OPENED_BEFORE_CLOSE")
                 self.cell = tag
 
     def handle_endtag(self, tag):
         if self.result_depth is not None:
             if tag in ("td", "th"):
-                self.bad |= self.cell != tag
+                if self.cell != tag:
+                    self.reject("CELL_CLOSE_MISMATCH")
                 self.cell = None
             elif tag == "tr":
-                self.bad |= self.row is None or self.cell is not None
+                if self.row is None:
+                    self.reject("ROW_CLOSE_WITHOUT_OPEN_ROW")
+                if self.cell is not None:
+                    self.reject("ROW_CLOSED_WITH_OPEN_CELL")
                 self.row = None
             elif tag == "table" and self.depth == self.result_depth:
-                self.bad |= self.row is not None or self.cell is not None
+                if self.row is not None or self.cell is not None:
+                    self.reject("TABLE_CLOSED_WITH_OPEN_CONTENT")
                 self.result_depth = None
         if tag == "table":
             self.depth = max(0, self.depth - 1)
 
 
-def complete_result_framing(body, content_type):
+def complete_result_framing(body, content_type, reasons=None):
     # HTML is decoded incrementally only for framing; no retained cells/URLs.
     # Accept the demonstrated encodings, never guess a lossy replacement.
     import re
     charset = re.search(r"charset\s*=\s*[\"']?([a-zA-Z0-9_-]+)", content_type, re.I)
     encoding = charset.group(1).lower() if charset else "utf-8"
     if encoding not in ("utf-8", "utf8", "us-ascii", "windows-1252", "iso-8859-1"):
+        if reasons is not None:
+            reasons.append("SOURCE_ENCODING_UNSUPPORTED")
         return False
     parser = ResultFraming()
     try:
@@ -58,13 +76,31 @@ def complete_result_framing(body, content_type):
             parser.feed(decoder.decode(view[index:index + 64 * 1024]))
             # HTMLParser retains an unfinished token; bound that too.
             if len(parser.rawdata) > 1_000_000:
+                parser.reject("SOURCE_TOKEN_LIMIT")
                 return False
         parser.feed(decoder.decode(b"", final=True))
         parser.close()
-        return not (parser.bad or parser.result_depth is not None or parser.row
-                    or parser.cell or parser.rawdata.strip())
+        if parser.result_depth is not None or parser.row or parser.cell or parser.rawdata.strip():
+            parser.reject("UNCLOSED_RESULT_CONTENT")
+        return not parser.bad
     except (ValueError, UnicodeError):
+        parser.reject("SOURCE_DECODING_FAILED")
         return False
+    finally:
+        if reasons is not None:
+            reasons.extend(sorted(parser.rejection_reasons))
+
+
+def projection_rejection_reason(error):
+    """Recognize only fixed projection exceptions; retain no exception text."""
+    first_line = str(error).split("\n", 1)[0]
+    for code, reason in (
+        ("RESULTS_NOT_VALIDATED", "RESULT_TABLE_COUNT"),
+        ("CALENDAR_RESPONSE_LIMIT", "DOM_PROJECTION_LIMIT"),
+    ):
+        if first_line.endswith("Error: " + code):
+            return reason
+    return None
 
 
 # Walking bounds work done and aggregate string sizes BEFORE calling outerHTML

@@ -139,8 +139,10 @@ class InspectionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(worker, "response_pause", return_value=0), \
                 patch("courtroom_observation.LOCAL_TIMEOUT_SECONDS", 0.65), \
                 patch("courtroom_observation.STABLE_SECONDS", 0.05), \
-                patch.object(worker, "download", side_effect=AssertionError("PDFs prohibited")):
+                patch.object(worker.CalendarDocument, "open",
+                             side_effect=AssertionError("PDFs prohibited")) as document_open:
             await worker.main()
+            document_open.assert_not_awaited()
         return messages, fetches
 
     def courtroom_fixture(self, room=""):

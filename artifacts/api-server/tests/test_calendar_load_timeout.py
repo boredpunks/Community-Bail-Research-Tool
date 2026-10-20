@@ -150,6 +150,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 results = results.replace("</table>", "")
         if missing_grid:
             results = results.replace('id="caseSearchResultGrid"', 'id="fixtureMissingResult"')
+        if post_case == "duplicate_grids":
+            results += '<table id="caseSearchResultGrid"><tr><th>Column</th></tr></table>'
         if changed_version:
             results = results.replace('href="/resource/css/sitemain.min.css"',
                                       f'href="/resource/css/sitemain.min.css?v={CHANGED_ASSET_VERSION}"')
@@ -246,6 +248,8 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
 
         def observe_feed(parser, html):
             parsed.append(True)
+            if post_case == "projection_extra_row":
+                html = html.replace("</table>", "<tr><td></td></tr></table>")
             return original_feed(parser, html)
 
         async def observe_field_count(page):
@@ -316,8 +320,10 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
                 stack.enter_context(patch.object(Response, "finished",
                                                 side_effect=AssertionError("Use the public requestfinished waiter")))
-                stack.enter_context(patch.object(worker, "download", side_effect=AssertionError("No PDFs")))
+                document_open = stack.enter_context(patch.object(
+                    worker.CalendarDocument, "open", side_effect=AssertionError("No PDFs")))
                 await worker.main(config)
+                document_open.assert_not_awaited()
         finally:
             server.close()
             await server.wait_closed()
@@ -392,6 +398,23 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(o["calendars"], [])
         self.assertIn("UNSUPPORTED_LAYOUT", o["barriers"])
         self.assertEqual(o["responseDiagnostics"][-1]["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
+        layout = o["layoutDiagnostics"][-1]
+        self.assertEqual(layout["version"], 2)
+        self.assertIn("SOURCE_FRAMING_REJECTED", layout["rejectionReasons"])
+        self.assertIn("UNCLOSED_RESULT_CONTENT", layout["rejectionReasons"])
+
+    async def test_projection_table_count_rejection_is_attributable(self):
+        o = await self.run_fixture(post_case="duplicate_grids")
+        self.assertEqual(o["calendars"], [])
+        layout = o["layoutDiagnostics"][-1]
+        self.assertIn("RESULT_TABLE_COUNT", layout["rejectionReasons"])
+        self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
+
+    async def test_projection_row_count_disagreement_is_attributable(self):
+        o = await self.run_fixture(post_case="projection_extra_row")
+        self.assertEqual(o["calendars"], [])
+        self.assertIn("SOURCE_STRUCTURE_MISMATCH", o["layoutDiagnostics"][-1]["rejectionReasons"])
         self.assertEqual(o["responseDiagnostics"][-1]["resultValidation"]["validatedRows"], 0)
 
     async def test_oversized_response_stops_without_empty_proof(self):

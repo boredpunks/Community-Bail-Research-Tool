@@ -18,7 +18,7 @@ from calendar_document import CalendarDocument
 from optional_resources import IMAGE, FONT
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_response import CalendarStream, CalendarResponse, html_byte_limit
-from calendar_dom import DOM_PROJECTION, complete_result_framing
+from calendar_dom import DOM_PROJECTION, complete_result_framing, projection_rejection_reason
 from calendar_protocol import response_pause, validate_calendar_form, submit_calendar_search, calendar_asset_barrier, fill_calendar_dates, expected_optional_console_error, CalendarFormFailure, select_calendar_preview_controls, calendar_form_field_count, calendar_form_field_shape, wait_for_calendar_search_button, calendar_search_button_visible, validate_unfiltered_calendar_room
 from inspection_safety import (
     InspectionBrokerResponse, InspectionRequestGate, InspectionRequestRouter,
@@ -160,6 +160,7 @@ async def main(config=None):
     calendar_traversal = "STATIC_DOM"
     calendar_result_limit_warning = False
     calendar_source_framing = False
+    calendar_source_framing_reasons = []
     calendar_validated_headers = None
     criteria_validation = "NOT_VERIFIED"
     response_diagnostic_emitted = False
@@ -305,7 +306,8 @@ async def main(config=None):
                     if (outcome == "OK" and method == "POST"
                             and urlsplit(url).path == "/CaseSearch"):
                         calendar_source_framing = complete_result_framing(
-                            body, response.headers.get("content-type", ""))
+                            body, response.headers.get("content-type", ""),
+                            calendar_source_framing_reasons)
                     if outcome != "OK":
                         source_stop_state = outcome
                         if response_recorder:
@@ -690,8 +692,17 @@ async def main(config=None):
             parser = CalendarResults()
             try:
                 if not calendar_source_framing:
+                    for reason in calendar_source_framing_reasons:
+                        parser.reject_structure(reason, malformed=True)
+                    parser.reject_structure("SOURCE_FRAMING_REJECTED", malformed=True)
                     raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
-                projection = await page.evaluate(DOM_PROJECTION, {"limit": calendar_html_limit})
+                try:
+                    projection = await page.evaluate(DOM_PROJECTION, {"limit": calendar_html_limit})
+                except Exception as error:
+                    reason = projection_rejection_reason(error)
+                    if reason:
+                        parser.reject_structure(reason)
+                    raise
                 # Only the bounded result-table serialization crosses back;
                 # no page.content() or full-page decoded Python string.
                 parser.feed(projection["html"])
@@ -701,6 +712,7 @@ async def main(config=None):
                 calendar_traversal = projection.get("traversal", "STATIC_DOM")
                 del projection
                 if len(parser.rows) != response_structure["dataRowCount"]:
+                    parser.reject_structure("SOURCE_STRUCTURE_MISMATCH")
                     raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
                 parsed_items = parser.validated(criteria)
             except Exception as error:
