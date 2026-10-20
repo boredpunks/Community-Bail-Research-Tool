@@ -14,3 +14,17 @@ mtime_ms = 1792458025373
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/02664117-9c10-425c-94f1-67ae9a50023d/7111567a-42cc-422b-b92a-21a58e3e63c5"
 storage_version_token = "1792458051538640"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "rnU3iziZaAJ1AXnLGy9Ig"
+uri = "file://docs/public-http-phase-two-report.md"
+type = "text"
+title = "Section 10 — Phase 2 report"
+description = "Offline requirements, baseline/after counts, all changed test results, development database evidence, changed files, written-only proposals and remaining live blockers."
+logical_id = "2b1ceac3-e3d4-4155-b38c-9f8e41bf3c99"
+content_hash = "sha256:60d895dff3ab768ef9ba00a8681bf26f2a0dcb17cd5f1f79ca32ea681f28cf78"
+size = 23234
+mtime_ms = 1792503604794
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/2b1ceac3-e3d4-4155-b38c-9f8e41bf3c99/03fce9fb-620b-4816-b6d0-965d170a17de"
+storage_version_token = "1792503669839097"
+content_type = "text/markdown"
