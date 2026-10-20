@@ -1,0 +1,85 @@
+READ THIS ENTIRE MESSAGE BEFORE DOING ANYTHING. It is self-contained. Do not rely on earlier chat, attachments, or memory files. If anything here conflicts with what you find in the code, stop and report the conflict.
+
+=== 1. WHAT THIS PROJECT IS ===
+Community Bail Research Tool. It helps community volunteers find and accurately describe PUBLIC bail information from public Pennsylvania court sources (the UJS web portal, Allegheny County). It does not make funding decisions, does not recommend any action, does not decide who is eligible for anything, and does not replace human verification. It never invents docket entries, cases, hearings or bail amounts. Fixtures exist only in tests.
+
+=== 2. VOCABULARY (binding definitions) ===
+- Search parameters: the calendar search the owner selects: court office, event type, courtroom, start date, end date.
+- Calendar row: one row of the court calendar returned by that search. It names a docket number, event type, event date and time, and courtroom.
+- Docket sheet: the public PDF for one docket, fetched from a link taken from a calendar row.
+- Discovery candidate: PLAIN-TEXT information, extracted from a docket sheet, for a docket whose calendar row matched the search parameters. It contains ONLY these fields: docket number; court level (Common Pleas or MDJ); calendar event type, event date, event time and courtroom (from the calendar row); bail type; bail amount in dollars (only if a monetary amount is printed in a labeled bail row); percentage condition if printed; bail posted state (shown posted / not shown / unknown); bail order date; source page number; the exact quoted bail row text; document SHA-256; retrieval timestamp; method id. Nothing else: no party names, dates of birth, addresses, charge narrative, or other text from the PDF.
+- "Denied", "Nonmonetary", "Recognizance" with $0.00 means NO MONETARY BAIL RECORDED. It is never a $0 bail amount and never counts as "low stated monetary bail".
+- If bail association is ambiguous, report AMBIGUOUS. Never guess.
+- Allowed phrase: "low stated monetary bail". Banned words in any UI text, report or export: bargain, payable, eligible, recommended, good candidate.
+- Every discovery card shows this exact sentence: "This is a discovery result, not a recommendation. The stated bail amount does not establish the amount required for release, current custody, absence of other holds, or eligibility for assistance."
+
+=== 3. CURRENT STATE ===
+TRUE and evidenced:
+- From this Replit environment, a plain Python standard-library script (User-Agent CommunityBailResearch-SourceAssessment/1.0) got HTTP 200 for the search form, HTTP 200 for a calendar search (1,002 links, 431 distinct Common Pleas dockets), and HTTP 200 application/pdf (76,602 bytes, starts %PDF-) for one docket sheet, with no cookies and no Referer. Do not rerun that probe.
+- The previous document method (a headless Chromium popup, method playwright-calendar+native-session-pdf-v15) received HTTP 401 on a docket sheet (request id 1917e137-138f-4618-91ce-0349b1e51c86, 2026-10-20 01:09:16 UTC). Its response body and headers were not retained, so the cause is UNKNOWN. Do not state or imply a cause.
+- Branch fix/public-http-document-step replaces that with public_http.download, method playwright-calendar+public-http-pdf-v16.
+- IMPORTANT: on GitHub (origin) this branch's head is 4c67f9b. As checked on GitHub, at 4c67f9b worker.py does NOT contain the restored document_session_required stop, and docs/public-http-phase-two-report.md does NOT contain the discovery-candidates.ts correction. Your latest report says both were fixed. They are therefore either unpushed, uncommitted, or only described. Step A resolves this.
+NOT proven: that this app's code path gets a PDF from the live portal. That is what this task tests, once.
+The source is currently blocked: source control UJS has blockedReason ACCESS_DENIED. That is expected.
+
+=== 4. THE ONE RULE ===
+Do not claim anything "works", "is done", "is verified" or "is complete" unless you paste the actual command output next to the claim. Anything you did not run, write "NOT RUN".
+
+=== 5. OWNER APPROVAL (recorded; do not ask for it again) ===
+On 2026-10-20 (America/New_York) the owner approved exactly ONE pilot with these values and nothing else:
+ stage SINGLE; court office CP-05-02-Crim; event type = the same event type string stored in the criteria of historical job b0768e5d-a4d7-42df-861f-35754db30bc5 (read it from that job's criteria with a read-only query; it is the Formal Arraignment event; do not guess the string); courtroom ANY; start date 2026-10-20; end date 2026-10-20; recordCap 1; requestCap 8; method playwright-calendar+public-http-pdf-v16.
+Approval sentence (use verbatim): "Owner approval, 2026-10-20 America/New_York: one SINGLE pilot, CP-05-02-Crim, Formal Arraignment, courtroom ANY, 2026-10-20 to 2026-10-20, recordCap 1, requestCap 8, method playwright-calendar+public-http-pdf-v16. Approval alone does not clear ACCESS_DENIED."
+Why the sentence goes in a file and not the job event log: events are stored per job id and no job exists until the run starts, so the approve step cannot write one. Do not add code to change this.
+If the Eastern date is no longer 2026-10-20 when you reach step E, stop and tell the owner. Do not change the date.
+
+=== 6. STEPS, IN ORDER ===
+Task limits that define this test: the pilot runs once, with no retry after any refusal or failure; do not clear ACCESS_DENIED by hand (the pilot's own success logic may clear it); do not edit the old request ledger (106 rows) or the historical job b0768e5d and its 38 items; no production database changes; discovery candidates hold only the fields in section 2.
+
+STEP A (verify and push, no court requests)
+A1. Run `git status --short`, `git log --oneline -5`, and `git ls-remote origin fix/public-http-document-step`. Paste the output.
+A2. In artifacts/api-server/src/ujs/worker.py, show the lines of the stop that requires a link captured by THIS run's calendar search (calendar_links_captured_at is not None) before any document request, emitting document_session_required otherwise. If it does not exist in your working copy, add it. Show the test that proves a resumed job with stored links makes zero document requests, and run it.
+A3. Show that docs/public-http-phase-two-report.md says (a) the probes, work order and attachments ARE committed in 4c67f9b, and (b) artifacts/api-server/src/lib/discovery-candidates.ts is in the changed-files list. If not, add both. Do not rewrite history.
+A4. Report (do not change): every field stored by observationValues() in artifacts/api-server/src/lib/discovery-candidates.ts, compared with the allowed fields in section 2. Report any extra field. It stores sourceUrl, which contains an opaque dnh token; report whether sourceUrl or dnh appears on screen, in the CSV, or in the API response.
+A5. Run only these and paste exact counts: python -m unittest for test_public_http.py, test_calendar_load_timeout.py, test_form_inspection.py, test_supplied_bail.py; node tests/run-safety.mjs; node tests/run-completion.mjs; pnpm run typecheck. If any fails, stop and report the failing test name and error. Do not proceed to Step B.
+A6. Commit only files you changed (no probes, no attachments). Push fix/public-http-document-step to origin. Then print `git ls-remote origin fix/public-http-document-step` (the pushed head SHA) and `git show origin/fix/public-http-document-step:artifacts/api-server/src/ujs/worker.py | grep -c document_session_required`. The count must be 1 or more. If it is 0, stop and report.
+
+STEP B (read-only pre-flight, no court requests)
+B1. Confirm no queued or running discovery job exists.
+B2. Print the source control row for UJS: blockedReason, pausedUntil, accessVerifiedAt, verifiedMethod, collectionApprovedAt, activeRequestId. Expected: ACCESS_DENIED, others null.
+B3. Print the current Eastern date. Expected 2026-10-20.
+B4. Print the historical job's criteria event type string.
+B5. Record md5 fingerprints of: source control row, all request-ledger rows (expect 106), historical job row, its 38 items. Use the same query as your last report (row_to_json(t)::text ordered by id, joined with '|', md5).
+If anything differs from expectation, stop and report.
+
+STEP C (prepare, no court requests)
+Run: pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/src/ujs/pilot.ts prepare --stage SINGLE --office CP-05-02-Crim --event "<the exact string from B4>" --room ANY --start 2026-10-20 --end 2026-10-20 --requests 8
+Paste the JSON it prints. Save the printed permit id as PERMIT_ID. Confirm the printed criteria equal section 5 and that it says no source traffic.
+
+STEP D (approve and record)
+D1. Create the file docs/owner-approvals/2026-10-20-PERMIT_ID.md containing exactly: the approval sentence from section 5, PERMIT_ID, the printed criteria JSON from step C, and the line "Recorded before approval command was run." Commit and push only that file.
+D2. Run: pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/src/ujs/pilot.ts approve --id PERMIT_ID --user-approved
+D3. Query the permit row (discovery_assessments) for PERMIT_ID: state, approvedAt, expiresAt, expectedMethod. Paste it.
+D4. Query source control again. Confirm blockedReason is still ACCESS_DENIED after approve. Paste that.
+
+STEP E (the one live run)
+Confirm the Eastern date is still 2026-10-20. Then run: pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/src/ujs/pilot.ts run --id PERMIT_ID --user-approved
+Run it once. Wait for the terminal state. If it stops, errors, times out or is refused, that is the result. Report it.
+
+STEP F (report, no more court requests)
+Run: pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/src/ujs/pilot.ts report --id PERMIT_ID
+Then report using exactly this template. Quote real output.
+ F1 terminal job state and job id.
+ F2 (A1) calendar rows validated: count; request outcomes for the calendar requests.
+ F3 (A2) the document request: path (not URL), HTTP status, content type, byte count, durationMs, linkCaptureToGetSeconds. Show the code line or log line proving it used public_http.download.
+ F4 (A3) %PDF- signature yes/no; docket identity matched yes/no; SHA-256 first 12 hex characters; page count.
+ F5 (A4) the discovery candidate fields exactly as stored, limited to the allowed fields in section 2, plus the one quoted bail row and its page. If there is no monetary bail, the classification (NONMONETARY / DENIED / AMBIGUOUS / NO BAIL SECTION) with the quoted row. No other text from the PDF.
+ F6 the ledger rows created by this run: path, method, status, outcome, durationMs, timestamp. State the count and confirm there were no retries.
+ F7 every pilot proof condition, by name, PASSED or FAILED. If proof was withheld, name the first failed condition.
+ F8 final source control row (same fields as B2), and the permit's approvedAt and expiresAt. State whether ACCESS_DENIED was cleared and by which code path (file and line).
+ F9 if any request returned 401, 403 or 429 or a challenge: the denial evidence record exactly as stored.
+ F10 the md5 fingerprints from B5 recomputed. State which changed (the new job, its items and the new ledger rows are expected to be new; the old rows must be unchanged).
+ F11 A5 (screen and CSV match) and A6 (owner compares to the portal): write NOT RUN. Those are the owner's.
+ F12 the first unresolved problem, in one sentence.
+
+=== 7. AFTER THE REPORT ===
+Stop. Do not start another run. Wait for the owner.
