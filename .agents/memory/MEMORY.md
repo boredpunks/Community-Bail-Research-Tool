@@ -20,3 +20,4 @@
 - [Concise source-access updates](source-access-communication.md) — Keep access safeguards, but don't repeat no-request caveats unless they explain a concrete block or are needed for acceptance evidence.
 - [Reference repository review](reference-repository-review.md) — Inspect same-portal workflows before judging applicability; different search modes do not make a reference irrelevant.
 - [Calendar structural evidence](calendar-structural-evidence.md) — Raw anchors do not prove distinct actions; an offline parser defect does not establish a historical live failure cause.
+- [Database separation proof](database-separation.md) — Local Unix-socket connections have no server IP; never treat a hash of “unknown” as a host fingerprint.

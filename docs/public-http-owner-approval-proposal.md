@@ -11,6 +11,9 @@ expiresAt, and later creates a job using the fixed WORKSPACE_OWNER_ID
 (`:314–325`). It does not record the authenticated approver or append an audit
 event naming that approver and the method for this approval.
 Existing bounded/ordinary-search routes are not approval of this SINGLE run.
+The current password-authenticated workspace uses one shared owner identity
+(`src/middlewares/researchAuth.ts:5`), not an individual approver identity.
+A shared-session owner ID or a typed name cannot establish who approved.
 
 `pilot.ts:422–429` automatically clears blockedReason and pausedUntil and
 sets current-method proof only after its proof predicate passes. The
@@ -19,8 +22,12 @@ not linked to an owner-identified, in-app approval audit.
 
 ## Smallest separately reviewed addition
 
-1. Reuse authenticated session identity and the existing owner-scoped job/permit
-   UI. Show the immutable permit UUID, method id, court/office/event/room,
+1. Establish a trusted individual owner/approver identity for this narrowly
+   scoped approval (the existing shared password is insufficient), then reuse
+   the owner-scoped job/permit UI. Do not imply this identity already exists,
+   silently introduce an authentication migration, or trust a typed approver
+   name. The identity/authorization design requires separate review.
+   Show the immutable permit UUID, method id, court/office/event/room,
    current/future date window, recordCap 1, request budget, retained denial,
    no-retry behavior and strict 20-second verification threshold.
 2. Add one authenticated **approve this specific run** action. Verify the
