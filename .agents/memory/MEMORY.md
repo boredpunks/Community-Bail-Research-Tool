@@ -18,3 +18,4 @@
 - [Scoped size-limit recovery](scoped-size-limit-recovery.md) — Recover a calendar-only operation from a proven old HTML cap without clearing broader source or document barriers.
 - [Single-attempt ownership](single-attempt-ownership.md) — Verify execution ownership and transmitted requests; isolated-task activity cannot be inferred from the main ledger.
 - [Concise source-access updates](source-access-communication.md) — Keep access safeguards, but don't repeat no-request caveats unless they explain a concrete block or are needed for acceptance evidence.
+- [Reference repository review](reference-repository-review.md) — Inspect same-portal workflows before judging applicability; different search modes do not make a reference irrelevant.
