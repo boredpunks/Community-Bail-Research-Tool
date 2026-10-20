@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import "./document-locations.test";
 import "./calendar-layout.test";
 import "./job-criteria.test";
+import { documentResponseChecks } from "./document-response.test";
 import "./research-workflow";
 import { boundedLaunchChecks } from "./bounded-launch.test";
 import { randomUUID } from "node:crypto";
@@ -35,7 +36,7 @@ import { runInspectionBrokerChecks } from "./inspection-broker";
 globalThis.fetch = async () => { throw new Error("HTTP prohibited in offline safety tests"); };
 import { clearSourceValidationBarrier } from "../src/lib/discovery-barrier";
 const namespace = `offline_safety_${randomUUID().replaceAll("-", "")}`;
-let checks = 0;
+let checks = documentResponseChecks;
 // Historical protocol-only scope: never a runtime default or a case fixture.
 const calendarPreviewCriteria = {
   courtOffice: "CP-05-02-Crim", courtRoom: "Courtroom 506", eventType: "ANY",
@@ -319,7 +320,7 @@ try {
   await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
-  check(integratedSourceMethod === "playwright-calendar+native-session-pdf-v15");
+  check(integratedSourceMethod === "playwright-calendar+public-http-pdf-v16");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
     verifiedMethod: "playwright-calendar+urllib-pdf-v14" }) === "ACCESS_UNVERIFIED");
   check(calendarPreviewMethod === "playwright-calendar-preview-v9");

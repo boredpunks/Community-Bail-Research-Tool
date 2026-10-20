@@ -1,4 +1,6 @@
-"""Open a captured calendar action in the calendar's browser session.
+"""superseded by public_http in v16; retained for evidence of the v15 method.
+
+Open a captured calendar action in the calendar's browser session.
 
 The caller must already hold a persisted request grant. No URL reconstruction,
 cookie export, alternate HTTP client, retries, redirects, or viewer execution.

@@ -14,7 +14,8 @@ from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
 from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
-from calendar_document import CalendarDocument
+import public_http
+from document_diagnostics import denial_evidence, link_elapsed_seconds
 from optional_resources import IMAGE, FONT
 from source_protocol import allowed, classify_response, CALENDAR_ASSETS
 from calendar_response import CalendarStream, CalendarResponse, html_byte_limit
@@ -112,6 +113,7 @@ async def main(config=None):
     bounded_observation_limit_hit = False
     blocked = 0
     calendar_time = None
+    calendar_links_captured_at = None
     last_completed_clock = None
     loaded_assets = set()
     asset_cache = {}
@@ -180,9 +182,9 @@ async def main(config=None):
         context = await browser.new_context(service_workers="block", accept_downloads=False)
         context.set_default_timeout(60_000)
         calendar_stream = None
-        browser_document = None
 
-        async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None):
+        async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None,
+                           link_captured_at=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
             nonlocal bounded_observation_complete, bounded_observation_limit_hit
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
@@ -244,6 +246,8 @@ async def main(config=None):
                     stopped = True
                     raise SourceFailure("INSPECTION_SESSION_DEADLINE")
                 requests += 1
+                # Measure after grant, immediately before GET, not from POST start.
+                link_elapsed = link_elapsed_seconds(link_captured_at, clock.time())
                 started = datetime.now(timezone.utc).isoformat()
                 if method == "POST" and urlsplit(url).path == "/CaseSearch":
                     calendar_post_observed = True
@@ -317,8 +321,12 @@ async def main(config=None):
                                 event_order=calendar_lifecycle.event_order(),
                                 request_start_state=calendar_lifecycle.request_start(tracked_key)[0],
                                 request_start_order=calendar_lifecycle.request_start(tracked_key)[1])
+                    document_request = urlsplit(url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet")
+                    evidence = denial_evidence(response.status, response.headers, body) if document_request else None
                     emit("response", requestId=permission["requestId"], status=response.status or None,
-                         outcome=outcome, retryAfter=response.headers.get("retry-after"))
+                         outcome=outcome, retryAfter=response.headers.get("retry-after"),
+                         **({"denialEvidence": evidence} if evidence is not None else {}),
+                         **({"linkCaptureToGetSeconds": link_elapsed} if document_request else {}))
                     acknowledgement = json.loads(await read_protocol_line())
                     if method == "POST" and urlsplit(url).path == "/CaseSearch":
                         calendar_response_acknowledged = True
@@ -354,7 +362,9 @@ async def main(config=None):
                         source_stop_state = outcome
                         emit("response", requestId=permission["requestId"], status=None,
                              outcome=outcome,
-                             retryAfter=None)
+                             retryAfter=None,
+                             **({"linkCaptureToGetSeconds": link_elapsed}
+                                if urlsplit(url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet") else {}))
                         await read_protocol_line()
                         if method == "POST" and urlsplit(url).path == "/CaseSearch":
                             calendar_response_acknowledged = True
@@ -379,8 +389,6 @@ async def main(config=None):
             nonlocal criteria_validation, submission_payload_rejected
             nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
             request = route.request
-            if browser_document is not None and await browser_document.handle_route(route):
-                return
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
             if request.resource_type in ("image", "font"):
@@ -540,7 +548,6 @@ async def main(config=None):
 
             await context.route_web_socket("**/*", block_websocket)
         page = await context.new_page()
-        browser_document = CalendarDocument(context, page)
         if inspection_only:
             inspection_cdp = await context.new_cdp_session(page)
             inspection_router = InspectionRequestRouter(inspection_cdp)
@@ -652,6 +659,7 @@ async def main(config=None):
                 raise RuntimeError(barrier)
 
         async def inspect_loaded_response():
+            nonlocal calendar_links_captured_at
             nonlocal post_response_read_only, response_structure, response_inspection_status
             nonlocal response_inspection_attempted
             nonlocal calendar_read_only_inspection, calendar_read_only_inspection_order
@@ -715,6 +723,7 @@ async def main(config=None):
                     parser.reject_structure("SOURCE_STRUCTURE_MISMATCH")
                     raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
                 parsed_items = parser.validated(criteria)
+                calendar_links_captured_at = asyncio.get_running_loop().time()
             except Exception as error:
                 response_parser_outcome = parser_outcome(error)
                 response_result_validation = {
@@ -854,11 +863,6 @@ async def main(config=None):
 
         try:
             items = config["pendingItems"]
-            if config["calendarComplete"] and items:
-                # A restarted browser does not have the calendar session that
-                # issued these actions. Do not silently use a different client.
-                emit("document_session_required")
-                return
             if not config["calendarComplete"]:
                 goto_timeout = 600_000
                 if inspection_only:
@@ -1026,7 +1030,8 @@ async def main(config=None):
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
-                        lambda: browser_document.open(item["sourceUrl"]),
+                        lambda: public_http.download(item["sourceUrl"]),
+                        link_captured_at=calendar_links_captured_at,
                     )
                     try:
                         result = extract_bail(body, item["docketNumber"])

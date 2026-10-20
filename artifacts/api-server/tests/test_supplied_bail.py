@@ -110,6 +110,20 @@ class StructuralBailGeometry(unittest.TestCase):
         document.close()
         return body
 
+    def test_denied_and_nonmonetary_printed_zero_are_unpriced_with_row_and_page(self):
+        # Geometry-only financial controls; no docket or case-identifying text.
+        for category in ("Denied", "Nonmonetary", "Recognizance"):
+            with self.subTest(category=category):
+                body = self.table([["Set", "10/19/2026", category, "Magisterial District Court", "", "$0.00"]])
+                entries, excerpt, pages, _ = read_bail_tables(body, iso_date)
+                self.assertEqual(len(entries), 1)
+                self.assertIsNone(entries[0]["amountCents"])
+                self.assertIsNone(entries[0]["financialBasis"])
+                self.assertEqual(entries[0]["sourcePages"], [1])
+                self.assertEqual(pages, [1])
+                self.assertIn("$0.00", entries[0]["excerpt"])
+                self.assertIn(category, excerpt)
+
     def test_percentage_security_unrelated_amounts_chronology_and_duplicates(self):
         rows = [
             ["Set", "10/19/2026", "Monetary", "Magisterial District Court", "10.00%", "$100.00"],

@@ -2,7 +2,7 @@
 // either retrieval method invalidates prior proof and requires fresh approval.
 import { validCalendarPreviewCriteria } from "./calendar-criteria";
 
-export const integratedSourceMethod = "playwright-calendar+native-session-pdf-v15";
+export const integratedSourceMethod = "playwright-calendar+public-http-pdf-v16";
 export const calendarPreviewMethod = "playwright-calendar-preview-v9";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [

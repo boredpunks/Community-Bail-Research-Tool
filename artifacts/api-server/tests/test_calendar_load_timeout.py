@@ -321,7 +321,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(Response, "finished",
                                                 side_effect=AssertionError("Use the public requestfinished waiter")))
                 document_open = stack.enter_context(patch.object(
-                    worker.CalendarDocument, "open", side_effect=AssertionError("No PDFs")))
+                    worker.public_http, "download", side_effect=AssertionError("No PDFs")))
                 await worker.main(config)
                 document_open.assert_not_awaited()
         finally:

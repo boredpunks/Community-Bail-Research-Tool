@@ -30,6 +30,7 @@ import { boundedEngineMethod, boundedObservationCanContinue, boundedObservationR
   validBoundedEngineCriteria } from "./bounded-engine";
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
 import { researchMethod, validResearchCriteria } from "./research-scope";
+import { validSourceResponse, sourceResponseEvents } from "./document-response";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -176,9 +177,17 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (boundedEngine && !boundedObservationComplete && permission.allow) boundedObservationRequests++;
         child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
+        if (!validSourceResponse(message)) throw new Error("Invalid source response metadata");
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
           throw new Error("Inspection response accounting mismatch");
-        child.stdin.write(JSON.stringify({ continue: await sourceOutcome(job, message) }) + "\n");
+        const continueRun = await sourceOutcome(job, message);
+        const [accounted] = await db.select({durationMs: discoveryRequestsTable.durationMs})
+          .from(discoveryRequestsTable).where(and(
+            eq(discoveryRequestsTable.id, message.requestId), eq(discoveryRequestsTable.jobId, job.id)));
+        if (!accounted) throw new Error("Missing accounted source request");
+        for (const event of sourceResponseEvents(message, accounted.durationMs))
+          await discoveryEvent(job, event.kind, event.message);
+        child.stdin.write(JSON.stringify({ continue: continueRun }) + "\n");
       } else if (message.kind === "calendar_response_size") {
         if (diagnosticOnly || !validCalendarResponseSize(message))
           throw new Error("Invalid calendar response-size metadata");

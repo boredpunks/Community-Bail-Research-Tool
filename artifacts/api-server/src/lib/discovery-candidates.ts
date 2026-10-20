@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { DiscoveryEntryData, DiscoveryItemRow } from "@workspace/db";
 import { allowedSourceRequest } from "./discovery-safety";
+import { withoutNonmonetaryAmount } from "@workspace/bail-research";
 
 export function observationKey(item: Pick<DiscoveryItemRow, "docketNumber" | "excerpt">, entry: DiscoveryEntryData | null) {
   // Keep legacy keys stable when additive page provenance becomes available.
@@ -35,6 +36,7 @@ export function candidateEligible(item: Pick<DiscoveryItemRow,
 
 export function observationValues(ownerId: string, item: DiscoveryItemRow, entry: DiscoveryEntryData | null) {
   if (!candidateEligible(item)) throw new Error("Only identity-checked, source-backed evidence can be saved.");
+  entry = entry ? withoutNonmonetaryAmount(entry) : null;
   return {
     ownerId, caseKey: `allegheny|${item.docketNumber.startsWith("MJ-") ? "MDJ" : "COMMON_PLEAS"}|${item.docketNumber}`, docketNumber: item.docketNumber,
     county: "Allegheny", courtLevel: item.docketNumber.startsWith("MJ-") ? "MDJ" as const : "COMMON_PLEAS" as const, chargeGroup: null,
@@ -46,7 +48,9 @@ export function observationValues(ownerId: string, item: DiscoveryItemRow, entry
     // local file receipt time, explicitly labelled by title and acquisition.
     sourceRetrievedAt: item.sourceRetrievedAt!,
     sourceObservedAt: item.provenance.documentAcquisition === "MANUAL_UPLOAD" ? item.sourceRetrievedAt! : null,
-    evidenceNote: item.excerpt || item.detail!, discoveryEvidence: item.provenance,
+    evidenceNote: item.excerpt || item.detail!, discoveryEvidence: {
+      ...item.provenance, entries: item.provenance.entries.map(withoutNonmonetaryAmount),
+    },
     discoveryKey: observationKey(item, entry), discoveryItemId: item.id,
   };
 }

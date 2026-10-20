@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 class IntentionalRollback extends Error {}
 const root = path.resolve("../..");
 const now = new Date();
+let savedFixtureId: string | undefined;
 const date = new Intl.DateTimeFormat("en-CA", {timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit"}).format(now);
 const input = {courtOffice: "CP-05-02-Crim", courtRoom: "ANY", eventType: "Formal Arraignment",
   startDate: date, endDate: date, recordCap: 1, requestCap: 8, matchTarget: 1,
@@ -63,6 +64,16 @@ try {
     GetDiscoveryJobResponse.parse(report);
     assert.equal(typeof report.items[0].provenance.matchingEvents![0].eventDate, "string");
     const [saved] = await tx.insert(bailRecordsTable).values(observationValues(job!.ownerId, item!, parsed.entries[0])).returning();
+    savedFixtureId = saved!.id;
+    // Separate SELECT exercises the actual destination type and stored JSON,
+    // not only INSERT ... RETURNING or an independently recreated enum.
+    const [readback] = await tx.select().from(bailRecordsTable).where(eq(bailRecordsTable.id, saved!.id));
+    assert.equal(readback!.amountCents, 10000);
+    assert.equal(readback!.financialBasis, "RECORDED_BAIL_AMOUNT");
+    assert.equal(readback!.discoveryEvidence!.entries[0]!.percentageCondition, "10.00%");
+    assert.deepEqual(readback!.discoveryEvidence!.entries[0]!.sourcePages, [1]);
+    assert.equal(readback!.discoveryEvidence!.entries[0]!.excerpt, parsed.entries[0].excerpt);
+    assert.equal(readback!.evidenceNote, parsed.excerpt);
     assert.equal(saved!.financialBasis, "RECORDED_BAIL_AMOUNT");
     assert.equal(saved!.amountCents, 10000);
     const [reviewed] = await tx.update(bailRecordsTable).set({reviewStatus: "CONFIRMED",
@@ -74,6 +85,10 @@ try {
 } catch (error) {
   if (!(error instanceof IntentionalRollback)) throw error;
 } finally {
+  if (savedFixtureId) {
+    const remaining = await db.select().from(bailRecordsTable).where(eq(bailRecordsTable.id, savedFixtureId));
+    assert.equal(remaining.length, 0, "Fixture transaction must leave no saved rows");
+  }
   await pool.end();
 }
 

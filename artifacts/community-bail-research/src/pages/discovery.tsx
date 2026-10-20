@@ -60,6 +60,7 @@ function postingLabel(s: string): string {
   return 'UNKNOWN: posting state uncertain';
 }
 function amountText(e: EntryExt) {
+  if (['DENIED', 'NONMONETARY', 'RECOGNIZANCE'].includes(e.bailCategory)) return 'No monetary bail recorded';
   if (e.amountCents != null) return formatCents(e.amountCents);
   return e.bailCategory === 'MONETARY' || e.bailCategory === 'UNKNOWN' ? 'Amount unknown' : 'No amount (unpriced)';
 }

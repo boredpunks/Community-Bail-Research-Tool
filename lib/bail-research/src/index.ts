@@ -10,6 +10,11 @@ export interface BailEntry {
   percentageCondition?: string | null;
   sourcePages?: number[];
 }
+/** A source's printed $0 is not a financial observation for these categories. */
+export function withoutNonmonetaryAmount<T extends BailEntry>(entry: T): T {
+  return ["DENIED", "NONMONETARY", "RECOGNIZANCE"].includes(entry.bailCategory)
+    ? {...entry, amountCents: null, financialBasis: null} : entry;
+}
 export interface MatchingEvent {
   eventDate: string;
   eventType: string;

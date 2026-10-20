@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { eventConflict, matchesMonetaryResearch, projectQualifyingRows, qualifyingEntries,
+import { eventConflict, matchesMonetaryResearch, projectQualifyingRows, qualifyingEntries, withoutNonmonetaryAmount,
   qualifyingRowsCsv, type BailEntry, type BailProvenance } from "../src/index";
 
 const entry: BailEntry = { action: "Set", wording: "Monetary", orderDate: "2026-10-01",
@@ -11,6 +11,21 @@ const entry: BailEntry = { action: "Set", wording: "Monetary", orderDate: "2026-
 const provenance = (entries: BailEntry[] = [entry]): BailProvenance => ({
   extractionOutcome: "EXTRACTED", postedEntryState: "SHOWN_POSTED", entries,
   eventDate: "2026-10-20", eventType: "Formal Arraignment",
+});
+test("nonmonetary zero is unpriced, never qualifying or exported; raw quote and page retained", () => {
+  // Financial controls only: no docket, case, or fabricated source PDF.
+  for (const bailCategory of ["DENIED", "NONMONETARY", "RECOGNIZANCE"]) {
+    const raw = {action: "Set", wording: bailCategory, orderDate: null, bailCategory,
+      amountCents: 0, financialBasis: "TOTAL_BAIL", sourcePages: [1], excerpt: "$0.00"};
+    const safe = withoutNonmonetaryAmount(raw);
+    assert.equal(safe.amountCents, null);
+    assert.equal(safe.financialBasis, null);
+    assert.deepEqual(safe.sourcePages, [1]);
+    assert.equal(safe.excerpt, "$0.00");
+    assert.equal(qualifyingEntries(provenance([raw])).length, 0);
+    assert.equal(projectQualifyingRows([{id: "", docketNumber: "", sourceUrl: "", provenance: provenance([raw])}]).length, 0);
+    assert.doesNotMatch(qualifyingRowsCsv([]), /\$0\.00/);
+  }
 });
 test("inclusive maximum/minimum, legacy strict, posted default, no-bound monetary only", () => {
   const p = provenance();
