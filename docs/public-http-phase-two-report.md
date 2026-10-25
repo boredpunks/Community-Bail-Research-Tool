@@ -501,3 +501,84 @@ local PDFs; and the unknown published SHA. No safeguards or environment limits
 were changed to remove these issues.
 
 Stopped after this Phase 2 report. Overall live acceptance remains open.
+
+## 5. Current workflow verification (2026-10-25)
+
+This section records a fresh local verification on the current workspace
+checkout. No application or test code was changed during this verification.
+All commands used offline fixtures or loopback transport; no court request,
+permit approval, source clear, or production operation was performed.
+
+### Local checks
+
+| Command | Exact result |
+|---|---|
+| `cd artifacts/api-server && python -m unittest discover -v -s tests -p test_public_http.py` | `Ran 26 tests in 4.361s` / `OK`; exit 0. |
+| `cd artifacts/api-server && python -m unittest discover -v -s tests -p test_calendar_load_timeout.py` | `Ran 27 tests in 43.523s` / `OK`; exit 0. |
+| `cd artifacts/api-server && python -m unittest discover -v -s tests -p test_form_inspection.py` | `Ran 48 tests in 65.335s` / `OK`; exit 0. |
+| `cd artifacts/api-server && python -m unittest discover -v -s tests -p test_supplied_bail.py` | `Ran 8 tests in 0.270s` / `OK`; exit 0. |
+| `cd artifacts/api-server && node tests/run-safety.mjs` | `PASS: 986 offline checks`; `PASS: 33 strict document-response, actual Python redaction, denial propagation and request-timing checks.` Embedded Python: `Ran 218 tests in 216.349s` / `OK (skipped=5)`. Parent accepted 26 actual-worker diagnostics. Exit 0. |
+| `cd artifacts/api-server && node tests/run-completion.mjs` | `PASS: criteria normalization/idempotency, new and legacy filters, genuine response contract/date strings, additive financial basis saving/review (rolled back), and session validation.` Exit 0. |
+| `cd artifacts/api-server && node tests/run-research-workflow.mjs` | `PASS: operation isolation, fail-closed origins, PDF boundary, configurable pacing, retained backoff and server waits, optional criteria, inclusive/posted filtering.` Exit 0. |
+| `pnpm --filter @workspace/community-bail-research run test:discovery-retention` | `PASS: expired empty search explains retention and omits Resume.` Exit 0. |
+| `pnpm --filter @workspace/community-bail-research run test:calendar-preview` | `PASS: calendar preview success, validated zero, partial, running, failure and expiry states; no case fixtures.` Exit 0. |
+| `pnpm --filter @workspace/bail-research test` | `tests 6; pass 6; fail 0; skipped 0.` Exit 0. |
+| `pnpm run typecheck` | Library build and API, community web, mockup sandbox, scripts TypeScript checks all exited 0. |
+
+All four specified Python modules and the complete Python suite now pass on
+this checkout. In particular, the calendar cases listed as failures/errors in
+the earlier e397963 report passed in the current calendar suite; that earlier
+report remains an accurate record of its historical run, not the current
+result. The same five unavailable real-document fixture skips remain.
+
+### Authenticated read-only UI check
+
+The development app used its configured workspace-password authentication in
+one in-memory Playwright context. The session endpoint returned authenticated,
+and `GET /api/discovery/jobs` returned HTTP 200 with 34 jobs. The artifact's
+actual preview path is `/`; `/discovery` rendered the “Calendar search and
+docket evidence” page. All discovery API writes were blocked during the
+browser check, and no court search was submitted.
+
+The historical job detail returned HTTP 200 but zero items because its
+`results_expired_at` was already `2026-10-22T08:52:59.793Z`. A development
+database read confirmed zero remaining items and five retained request rows.
+That expiry timestamp predates this verification; the earlier 38-item
+fingerprint in this report is a pre-expiry snapshot. No restoration or
+historical-data edit was attempted. The authenticated UI check therefore
+verifies the page and protected read path, not a current saved-row screen.
+Saving/readback and CSV agreement are covered by the passing rolled-back
+completion test and six bail-research tests; an authenticated browser save
+against the expired historical job was NOT RUN.
+
+### Current live gate
+
+Read-only development database state on 2026-10-25:
+
+- No queued or running discovery job was returned.
+- UJS source control: `blocked_reason=ACCESS_DENIED`; `paused_until`,
+  `access_verified_at`, `verified_method`, `collection_approved_at`, and
+  `active_request_id` are null; `adaptive_spacing_ms=60000`;
+  `latency_warning` is null.
+- The historical job criteria store `eventType="Formal Arraignment"`; that
+  string was read from the stored criteria, not inferred from a label.
+- An existing unused `BOUNDED_ENGINE` permit is `PREPARED` for its old
+  2026-10-16–2026-10-22 scope and v12 method. It was neither approved nor used.
+
+No live result is claimed. `ACCESS_DENIED` is still present. Ordinary access
+and collection are blocked, but the existing explicitly approved single-use
+pilot request path can attempt its exact saved scope while retaining that
+denial; approval alone does not clear it. Any successful clearing remains
+owned by the pilot's existing success-proof path. A fresh owner confirmation
+of exact current criteria is required before one request sequence; any
+refusal, challenge, or failure ends that attempt without retry. No such fresh
+confirmation or live attempt has occurred.
+
+### Revision and remote
+
+The test worktree was clean before this report update. The observed GitHub
+branch head was `29ffa43ec3878e3c79cc9e3090c128c24762731d` from
+`git ls-remote origin refs/heads/fix/public-http-document-step`. The local
+checkout was one empty “Published your App” commit ahead of that head.
+This report update is additive; no history rewrite or application-code change
+is included.
