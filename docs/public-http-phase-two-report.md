@@ -571,8 +571,9 @@ pilot request path can attempt its exact saved scope while retaining that
 denial; approval alone does not clear it. Any successful clearing remains
 owned by the pilot's existing success-proof path. A fresh owner confirmation
 of exact current criteria is required before one request sequence; any
-refusal, challenge, or failure ends that attempt without retry. No such fresh
-confirmation or live attempt has occurred.
+refusal, challenge, or failure ends that attempt without retry. As of this
+2026-10-25 snapshot, no fresh confirmation or live attempt had occurred; see
+the subsequent attempt record below.
 
 ### Revision and remote
 
@@ -582,3 +583,76 @@ branch head was `29ffa43ec3878e3c79cc9e3090c128c24762731d` from
 checkout was one empty “Published your App” commit ahead of that head.
 This report update is additive; no history rewrite or application-code change
 is included.
+
+## 6. October 27, 2026 authorized attempt
+
+The owner explicitly authorized one integrated attempt and amended the date to
+the current day. The exact scope was office `CP-05-02-Crim`, stored event
+`Formal Arraignment`, courtroom `ANY`, start/end `2026-10-27`, one docket
+(`recordCap=1`, `matchTarget=1`), and `requestCap=12`, using
+`playwright-calendar+public-http-pdf-v16`. The 12-request cap was stated in the
+confirmation presented to the owner. No other date, office, event, room or
+client was substituted.
+
+Before preparation, a read-only development query returned zero active jobs,
+zero in-flight source requests and zero matching prior SINGLE permits.
+`ACCESS_DENIED` remained set. The query captured these historical fingerprints:
+
+| Historical row set | Count | Fingerprint before and after |
+|---|---:|---|
+| Job `b0768e5d-a4d7-42df-861f-35754db30bc5` | 1 | `4cec4576b8ea9118a51a4fc6dbc62d6d` |
+| Its items | 0 | `d41d8cd98f00b204e9800998ecf8427e` |
+| Its request rows | 5 | `81034277b5dcd8b0ee4e197ce3b44617` |
+
+Preparation printed permit
+`8492633b-f043-44d0-b1e8-cea0999f0784`, `SINGLE`, `PREPARED`, with the exact
+criteria above. The separately invoked `approve --user-approved` action
+changed it to `APPROVED` for 24 hours and did not send source traffic.
+
+The first `run` invocation stopped at the advisory-lock check because the API
+managed worker held the lock. It explicitly reported “no request was made.”
+A read-only query then confirmed the permit remained `APPROVED`, had no linked
+job, and had no request or active source slot. The idle API service was stopped
+to release that lock. The permit's integrated run was then invoked once.
+
+The integrated worker exited before its first protocol request. Exact command
+result:
+
+```text
+state=FAILED
+requests=0
+validDocuments=0
+failures=0
+reason=Pilot did not pass all document, timing, accounting, completion, and latency checks. No automatic retry or collection enablement.
+```
+
+The linked job is `7e7eaedd-5885-4064-b583-3f4390bc8629`, status `PAUSED`,
+`requestsUsed=0`, `calendarComplete=false`, no items and no request rows. Its
+retained event says: `Worker stopped before completion (exit 2; 129 diagnostic
+bytes). No automatic retry; partial results retained.` The worker intentionally
+does not retain raw stderr because it could contain source content. Therefore
+the first failed proof condition is known—local worker exit before any request—
+but the specific local cause remains **UNRESOLVED**.
+
+Local diagnostics after that attempt passed module import, Python compilation
+and Chromium startup with the worker's launch arguments. Two fail-closed
+protocol reproductions stalled before producing diagnostic protocol output and
+were terminated; they did not grant a source request and do not establish the
+cause. No diagnostic change was made based on a guess.
+
+After restarting the API, the authenticated read-only browser check returned
+HTTP 200 for the new job and rendered its pause message. The visible job state
+was `PAUSED`, with zero requests/items; CSV export was disabled. Browser-side
+non-GET API methods were blocked; no search or save request was made. Existing
+GET handlers can run retention cleanup; the target historical fingerprints
+were queried again after this browser check and still match. No court request,
+calendar result, PDF, bail extraction, save/reload journey or live CSV
+comparison occurred.
+
+Post-run fingerprints match the pre-run values in the table. The historical
+job, items and five old request rows remain unchanged. Source state remains
+`ACCESS_DENIED`, with no active request and no collection approval. The failed
+SINGLE permit is consumed and cannot be reused. No retry was made. End-to-end
+live acceptance remains **INCOMPLETE**; any future source attempt requires a
+new exact scope confirmation and a new permit after the local worker failure
+has been diagnosed.
