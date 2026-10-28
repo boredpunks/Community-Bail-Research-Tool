@@ -54,6 +54,15 @@ class CalendarPolicyTests(unittest.TestCase):
                                           calendar_limit=16_000_000), "SIZE_LIMIT")
         self.assertEqual(classify_response(200, {}, body, path="/resource/js/sitemain.min.js",
                                           calendar_limit=16_000_000), "SIZE_LIMIT")
+        self.assertEqual(classify_response(
+            200, {"content-type": "application/pdf"}, b"%PDF-test",
+            pdf=True, path="/Report/CpDocketSheet"), "OK")
+        self.assertEqual(classify_response(
+            200, {"content-type": "text/html"}, b"%PDF-test",
+            pdf=True, path="/Report/CpDocketSheet"), "UNSUPPORTED_RESPONSE")
+        self.assertEqual(classify_response(
+            200, {"content-type": "application/pdf"}, b"not-pdf",
+            pdf=True, path="/Report/CpDocketSheet"), "INVALID_PDF")
 
     def test_incremental_framing_rejects_truncated_or_repaired_grid_and_bad_encoding(self):
         self.assertTrue(complete_result_framing((PADDING + empty_grid()).encode(), "text/html"))

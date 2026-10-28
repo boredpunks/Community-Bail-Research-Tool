@@ -8,6 +8,7 @@ import {
   useListDiscoveryJobs,
   useGetDiscoveryJob,
   useControlDiscoveryJob,
+  useStartSingleDocumentProof,
   useSaveDiscoveryObservation,
   getListDiscoveryJobsQueryKey,
   getGetDiscoveryJobQueryKey,
@@ -64,17 +65,32 @@ function amountText(e: EntryExt) {
   if (e.amountCents != null) return formatCents(e.amountCents);
   return e.bailCategory === 'MONETARY' || e.bailCategory === 'UNKNOWN' ? 'Amount unknown' : 'No amount (unpriced)';
 }
+function storedLinkFresh(it: DiscoveryItem) {
+  const captured = Date.parse(it.provenance.calendarRetrievedAt);
+  const age = Date.now() - captured;
+  return Number.isFinite(captured) && age >= 0 && age <= 24 * 60 * 60 * 1000;
+}
 
 /* ---------- Row ---------- */
-function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded }: {
+const SINGLE_PROOF_ITEM_ID = '68ed5e4d-e993-41a1-9eb6-4af293de6eb8';
+function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded, proofAllowed, onProofStarted }: {
   jobId: string; it: DiscoveryItem; saving: boolean; saveErr: string | null;
   onSave: (itemId: string, entryIndex: number | null) => void;
   onUploaded: (r: LocalUploadResult) => void;
+  proofAllowed: boolean; onProofStarted: () => void;
 }) {
   const p = it.provenance;
   const entries = p.entries as EntryExt[];
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [proofMsg, setProofMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const proof = useStartSingleDocumentProof({ mutation: {
+    onSuccess: () => {
+      setProofMsg({ ok: true, text: 'One-PDF proof queued. No calendar search or other docket will be submitted.' });
+      onProofStarted();
+    },
+    onError: (e) => setProofMsg({ ok: false, text: `Proof not started: ${errMsg(e)}` }),
+  } });
   const upload = useMutation({
     mutationFn: (f: File) => uploadLocalDocument(f, { docketNumber: it.docketNumber, jobId, itemId: it.id }),
     onSuccess: (r) => {
@@ -109,8 +125,21 @@ function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded }: {
         <button type="button" className="btn" disabled={upload.isPending} onClick={() => fileRef.current?.click()} data-testid={`button-upload-${it.id}`}>
           {upload.isPending ? 'Extracting…' : 'Upload downloaded PDF'}
         </button>
+        {proofAllowed ? (
+          <button type="button" className="btn btn-primary" disabled={proof.isPending}
+            onClick={() => {
+              if (window.confirm('Send one plain PDF request for this saved calendar row? No calendar search, retry, or other docket will be used.')) {
+                setProofMsg(null);
+                proof.mutate({ jobId, itemId: it.id, data: { confirm: 'PROCEED_ONE_SAVED_PDF' } });
+              }
+            }} data-testid={`button-single-pdf-proof-${it.id}`}>
+            {proof.isPending ? 'Queueing…' : 'Prove this saved PDF once'}
+          </button>
+        ) : null}
+        {p.documentSha256 ? <button type="button" className="btn" onClick={() => downloadEvidenceCsv(it, `bail-proof-${it.id.slice(0, 8)}.csv`)}>Export PDF proof (CSV)</button> : null}
       </div>
       {uploadMsg ? <p className={uploadMsg.ok ? 'hint mt-2' : 'errbox mt-2'} role={uploadMsg.ok ? 'status' : 'alert'}>{uploadMsg.text}</p> : null}
+      {proofMsg ? <p className={proofMsg.ok ? 'hint mt-2' : 'errbox mt-2'} role={proofMsg.ok ? 'status' : 'alert'}>{proofMsg.text}</p> : null}
 
       {p.extractionOutcome === 'UNPROCESSED' ? (
         <p className="hint mt-3">Calendar row only. Nothing can be saved until a PDF is uploaded and bail entries are extracted.</p>
@@ -149,7 +178,7 @@ function ItemRow({ jobId, it, saving, onSave, saveErr, onUploaded }: {
       )}
       {saveErr ? <p className="errbox mt-3" role="alert">{saveErr}</p> : null}
       {it.savedObservations.length ? <p className="mt-2"><Link href="/review" className="underline text-primary">Open review queue</Link></p> : null}
-      {p.documentSha256 ? <p className="hint mono mt-2 break-all">PDF SHA-256 {p.documentSha256}{p.documentPageCount ? `, ${p.documentPageCount} pages` : ''}</p> : null}
+      {p.documentSha256 ? <p className="hint mono mt-2 break-all">PDF SHA-256 {p.documentSha256}{p.documentPageCount ? `, ${p.documentPageCount} pages` : ''}. Bail evidence is provisional and awaiting human comparison.</p> : null}
     </li>
   );
 }
@@ -183,6 +212,28 @@ function criteriaText(j: DiscoveryJob): string {
 }
 function downloadCsv(rows: QualifyingRow[], name: string) {
   const blob = new Blob([qualifyingRowsCsv(rows)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function downloadEvidenceCsv(it: DiscoveryItem, name: string) {
+  const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const entries = (it.provenance.entries ?? []) as EntryExt[];
+  const records = entries.length ? entries : [null];
+  const header = ['docket_number', 'hearing_date', 'bail_type', 'financial_basis', 'amount_cents',
+    'order_date', 'source_pages', 'pdf_sha256', 'extraction_outcome', 'human_comparison'];
+  const rows = records.map((entry) => [
+    it.docketNumber, it.provenance.eventDate ?? '',
+    entry ? CATEGORY_LABEL[entry.bailCategory] ?? entry.bailCategory : '',
+    entry?.financialBasis ? BASIS_LABEL[entry.financialBasis] ?? entry.financialBasis : '',
+    entry?.amountCents ?? '', entry?.orderDate ?? '', entry?.sourcePages?.join(';') ?? '',
+    it.provenance.documentSha256 ?? '', it.provenance.extractionOutcome, 'Pending',
+  ]);
+  downloadCsvText([header, ...rows].map((row) => row.map(quote).join(',')).join('\r\n'), name);
+}
+function downloadCsvText(csv: string, name: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -538,6 +589,7 @@ export default function Discovery() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={excludePosted} onChange={(e) => setExcludePosted(e.target.checked)} data-testid="checkbox-exclude-posted" />Hide SHOWN_POSTED</label>
               <button type="button" className="btn" disabled={rows.length === 0 || maxInvalid} onClick={() => downloadCsv(rows, `bail-observations-${job.id.slice(0, 8)}.csv`)} data-testid="button-export-csv">Export displayed rows (CSV)</button>
               <p className="hint w-full">{maxInvalid ? 'Enter a valid dollar amount.' : `Showing ${rows.length} of ${fixedRows.length} qualifying rows.`} Display narrowing never changes the job's criteria, target, or budget. NOT_SHOWN does not mean unpaid or incarcerated.</p>
+              <p className="hint w-full">This is a discovery result, not a recommendation. A stated bail amount does not establish the amount required for release, current custody, absence of other holds, or eligibility for assistance. Extracted evidence remains provisional until a person compares it with the source PDF.</p>
             </section>
 
             {expired ? null : fixedRows.length === 0 ? (
@@ -580,7 +632,15 @@ export default function Discovery() {
                   {items.map((it) => (
                     <ItemRow key={it.id} jobId={job.id} it={it} saving={save.isPending}
                       saveErr={saveErr?.id === it.id ? saveErr.msg : null} onSave={doSave}
-                      onUploaded={() => refresh(job.id)} />
+                      onUploaded={() => refresh(job.id)}
+                      proofAllowed={it.id === SINGLE_PROOF_ITEM_ID && job.status === 'PAUSED'
+                        && !job.isAssessment && job.calendarComplete && !expired && storedLinkFresh(it)
+                        && job.criteria.eventType === 'Bail Hearing'
+                        && job.criteria.startDate === todayNY() && job.criteria.endDate === '2026-10-31'
+                        && job.criteria.recordCap === 6 && job.criteria.requestCap === 20
+                        && job.criteria.matchTarget === 1
+                        && job.criteria.matchFilters?.monetaryUpperBoundCents === 2_999_999}
+                      onProofStarted={() => refresh(job.id)} />
                   ))}
                 </ul>
               </details>

@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validParentDeniedPause, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validParentDeniedPause, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection, singleDocumentProofItemId, validSingleDocumentProofCriteria, validSingleDocumentProofRow } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
@@ -65,6 +65,23 @@ const sessionRefreshCriteria = {
 check(isExactAuthorizedSessionRefreshCriteria(sessionRefreshCriteria));
 check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, requestCap: 501 }));
 check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, addedScope: true }));
+const onePdfCriteria = {
+  resultVersion: 2, courtOffice: "ANY", courtRoom: "ANY", eventType: "Bail Hearing",
+  startDate: "2026-10-28", endDate: "2026-10-31", recordCap: 6, requestCap: 20,
+  matchTarget: 1, matchFilters: {
+    monetaryUpperBoundCents: 2_999_999, monetaryLowerBoundCents: null,
+    inclusiveMaximum: true, excludeShownPosted: false,
+  },
+};
+check(validSingleDocumentProofCriteria(onePdfCriteria, new Date("2026-10-28T16:00:00Z")));
+check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, requestCap: 21 }, new Date("2026-10-28T16:00:00Z")));
+check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, addedScope: true }, new Date("2026-10-28T16:00:00Z")));
+check(!validSingleDocumentProofRow({
+  id: singleDocumentProofItemId, docketNumber: "", sourceUrl: "", capturedAt: null, provenance: null,
+}, new Date("2026-10-28T16:00:00Z")));
+check(!validSingleDocumentProofRow({
+  id: randomUUID(), docketNumber: "", sourceUrl: "", capturedAt: null, provenance: null,
+}, new Date("2026-10-28T16:00:00Z")));
 const savedRefreshFixture = [{
   docketNumber: "fixture-1", position: 0, eventType: "Formal Arraignment",
   eventDate: "2026-10-29", filingDate: "2026-10-20",

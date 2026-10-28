@@ -8,6 +8,7 @@ import {
   calendarPreviewSourceAllowed, collectionBlock, integratedSourceMethod,
   isCalendarPreviewCriteria, paceEligibleAt, responseHealth, rollingUsage,
   singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
+  singleDocumentProofItemId,
   throttleDeadline, validAccountingMessage,
 } from "./discovery-safety";
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
@@ -97,10 +98,12 @@ export async function reserveSourceRequest(
             ? permit.report.reason.slice("single-document-proof:".length) : "";
           if (permit.expectedMethod !== singleDocumentProofMethod
             || !validSingleDocumentProofCriteria(current.criteria, now)
-            || !proofItemId || requestPath !== "/Report/CpDocketSheet" || method !== "GET"
+            || proofItemId !== singleDocumentProofItemId
+            || requestPath !== "/Report/CpDocketSheet" || method !== "GET"
             || source.blockedReason !== null || source.accessVerifiedAt !== null
             || source.verifiedMethod !== null || source.collectionApprovedAt !== null
-            || source.pausedUntil !== null || source.activeRequestId !== null)
+            || source.pausedUntil !== null || source.activeRequestId !== null
+            || source.latencyWarning !== null)
             return deny("SINGLE_DOCUMENT_PROOF_SCOPE_INVALID");
         }
         if ((researchPermit || proofPermit) && (!validResearchCriteria(current.criteria, proofPermit)
@@ -256,7 +259,7 @@ export async function reserveSourceRequest(
           eq(discoveryItemsTable.jobId, current.id), eq(discoveryItemsTable.sourceUrl, url),
         )).for("update");
         if (singleDocumentProofPermit) {
-          const proofItemId = permit?.report?.reason.slice("single-document-proof:".length);
+          const proofItemId = singleDocumentProofItemId;
           const priorPdfRequests = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
             .where(and(
               eq(discoveryRequestsTable.jobId, current.id),
@@ -268,6 +271,7 @@ export async function reserveSourceRequest(
           if (!item || item.id !== proofItemId || item.sourceRetrievedAt !== null
             || item.provenance.extractionOutcome !== "UNPROCESSED"
             || !validSingleDocumentProofRow({
+              id: item.id,
               docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
               capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
             }, now)

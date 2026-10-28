@@ -194,7 +194,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 captured_at = datetime.fromisoformat(
                     single_document_proof["capturedAt"].replace("Z", "+00:00"))
                 capture_age = (datetime.now(timezone.utc) - captured_at).total_seconds()
-                if not 0 <= capture_age <= 2 * 60 * 60:
+                if not 0 <= capture_age <= 24 * 60 * 60:
                     raise ValueError("capture age outside approved proof window")
                 calendar_links_captured_at = asyncio.get_running_loop().time() - capture_age
             except (TypeError, ValueError):

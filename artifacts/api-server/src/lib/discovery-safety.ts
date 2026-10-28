@@ -5,8 +5,9 @@ import { validCalendarPreviewCriteria } from "./calendar-criteria";
 export const integratedSourceMethod = "playwright-calendar+public-http-pdf-v16";
 export const calendarPreviewMethod = "playwright-calendar-preview-v9";
 export const singleDocumentProofMethod = "public-http-single-pdf-proof-v1";
-export const singleDocumentProofMaxLinkAgeMs = 2 * 60 * 60 * 1000;
+export const singleDocumentProofItemId = "68ed5e4d-e993-41a1-9eb6-4af293de6eb8";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
+export const singleDocumentProofMaxLinkAgeMs = resultRetentionMs;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
 ] as const;
@@ -197,10 +198,10 @@ export function validSingleDocumentProofCriteria(value: unknown, now = new Date(
 }
 
 export function validSingleDocumentProofRow(input: {
-  docketNumber: string; sourceUrl: string; capturedAt: unknown; provenance: unknown;
+  id: string; docketNumber: string; sourceUrl: string; capturedAt: unknown; provenance: unknown;
 }, now = new Date()): boolean {
-  const { docketNumber, sourceUrl, capturedAt, provenance } = input;
-  if (!validCalendarDocketLink(sourceUrl, docketNumber)
+  const { id, docketNumber, sourceUrl, capturedAt, provenance } = input;
+  if (id !== singleDocumentProofItemId || !validCalendarDocketLink(sourceUrl, docketNumber)
     || !/^CP-02-CR-\d{7}-\d{4}$/.test(docketNumber)
     || typeof capturedAt !== "string" || !Number.isFinite(Date.parse(capturedAt))
     || !provenance || typeof provenance !== "object" || Array.isArray(provenance)) return false;

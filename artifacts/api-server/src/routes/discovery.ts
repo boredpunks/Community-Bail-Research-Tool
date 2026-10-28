@@ -15,8 +15,9 @@ import { discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../li
 import { serializeBailRecord } from "../lib/bail-records";
 import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
 import {
-  collectionBlock, resultsDeadline, rollingUsage, discoveryPolicy,
+  collectionBlock, resultsDeadline, rollingUsage,
   singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
+  singleDocumentProofItemId, calendarPreviewRequestAllowed,
 } from "../lib/discovery-safety";
 import { discoverySourceStatus } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults } from "../lib/discovery-retention";
@@ -28,7 +29,6 @@ import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { launchBoundedPermit } from "../lib/bounded-launch";
 import { inspectLocalPdf } from "../lib/local-document";
-import { calendarPreviewRequestAllowed } from "../lib/discovery-safety";
 import { cancelOneTimeSessionRefresh, queueOneTimeSessionRefresh } from "../lib/discovery-worker";
 import { isExactAuthorizedSessionRefreshCriteria } from "../lib/session-refresh-safety";
 
@@ -256,7 +256,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     return;
   }
   const result = await db.transaction(async (tx) => {
-    const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+    const { ownerIds } = getWorkspaceIdentity(res);
     const [source] = await tx.select().from(discoverySourceTable)
       .where(eq(discoverySourceTable.id, "UJS")).for("update");
     const [job] = await tx.select().from(discoveryJobsTable)
@@ -271,7 +271,9 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     if (!source || job.status !== "PAUSED" || job.assessmentId !== null || !job.calendarComplete
       || job.resultsExpiredAt || resultsDeadline(job) && resultsDeadline(job)! <= new Date()
       || !validSingleDocumentProofCriteria(job.criteria)
+      || item.id !== singleDocumentProofItemId
       || !validSingleDocumentProofRow({
+        id: item.id,
         docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
         capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
       })
@@ -280,7 +282,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     }
     if (collectionBlock(source) !== "ACCESS_UNVERIFIED" || source.activeRequestId
       || source.pausedUntil || source.blockedReason !== null || source.accessVerifiedAt
-      || source.verifiedMethod || source.collectionApprovedAt) {
+      || source.verifiedMethod || source.collectionApprovedAt || source.latencyWarning) {
       return { error: "Source readiness has a stop other than the missing document-access proof.", status: 409 as const };
     }
     const history = await tx.select().from(discoveryRequestsTable)
@@ -288,7 +290,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     const pdfHistory = history.filter((request) =>
       ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(request.path));
     const searches = history.filter((request) => request.path === "/CaseSearch" && request.method === "POST");
-    if (history.length !== job.requestsUsed || pdfHistory.length !== 0 || searches.length !== 1
+    if (history.length !== 4 || job.requestsUsed !== 4 || pdfHistory.length !== 0 || searches.length !== 1
       || history.some((request) => request.outcome !== "OK" || request.statusCode !== 200
         || !["/CaseSearch", "/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"].includes(request.path))) {
       return { error: "The saved request history does not qualify for a one-PDF proof.", status: 409 as const };
@@ -305,7 +307,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     const expiresAt = new Date(Date.now() + 15 * 60_000);
     const [permit] = await tx.insert(discoveryAssessmentsTable).values({
       stage: "SINGLE_DOCUMENT_PROOF", state: "ATTEMPTED", criteria: job.criteria,
-      expectedMethod: singleDocumentProofMethod, executionOwnerId: ownerId, jobId: job.id,
+      expectedMethod: singleDocumentProofMethod, executionOwnerId: job.ownerId, jobId: job.id,
       approvedAt: new Date(), startedAt: new Date(), expiresAt,
       report: { requests: 0, validDocuments: 0, failures: 0,
         reason: `single-document-proof:${item.id}` },
@@ -322,7 +324,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     return { job: queued, itemId: item.id, assessmentId: permit!.id, status: 202 as const };
   });
   if (!("job" in result)) { res.status(result.status).json({ error: result.error }); return; }
-  const payload = { job: await jobSummary(result.job), itemId: result.itemId, assessmentId: result.assessmentId };
+  const payload = { job: await jobSummary(result.job!), itemId: result.itemId, assessmentId: result.assessmentId };
   StartSingleDocumentProofResponse.parse(payload);
   res.status(result.status).json(payload);
 });

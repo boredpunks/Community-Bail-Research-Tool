@@ -215,6 +215,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   const proofItem = singleDocumentProof ? items.find((item) => item.id === singleDocumentProofItemId) : undefined;
   if (singleDocumentProof && (!proofItem || proofItem.sourceRetrievedAt !== null
     || !validSingleDocumentProofRow({
+      id: proofItem.id,
       docketNumber: proofItem.docketNumber, sourceUrl: proofItem.sourceUrl,
       capturedAt: proofItem.provenance.calendarRetrievedAt, provenance: proofItem.provenance,
     }))) throw new Error("Single-document proof item is no longer eligible");
@@ -737,6 +738,7 @@ export async function startDiscoveryWorker() {
                   || JSON.stringify(permit.criteria) !== JSON.stringify(job.criteria)
                   || !validSingleDocumentProofCriteria(job.criteria) || !item
                   || !validSingleDocumentProofRow({
+                    id: item.id,
                     docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
                     capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
                   })) throw new Error("Queued single-document proof is outside its approved scope");
