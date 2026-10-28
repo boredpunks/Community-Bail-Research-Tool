@@ -64,6 +64,50 @@ def stable_entries(entries):
     return list(unique.values())
 
 
+def bail_row_entry(cells, text, number, iso_date):
+    action, date, kind, court, percentage, money = cells
+    action_denied = bool(re.fullmatch(
+        r"(?:Denied|Deny\s*\(\s*bail\s+modification\s*\))", action, re.I))
+    if (not action or iso_date(date) is None or not court
+            or (not kind and not action_denied)
+            or (kind and kind.lower() not in CATEGORIES)
+            or percentage and not re.fullmatch(r"\d+(?:\.\d+)?%?|N/A|--", percentage)):
+        raise FinancialAssociationError(
+            "Bail row has unresolved action, date, category or percentage association.")
+
+    if action_denied and kind and kind.lower() != "denied":
+        raise FinancialAssociationError("Denied action conflicts with the recorded bail category.")
+    category = "DENIED" if action_denied else CATEGORIES[kind.lower()]
+    wording = kind or "Denied"
+
+    basis, cents = None, None
+    if category == "DENIED":
+        if (percentage not in ("", "N/A", "--")
+                and Decimal(percentage.rstrip("%")) != 0):
+            raise FinancialAssociationError("Denied action has an unexpected percentage condition.")
+        if money and (
+            not re.fullmatch(r"\$(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}", money)
+            or Decimal(money[1:].replace(",", "")) != 0
+        ):
+            raise FinancialAssociationError("Denied action has a nonzero or unrecognized amount.")
+    elif category in ("MONETARY", "NOMINAL", "UNSECURED"):
+        if not re.fullmatch(r"\$(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}", money):
+            raise FinancialAssociationError("Recorded Amount column is missing or ambiguous.")
+        cents = int(Decimal(money[1:].replace(",", "")) * 100)
+        if cents > 2147483647:
+            raise FinancialAssociationError("Recorded amount exceeds supported storage bounds.")
+        conditional = percentage not in ("", "N/A", "--") and Decimal(percentage.rstrip("%")) != 0
+        basis = ("UNSECURED_AMOUNT" if category == "UNSECURED" else
+                 "RECORDED_BAIL_AMOUNT" if conditional else "TOTAL_BAIL")
+
+    return {
+        "action": action, "wording": wording, "orderDate": iso_date(date),
+        "bailCategory": category, "amountCents": cents, "financialBasis": basis,
+        "originatingCourt": court, "percentageCondition": percentage or None,
+        "sourcePages": [number], "excerpt": text,
+    }
+
+
 def read_bail_tables(body, iso_date):
     import pymupdf
     entries, excerpts, section_pages = [], [], []
@@ -73,9 +117,21 @@ def read_bail_tables(body, iso_date):
             in_bail, posting, header = False, False, None
             section = []
             posting_header = None
+            pending_row = None
+
+            def flush_pending_row():
+                nonlocal pending_row
+                if pending_row is None:
+                    return
+                cells, text = pending_row
+                entries.append(bail_row_entry(cells, text, number, iso_date))
+                section.append(text)
+                pending_row = None
+
             for line in word_lines(page):
                 text = " ".join(word[4] for word in line)
                 if text in ("BAIL", "BAIL INFORMATION"):
+                    flush_pending_row()
                     in_bail = True
                     section_pages.append(number)
                     continue
@@ -85,6 +141,7 @@ def read_bail_tables(body, iso_date):
                     break
                 # Never retain the name/Nebbia line above the column labels.
                 if "Bail Posted" in text:
+                    flush_pending_row()
                     posting = True
                     continue
                 if posting:
@@ -104,6 +161,7 @@ def read_bail_tables(body, iso_date):
                         raise FinancialAssociationError("Posting table lacks a verified status column.")
                     continue
                 if "Originating Court" in text and "Amount" in text:
+                    flush_pending_row()
                     header = header_columns(line)
                     section.append(text)
                     continue
@@ -113,33 +171,19 @@ def read_bail_tables(body, iso_date):
                     continue
                 if not text.strip():
                     continue
-                action, date, kind, court, percentage, money = cells_for_line(line, header)
-                if not date and not money and entries and re.fullmatch(r"[A-Za-z -]+\)", action):
-                    entries[-1]["action"] += " " + action
-                    entries[-1]["excerpt"] += "\n" + text
-                    section.append(text)
-                    continue
-                if (not action or iso_date(date) is None or kind.lower() not in CATEGORIES
-                        or not court or percentage and not re.fullmatch(r"\d+(?:\.\d+)?%?|N/A|--", percentage)):
-                    raise FinancialAssociationError("Bail row has unresolved action, date, category or percentage association.")
-                category = CATEGORIES[kind.lower()]
-                basis, cents = None, None
-                if category in ("MONETARY", "NOMINAL", "UNSECURED"):
-                    if not re.fullmatch(r"\$(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}", money):
-                        raise FinancialAssociationError("Recorded Amount column is missing or ambiguous.")
-                    cents = int(Decimal(money[1:].replace(",", "")) * 100)
-                    if cents > 2147483647:
-                        raise FinancialAssociationError("Recorded amount exceeds supported storage bounds.")
-                    conditional = percentage not in ("", "N/A", "--") and Decimal(percentage.rstrip("%")) != 0
-                    basis = ("UNSECURED_AMOUNT" if category == "UNSECURED" else
-                             "RECORDED_BAIL_AMOUNT" if conditional else "TOTAL_BAIL")
-                entries.append({
-                    "action": action, "wording": kind, "orderDate": iso_date(date),
-                    "bailCategory": category, "amountCents": cents, "financialBasis": basis,
-                    "originatingCourt": court, "percentageCondition": percentage or None,
-                    "sourcePages": [number], "excerpt": text,
-                })
-                section.append(text)
+                cells = cells_for_line(line, header)
+                if pending_row is not None:
+                    pending_cells, pending_text = pending_row
+                    continuation = (not any(cells[1:]) and cells[0]
+                                    and pending_cells[0].count("(") > pending_cells[0].count(")")
+                                    and re.fullmatch(r"[A-Za-z -]+\)", cells[0]))
+                    if continuation:
+                        pending_cells[0] += " " + cells[0]
+                        pending_row = (pending_cells, pending_text + "\n" + text)
+                        continue
+                    flush_pending_row()
+                pending_row = (cells, text)
+            flush_pending_row()
             if header is not None:
                 excerpts.extend(section)
     if not entries:

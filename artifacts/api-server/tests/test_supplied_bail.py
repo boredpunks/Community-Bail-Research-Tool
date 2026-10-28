@@ -124,6 +124,36 @@ class StructuralBailGeometry(unittest.TestCase):
                 self.assertIn("$0.00", entries[0]["excerpt"])
                 self.assertIn(category, excerpt)
 
+    def test_action_column_denials_with_blank_bail_type_and_wrapped_action(self):
+        rows = [
+            ["Denied", "01/02/2000", "", "Magisterial District Court", "", "$0.00"],
+            ["Deny (bail", "01/03/2000", "", "Common Pleas", "", "$0.00"],
+            ["modification)", "", "", "", "", ""],
+            ["Deny (bail", "01/04/2000", "", "Common Pleas", "", "$0.00"],
+            ["modification)", "", "", "", "", ""],
+            ["Deny (bail", "01/05/2000", "", "Common Pleas", "", "$0.00"],
+            ["modification)", "", "", "", "", ""],
+        ]
+        entries, excerpt, pages, _ = read_bail_tables(self.table(rows), iso_date)
+        self.assertEqual([entry["action"] for entry in entries], [
+            "Denied", "Deny (bail modification)", "Deny (bail modification)",
+            "Deny (bail modification)",
+        ])
+        self.assertEqual([entry["bailCategory"] for entry in entries], ["DENIED"] * 4)
+        self.assertEqual([entry["amountCents"] for entry in entries], [None] * 4)
+        self.assertEqual([entry["financialBasis"] for entry in entries], [None] * 4)
+        self.assertEqual([entry["orderDate"] for entry in entries], [
+            "2000-01-02", "2000-01-03", "2000-01-04", "2000-01-05",
+        ])
+        self.assertTrue(all(entry["sourcePages"] == [1] for entry in entries))
+        self.assertEqual(pages, [1])
+        self.assertIn("modification)", excerpt)
+
+    def test_denial_action_with_nonzero_amount_is_ambiguous(self):
+        row = ["Denied", "01/02/2000", "", "Common Pleas", "", "$100.00"]
+        with self.assertRaises(FinancialAssociationError):
+            read_bail_tables(self.table([row]), iso_date)
+
     def test_percentage_security_unrelated_amounts_chronology_and_duplicates(self):
         rows = [
             ["Set", "10/19/2026", "Monetary", "Magisterial District Court", "10.00%", "$100.00"],

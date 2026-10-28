@@ -558,7 +558,7 @@ def extract_bail(body, docket):
                         detail=str(error))
         return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=locations,
                     postedEntryState=posted, extractionOutcome="EXTRACTED",
-                    detail="Verified recorded Amount column; percentage and posting kept separate. Historical/provisional evidence, not an operative-order finding.")
+                    detail="Verified recorded bail-row columns. Denied actions are not reported as monetary bail amounts; percentage and posting remain separate. Historical/provisional evidence, not an operative-order finding.")
     try:
         sections = bail_sections(pages)
     except ValueError:
