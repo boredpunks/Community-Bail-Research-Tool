@@ -19,6 +19,7 @@ import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-di
 import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
+import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "../src/lib/session-refresh-safety";
 import { discoveryPolicy } from "../src/lib/discovery";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
@@ -44,6 +45,55 @@ const calendarPreviewCriteria = {
   recordCap: 1, requestCap: 8,
 } as const;
 const check = (ok: unknown) => { assert.ok(ok); checks++; };
+const sessionRefreshCriteria = {
+  resultVersion: 2,
+  courtOffice: "CP-05-02-Crim",
+  eventType: "Formal Arraignment",
+  courtRoom: "ANY",
+  startDate: "2026-10-29",
+  endDate: "2026-11-04",
+  recordCap: 200,
+  requestCap: 500,
+  matchTarget: 200,
+  matchFilters: {
+    inclusiveMaximum: true,
+    excludeShownPosted: false,
+    monetaryLowerBoundCents: null,
+    monetaryUpperBoundCents: null,
+  },
+};
+check(isExactAuthorizedSessionRefreshCriteria(sessionRefreshCriteria));
+check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, requestCap: 501 }));
+check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, addedScope: true }));
+const savedRefreshFixture = [{
+  docketNumber: "fixture-1", position: 0, eventType: "Formal Arraignment",
+  eventDate: "2026-10-29", filingDate: "2026-10-20",
+  provenance: {
+    courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS",
+    matchingEvents: [{ eventDate: "2026-10-29", eventType: "Formal Arraignment", eventTime: null }],
+  },
+}];
+const refreshedFixture = [{
+  ...savedRefreshFixture[0], sourceUrl: "https://example.invalid/new-session-link",
+  courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS",
+  matchingEvents: [{ eventDate: "2026-10-29", eventType: "Formal Arraignment", eventTime: null }],
+}];
+check(sameSavedCalendarResults(savedRefreshFixture, refreshedFixture));
+check(!sameSavedCalendarResults(savedRefreshFixture, [{ ...refreshedFixture[0], position: 1 }]));
+const accessCheckFixture = {
+  jobId: "job-fixture", expectedJobId: "job-fixture",
+  itemId: "item-fixture", expectedItemId: "item-fixture",
+  url: "https://ujsportal.pacourts.us/Report/CpDocketSheet?fixture=1",
+  expectedUrl: "https://ujsportal.pacourts.us/Report/CpDocketSheet?fixture=1",
+  requestPath: "/Report/CpDocketSheet", method: "GET",
+  block: "ACCESS_UNVERIFIED", sourceBlockedReason: null,
+  accessVerifiedAt: null, verifiedMethod: null, pausedUntil: null,
+  calendarComplete: true, assessmentId: null,
+  criteria: sessionRefreshCriteria, priorPdfRequests: 0, priorSearchPosts: 2,
+};
+check(canUseFirstPdfAccessCheck(accessCheckFixture));
+check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorPdfRequests: 1 }));
+check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorSearchPosts: 1 }));
 const now0 = Date.parse("2026-10-06T16:00:00Z");
 let time = now0;
 const approved = { id: "UJS", accessVerifiedAt: new Date(now0), verifiedMethod: integratedSourceMethod, collectionApprovedAt: new Date(now0) };

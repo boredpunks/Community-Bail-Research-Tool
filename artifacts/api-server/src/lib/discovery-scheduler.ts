@@ -17,6 +17,7 @@ import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engin
 import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from "./research-scope";
 import { calendarAdmission } from "./research-operations";
 import { effectiveAdaptiveSpacing, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
+import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria } from "./session-refresh-safety";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,10 +25,19 @@ export type SchedulerTestContext = {
   store?: typeof db; now?: () => Date; sleep?: (ms: number) => Promise<void>;
   randomJitterMs?: () => number;
 };
+export type RequestReservationAuthorization = {
+  authorizedSessionRefreshJobId?: string;
+  refreshCalendarSession?: boolean;
+  firstPdfAccessCheck?: { itemId: string; docketNumber: string; url: string };
+  keepSessionAcrossQuota?: boolean;
+};
 
 // Lock order is always source -> job -> permit. Sleep OUTSIDE transactions and
 // recheck under the same source lock before reserving a transmission slot.
-export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId: unknown, url: unknown, stopping: () => boolean, context: SchedulerTestContext = {}) {
+export async function reserveSourceRequest(
+  job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId: unknown, url: unknown,
+  stopping: () => boolean, context: SchedulerTestContext = {}, authorization: RequestReservationAuthorization = {},
+) {
   if (!allowedSourceRequest(url, method) || typeof url !== "string" || new URL(url).pathname !== requestPath
     || typeof permitId === "number") return { allow: false, reason: "REQUEST_NOT_PERMITTED" };
   const jitterMs = context.randomJitterMs?.() ?? randomInt(0, 30_001);
@@ -51,6 +61,8 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       let boundedPermit = false;
       let researchPermit = false;
       let proofPermit = false;
+      let sessionRefreshScope = false;
+      let firstPdfAccessCheckAllowed = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         const expectedMethod = permit?.stage === "RESEARCH_RUN" ? researchMethod
@@ -110,11 +122,68 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         if (permitId) return deny("ASSESSMENT_NOT_APPROVED");
         if (current.criteria.calendarPreviewOnly && !calendarPreviewRequestAllowed(requestPath, method))
           return deny("CALENDAR_DOCUMENT_REQUEST_FORBIDDEN");
+        sessionRefreshScope = authorization.refreshCalendarSession === true
+          && authorization.authorizedSessionRefreshJobId === current.id
+          && current.calendarComplete && current.assessmentId === null
+          && current.criteria.resultVersion === 2
+          && isExactAuthorizedSessionRefreshCriteria(current.criteria)
+          && source.blockedReason === null && source.accessVerifiedAt === null && source.verifiedMethod === null
+          && calendarPreviewRequestAllowed(requestPath, method);
+        if (sessionRefreshScope) {
+          const previousSearches = await tx.select({ id: discoveryRequestsTable.id })
+            .from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              eq(discoveryRequestsTable.path, "/CaseSearch"),
+              eq(discoveryRequestsTable.method, "POST"),
+            ));
+          if (previousSearches.length < 1 || previousSearches.length > 2
+            || method === "POST" && (requestPath !== "/CaseSearch" || previousSearches.length !== 1))
+            return deny("SESSION_REFRESH_SEARCH_LIMIT");
+        }
         const independentCalendar = current.criteria.resultVersion === 2
           && calendarPreviewRequestAllowed(requestPath, method);
         const block = current.criteria.calendarPreviewOnly || independentCalendar
           ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
-        if (block) return deny(block);
+        if (block === "ACCESS_UNVERIFIED" && authorization.firstPdfAccessCheck
+          && authorization.authorizedSessionRefreshJobId === current.id) {
+          const [candidate] = await tx.select().from(discoveryItemsTable).where(and(
+            eq(discoveryItemsTable.jobId, current.id),
+            eq(discoveryItemsTable.sourceUrl, String(url)),
+          ));
+          const previousPdfs = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+            ));
+          const previousSearches = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              eq(discoveryRequestsTable.path, "/CaseSearch"),
+              eq(discoveryRequestsTable.method, "POST"),
+            ));
+          firstPdfAccessCheckAllowed = canUseFirstPdfAccessCheck({
+            jobId: current.id,
+            expectedJobId: authorization.authorizedSessionRefreshJobId,
+            itemId: candidate?.id ?? "",
+            expectedItemId: authorization.firstPdfAccessCheck.itemId,
+            url: String(url),
+            expectedUrl: authorization.firstPdfAccessCheck.url,
+            requestPath: String(requestPath),
+            method: String(method),
+            block,
+            sourceBlockedReason: source.blockedReason,
+            accessVerifiedAt: source.accessVerifiedAt,
+            verifiedMethod: source.verifiedMethod,
+            pausedUntil: source.pausedUntil,
+            calendarComplete: current.calendarComplete,
+            assessmentId: current.assessmentId,
+            criteria: current.criteria,
+            priorPdfRequests: previousPdfs.length,
+            priorSearchPosts: previousSearches.length,
+          }) && candidate?.docketNumber === authorization.firstPdfAccessCheck.docketNumber;
+        }
+        if (block && !firstPdfAccessCheckAllowed) return deny(block);
       }
       if (diagnosticPermit || boundedPermit && method === "GET" && !["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(requestPath))) {
         const [priorPath] = await tx.select({ id: discoveryRequestsTable.id })
@@ -139,7 +208,15 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       }
       const usage = rollingUsage(recent.map((request) => request.startedAt), now,
         discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap);
-      if (usage.blockedReason) return deny(`${usage.blockedReason}; next eligible ${usage.nextEligibleAt!.toISOString()}`);
+      if (usage.blockedReason) {
+        if (authorization.keepSessionAcrossQuota
+          && authorization.authorizedSessionRefreshJobId === current.id
+          && isExactAuthorizedSessionRefreshCriteria(current.criteria)
+          && usage.nextEligibleAt) {
+          return { waitMs: Math.min(60_000, Math.max(1_000, usage.nextEligibleAt.getTime() - now.getTime())) };
+        }
+        return deny(`${usage.blockedReason}; next eligible ${usage.nextEligibleAt!.toISOString()}`);
+      }
       const spacing = Math.max(
         effectiveAdaptiveSpacing(source, requestSpacing(requestPath, method)),
         randomizedRequestSpacing(requestPath, method, jitterMs),
@@ -163,12 +240,22 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
         const [item] = await tx.select().from(discoveryItemsTable).where(and(
           eq(discoveryItemsTable.jobId, current.id), eq(discoveryItemsTable.sourceUrl, url),
         )).for("update");
+        if (authorization.firstPdfAccessCheck && authorization.authorizedSessionRefreshJobId === current.id) {
+          if (!firstPdfAccessCheckAllowed || item?.id !== authorization.firstPdfAccessCheck.itemId
+            || item.docketNumber !== authorization.firstPdfAccessCheck.docketNumber
+            || item.provenance.extractionOutcome !== "UNPROCESSED")
+            return deny("FIRST_PDF_ACCESS_CHECK_SCOPE_MISMATCH");
+          const ordered = await tx.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
+          const next = ordered.find((candidate) => candidate.provenance.extractionOutcome === "UNPROCESSED");
+          if (next?.id !== item.id) return deny("FIRST_PDF_ACCESS_CHECK_ORDER_MISMATCH");
+        }
         if (!proofPermit && (!item || item.provenance.extractionOutcome !== "UNPROCESSED")) return deny("DOCUMENT_NOT_PENDING");
         const [prior] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.resourceKey, resourceKey))).limit(1);
         if (prior) return deny("DOCUMENT_ALREADY_ATTEMPTED");
         itemId = item?.id ?? null;
       } else {
-        if (current.calendarComplete) return deny("CALENDAR_ALREADY_CHECKPOINTED");
+        if (current.calendarComplete && !sessionRefreshScope) return deny("CALENDAR_ALREADY_CHECKPOINTED");
         if ((current.criteria.calendarPreviewOnly || calendarOnlyPermit || boundedPermit) && requestPath === "/CaseSearch" && method === "POST") {
           const [priorSearch] = await tx.select({ id: discoveryRequestsTable.id })
             .from(discoveryRequestsTable)

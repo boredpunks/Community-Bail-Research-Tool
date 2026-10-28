@@ -5,7 +5,7 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
-  allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod,
+  allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, integratedSourceMethod,
   calendarPreviewRequestAllowed, isCalendarPreviewCriteria,
   validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
@@ -17,7 +17,7 @@ import { isExplicitEmptyCalendarLayout, validCalendarLayout } from "./calendar-l
 import { finishBoundedRun } from "./bounded-report";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
-import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest } from "./discovery-scheduler";
+import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest, type RequestReservationAuthorization } from "./discovery-scheduler";
 import { formInspectionMethod, validInspectionMetadata } from "./form-inspection";
 import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from "./coverage-inspection";
 import { filingInspectionMethod, filingPhases, validFilingInventoryMetadata } from "./filing-inspection";
@@ -31,19 +31,40 @@ import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics
 import { researchMethod, validResearchCriteria } from "./research-scope";
 import { validSourceResponse, sourceResponseEvents } from "./document-response";
 import { resolveUjsRuntimeScript } from "./ujs-runtime-script";
+import { isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "./session-refresh-safety";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
 let stopping = false;
 const sourceId = "UJS";
+const pendingSessionRefreshes = new Set<string>();
+
+export function queueOneTimeSessionRefresh(jobId: string): boolean {
+  if (!jobId || pendingSessionRefreshes.has(jobId)) return false;
+  pendingSessionRefreshes.add(jobId);
+  return true;
+}
+
+export function cancelOneTimeSessionRefresh(jobId: string): void {
+  pendingSessionRefreshes.delete(jobId);
+}
+
+function consumeOneTimeSessionRefresh(jobId: string): boolean {
+  if (!pendingSessionRefreshes.has(jobId)) return false;
+  pendingSessionRefreshes.delete(jobId);
+  return true;
+}
 
 async function pause(job: DiscoveryJobRow, message: string) {
   await db.update(discoveryJobsTable).set({ status: "PAUSED", message, updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "RUNNING")));
   await discoveryEvent(job, "PAUSE", message);
 }
 
-export async function grant(job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId?: string | number, url?: unknown) {
-  return reserveSourceRequest(job, requestPath, method, permitId, url, () => stopping);
+export async function grant(
+  job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId?: string | number,
+  url?: unknown, authorization: RequestReservationAuthorization = {},
+) {
+  return reserveSourceRequest(job, requestPath, method, permitId, url, () => stopping, {}, authorization);
 }
 
 export async function sourceOutcome(job: DiscoveryJobRow, message: Record<string, unknown>) {
@@ -62,10 +83,47 @@ async function validationStop(reason: string) {
   });
 }
 
+async function establishSessionRefreshAccessProof(job: DiscoveryJobRow, requestId: string, itemId: string): Promise<boolean> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
+    const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
+    const [request] = await tx.select().from(discoveryRequestsTable).where(and(
+      eq(discoveryRequestsTable.id, requestId),
+      eq(discoveryRequestsTable.jobId, job.id),
+      eq(discoveryRequestsTable.itemId, itemId),
+      eq(discoveryRequestsTable.method, "GET"),
+      inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+      eq(discoveryRequestsTable.outcome, "OK"),
+      eq(discoveryRequestsTable.statusCode, 200),
+    )).for("update");
+    const [item] = await tx.select().from(discoveryItemsTable).where(and(
+      eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, job.id),
+    ));
+    if (!source || !current || current.status !== "RUNNING" || !request || !item
+      || !isExactAuthorizedSessionRefreshCriteria(current.criteria)
+      || source.blockedReason !== null || source.pausedUntil !== null || source.activeRequestId !== null
+      || source.accessVerifiedAt !== null || source.verifiedMethod !== null
+      || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome))
+      return false;
+    await tx.update(discoverySourceTable).set({
+      accessVerifiedAt: now,
+      verifiedMethod: integratedSourceMethod,
+    }).where(eq(discoverySourceTable.id, sourceId));
+    return true;
+  });
+}
+
 const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.provenance;
 
-export async function runJob(job: DiscoveryJobRow, permitId?: string) {
+type RunJobOptions = { exactSessionRefresh?: boolean; waitAcrossQuota?: boolean };
+
+export async function runJob(job: DiscoveryJobRow, permitId?: string, options: RunJobOptions = {}) {
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
+  const exactSessionRefresh = options.exactSessionRefresh === true;
+  if (exactSessionRefresh && (!isExactAuthorizedSessionRefreshCriteria(job.criteria)
+    || job.assessmentId !== null || !job.calendarComplete))
+    throw new Error("Invalid exact-session refresh scope");
   const [permit] = permitId ? await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, permitId)) : [];
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
   if (permit?.stage === "INSPECT" && !inspectionOnly)
@@ -94,7 +152,13 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     && (permit.expectedMethod !== boundedEngineMethod || !validBoundedEngineCriteria(job.criteria)))
     throw new Error("Invalid bounded engine permit scope");
   const diagnosticOnly = inspectionOnly || coverageOnly || filingInspectionOnly;
-  const [running] = await db.update(discoveryJobsTable).set({ status: "RUNNING", message: "Starting one paced browser session. Asset traffic counts against your budget.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
+  const [running] = await db.update(discoveryJobsTable).set({
+    status: "RUNNING",
+    message: exactSessionRefresh
+      ? "Refreshing the exact saved search once; all browser traffic counts against the unchanged request cap."
+      : "Starting one paced browser session. Asset traffic counts against your budget.",
+    updatedAt: new Date(),
+  }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
   const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
@@ -136,10 +200,18 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
   let explicitEmptyDiagnosticSeen = false;
   let calendarLayoutSeen = false;
   let calendarResponseDiagnosticSeen = false;
+  let refreshCalendarActive = exactSessionRefresh;
+  let refreshCalendarValidated = false;
+  let refreshMismatch = false;
+  let accessCheckItem: { id: string; docketNumber: string; url: string } | null = null;
+  let accessCheckRequestId: string | null = null;
+  let accessCheckResponseValid = false;
+  let accessCheckConsumed = false;
+  let accessCheckVerified = false;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
-    criteria: job.criteria, calendarComplete: job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
+    criteria: job.criteria, calendarComplete: exactSessionRefresh ? false : job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
      calendarPreviewOnly, ordinaryCalendar: calendarPreviewOnly && !job.assessmentId,
      courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
     pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
@@ -170,10 +242,23 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         }
         if (calendarPreviewOnly && !calendarPreviewRequestAllowed(message.path, message.method))
           throw new Error("Calendar preview cannot retrieve docket documents");
+        const requestAuthorization: RequestReservationAuthorization = {
+          ...(exactSessionRefresh ? { authorizedSessionRefreshJobId: job.id } : {}),
+          ...(refreshCalendarActive ? { refreshCalendarSession: true } : {}),
+          ...(exactSessionRefresh && refreshCalendarValidated && accessCheckItem && !accessCheckConsumed
+            ? { firstPdfAccessCheck: { itemId: accessCheckItem.id, docketNumber: accessCheckItem.docketNumber, url: accessCheckItem.url } } : {}),
+          ...(exactSessionRefresh && options.waitAcrossQuota ? { keepSessionAcrossQuota: true } : {}),
+        };
         const permission = inspectionOnly
           ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
             grant(job, requestPath, method, permitId, url))
-          : await grant(job, message.path, message.method, permitId, message.url);
+          : await grant(job, message.path, message.method, permitId, message.url, requestAuthorization);
+        if (exactSessionRefresh && requestAuthorization.firstPdfAccessCheck && permission.allow && "requestId" in permission
+          && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(message.path))
+          && String(message.method) === "GET") {
+          accessCheckConsumed = true;
+          accessCheckRequestId = String(permission.requestId);
+        }
         if (boundedEngine && !boundedObservationComplete && permission.allow) boundedObservationRequests++;
         child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
@@ -181,6 +266,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
           throw new Error("Inspection response accounting mismatch");
         const continueRun = await sourceOutcome(job, message);
+        if (exactSessionRefresh && accessCheckRequestId === String(message.requestId))
+          accessCheckResponseValid = message.outcome === "OK" && message.status === 200 && continueRun;
         const [accounted] = await db.select({durationMs: discoveryRequestsTable.durationMs})
           .from(discoveryRequestsTable).where(and(
             eq(discoveryRequestsTable.id, message.requestId), eq(discoveryRequestsTable.jobId, job.id)));
@@ -319,6 +406,40 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           || calendarPreviewOnly && !validCalendarAuditHeaders(message.columnHeaders)) {
           throw new Error("Invalid calendar checkpoint");
         }
+        let refreshRowsMatched = false;
+        let refreshedFirstAccessCheck: { id: string; docketNumber: string; url: string } | null = null;
+        if (exactSessionRefresh) {
+          const saved = await db.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
+          const matching = sameSavedCalendarResults(
+            saved as unknown as Record<string, unknown>[],
+            rows as unknown as Record<string, unknown>[],
+          )
+            && message.paginationComplete === job.paginationComplete
+            && message.resultCapReached === job.resultCapReached;
+          if (!matching) {
+            refreshMismatch = true;
+            refreshCalendarActive = false;
+            await pause(job, "SESSION_REFRESH_RESULTS_MISMATCH: refreshed results differed from the saved ordered docket set; no PDF request was authorized.");
+            await discoveryEvent(job, "SESSION_REFRESH_MISMATCH", "Refreshed calendar results did not exactly match the saved dockets, dates, types, and order. No links were replaced.");
+            continue;
+          }
+          const firstPending = saved.find((item) => item.provenance.extractionOutcome === "UNPROCESSED");
+          const refreshedFirst = firstPending && rows.find((row) => row.docketNumber === firstPending.docketNumber);
+          if (!firstPending || !refreshedFirst || !validCalendarDocketLink(refreshedFirst.sourceUrl, refreshedFirst.docketNumber)) {
+            refreshMismatch = true;
+            refreshCalendarActive = false;
+            await pause(job, "SESSION_REFRESH_FIRST_LINK_INVALID: the first pending docket had no valid refreshed link; no PDF request was authorized.");
+            await discoveryEvent(job, "SESSION_REFRESH_MISMATCH", "The refreshed first pending link did not validate. No links were replaced.");
+            continue;
+          }
+          refreshRowsMatched = true;
+          refreshedFirstAccessCheck = {
+            id: firstPending.id,
+            docketNumber: firstPending.docketNumber,
+            url: refreshedFirst.sourceUrl,
+          };
+        }
         await db.transaction(async (tx) => {
           for (const row of rows) {
             const docketType = /^CP-02-CR-\d{7}-\d{4}$/.test(row.docketNumber) ? "COMMON_PLEAS"
@@ -356,11 +477,27 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
               },
             }).onConflictDoNothing({ target: [discoveryItemsTable.jobId, discoveryItemsTable.docketNumber] });
           }
-          await tx.update(discoveryJobsTable).set({
-            calendarComplete: true, paginationComplete: message.paginationComplete === true,
-            resultCapReached: message.resultCapReached === true, updatedAt: new Date(),
-          }).where(eq(discoveryJobsTable.id, job.id));
+          if (exactSessionRefresh && refreshRowsMatched) {
+            for (const row of rows) {
+              await tx.update(discoveryItemsTable).set({ sourceUrl: row.sourceUrl }).where(and(
+                eq(discoveryItemsTable.jobId, job.id),
+                eq(discoveryItemsTable.docketNumber, row.docketNumber),
+              ));
+            }
+          } else {
+            await tx.update(discoveryJobsTable).set({
+              calendarComplete: true, paginationComplete: message.paginationComplete === true,
+              resultCapReached: message.resultCapReached === true, updatedAt: new Date(),
+            }).where(eq(discoveryJobsTable.id, job.id));
+          }
         });
+        if (exactSessionRefresh && refreshedFirstAccessCheck) {
+          refreshCalendarValidated = true;
+          refreshCalendarActive = false;
+          accessCheckItem = refreshedFirstAccessCheck;
+          await discoveryEvent(job, "SESSION_REFRESH_MATCHED",
+            `The refreshed ordered docket set matched all ${rows.length} saved results; only session-bound document links were updated. First-PDF access check enabled.`);
+        }
         await discoveryEvent(job, "CALENDAR",
           `Validated ${rows.length} distinct result-linked dockets in source order. ${calendarPreviewOnly
             ? `Validated column headers (allowlisted labels only): ${calendarAuditHeaders.join(", ")}. `
@@ -371,6 +508,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         finished = true;
       } else if (message.kind === "docket") {
         if (calendarPreviewOnly) throw new Error("Calendar preview cannot emit document evidence");
+        if (exactSessionRefresh && refreshMismatch) continue;
         const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.docketNumber, String(message.docketNumber))));
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
         const outcome = String(message.extractionOutcome);
@@ -402,6 +540,18 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
           },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
+        if (exactSessionRefresh && accessCheckConsumed && accessCheckItem?.id === item.id) {
+          if (accessCheckResponseValid && accessCheckRequestId
+            && ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) {
+            accessCheckVerified = await establishSessionRefreshAccessProof(job, accessCheckRequestId, item.id);
+            if (accessCheckVerified) {
+              await discoveryEvent(job, "SESSION_REFRESH_ACCESS_VERIFIED",
+                "The refreshed first PDF was retrieved and identity-validated through the integrated client. Access verification was recorded; the original job scope and caps remain unchanged.");
+            }
+          }
+          if (!accessCheckVerified && outcome !== "IDENTITY_MISMATCH")
+            await pause(job, "FIRST_PDF_ACCESS_CHECK_FAILED: the first refreshed document did not validate; collection stopped without another PDF request.");
+        }
         if (outcome === "IDENTITY_MISMATCH") await validationStop("DOCUMENT_VALIDATION_FAILED");
       } else if (message.kind === "checkpoint") {
         const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
@@ -521,7 +671,12 @@ export async function startDiscoveryWorker() {
                 throw new Error("Queued assessment is not an exact delegated bounded scope");
               await runJob(job, permit.id);
               await finishBoundedRun(job.id, permit.id);
-            } else await runJob(job);
+            } else {
+              const exactSessionRefresh = consumeOneTimeSessionRefresh(job.id);
+              await runJob(job, undefined, exactSessionRefresh
+                ? { exactSessionRefresh: true, waitAcrossQuota: true }
+                : {});
+            }
           }
           catch (error) {
             logger.error({ err: error instanceof Error ? { name: error.name, message: error.message.slice(0, 180) } : undefined }, "Discovery worker stopped a job");

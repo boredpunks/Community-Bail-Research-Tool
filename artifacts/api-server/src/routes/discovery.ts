@@ -24,6 +24,9 @@ import { makeCalendarPreviewCriteria } from "../lib/calendar-criteria";
 import { sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { launchBoundedPermit } from "../lib/bounded-launch";
 import { inspectLocalPdf } from "../lib/local-document";
+import { calendarPreviewRequestAllowed } from "../lib/discovery-safety";
+import { cancelOneTimeSessionRefresh, queueOneTimeSessionRefresh } from "../lib/discovery-worker";
+import { isExactAuthorizedSessionRefreshCriteria } from "../lib/session-refresh-safety";
 
 const router: IRouter = Router();
 router.use(requireResearchAuth, requireSameOrigin);
@@ -238,6 +241,73 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
   if (!("job" in result) || !result.job) { res.status(result.status).json({ error: result.error }); return; }
   const payload = await jobSummary(result.job);
   ControlDiscoveryJobResponse.parse(payload); res.json(payload);
+});
+
+router.post("/discovery/jobs/:jobId/refresh-session", async (req, res): Promise<void> => {
+  await clearExpiredDiscoveryResults();
+  const params = ControlDiscoveryJobParams.safeParse(req.params);
+  if (!params.success || req.body?.confirm !== "repeat-exact-search-and-first-pdf") {
+    res.status(400).json({ error: "Explicit exact-search and first-PDF confirmation is required." });
+    return;
+  }
+  let queuedJobId: string | null = null;
+  let result: { job?: typeof discoveryJobsTable.$inferSelect; error?: string; status: number };
+  try {
+    result = await db.transaction(async (tx) => {
+      const { ownerIds } = getWorkspaceIdentity(res);
+      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
+      const [job] = await tx.select().from(discoveryJobsTable)
+        .where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)))
+        .for("update");
+      if (!job) return { error: "Job not found in the shared workspace.", status: 404 };
+      if (job.status !== "PAUSED" || job.assessmentId !== null || job.resultsExpiredAt
+        || !job.calendarComplete || !isExactAuthorizedSessionRefreshCriteria(job.criteria)
+        || resultsDeadline(job) && resultsDeadline(job)! <= new Date())
+        return { error: "This job is outside the exact authorized refresh scope.", status: 409 };
+      if (!source || source.blockedReason !== null || source.accessVerifiedAt !== null
+        || source.verifiedMethod !== null || source.activeRequestId !== null || source.pausedUntil !== null)
+        return { error: "Source state is not eligible for this one-time check.", status: 409 };
+      const sourceBlock = await calendarAdmission(tx, source);
+      if (sourceBlock) return { error: `Calendar access is blocked: ${sourceBlock}.`, status: 409 };
+      const [activeJob] = await tx.select({ id: discoveryJobsTable.id }).from(discoveryJobsTable)
+        .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+      if (activeJob) return { error: "Another discovery job is active.", status: 409 };
+      const requests = await tx.select().from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id));
+      const items = await tx.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id))
+        .orderBy(asc(discoveryItemsTable.position));
+      const searchPosts = requests.filter((request) => request.path === "/CaseSearch" && request.method === "POST");
+      if (requests.length !== job.requestsUsed || requests.some((request) =>
+        request.outcome !== "OK" || !calendarPreviewRequestAllowed(request.path, request.method))
+        || searchPosts.length !== 1
+        || requests.some((request) => request.path === "/Report/CpDocketSheet" || request.path === "/Report/MdjDocketSheet")
+        || items.length !== 188 || items.some((item) => item.provenance.extractionOutcome !== "UNPROCESSED")
+        || job.criteria.recordCap !== 200 || job.criteria.requestCap !== 500 || job.criteria.matchTarget !== 200)
+        return { error: "Saved evidence or request history no longer matches the one-time refresh safeguards.", status: 409 };
+      if (!queueOneTimeSessionRefresh(job.id))
+        return { error: "A one-time refresh is already queued for this job.", status: 409 };
+      queuedJobId = job.id;
+      const [updated] = await tx.update(discoveryJobsTable).set({
+        status: "QUEUED",
+        message: "One exact saved-search refresh and first-PDF access check authorized; criteria and caps unchanged.",
+        updatedAt: new Date(),
+      }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "PAUSED"))).returning();
+      if (!updated) return { error: "Job state changed before the refresh could be queued.", status: 409 };
+      await tx.insert(discoveryEventsTable).values({
+        jobId: job.id, ownerId: job.ownerId, kind: "SESSION_REFRESH_AUTHORIZED",
+        message: "One exact Search resubmission and one first-PDF access check authorized. Original criteria and request caps retained.",
+      });
+      return { job: updated, status: 200 };
+    });
+  } catch (error) {
+    if (queuedJobId) cancelOneTimeSessionRefresh(queuedJobId);
+    throw error;
+  }
+  if (!result.job) {
+    if (queuedJobId) cancelOneTimeSessionRefresh(queuedJobId);
+    res.status(result.status).json({ error: result.error ?? "Refresh authorization failed." });
+    return;
+  }
+  res.json({ action: "SESSION_REFRESH_QUEUED", job: await jobSummary(result.job) });
 });
 
 router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promise<void> => {
