@@ -1,6 +1,8 @@
 """Real downloader, loopback-only connector, genuine supplied PDFs. No source IO."""
 import asyncio
+import ast
 import io
+import inspect
 import json
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -256,6 +258,30 @@ class DenialDiagnosticTests(unittest.TestCase):
 
 
 class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
+    def test_current_calendar_capture_is_shared_with_document_retrieval(self):
+        import worker
+
+        tree = ast.parse(inspect.getsource(worker.main))
+        validator = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "validate_loaded_response"
+        )
+        shared_names = {
+            name
+            for statement in validator.body
+            if isinstance(statement, ast.Nonlocal)
+            for name in statement.names
+        }
+        assigned_names = {
+            target.id
+            for statement in ast.walk(validator)
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+        }
+        self.assertIn("calendar_links_captured_at", shared_names)
+        self.assertIn("calendar_links_captured_at", assigned_names)
+
     async def run_document(self, *, allow=True, status=200, capture_this_run=True):
         import worker
         import calendar_document

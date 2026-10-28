@@ -688,6 +688,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 response_structure = None
 
         async def validate_loaded_response():
+            nonlocal calendar_links_captured_at
             nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
             nonlocal items, calendar_has_remote_pagination, calendar_validated_headers, calendar_traversal
             nonlocal calendar_explicit_empty
