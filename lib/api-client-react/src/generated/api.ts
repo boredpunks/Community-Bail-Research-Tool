@@ -44,6 +44,8 @@ import type {
   HealthStatus,
   ListBailRecordsParams,
   NotFoundResponse,
+  SingleDocumentProofInput,
+  SingleDocumentProofResponse,
   TooManyRequestsResponse,
   UnauthorizedResponse,
   UnavailableResponse,
@@ -1207,6 +1209,91 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getControlDiscoveryJobMutationOptions(options));
+    }
+
+export const getStartSingleDocumentProofUrl = (jobId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/discovery/jobs/${jobId}/items/${itemId}/single-document-proof`
+}
+
+export const startSingleDocumentProof = async (jobId: string,
+    itemId: string,
+    singleDocumentProofInput: SingleDocumentProofInput, options?: Parameters<typeof customFetch>[1]): Promise<SingleDocumentProofResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SingleDocumentProofResponse>(getStartSingleDocumentProofUrl(jobId,itemId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(singleDocumentProofInput)
+  }
+);}
+
+
+
+
+
+export const getStartSingleDocumentProofMutationKey = () => ['startSingleDocumentProof'] as const;
+
+export const getStartSingleDocumentProofMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startSingleDocumentProof>>, TError,StartSingleDocumentProofMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startSingleDocumentProof>>, TError,StartSingleDocumentProofMutationVariables, TContext> => {
+
+const mutationKey = getStartSingleDocumentProofMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startSingleDocumentProof>>, StartSingleDocumentProofMutationVariables> = (props) => {
+          const {jobId,itemId,data} = props ?? {};
+
+          return  startSingleDocumentProof(jobId,itemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartSingleDocumentProofMutationResult = NonNullable<Awaited<ReturnType<typeof startSingleDocumentProof>>>
+    export type StartSingleDocumentProofMutationBody = BodyType<SingleDocumentProofInput>
+    export type StartSingleDocumentProofMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type StartSingleDocumentProofMutationVariables = {jobId: string;itemId: string;data: BodyType<SingleDocumentProofInput>}
+
+    export const useStartSingleDocumentProof = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startSingleDocumentProof>>, TError,StartSingleDocumentProofMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startSingleDocumentProof>>,
+        TError,
+        StartSingleDocumentProofMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartSingleDocumentProofMutationOptions(options));
     }
 
 export const getSaveDiscoveryCandidatesUrl = (jobId: string,) => {

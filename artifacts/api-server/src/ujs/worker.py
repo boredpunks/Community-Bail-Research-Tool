@@ -71,6 +71,20 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
     # Fail configuration before starting any browser or requesting a grant.
     calendar_html_limit = html_byte_limit()
     criteria = config["criteria"]
+    single_document_proof = config.get("singleDocumentProof")
+    if single_document_proof is not None:
+        pending = config.get("pendingItems")
+        if (not isinstance(single_document_proof, dict)
+                or set(single_document_proof) != {"itemId", "docketNumber", "sourceUrl", "capturedAt"}
+                or not isinstance(pending, list) or len(pending) != 1
+                or pending[0].get("docketNumber") != single_document_proof.get("docketNumber")
+                or pending[0].get("sourceUrl") != single_document_proof.get("sourceUrl")
+                or not allowed(single_document_proof.get("sourceUrl"), "GET")
+                or urlsplit(single_document_proof["sourceUrl"]).path != "/Report/CpDocketSheet"
+                or parse_qs(urlsplit(single_document_proof["sourceUrl"]).query).get("docketNumber")
+                != [single_document_proof.get("docketNumber")]):
+            emit("barrier", code="SINGLE_DOCUMENT_PROOF_SCOPE_INVALID")
+            return
     inspection_only = config.get("inspectionOnly") is True
     if inspection_only:
         # This is a defense-in-depth stop for old, already-prepared permits.
@@ -175,6 +189,17 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
     blocked_during_inspection = 0
     calendar_handling_done = asyncio.Event()
     async with async_playwright() as playwright:
+        if single_document_proof is not None:
+            try:
+                captured_at = datetime.fromisoformat(
+                    single_document_proof["capturedAt"].replace("Z", "+00:00"))
+                capture_age = (datetime.now(timezone.utc) - captured_at).total_seconds()
+                if not 0 <= capture_age <= 2 * 60 * 60:
+                    raise ValueError("capture age outside approved proof window")
+                calendar_links_captured_at = asyncio.get_running_loop().time() - capture_age
+            except (TypeError, ValueError):
+                emit("barrier", code="SINGLE_DOCUMENT_PROOF_CAPTURE_INVALID")
+                return
         browser = await playwright.chromium.launch(
             executable_path=shutil.which("chromium"), headless=True,
             args=["--disable-background-networking", "--disable-component-update",
@@ -1029,7 +1054,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 if calendar_preview_only:
                     emit("calendar_preview_finished")
                     return
-            if items[:config["remainingRecords"]] and calendar_links_captured_at is None:
+            if (items[:config["remainingRecords"]] and calendar_links_captured_at is None
+                    and single_document_proof is None):
                 # A persisted result can outlive its browser session, but its
                 # action link is not authorized for this run. The parent turns
                 # this into a pause; do not emit a request/grant or download.
@@ -1042,7 +1068,11 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
-                        lambda: public_http.download(item["sourceUrl"]),
+                        lambda: public_http.download(
+                            item["sourceUrl"],
+                            timeout_seconds=30 if single_document_proof is not None else 45,
+                            max_bytes=4_000_000,
+                        ),
                         link_captured_at=calendar_links_captured_at,
                     )
                     try:

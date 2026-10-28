@@ -2,7 +2,7 @@ import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
+import { db, pool, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
   allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, integratedSourceMethod,
@@ -10,6 +10,7 @@ import {
   validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
   validParentDeniedPause,
+  singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { documentLocations } from "./document-locations";
@@ -116,7 +117,43 @@ async function establishSessionRefreshAccessProof(job: DiscoveryJobRow, requestI
 
 const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.provenance;
 
-type RunJobOptions = { exactSessionRefresh?: boolean; waitAcrossQuota?: boolean };
+type RunJobOptions = {
+  exactSessionRefresh?: boolean; waitAcrossQuota?: boolean; singleDocumentProofItemId?: string;
+};
+
+async function finishSingleDocumentProof(jobId: string, permitId: string, itemId: string) {
+  const [item] = await db.select().from(discoveryItemsTable).where(and(
+    eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, jobId),
+  ));
+  const pdfRequests = await db.select().from(discoveryRequestsTable).where(and(
+    eq(discoveryRequestsTable.jobId, jobId),
+    inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+  ));
+  const success = pdfRequests.length === 1 && pdfRequests[0]!.method === "GET"
+    && pdfRequests[0]!.itemId === itemId && pdfRequests[0]!.outcome === "OK"
+    && pdfRequests[0]!.statusCode === 200 && item?.sourceRetrievedAt
+    && item.provenance.documentSha256
+    && ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome);
+  const reason = success
+    ? "One identity-checked PDF processed. Bail evidence is provisional and awaiting human comparison; source-wide access remains unverified."
+    : `Single-document proof stopped without retry. Request outcome=${pdfRequests[0]?.outcome ?? "NOT_SENT"}; extraction=${item?.provenance.extractionOutcome ?? "NOT_PROCESSED"}.`;
+  await db.update(discoveryAssessmentsTable).set({
+    state: success ? "COMPLETED" : "FAILED", completedAt: new Date(),
+    report: { requests: pdfRequests.length, validDocuments: success ? 1 : 0,
+      failures: success ? 0 : 1, reason },
+  }).where(and(eq(discoveryAssessmentsTable.id, permitId),
+    eq(discoveryAssessmentsTable.state, "ATTEMPTED")));
+  if (success) {
+    await db.update(discoveryJobsTable).set({
+      message: "One PDF processed and identity-checked. Bail evidence is provisional and awaiting human comparison; no other docket was requested.",
+      updatedAt: new Date(),
+    }).where(eq(discoveryJobsTable.id, jobId));
+    await db.insert(discoveryEventsTable).values({
+      jobId, ownerId: item!.ownerId, kind: "SINGLE_DOCUMENT_PROOF_COMPLETE",
+      message: "One identity-checked PDF processed; bail evidence remains provisional pending human comparison. No other docket was requested; source-wide access remains unverified.",
+    });
+  }
+}
 
 export async function runJob(job: DiscoveryJobRow, permitId?: string, options: RunJobOptions = {}) {
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
@@ -125,6 +162,17 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
     || job.assessmentId !== null || !job.calendarComplete))
     throw new Error("Invalid exact-session refresh scope");
   const [permit] = permitId ? await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, permitId)) : [];
+  const singleDocumentProofItemId = options.singleDocumentProofItemId;
+  const singleDocumentProof = permit?.stage === "SINGLE_DOCUMENT_PROOF";
+  if (singleDocumentProof !== Boolean(singleDocumentProofItemId)
+    || singleDocumentProof && (permit!.expectedMethod !== singleDocumentProofMethod
+      || permit!.state !== "ATTEMPTED" || permit!.jobId !== job.id
+      || permit!.executionOwnerId !== job.ownerId || !permit!.expiresAt
+      || permit!.expiresAt <= new Date()
+      || permit!.report?.reason !== `single-document-proof:${singleDocumentProofItemId}`
+      || !validSingleDocumentProofCriteria(job.criteria))) {
+    throw new Error("Invalid single-document proof permit");
+  }
   const inspectionOnly = permit?.stage === "INSPECT" && permit.expectedMethod === formInspectionMethod;
   if (permit?.stage === "INSPECT" && !inspectionOnly)
     throw new Error("Invalid form inspection client scope");
@@ -154,7 +202,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   const diagnosticOnly = inspectionOnly || coverageOnly || filingInspectionOnly;
   const [running] = await db.update(discoveryJobsTable).set({
     status: "RUNNING",
-    message: exactSessionRefresh
+    message: singleDocumentProof
+      ? "Starting the one-PDF proof. No calendar Search or other docket will be requested."
+      : exactSessionRefresh
       ? "Refreshing the exact saved search once; all browser traffic counts against the unchanged request cap."
       : "Starting one paced browser session. Asset traffic counts against your budget.",
     updatedAt: new Date(),
@@ -162,6 +212,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
   const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
+  const proofItem = singleDocumentProof ? items.find((item) => item.id === singleDocumentProofItemId) : undefined;
+  if (singleDocumentProof && (!proofItem || proofItem.sourceRetrievedAt !== null
+    || !validSingleDocumentProofRow({
+      docketNumber: proofItem.docketNumber, sourceUrl: proofItem.sourceUrl,
+      capturedAt: proofItem.provenance.calendarRetrievedAt, provenance: proofItem.provenance,
+    }))) throw new Error("Single-document proof item is no longer eligible");
   const processed = items.filter((item) => item.provenance.extractionOutcome !== "UNPROCESSED").length;
   const initialCounts = await jobSummary(running);
   if (initialCounts.targetReached) {
@@ -214,8 +270,13 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
     criteria: job.criteria, calendarComplete: exactSessionRefresh ? false : job.calendarComplete, inspectionOnly, coverageOnly, filingInspectionOnly,
      calendarPreviewOnly, ordinaryCalendar: calendarPreviewOnly && !job.assessmentId,
      courtroomObservationOnly, boundedEngineObservation: boundedEngine, researchRun,
-    pendingItems: items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED").map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
-    remainingRecords: calendarPreviewOnly ? 0 : job.criteria.recordCap - processed,
+     pendingItems: (proofItem ? [proofItem] : items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED"))
+       .map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
+     remainingRecords: calendarPreviewOnly ? 0 : singleDocumentProof ? 1 : job.criteria.recordCap - processed,
+     ...(proofItem ? { singleDocumentProof: {
+       itemId: proofItem.id, docketNumber: proofItem.docketNumber,
+       sourceUrl: proofItem.sourceUrl, capturedAt: proofItem.provenance.calendarRetrievedAt,
+     } } : {}),
   }) + "\n");
   try {
     const lines = createInterface({ input: child.stdout });
@@ -664,13 +725,32 @@ export async function startDiscoveryWorker() {
           try {
             if (job.assessmentId) {
               const [permit] = await db.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, job.assessmentId));
-              if (!permit || permit.state !== "ATTEMPTED" || permit.jobId !== job.id
+              if (permit?.stage === "SINGLE_DOCUMENT_PROOF") {
+                const itemId = permit.report?.reason.startsWith("single-document-proof:")
+                  ? permit.report.reason.slice("single-document-proof:".length) : "";
+                const [item] = itemId ? await db.select().from(discoveryItemsTable).where(and(
+                  eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, job.id),
+                )) : [];
+                if (permit.expectedMethod !== singleDocumentProofMethod || permit.state !== "ATTEMPTED"
+                  || permit.jobId !== job.id || permit.executionOwnerId !== job.ownerId
+                  || !permit.approvedAt || !permit.expiresAt || permit.expiresAt <= new Date()
+                  || JSON.stringify(permit.criteria) !== JSON.stringify(job.criteria)
+                  || !validSingleDocumentProofCriteria(job.criteria) || !item
+                  || !validSingleDocumentProofRow({
+                    docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
+                    capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
+                  })) throw new Error("Queued single-document proof is outside its approved scope");
+                await runJob(job, permit.id, { singleDocumentProofItemId: item.id });
+                await finishSingleDocumentProof(job.id, permit.id, item.id);
+              } else if (!permit || permit.state !== "ATTEMPTED" || permit.jobId !== job.id
                 || permit.executionOwnerId !== job.ownerId || permit.stage !== "BOUNDED_ENGINE"
                 || permit.expectedMethod !== boundedEngineMethod || !validBoundedEngineCriteria(job.criteria)
                 || JSON.stringify(permit.criteria) !== JSON.stringify(job.criteria))
                 throw new Error("Queued assessment is not an exact delegated bounded scope");
-              await runJob(job, permit.id);
-              await finishBoundedRun(job.id, permit.id);
+              else {
+                await runJob(job, permit.id);
+                await finishBoundedRun(job.id, permit.id);
+              }
             } else {
               const exactSessionRefresh = consumeOneTimeSessionRefresh(job.id);
               await runJob(job, undefined, exactSessionRefresh

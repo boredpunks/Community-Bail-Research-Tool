@@ -7,6 +7,7 @@ import {
   allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed,
   calendarPreviewSourceAllowed, collectionBlock, integratedSourceMethod,
   isCalendarPreviewCriteria, paceEligibleAt, responseHealth, rollingUsage,
+  singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
   throttleDeadline, validAccountingMessage,
 } from "./discovery-safety";
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
@@ -61,12 +62,14 @@ export async function reserveSourceRequest(
       let boundedPermit = false;
       let researchPermit = false;
       let proofPermit = false;
+      let singleDocumentProofPermit = false;
       let sessionRefreshScope = false;
       let firstPdfAccessCheckAllowed = false;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         const expectedMethod = permit?.stage === "RESEARCH_RUN" ? researchMethod
           : permit?.stage === "RESEARCH_PROOF" ? proofMethod
+          : permit?.stage === "SINGLE_DOCUMENT_PROOF" ? singleDocumentProofMethod
           : permit?.stage === "BOUNDED_ENGINE" ? boundedEngineMethod
           : permit?.stage === "FILING_INSPECT" ? filingInspectionMethod
           : permit?.stage === "COVERAGE" ? coverageMethod(permit.criteria)
@@ -88,6 +91,18 @@ export async function reserveSourceRequest(
         calendarOnlyPermit = permit.stage === "CALENDAR_ONLY";
         researchPermit = permit.stage === "RESEARCH_RUN";
         proofPermit = permit.stage === "RESEARCH_PROOF";
+        singleDocumentProofPermit = permit.stage === "SINGLE_DOCUMENT_PROOF";
+        if (singleDocumentProofPermit) {
+          const proofItemId = permit.report?.reason.startsWith("single-document-proof:")
+            ? permit.report.reason.slice("single-document-proof:".length) : "";
+          if (permit.expectedMethod !== singleDocumentProofMethod
+            || !validSingleDocumentProofCriteria(current.criteria, now)
+            || !proofItemId || requestPath !== "/Report/CpDocketSheet" || method !== "GET"
+            || source.blockedReason !== null || source.accessVerifiedAt !== null
+            || source.verifiedMethod !== null || source.collectionApprovedAt !== null
+            || source.pausedUntil !== null || source.activeRequestId !== null)
+            return deny("SINGLE_DOCUMENT_PROOF_SCOPE_INVALID");
+        }
         if ((researchPermit || proofPermit) && (!validResearchCriteria(current.criteria, proofPermit)
           || current.criteria.startDate < new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
           || !calendarPreviewSourceAllowed(source, now, true)
@@ -240,6 +255,26 @@ export async function reserveSourceRequest(
         const [item] = await tx.select().from(discoveryItemsTable).where(and(
           eq(discoveryItemsTable.jobId, current.id), eq(discoveryItemsTable.sourceUrl, url),
         )).for("update");
+        if (singleDocumentProofPermit) {
+          const proofItemId = permit?.report?.reason.slice("single-document-proof:".length);
+          const priorPdfRequests = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+            ));
+          const priorSearchPosts = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(eq(discoveryRequestsTable.jobId, current.id),
+              eq(discoveryRequestsTable.path, "/CaseSearch"), eq(discoveryRequestsTable.method, "POST")));
+          if (!item || item.id !== proofItemId || item.sourceRetrievedAt !== null
+            || item.provenance.extractionOutcome !== "UNPROCESSED"
+            || !validSingleDocumentProofRow({
+              docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
+              capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
+            }, now)
+            || priorPdfRequests.length !== 0 || priorSearchPosts.length !== 1
+            || !current.calendarComplete)
+            return deny("SINGLE_DOCUMENT_PROOF_ITEM_INVALID");
+        }
         if (authorization.firstPdfAccessCheck && authorization.authorizedSessionRefreshJobId === current.id) {
           if (!firstPdfAccessCheckAllowed || item?.id !== authorization.firstPdfAccessCheck.itemId
             || item.docketNumber !== authorization.firstPdfAccessCheck.docketNumber
@@ -250,7 +285,8 @@ export async function reserveSourceRequest(
           const next = ordered.find((candidate) => candidate.provenance.extractionOutcome === "UNPROCESSED");
           if (next?.id !== item.id) return deny("FIRST_PDF_ACCESS_CHECK_ORDER_MISMATCH");
         }
-        if (!proofPermit && (!item || item.provenance.extractionOutcome !== "UNPROCESSED")) return deny("DOCUMENT_NOT_PENDING");
+        if (!proofPermit && !singleDocumentProofPermit
+          && (!item || item.provenance.extractionOutcome !== "UNPROCESSED")) return deny("DOCUMENT_NOT_PENDING");
         const [prior] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.resourceKey, resourceKey))).limit(1);
         if (prior) return deny("DOCUMENT_ALREADY_ATTEMPTED");
         itemId = item?.id ?? null;

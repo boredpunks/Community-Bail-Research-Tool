@@ -238,6 +238,17 @@ export interface DiscoveryObservationInput {
   entryIndex: number | null;
 }
 
+export type SingleDocumentProofInputConfirm = typeof SingleDocumentProofInputConfirm[keyof typeof SingleDocumentProofInputConfirm];
+
+
+export const SingleDocumentProofInputConfirm = {
+  PROCEED_ONE_SAVED_PDF: 'PROCEED_ONE_SAVED_PDF',
+} as const;
+
+export interface SingleDocumentProofInput {
+  confirm: SingleDocumentProofInputConfirm;
+}
+
 export type DiscoveryJobStatus = typeof DiscoveryJobStatus[keyof typeof DiscoveryJobStatus];
 
 
@@ -290,6 +301,12 @@ export interface DiscoveryJob {
   resultsExpiredAt: string | null;
   candidateDockets: number;
   isAssessment: boolean;
+}
+
+export interface SingleDocumentProofResponse {
+  job: DiscoveryJob;
+  itemId: string;
+  assessmentId: string;
 }
 
 export type PostedEntryState = typeof PostedEntryState[keyof typeof PostedEntryState];

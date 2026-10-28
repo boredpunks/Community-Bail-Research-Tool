@@ -65,6 +65,8 @@ def classify_response(status, headers, body, pdf=False, path=None, calendar_limi
     media_type = content_type.split(";", 1)[0].strip().lower()
     expected_types = {
         "/CaseSearch": {"text/html"},
+        "/Report/CpDocketSheet": {"application/pdf"},
+        "/Report/MdjDocketSheet": {"application/pdf"},
         "/resource/js/sitemain.min.js": {
             "application/javascript", "text/javascript",
         },

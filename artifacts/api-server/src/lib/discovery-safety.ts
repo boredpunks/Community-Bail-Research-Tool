@@ -4,6 +4,8 @@ import { validCalendarPreviewCriteria } from "./calendar-criteria";
 
 export const integratedSourceMethod = "playwright-calendar+public-http-pdf-v16";
 export const calendarPreviewMethod = "playwright-calendar-preview-v9";
+export const singleDocumentProofMethod = "public-http-single-pdf-proof-v1";
+export const singleDocumentProofMaxLinkAgeMs = 2 * 60 * 60 * 1000;
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const calendarAuditHeaders = [
   "Docket Number", "Court Type", "Filing Date", "County", "Court Office", "Event Type",
@@ -175,6 +177,50 @@ export function validCalendarDocketLink(raw: unknown, docketNumber: string): boo
       && url.searchParams.getAll("docketNumber").length === 1 && url.searchParams.getAll("dnh").length <= 1
       && [...url.searchParams.keys()].every((key) => ["docketNumber", "dnh"].includes(key));
   } catch { return false; }
+}
+
+export function validSingleDocumentProofCriteria(value: unknown, now = new Date()): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const criteria = value as Record<string, unknown>;
+  const filters = criteria.matchFilters as Record<string, unknown> | undefined;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+  return Object.keys(criteria).length === 10
+    && criteria.resultVersion === 2
+    && criteria.courtOffice === "ANY" && criteria.courtRoom === "ANY"
+    && criteria.eventType === "Bail Hearing"
+    && criteria.startDate === today && criteria.endDate === "2026-10-31"
+    && criteria.recordCap === 6 && criteria.requestCap === 20 && criteria.matchTarget === 1
+    && !!filters && Object.keys(filters).length === 4
+    && filters.monetaryLowerBoundCents === null
+    && filters.monetaryUpperBoundCents === 2_999_999
+    && filters.inclusiveMaximum === true && filters.excludeShownPosted === false;
+}
+
+export function validSingleDocumentProofRow(input: {
+  docketNumber: string; sourceUrl: string; capturedAt: unknown; provenance: unknown;
+}, now = new Date()): boolean {
+  const { docketNumber, sourceUrl, capturedAt, provenance } = input;
+  if (!validCalendarDocketLink(sourceUrl, docketNumber)
+    || !/^CP-02-CR-\d{7}-\d{4}$/.test(docketNumber)
+    || typeof capturedAt !== "string" || !Number.isFinite(Date.parse(capturedAt))
+    || !provenance || typeof provenance !== "object" || Array.isArray(provenance)) return false;
+  const proof = provenance as Record<string, unknown>;
+  const events = proof.matchingEvents;
+  const age = now.getTime() - Date.parse(capturedAt);
+  let url: URL;
+  try { url = new URL(sourceUrl); } catch { return false; }
+  return age >= 0 && age <= singleDocumentProofMaxLinkAgeMs
+    && proof.courtOffice === "CP-05-02-Crim" && proof.courtType === "COMMON_PLEAS"
+    && proof.eventDate === new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
+    && proof.eventType === "Bail Hearing" && proof.extractionOutcome === "UNPROCESSED"
+    && Array.isArray(events) && events.length === 1
+    && !!events[0] && typeof events[0] === "object"
+    && (events[0] as Record<string, unknown>).eventDate === proof.eventDate
+    && (events[0] as Record<string, unknown>).eventType === "Bail Hearing"
+    && (events[0] as Record<string, unknown>).eventTime === "08:30 am"
+    && url.pathname === "/Report/CpDocketSheet"
+    && url.searchParams.getAll("dnh").length === 1
+    && Boolean(url.searchParams.get("dnh"));
 }
 
 export function validCalendarDiagnostics(message: Record<string, unknown>) {

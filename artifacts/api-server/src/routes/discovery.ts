@@ -9,11 +9,15 @@ import {
   SaveDiscoveryCandidatesBody, SaveDiscoveryCandidatesParams, SaveDiscoveryCandidatesResponse,
   ListDiscoveryAssessmentsResponse,
   CreateDiscoveryJobBody,
+  StartSingleDocumentProofBody, StartSingleDocumentProofParams, StartSingleDocumentProofResponse,
 } from "@workspace/api-zod";
 import { discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
 import { serializeBailRecord } from "../lib/bail-records";
 import { getWorkspaceIdentity, requireResearchAuth, requireSameOrigin } from "../middlewares/researchAuth";
-import { resultsDeadline } from "../lib/discovery-safety";
+import {
+  collectionBlock, resultsDeadline, rollingUsage, discoveryPolicy,
+  singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
+} from "../lib/discovery-safety";
 import { discoverySourceStatus } from "../lib/discovery-source-status";
 import { clearExpiredDiscoveryResults } from "../lib/discovery-retention";
 import { candidateEligible, observationKey, observationValues } from "../lib/discovery-candidates";
@@ -241,6 +245,86 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
   if (!("job" in result) || !result.job) { res.status(result.status).json({ error: result.error }); return; }
   const payload = await jobSummary(result.job);
   ControlDiscoveryJobResponse.parse(payload); res.json(payload);
+});
+
+router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async (req, res): Promise<void> => {
+  await clearExpiredDiscoveryResults();
+  const params = StartSingleDocumentProofParams.safeParse(req.params);
+  const body = StartSingleDocumentProofBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Confirm one saved PDF request." });
+    return;
+  }
+  const result = await db.transaction(async (tx) => {
+    const { ownerId, ownerIds } = getWorkspaceIdentity(res);
+    const [source] = await tx.select().from(discoverySourceTable)
+      .where(eq(discoverySourceTable.id, "UJS")).for("update");
+    const [job] = await tx.select().from(discoveryJobsTable)
+      .where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds)))
+      .for("update");
+    if (!job) return { error: "Search not found.", status: 404 as const };
+    const [item] = await tx.select().from(discoveryItemsTable).where(and(
+      eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, job.id),
+      inArray(discoveryItemsTable.ownerId, ownerIds),
+    )).for("update");
+    if (!item) return { error: "Selected calendar row not found.", status: 404 as const };
+    if (!source || job.status !== "PAUSED" || job.assessmentId !== null || !job.calendarComplete
+      || job.resultsExpiredAt || resultsDeadline(job) && resultsDeadline(job)! <= new Date()
+      || !validSingleDocumentProofCriteria(job.criteria)
+      || !validSingleDocumentProofRow({
+        docketNumber: item.docketNumber, sourceUrl: item.sourceUrl,
+        capturedAt: item.provenance.calendarRetrievedAt, provenance: item.provenance,
+      })
+      || item.sourceRetrievedAt !== null || job.requestsUsed >= job.criteria.requestCap) {
+      return { error: "This saved row is outside the single-document proof scope or its link is no longer eligible.", status: 409 as const };
+    }
+    if (collectionBlock(source) !== "ACCESS_UNVERIFIED" || source.activeRequestId
+      || source.pausedUntil || source.blockedReason !== null || source.accessVerifiedAt
+      || source.verifiedMethod || source.collectionApprovedAt) {
+      return { error: "Source readiness has a stop other than the missing document-access proof.", status: 409 as const };
+    }
+    const history = await tx.select().from(discoveryRequestsTable)
+      .where(eq(discoveryRequestsTable.jobId, job.id));
+    const pdfHistory = history.filter((request) =>
+      ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(request.path));
+    const searches = history.filter((request) => request.path === "/CaseSearch" && request.method === "POST");
+    if (history.length !== job.requestsUsed || pdfHistory.length !== 0 || searches.length !== 1
+      || history.some((request) => request.outcome !== "OK" || request.statusCode !== 200
+        || !["/CaseSearch", "/resource/js/sitemain.min.js", "/resource/css/sitemain.min.css"].includes(request.path))) {
+      return { error: "The saved request history does not qualify for a one-PDF proof.", status: 409 as const };
+    }
+    const [active] = await tx.select({ id: discoveryJobsTable.id }).from(discoveryJobsTable)
+      .where(inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])).limit(1);
+    if (active) return { error: "Another collection job is active.", status: 409 as const };
+    const recent = await tx.select({ startedAt: discoveryRequestsTable.startedAt })
+      .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.sourceId, "UJS"));
+    if (rollingUsage(recent.map((request) => request.startedAt), new Date(),
+      discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap).blockedReason) {
+      return { error: "The shared source request limit is active.", status: 409 as const };
+    }
+    const expiresAt = new Date(Date.now() + 15 * 60_000);
+    const [permit] = await tx.insert(discoveryAssessmentsTable).values({
+      stage: "SINGLE_DOCUMENT_PROOF", state: "ATTEMPTED", criteria: job.criteria,
+      expectedMethod: singleDocumentProofMethod, executionOwnerId: ownerId, jobId: job.id,
+      approvedAt: new Date(), startedAt: new Date(), expiresAt,
+      report: { requests: 0, validDocuments: 0, failures: 0,
+        reason: `single-document-proof:${item.id}` },
+    }).returning();
+    const [queued] = await tx.update(discoveryJobsTable).set({
+      status: "QUEUED", assessmentId: permit!.id, updatedAt: new Date(),
+      message: "One saved calendar-linked PDF authorized by the operator; no Search rerun and no second document.",
+    }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "PAUSED"))).returning();
+    if (!queued) throw new Error("Proof job changed during authorization.");
+    await tx.insert(discoveryEventsTable).values({
+      jobId: job.id, ownerId: job.ownerId, kind: "SINGLE_DOCUMENT_PROOF_AUTHORIZED",
+      message: "One stored CP-05-02-Crim Bail Hearing link authorized once; no Search rerun, URL reconstruction, or second PDF. Existing source ledger and stop conditions remain active.",
+    });
+    return { job: queued, itemId: item.id, assessmentId: permit!.id, status: 202 as const };
+  });
+  if (!("job" in result)) { res.status(result.status).json({ error: result.error }); return; }
+  const payload = { job: await jobSummary(result.job), itemId: result.itemId, assessmentId: result.assessmentId };
+  StartSingleDocumentProofResponse.parse(payload);
+  res.status(result.status).json(payload);
 });
 
 router.post("/discovery/jobs/:jobId/refresh-session", async (req, res): Promise<void> => {

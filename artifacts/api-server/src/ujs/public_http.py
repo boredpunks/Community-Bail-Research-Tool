@@ -22,7 +22,7 @@ class Response:
         self._body = None
 
 
-def _download(url):
+def _download(url, timeout_seconds=45, max_bytes=4_000_000):
     if not allowed(url, "GET") or not any(path + "?" in url for path in (
             "/Report/CpDocketSheet", "/Report/MdjDocketSheet")):
         raise ValueError("REQUEST_NOT_PERMITTED")
@@ -32,14 +32,14 @@ def _download(url):
         "Accept": "text/html,application/pdf",
     })
     try:
-        response = opener.open(req, timeout=45)
+        response = opener.open(req, timeout=timeout_seconds)
     except error.HTTPError as http_error:
         response = http_error
     with response:
         return Response(response.status, {key.lower(): value for key, value in response.headers.items()},
-                        response.read(4_000_001))
+                        response.read(max_bytes + 1))
 
 
-async def download(url):
+async def download(url, *, timeout_seconds=45, max_bytes=4_000_000):
     # Only callers holding the parent's persisted request grant may invoke this.
-    return await asyncio.to_thread(_download, url)
+    return await asyncio.to_thread(_download, url, timeout_seconds, max_bytes)

@@ -681,6 +681,90 @@ export const ControlDiscoveryJobResponse = zod.object({
 })
 
 
+export const StartSingleDocumentProofParams = zod.object({
+  "jobId": zod.coerce.string().uuid(),
+  "itemId": zod.coerce.string().uuid()
+})
+
+export const StartSingleDocumentProofBody = zod.object({
+  "confirm": zod.enum(['PROCEED_ONE_SAVED_PDF'])
+})
+
+export const startSingleDocumentProofResponseJobCriteriaCourtOfficeMax = 80;
+
+export const startSingleDocumentProofResponseJobCriteriaCourtRoomMax = 80;
+
+export const startSingleDocumentProofResponseJobCriteriaEventTypeMax = 80;
+
+export const startSingleDocumentProofResponseJobCriteriaRecordCapMax = 200;
+
+export const startSingleDocumentProofResponseJobCriteriaRequestCapMax = 500;
+
+export const startSingleDocumentProofResponseJobCriteriaMatchTargetMax = 200;
+
+export const startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMin = 0;
+export const startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMax = 2147483647;
+
+export const startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryLowerBoundCentsMin = 0;
+export const startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryLowerBoundCentsMax = 2147483647;
+
+
+
+export const StartSingleDocumentProofResponse = zod.object({
+  "job": zod.object({
+  "documentsAttempted": zod.number().int().nullish(),
+  "documentsRetrieved": zod.number().int().nullish(),
+  "documentsParsed": zod.number().int().nullish(),
+  "displayedRows": zod.number().int().nullish(),
+  "excluded": zod.number().int().nullish(),
+  "ambiguities": zod.number().int().nullish(),
+  "eventConflicts": zod.number().int().nullish(),
+  "id": zod.string().uuid(),
+  "criteria": zod.object({
+  "resultVersion": zod.literal(2).optional().describe('Recorded monetary setting semantics; absent on legacy jobs.'),
+  "courtOffice": zod.string().max(startSingleDocumentProofResponseJobCriteriaCourtOfficeMax).describe('Exact source-displayed office choice, or ANY for no filter.'),
+  "courtRoom": zod.string().max(startSingleDocumentProofResponseJobCriteriaCourtRoomMax).optional(),
+  "eventType": zod.string().max(startSingleDocumentProofResponseJobCriteriaEventTypeMax),
+  "calendarPreviewOnly": zod.boolean().optional(),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "recordCap": zod.number().int().min(1).max(startSingleDocumentProofResponseJobCriteriaRecordCapMax),
+  "requestCap": zod.number().int().min(1).max(startSingleDocumentProofResponseJobCriteriaRequestCapMax).describe('Stored scope, including historical low-budget operator observations. New ordinary jobs require at least 8.'),
+  "matchTarget": zod.number().int().min(1).max(startSingleDocumentProofResponseJobCriteriaMatchTargetMax).optional().describe('Requested distinct matching dockets. Absent only for legacy processing-cap jobs.'),
+  "matchFilters": zod.object({
+  "monetaryUpperBoundCents": zod.number().int().min(startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMin).max(startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryUpperBoundCentsMax).nullable().describe('Inclusive recorded monetary bail maximum for new jobs; null means monetary observations without a bound.'),
+  "monetaryLowerBoundCents": zod.number().int().min(startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryLowerBoundCentsMin).max(startSingleDocumentProofResponseJobCriteriaMatchFiltersMonetaryLowerBoundCentsMax).nullish(),
+  "excludeShownPosted": zod.boolean(),
+  "inclusiveMaximum": zod.boolean().optional().describe('Include the exact maximum. Absent on legacy jobs, whose strict comparison is preserved.'),
+  "requirePostedNotShown": zod.boolean().optional().describe('Historical operator criterion retained for legacy reports; not enabled by the simple search flow.')
+}).optional()
+}),
+  "status": zod.enum(['QUEUED', 'RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED', 'FAILED']),
+  "requestsUsed": zod.number().int(),
+  "completedRequests": zod.number().int(),
+  "failedRequests": zod.number().int(),
+  "discovered": zod.number().int(),
+  "processed": zod.number().int(),
+  "matching": zod.number().int(),
+  "targetReached": zod.boolean(),
+  "failed": zod.number().int(),
+  "unprocessed": zod.number().int(),
+  "calendarComplete": zod.boolean(),
+  "paginationComplete": zod.boolean(),
+  "resultCapReached": zod.boolean(),
+  "message": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "resultsExpireAt": zod.coerce.date().nullable(),
+  "resultsExpiredAt": zod.coerce.date().nullable(),
+  "candidateDockets": zod.number().int(),
+  "isAssessment": zod.boolean()
+}),
+  "itemId": zod.string().uuid(),
+  "assessmentId": zod.string().uuid()
+})
+
+
 export const SaveDiscoveryCandidatesParams = zod.object({
   "jobId": zod.coerce.string().uuid()
 })
