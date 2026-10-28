@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { randomInt } from "node:crypto";
 import { db, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import {
@@ -15,17 +16,21 @@ import { filingInspectionMethod } from "./filing-inspection";
 import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
 import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from "./research-scope";
 import { calendarAdmission } from "./research-operations";
-import { effectiveAdaptiveSpacing, requestSpacing } from "./research-pacing";
+import { effectiveAdaptiveSpacing, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-export type SchedulerTestContext = { store?: typeof db; now?: () => Date; sleep?: (ms: number) => Promise<void> };
+export type SchedulerTestContext = {
+  store?: typeof db; now?: () => Date; sleep?: (ms: number) => Promise<void>;
+  randomJitterMs?: () => number;
+};
 
 // Lock order is always source -> job -> permit. Sleep OUTSIDE transactions and
 // recheck under the same source lock before reserving a transmission slot.
 export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId: unknown, url: unknown, stopping: () => boolean, context: SchedulerTestContext = {}) {
   if (!allowedSourceRequest(url, method) || typeof url !== "string" || new URL(url).pathname !== requestPath
     || typeof permitId === "number") return { allow: false, reason: "REQUEST_NOT_PERMITTED" };
+  const jitterMs = context.randomJitterMs?.() ?? randomInt(0, 30_001);
   while (!stopping()) {
     const decision = await (context.store ?? db).transaction(async (tx) => {
       const now = context.now?.() ?? new Date();
@@ -135,9 +140,12 @@ export async function reserveSourceRequest(job: DiscoveryJobRow, requestPath: un
       const usage = rollingUsage(recent.map((request) => request.startedAt), now,
         discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap);
       if (usage.blockedReason) return deny(`${usage.blockedReason}; next eligible ${usage.nextEligibleAt!.toISOString()}`);
-      const spacing = requestSpacing(requestPath, method);
+      const spacing = Math.max(
+        effectiveAdaptiveSpacing(source, requestSpacing(requestPath, method)),
+        randomizedRequestSpacing(requestPath, method, jitterMs),
+      );
       const eligibleAt = paceEligibleAt({...source,
-        adaptiveSpacingMs: effectiveAdaptiveSpacing(source, spacing)}, spacing);
+        adaptiveSpacingMs: spacing}, spacing);
       if (eligibleAt && eligibleAt > now) return { waitMs: Math.min(1000, eligibleAt.getTime() - now.getTime()) };
       let itemId: string | null = null;
       const resourceKey = createHash("sha256").update(`${method}|${url}`).digest("hex");

@@ -32,3 +32,9 @@ For the UJS calendar pilot, vary response-completion pauses within a bounded 60â
 **Why:** The user asked about varied intervals after an integrated request returned an unvalidated form. The failure was not a rate-limit response, so timing variation must not be represented as its cause or remedy.
 
 **How to apply:** Keep one request in flight, keep the 60-second protected floor and rolling quotas, and stop on denial, challenge, throttle, validation, uncertainty, timeout, or latency barriers. Do not automatically retry.
+
+A successful HTTP response and extracted document do not prove pacing compliance. Audit each transmitted request against the configured protected delay; never relax the validator to accept shorter per-path defaults.
+
+**Why:** A live run retrieved and extracted a docket but used sub-60-second request gaps, so the assessment correctly failed despite HTTP 200 responses.
+
+**How to apply:** Stop after the failed attempt, preserve the source-wide state and evidence, restore the 60â€“90-second bounded delay before any future authorization, and do not repeat the source request without fresh approval.

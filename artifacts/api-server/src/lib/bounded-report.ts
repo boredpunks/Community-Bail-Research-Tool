@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { db, discoveryAssessmentsTable as permits, discoveryEventsTable as events,
   discoveryItemsTable as items, discoveryJobsTable as jobs, discoveryRequestsTable as requests,
   discoverySourceTable as sources } from "@workspace/db";
-import { discoveryPolicy } from "./discovery";
 import { calendarPreviewSourceAllowed } from "./discovery-safety";
+import { discoveryPolicy } from "./discovery";
 import { boundedEngineMethod, boundedObservationCanContinue, validBoundedEngineCriteria } from "./bounded-engine";
 import { validCourtroomObservationMetadata } from "./courtroom-observation";
 import { isValidatedExplicitEmptyResult, validatedEmptyResultStateMessage } from "./calendar-empty-result";
