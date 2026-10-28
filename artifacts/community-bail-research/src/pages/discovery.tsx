@@ -244,6 +244,7 @@ export default function Discovery() {
   const [end, setEnd] = useState(today);
   const [formMax, setFormMax] = useState('');
   const [target, setTarget] = useState('10');
+  const [requestBudget, setRequestBudget] = useState('12');
   const [formErr, setFormErr] = useState<string | null>(null);
 
   const [ctlMsg, setCtlMsg] = useState<string | null>(null);
@@ -290,10 +291,15 @@ export default function Discovery() {
     const t = Number(target);
     const maxT = Math.min(200, pol?.maxRecordCap ?? 200);
     if (!Number.isInteger(t) || t < 1 || t > maxT) { setFormErr(`Matching dockets wanted must be a whole number from 1 to ${maxT}.`); return; }
+    const requestCap = Number(requestBudget);
+    const maxRequests = pol?.maxRequestCap ?? 500;
+    if (!Number.isInteger(requestCap) || requestCap < 8 || requestCap > maxRequests) {
+      setFormErr(`Maximum source requests must be a whole number from 8 to ${maxRequests}.`);
+      return;
+    }
     if (!start || !end || end < start) { setFormErr('End date must be on or after start date.'); return; }
     if (start < minDate) { setFormErr(`Start date must be ${minDate} or later.`); return; }
     const recordCap = Math.min(pol?.maxRecordCap ?? 200, Math.max(pol?.defaultRecordCap ?? t, t));
-    const requestCap = Math.max(8, Math.min(pol?.maxRequestCap ?? 500, pol?.defaultRequestCap ?? 8));
     create.mutate({ data: {
       courtOffice: office, courtRoom: 'ANY', eventType, startDate: start, endDate: end,
       recordCap, requestCap, matchTarget: t,
@@ -435,9 +441,10 @@ export default function Discovery() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">Maximum bail, inclusive (optional, dollars)<input className="input w-full mono" inputMode="decimal" value={formMax} onChange={(e) => setFormMax(e.target.value)} placeholder="No maximum" data-testid="input-form-max" /></label>
             <label className="block">Matching dockets wanted<input type="number" min={1} max={Math.min(200, pol?.maxRecordCap ?? 200)} className="input w-full mono" value={target} onChange={(e) => setTarget(e.target.value)} data-testid="input-target" /></label>
+            <label className="block">Maximum source requests<input type="number" min={8} max={pol?.maxRequestCap ?? 500} className="input w-full mono" value={requestBudget} onChange={(e) => setRequestBudget(e.target.value)} data-testid="input-request-cap" /></label>
           </div>
           <label className="flex items-center gap-2"><input type="checkbox" checked disabled data-testid="checkbox-scheduled" />Scheduled Events Only (enforced)</label>
-          <p className="hint">Posted bail is included. Target counts distinct dockets, not table rows. Budgets: record cap {pol ? `${pol.defaultRecordCap} default, ${pol.maxRecordCap} max` : 'loading'}; request cap {pol ? `${pol.defaultRequestCap} default, ${pol.maxRequestCap} max` : 'loading'}.</p>
+          <p className="hint">Posted bail is included. Target counts distinct dockets, not table rows; the target may remain unmet if the request cap is reached. Request cap counts all calendar, asset, and PDF requests. Budgets: record cap {pol ? `${pol.defaultRecordCap} default, ${pol.maxRecordCap} max` : 'loading'}; request cap {pol ? `${pol.defaultRequestCap} default, ${pol.maxRequestCap} max` : 'loading'}. Requests pause between transmissions; any longer adaptive delay still applies.</p>
           {formErr ? <p className="errbox" role="alert" data-testid="text-form-error">{formErr}</p> : null}
           <button type="submit" className="btn btn-primary" disabled={create.isPending || policy.isLoading} data-testid="button-search">
             {create.isPending ? 'Starting…' : 'Start search'}

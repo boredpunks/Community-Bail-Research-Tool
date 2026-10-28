@@ -1,7 +1,7 @@
 /**
  * Operator-only protocol. No source traffic for prepare/approve/report.
- * Run requires a separately approved expiring permit and the worker lease.
- * Collection approval is an additional explicit action after all stages.
+ * Pilot runs require a separately approved expiring permit and the worker lease.
+ * Ordinary authenticated searches use their exact user-submitted criteria.
  */
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db, pool, bailRecordsTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
@@ -161,6 +161,9 @@ async function main() {
     console.log(JSON.stringify(result));
     return;
   }
+  if (command === "approve-collection") {
+    throw new Error("Retired: ordinary authenticated searches use the user's exact scope and existing source safeguards; no operation performed.");
+  }
   const id = value("id");
   if (!id || !/^[\da-f-]{36}$/i.test(id)) throw new Error("Specify --id with the prepared pilot UUID.");
   if (command === "report") {
@@ -262,18 +265,6 @@ async function main() {
       }).where(eq(discoveryAssessmentsTable.id, id));
     });
     console.log(JSON.stringify({ id, state: "APPROVED", notice: "Permit expires in 24 hours. No source traffic or collection enablement." }));
-    return;
-  }
-  if (command === "approve-collection") {
-    await db.transaction(async (tx) => {
-      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
-      const [pilot] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, id));
-      if (!source || source.activeRequestId || collectionBlock(source) !== "COLLECTION_NOT_APPROVED"
-        || !pilot || pilot.stage !== "MODEST" || pilot.state !== "VERIFIED" || pilot.expectedMethod !== integratedSourceMethod
-        || !pilot.completedAt || source.accessVerifiedAt?.getTime() !== pilot.completedAt.getTime()) throw new Error("Fresh current-method staged verification is required; unresolved stops cannot be cleared here.");
-      await tx.update(discoverySourceTable).set({ collectionApprovedAt: new Date() }).where(eq(discoverySourceTable.id, "UJS"));
-    });
-    console.log(JSON.stringify({ notice: "Current method explicitly approved. No search started, dates expanded, or budgets raised." }));
     return;
   }
   if (command !== "run") throw new Error("Use prepare, prepare-calendar-only, clear-barrier, approve, run, report, or approve-collection.");

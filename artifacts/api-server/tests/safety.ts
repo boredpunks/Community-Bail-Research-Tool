@@ -345,7 +345,7 @@ try {
     for (const value of [-1, 0.5, 10_001, null, "2"])
       check(!validCalendarDiagnostics({ ...historicalDiagnostics, [key]: value }));
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, verifiedMethod: "DIFFERENT_CLIENT" }) === "ACCESS_UNVERIFIED");
-  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, collectionApprovedAt: null }) === "COLLECTION_NOT_APPROVED");
+  check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, collectionApprovedAt: null }) === null);
   check(collectionBlock({ ...approved, blockedReason: "ACCESS_DENIED", pausedUntil: new Date(0) }) === "ACCESS_DENIED");
   check(allowedSourceRequest(requestUrl, "GET"));
   check(!allowedSourceRequest("https://example.invalid/CaseSearch", "GET"));

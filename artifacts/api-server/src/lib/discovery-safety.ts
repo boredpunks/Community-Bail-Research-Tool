@@ -217,11 +217,12 @@ export function calendarDiagnosticRejection(message: unknown): string | null {
 export function collectionBlock(source: SourceState | undefined, now = new Date()): string | null {
   // Only a rate-limit cooldown expires automatically. Denials, challenges and
   // uncertain in-flight requests always require an operator's assessment.
+  // Verified ordinary jobs are authorized by the authenticated user's exact
+  // search submission; the historical global collection flag is not a gate.
   if (source?.blockedReason && !(source.blockedReason === "RATE_LIMIT"
     && source.pausedUntil && source.pausedUntil <= now)) return source.blockedReason;
   if (source?.pausedUntil && source.pausedUntil > now) return source.blockedReason ?? "SOURCE_COOLDOWN";
   if (!source?.accessVerifiedAt || source.verifiedMethod !== integratedSourceMethod) return "ACCESS_UNVERIFIED";
-  if (!source.collectionApprovedAt || source.collectionApprovedAt < source.accessVerifiedAt) return "COLLECTION_NOT_APPROVED";
   return null;
 }
 

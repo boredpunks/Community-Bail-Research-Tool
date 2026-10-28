@@ -11,8 +11,15 @@ Search uses Allegheny–05, Scheduled Events Only, and exact optional office,
 room and event labels. ANY means no filter. All-filter-blank searches are one
 day; filtered windows are at most seven days. The adapter checks actual source
 controls and submitted values and stops rather than substituting an unavailable
-criterion. A search has eight total transmission slots, one Search submission,
-no PDF requests, no automatic retries and no automatic pagination.
+criterion. An authenticated user explicitly starts each job with fixed search
+criteria and budgets; no separate per-run pilot permit is required.
+
+Jobs may retrieve identity-checked docket PDFs after the integrated source
+method is verified. The request budget defaults to 12 and can be set up to 500;
+the processed-record cap is at most 200. All transmitted calendar, asset,
+search and document requests count. Matching targets count distinct dockets,
+not every document processed. Reaching a budget can leave the target unmet.
+There are no automatic retries or automatic pagination.
 
 Calendar rows, source-provided actions, explicit-empty proof, coverage flags,
 request ledger and final status are retained independently of documents.
@@ -33,13 +40,15 @@ validation-barrier state. That conservative application policy conflated the
 document transport result with calendar admission; it was not evidence of a
 published site-wide restriction.
 
-The original ACCESS_DENIED value and request history are not erased or
-relabelled. Ordinary calendar admission may distinguish it only when the
-retained denial origins are actual GET report-path 401/403 responses and
-there is no retained calendar denial, challenge or login requirement.
-Missing/unknown provenance fails closed. Admission is recorded atomically
-with the new calendar job, including the unchanged source reason and the
-absence of document authority. No exceptional date or permit is involved.
+The original ACCESS_DENIED event and request history remain in the ledger.
+On October 28, 2026, the integrated clients completed one exact
+CP-05-02-Crim / Formal Arraignment run: five successful requests, one
+identity-checked docket PDF and three extracted bail entries. The live
+assessment verified that method and timing only for that exact scope; it did
+not prove broader court, event or date coverage. The saved observation remains
+pending review. Ordinary source requests still require a currently verified
+integrated method and use the shared per-request scheduler; no separate global
+collection-approval flag is required.
 
 Active requests, shared quotas, cooldowns, latency, restart uncertainty and
 genuine source-wide restrictions still block admission. Calendar denials and
@@ -47,12 +56,13 @@ challenges stop the job; no automatic recovery or retry clears them. Resolve
 any actual external access/authentication requirement before a reviewed
 operation-specific recovery; changing pacing is not recovery.
 
-Automated document retrieval is disabled in the ordinary workflow: a complete,
-current source link and a verified permitted transport have not been
-demonstrated. Manual source actions are never automatically opened, and
-replacement document URLs are never constructed. Downloading a PDF outside
-the app and uploading it is an explicitly labelled local workflow, not proof
-that the automated document client works.
+The current integrated transport uses the source-provided docket action and
+public HTTP retrieval. It does not use cookies, proxies, followed redirects,
+challenge solving or retries. New denials, challenges, login prompts, unknown
+origins, active cooldowns, latency warnings and uncertain request state still
+stop the affected work. A successful retrieval does not prove custody,
+freshness, operative status or coverage outside the exact demonstrated scope.
+Manual uploads remain a separate, explicitly labelled local workflow.
 
 ## Local PDF evidence
 
@@ -83,32 +93,18 @@ as an invented court URL. No source-document action is displayed for that URN.
 
 ## Pacing findings
 
-The former 60-second scheduler floor and 60–90-second Python resource pauses
-were conservative application defaults. No applicable published minimum or
-server directive establishing that rate was found in retained evidence.
-Historical documents describing those defaults are not current source policy.
+The application enforces at least 60 seconds after each response, plus
+bounded 0–30-second variation, for calendar, asset, search and document
+requests. A verified run recorded four response-to-next-request gaps of about
+70, 82, 84 and 89 seconds. These are application safeguards, not a published
+court rate or a guarantee against throttling.
 
-Current sequential response-completion defaults:
-
-| Operation | Default |
-| --- | ---: |
-| Calendar navigation | 1,000 ms |
-| Required JS/CSS assets | 250 ms |
-| Search submission | 2,000 ms |
-| Document requests, if separately supported later | 3,000 ms |
-
-Configuration: UJS_NAVIGATION_SPACING_MS, UJS_ASSET_SPACING_MS,
-UJS_SEARCH_SPACING_MS and UJS_DOCUMENT_SPACING_MS, each 250–3,600,000 ms.
-An explicitly configured UJS_SPACING_MS is a shared minimum.
-UJS_DOCUMENTED_MIN_SPACING_MS (0–3,600,000 ms) retains an applicable external
-minimum when one is established. None of these settings grants access.
-
-An untouched historical 60,000 ms database default is not observed backoff.
-Actual throttling, deterioration and latency backoff remain effective.
-Required assets still use the shared sequential scheduler and count against
-the total budget; optional resources are blocked locally before transmission.
-Shared hourly/daily quotas are unchanged. The old research-path quota
-inflation and two-second override no longer bypass them.
+Higher adaptive delays still win when deterioration, throttling or a latency
+warning is observed. Configured shared or documented minima can increase the
+wait but cannot lower the protected floor. Required browser assets use the
+same sequential scheduler and count against the request budget; optional
+resources are blocked locally before transmission. Shared hourly/daily quotas
+and server-directed waits remain.
 
 Retry-After is respected, including when attached to an otherwise successful
 response. Rate limits stop the job and preserve at least the configured
@@ -117,19 +113,22 @@ cooldown, exponential throttle backoff and any longer server-directed wait.
 service-error cooldown or the longer server wait. A future user action is not
 an automatic retry of the interrupted job.
 
-A future separately authorized document test could propose one in-flight
-request, a small document cap and 2–5-second intervals. That is a test proposal,
-not an established court-supported rate, and cannot proceed through a denial
-or challenge. Current automated document retrieval remains unverified.
+Only one source request is in flight. The verified live run used the integrated
+calendar/PDF method, completed with no failed requests, and met the protected
+timing floor. Broader live searches remain subject to the user's exact
+criteria, the visible request and record caps, shared quotas and all source
+stop conditions; this proof does not establish countywide coverage.
 
 ## Verification boundaries
 
-Use the ordinary authenticated UI for local uploads, filtering and pending
-saves. The additional real PDF regression is supplied locally via
-LOCAL_DOCKET_PDF or the unique matching upload; no personal record is committed.
-The four earlier real-document regressions remain unavailable.
+Use the ordinary authenticated UI for user-selected searches, local uploads,
+filtering and pending saves. The verified live result was saved as a pending
+observation; it was not confirmed or designated operative. The additional real
+PDF regression is supplied locally via LOCAL_DOCKET_PDF or the unique matching
+upload; no personal record is committed. The four earlier real-document
+regressions remain unavailable.
 
-Offline loopback calendar fixtures, mocked UI submission payloads, passing
-builds and local extraction do not constitute live calendar or live document
-acceptance. A live calendar demonstration still requires a deliberate
-user-initiated search within the selected scope, not a new operator framework.
+Offline loopback calendar fixtures, mocked UI submission payloads and local
+extraction do not constitute live source acceptance. A deliberate
+user-initiated search starts each ordinary job; live outcomes must still be
+reported separately from offline checks.
