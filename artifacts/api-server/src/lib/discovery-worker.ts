@@ -9,6 +9,7 @@ import {
   calendarPreviewRequestAllowed, isCalendarPreviewCriteria,
   validCalendarAuditHeaders,
   validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection,
+  validParentDeniedPause,
 } from "./discovery-safety";
 import { GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { documentLocations } from "./document-locations";
@@ -408,6 +409,14 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
         child.stdin.write(JSON.stringify({ continue: current?.status === "RUNNING" && !counts?.targetReached }) + "\n");
       } else if (message.kind === "finished") {
         finished = true;
+      } else if (message.kind === "pause") {
+        if (!validParentDeniedPause(message)) throw new Error("Invalid parent-denied pause message");
+        if (job.assessmentId) {
+          await validationStop("SOURCE_VALIDATION_BARRIER");
+          await pause(job, "Source barrier: assessment request denied before transmission. Permit and source state require review.");
+        } else {
+          await pause(job, "The scheduler denied a source request before transmission. Original source state and budgets retained; no validation barrier added.");
+        }
       } else if (message.kind === "barrier") {
         await validationStop("SOURCE_VALIDATION_BARRIER");
         await pause(job, `Source barrier: ${String(message.code).slice(0, 180)}. Not an empty search. Completed results retained.`);

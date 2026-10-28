@@ -21,3 +21,4 @@
 - [Reference repository review](reference-repository-review.md) — Inspect same-portal workflows before judging applicability; different search modes do not make a reference irrelevant.
 - [Calendar structural evidence](calendar-structural-evidence.md) — Raw anchors do not prove distinct actions; an offline parser defect does not establish a historical live failure cause.
 - [Database separation proof](database-separation.md) — Local Unix-socket connections have no server IP; never treat a hash of “unknown” as a host fingerprint.
+- [Intentional worker stops](worker-pause-barriers.md) — Pre-transmission denials and explicit pauses are job pauses, not source-validation failures; preserve real source blocks.

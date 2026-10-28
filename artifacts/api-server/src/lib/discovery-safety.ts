@@ -87,6 +87,11 @@ export function validAccountingMessage(message: Record<string, unknown>) {
   return status === 200;
 }
 
+export function validParentDeniedPause(message: Record<string, unknown>) {
+  return Object.keys(message).every((key) => ["kind", "code", "attempted"].includes(key))
+    && message.kind === "pause" && message.code === "PARENT_DENIED" && message.attempted === false;
+}
+
 // Numerical predicates can be checked offline without inventing case evidence.
 export function qualifyingMonetaryTotal(category: string, basis: string | null, cents: number | null, maximum: number, inclusive: boolean) {
   return category === "MONETARY" && basis === "TOTAL_BAIL" && cents !== null

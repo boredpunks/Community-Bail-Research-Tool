@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validParentDeniedPause, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
@@ -346,6 +346,9 @@ try {
       check(!validCalendarDiagnostics({ ...historicalDiagnostics, [key]: value }));
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, verifiedMethod: "DIFFERENT_CLIENT" }) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, collectionApprovedAt: null }) === null);
+  check(validParentDeniedPause({ kind: "pause", code: "PARENT_DENIED", attempted: false }));
+  check(!validParentDeniedPause({ kind: "pause", code: "PARENT_DENIED", attempted: true }));
+  check(!validParentDeniedPause({ kind: "barrier", code: "PARENT_DENIED", attempted: false }));
   check(collectionBlock({ ...approved, blockedReason: "ACCESS_DENIED", pausedUntil: new Date(0) }) === "ACCESS_DENIED");
   check(allowedSourceRequest(requestUrl, "GET"));
   check(!allowedSourceRequest("https://example.invalid/CaseSearch", "GET"));

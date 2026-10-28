@@ -140,6 +140,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
     calendar_read_only_inspection_order = None
     submission_armed = False
     source_stop_state = None
+    parent_stop_reason = None
     response_recorder = None
     calendar_lifecycle = None
     if not (inspection_only or config.get("coverageOnly") or config.get("filingInspectionOnly")):
@@ -193,6 +194,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             nonlocal calendar_post_attempt_started, calendar_post_attempt_order
             nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
             nonlocal calendar_source_framing
+            nonlocal parent_stop_reason
 
             async def read_protocol_line():
                 reader = (asyncio.to_thread(read_inspection_protocol_line, sys.stdin)
@@ -233,8 +235,9 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     emit("request", path=urlsplit(url).path, method=method, url=url)
                 permission = json.loads(await read_protocol_line())
                 if not permission.get("allow"):
+                    parent_stop_reason = str(permission.get("reason") or "REQUEST_NOT_PERMITTED")
                     stopped = True
-                    raise SourceFailure(str(permission.get("reason") or "REQUEST_NOT_PERMITTED"))
+                    raise SourceFailure(parent_stop_reason)
                 if post_response_read_only and resource_type is not None:
                     # A grant may have been awaiting the parent when a console
                     # stop arrived. Do not transmit after that stop; conservatively
@@ -1105,7 +1108,11 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                          }
                          else str(error) if isinstance(error, (RuntimeError, ValueError))
                          else type(error).__name__)
-            emit("barrier", code=safe_code if safe_code in {
+            if (parent_stop_reason and source_stop_state is None
+                    and not calendar_post_attempt_started and not getattr(error, "attempted", False)):
+                emit("pause", code="PARENT_DENIED", attempted=False)
+            else:
+                emit("barrier", code=safe_code if safe_code in {
                 "ACCESS_DENIED", "CHALLENGE", "HTTP_ERROR", "LOGIN_PROMPT",
                 "NETWORK_ERROR", "RATE_LIMIT", "REDIRECT", "SIZE_LIMIT",
                 "TIMEOUT", "UNSUPPORTED_RESPONSE",
@@ -1136,7 +1143,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 "CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT", "UNSUPPORTED_EVENT_DATE_LAYOUT",
                 "UNSUPPORTED_LAYOUT",
                 "CALENDAR_EVENT_DATE_OUTSIDE_REQUESTED_WINDOW",
-            } else "UNEXPECTED_RESPONSE")
+                } else "UNEXPECTED_RESPONSE")
         finally:
             await context.close()
             await browser.close()
