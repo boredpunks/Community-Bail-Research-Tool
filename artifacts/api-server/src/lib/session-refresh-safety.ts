@@ -87,5 +87,5 @@ export function canUseFirstPdfAccessCheck(input: {
     && input.assessmentId === null
     && isExactAuthorizedSessionRefreshCriteria(input.criteria)
     && input.priorPdfRequests === 0
-    && input.priorSearchPosts === 2;
+    && input.priorSearchPosts === 3;
 }

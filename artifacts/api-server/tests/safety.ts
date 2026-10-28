@@ -89,11 +89,11 @@ const accessCheckFixture = {
   block: "ACCESS_UNVERIFIED", sourceBlockedReason: null,
   accessVerifiedAt: null, verifiedMethod: null, pausedUntil: null,
   calendarComplete: true, assessmentId: null,
-  criteria: sessionRefreshCriteria, priorPdfRequests: 0, priorSearchPosts: 2,
+  criteria: sessionRefreshCriteria, priorPdfRequests: 0, priorSearchPosts: 3,
 };
 check(canUseFirstPdfAccessCheck(accessCheckFixture));
 check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorPdfRequests: 1 }));
-check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorSearchPosts: 1 }));
+check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorSearchPosts: 2 }));
 const now0 = Date.parse("2026-10-06T16:00:00Z");
 let time = now0;
 const approved = { id: "UJS", accessVerifiedAt: new Date(now0), verifiedMethod: integratedSourceMethod, collectionApprovedAt: new Date(now0) };

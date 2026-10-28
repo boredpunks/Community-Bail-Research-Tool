@@ -278,7 +278,7 @@ router.post("/discovery/jobs/:jobId/refresh-session", async (req, res): Promise<
       const searchPosts = requests.filter((request) => request.path === "/CaseSearch" && request.method === "POST");
       if (requests.length !== job.requestsUsed || requests.some((request) =>
         request.outcome !== "OK" || !calendarPreviewRequestAllowed(request.path, request.method))
-        || searchPosts.length !== 1
+        || searchPosts.length !== 2
         || requests.some((request) => request.path === "/Report/CpDocketSheet" || request.path === "/Report/MdjDocketSheet")
         || items.length !== 188 || items.some((item) => item.provenance.extractionOutcome !== "UNPROCESSED")
         || job.criteria.recordCap !== 200 || job.criteria.requestCap !== 500 || job.criteria.matchTarget !== 200)

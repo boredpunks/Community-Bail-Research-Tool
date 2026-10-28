@@ -137,8 +137,8 @@ export async function reserveSourceRequest(
               eq(discoveryRequestsTable.path, "/CaseSearch"),
               eq(discoveryRequestsTable.method, "POST"),
             ));
-          if (previousSearches.length < 1 || previousSearches.length > 2
-            || method === "POST" && (requestPath !== "/CaseSearch" || previousSearches.length !== 1))
+          if (previousSearches.length < 2 || previousSearches.length > 3
+            || method === "POST" && (requestPath !== "/CaseSearch" || previousSearches.length !== 2))
             return deny("SESSION_REFRESH_SEARCH_LIMIT");
         }
         const independentCalendar = current.criteria.resultVersion === 2
