@@ -632,13 +632,25 @@ retained event says: `Worker stopped before completion (exit 2; 129 diagnostic
 bytes). No automatic retry; partial results retained.` The worker intentionally
 does not retain raw stderr because it could contain source content. Therefore
 the first failed proof condition is known—local worker exit before any request—
-but the specific local cause remains **UNRESOLVED**.
+and the specific local cause has now been identified.
 
 Local diagnostics after that attempt passed module import, Python compilation
-and Chromium startup with the worker's launch arguments. Two fail-closed
-protocol reproductions stalled before producing diagnostic protocol output and
-were terminated; they did not grant a source request and do not establish the
-cause. No diagnostic change was made based on a guess.
+Chromium startup, and a full no-navigation worker boot. The CLI imports
+`discovery-worker.ts` from `src/lib`; resolving `ujs/worker.py` relative to that
+module pointed Python at the absent `src/lib/ujs/worker.py`. The actual worker is
+`src/ujs/worker.py`. Running Python against the absent path reproduced both
+exit code 2 and exactly 129 stderr bytes, matching the retained failed-job
+signature. The packaged API uses `dist/index.mjs`, for which `dist/ujs/worker.py`
+exists; this explains why the API startup/build checks passed while the source
+CLI failed. Earlier fail-closed protocol reproductions stalled without a source
+grant and did not establish this cause.
+
+The worker launcher now resolves both source-tree and packaged Python script
+locations, including `network_sandbox.py`, and fails explicitly if neither
+exists. The research-workflow regression covers both path layouts and a missing
+script. `typecheck`, `test:research-workflow`, and the API build/import smoke
+check passed. The API workflow restarted and `/api/healthz` returned HTTP 200.
+These are offline verification only; no live attempt was repeated.
 
 After restarting the API, the authenticated read-only browser check returned
 HTTP 200 for the new job and rendered its pause message. The visible job state
@@ -654,5 +666,5 @@ job, items and five old request rows remain unchanged. Source state remains
 `ACCESS_DENIED`, with no active request and no collection approval. The failed
 SINGLE permit is consumed and cannot be reused. No retry was made. End-to-end
 live acceptance remains **INCOMPLETE**; any future source attempt requires a
-new exact scope confirmation and a new permit after the local worker failure
-has been diagnosed.
+new exact scope confirmation and a new permit. This path fix does not establish
+calendar access, PDF retrieval, bail extraction or the saved-result journey.

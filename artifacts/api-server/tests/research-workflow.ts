@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { validCalendarResponseSize } from "../src/lib/calendar-response-metadata";
+import { resolveUjsRuntimeScript, ujsRuntimeScriptCandidates } from "../src/lib/ujs-runtime-script";
 import { clearWorkspaceSessionCookie, setWorkspaceSessionCookie } from "../src/middlewares/researchAuth";
+
+const sourceWorkerModule = pathToFileURL(path.resolve(process.cwd(), "src/lib/discovery-worker.ts")).href;
+const sourceWorker = path.resolve(process.cwd(), "src/ujs/worker.py");
+assert.equal(resolveUjsRuntimeScript(sourceWorkerModule, "worker.py"), sourceWorker);
+assert.equal(resolveUjsRuntimeScript(sourceWorkerModule, "network_sandbox.py"),
+  path.resolve(process.cwd(), "src/ujs/network_sandbox.py"));
+const packagedWorkerModule = pathToFileURL(path.resolve(process.cwd(), "dist/index.mjs")).href;
+assert.deepEqual(ujsRuntimeScriptCandidates(packagedWorkerModule, "worker.py"), [
+  path.resolve(process.cwd(), "dist/ujs/worker.py"),
+  path.resolve(process.cwd(), "ujs/worker.py"),
+]);
+assert.throws(() => resolveUjsRuntimeScript(
+  pathToFileURL(path.resolve(process.cwd(), "missing/lib/worker.js")).href, "worker.py"),
+  /Required UJS runtime script is unavailable: worker\.py/);
 
 const cookieHeaders: string[] = [];
 const cookieResponse = { append: (_name: string, value: string) => cookieHeaders.push(value) } as any;

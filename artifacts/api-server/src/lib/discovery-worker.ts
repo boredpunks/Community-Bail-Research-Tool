@@ -1,8 +1,6 @@
 import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
@@ -31,6 +29,7 @@ import { boundedEngineMethod, boundedObservationCanContinue, boundedObservationR
 import { validCalendarResponseDiagnostic } from "./calendar-response-diagnostics";
 import { researchMethod, validResearchCriteria } from "./research-scope";
 import { validSourceResponse, sourceResponseEvents } from "./document-response";
+import { resolveUjsRuntimeScript } from "./ujs-runtime-script";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -108,9 +107,9 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string) {
     await db.update(discoveryJobsTable).set({ status: "COMPLETED", message: "Explicit record cap reached; remaining discovered dockets were not processed.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "RUNNING")));
     return;
   }
-  const script = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "ujs", "worker.py");
+  const script = resolveUjsRuntimeScript(import.meta.url, "worker.py");
   const args = inspectionOnly
-    ? [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "ujs", "network_sandbox.py"), script]
+    ? [resolveUjsRuntimeScript(import.meta.url, "network_sandbox.py"), script]
     : ["-u", script];
   const child = spawn("python", args, { stdio: ["pipe", "pipe", "pipe"], detached: true });
   activeChild = child;
