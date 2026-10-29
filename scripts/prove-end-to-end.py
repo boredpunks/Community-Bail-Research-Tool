@@ -133,7 +133,7 @@ def fetch_pdf(url: str) -> tuple[bytes, str]:
 
 
 def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
-    """Extract candidate text near bail headings for manual verification."""
+    """Extract candidate bail-table lines, requiring an exact docket identity."""
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
     observations = []
 
@@ -146,34 +146,69 @@ def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
         else:
             continue
 
+        docket_match = re.search(
+            r"(?:Case\s*No\.?|Docket\s*Number:)\s*([A-Z0-9\-]+)",
+            page_text,
+            re.IGNORECASE,
+        )
+        pdf_docket = docket_match.group(1) if docket_match else None
+        if pdf_docket != expected_docket:
+            continue
+
         lines = page_text.split("\n")
-        for index, line in enumerate(lines):
+        in_bail_section = False
+        bail_amounts = []
+
+        for line in lines:
             if heading in line or (heading == "BAIL" and line.strip() == "BAIL"):
-                bail_block = "\n".join(lines[index : index + 15])
-                classification = classify_bail(bail_block)
+                in_bail_section = True
+                continue
 
-                if (
-                    classification["amount"] is not None
-                    or classification["classification"] == "nonmonetary"
-                ):
-                    docket_match = re.search(
-                        r"Case\s*No\.?\s*([A-Z0-9\-]+)", page_text, re.IGNORECASE
-                    )
-                    pdf_docket = docket_match.group(1) if docket_match else None
-                    if pdf_docket != expected_docket:
-                        continue
+            if not in_bail_section:
+                continue
 
-                    observations.append(
+            amount_match = re.search(r"\$(\d{1,3}(?:,\d{3})*|\d+)(?:\.00)?", line)
+            if amount_match:
+                amount = int(amount_match.group(1).replace(",", ""))
+                if amount > 0:
+                    line_lower = line.lower()
+                    is_nonmonetary = "nonmonetary" in line_lower or "ror" in line_lower
+                    pct_match = re.search(r"(\d+)\s*%", line)
+                    bail_type = "Monetary"
+                    if "cash" in line_lower:
+                        bail_type = "Cash"
+                    elif "surety" in line_lower:
+                        bail_type = "Surety"
+                    elif is_nonmonetary:
+                        bail_type = "Nonmonetary"
+
+                    bail_amounts.append(
                         {
                             "page": page_num + 1,
-                            "quote": bail_block[:500],
-                            "classification": classification["classification"],
-                            "amount": classification["amount"],
-                            "bail_type": classification["bail_type"],
-                            "percentage": classification["percentage"],
-                            "posted": classification["posted"],
+                            "amount": amount,
+                            "bail_type": bail_type,
+                            "percentage": int(pct_match.group(1)) if pct_match else None,
+                            "quote": line.strip()[:500],
+                            "classification": (
+                                "nonmonetary" if is_nonmonetary else "monetary"
+                            ),
+                            "posted": None,
                         }
                     )
+
+            if any(
+                heading_text in line.upper()
+                for heading_text in (
+                    "CHARGES",
+                    "DEFENDANT INFORMATION",
+                    "CONFINEMENT",
+                    "CASE PARTICIPANTS",
+                )
+            ):
+                break
+
+        if bail_amounts:
+            observations.append(bail_amounts[-1])
 
     document.close()
     return observations
@@ -216,6 +251,16 @@ def process_docket(row: dict, index: int, total: int) -> dict:
             ]
             result["status"] = "candidate_extracted"
             print(f"      Candidate observations: {len(observations)}")
+            for observation in observations:
+                pct = (
+                    f", {observation['percentage']}%"
+                    if observation.get("percentage") is not None
+                    else ""
+                )
+                print(
+                    f"      Candidate: ${observation['amount']:,} "
+                    f"({observation['bail_type']}{pct}), page {observation['page']}"
+                )
             print("      Verify the quoted docket identity and bail terms manually.")
         else:
             result["status"] = "no_verified_bail_text"
@@ -270,7 +315,7 @@ def write_outputs(results: list[dict]) -> tuple[str, str]:
                             observation["bail_type"],
                             observation["classification"],
                             observation["percentage"],
-                            observation["posted"],
+                            observation.get("posted"),
                             observation["page"],
                             result["pdf_hash"],
                             result["status"],

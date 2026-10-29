@@ -149,6 +149,17 @@ observations or proof that a filing diagnostic attempted Search. In particular,
 historical pre-POST failures wrote a constant `formVisible=false`; this does not
 prove that the source Search button or its form was hidden.
 
+For a one-off approved source retrieval, preserve the validated response locally
+before extraction and output generation so downstream failures can be retried
+offline.
+
+**Why:** A permitted PDF request succeeded, but an output-writer error discarded
+the in-memory bytes before usable evidence was saved.
+
+**How to apply:** Save the response in a controlled temporary location or write
+a durable extraction checkpoint before parsing. Do not repeat the source request
+to recover from a local parser or output failure without fresh authorization.
+
 For observational inventory only, oversized option lists can remain explicitly
 uninspected while other bounded controls are observed; unknown is not zero.
 
