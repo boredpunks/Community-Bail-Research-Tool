@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation } from 'wouter';
 import { CageRoom } from '@/components/cage-room';
 import { SpinningA } from '@/components/spinning-a';
@@ -33,8 +33,15 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [entryAccepted, setEntryAccepted] = useState(false);
 
   const destination = safeNext(typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('next'));
+  // Wait for the protected route's context to observe the verified session.
+  // Navigating in the mutation continuation can otherwise race its render and
+  // immediately send an authenticated visitor back to the entry screen.
+  useEffect(() => {
+    if (entryAccepted && access.authenticated) setLocation(destination);
+  }, [entryAccepted, access.authenticated, destination, setLocation]);
 
   async function enter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,7 +50,7 @@ export default function Home() {
       await access.enterWorkspace(password);
       setPassword('');
       setPasswordDialogOpen(false);
-      setLocation(destination);
+      setEntryAccepted(true);
     } catch (cause) {
       setPassword('');
       setError(cause instanceof Error ? cause.message : 'The workspace could not be unlocked.');
