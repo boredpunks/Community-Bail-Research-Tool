@@ -10,6 +10,7 @@ import NewRecord from '@/pages/new-record';
 import Review from '@/pages/review';
 import Discovery from '@/pages/discovery';
 import Menu from '@/pages/menu';
+import BailSearch from '@/pages/BailSearch';
 import { ThemeToggle } from '@/components/shell';
 import { applyStoredTheme } from '@/lib/theme';
 import { WorkspaceAccessProvider, useWorkspaceAccess } from '@/lib/workspace-access';
@@ -57,6 +58,7 @@ const NewRecordRoute = protect(NewRecord);
 const ReviewRoute = protect(Review);
 const DiscoveryRoute = protect(Discovery);
 const MenuRoute = protect(Menu);
+const BailSearchRoute = protect(BailSearch);
 
 function LegacySignInRoute() {
   return <Redirect to="/" />;
@@ -66,6 +68,7 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   useEffect(() => {
     const page = location === '/menu' ? 'Menu'
+      : location === '/search' ? 'Search Bail'
       : location === '/research' || location === '/candidates' ? 'Search saved observations'
       : location === '/records/new' ? 'Enter source evidence'
       : location === '/review' ? 'Review source evidence'
@@ -73,7 +76,8 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
       : location === '/' ? 'Workspace access'
       : 'Page not found';
     const title = `${page} | Community Bail Research`;
-    const description = location === '/research' ? 'Search shared source-backed docket observations and inspect explicitly filtered descriptive financial ranges.'
+    const description = location === '/search' ? 'Search saved, source-backed bail evidence within a hearing date window. No live court requests are made.'
+      : location === '/research' ? 'Search shared source-backed docket observations and inspect explicitly filtered descriptive financial ranges.'
       : location === '/records/new' ? 'Enter a real docket observation with source evidence and consultation time. Unknown details remain unknown.'
       : location === '/discovery' ? 'Start bounded live court discovery jobs and inspect docket and bail results before saving any observation.'
       : location === '/review' ? 'Review source evidence and decide order interpretation separately before observations enter a descriptive range.'
@@ -100,6 +104,7 @@ function AppRoutes() {
           <Route path="/records/new" component={NewRecordRoute} />
           <Route path="/review" component={ReviewRoute} />
           <Route path="/discovery" component={DiscoveryRoute} />
+          <Route path="/search" component={BailSearchRoute} />
           <Route component={NotFound} />
         </Switch>
       </RoutedErrorBoundary>

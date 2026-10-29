@@ -20,3 +20,5 @@
 export * from "./bail-records";
 export * from "./bail-reviews";
 export * from "./discovery";
+export * from "./bail-searches";
+export * from "./bail-search-results";

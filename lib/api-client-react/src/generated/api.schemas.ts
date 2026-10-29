@@ -5,6 +5,100 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+export type BailSearchInputSource = typeof BailSearchInputSource[keyof typeof BailSearchInputSource];
+
+
+export const BailSearchInputSource = {
+  saved: 'saved',
+  live: 'live',
+} as const;
+
+export interface BailSearchInput {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  startDate: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  endDate: string;
+  /**
+     * @minimum 0
+     * @maximum 20000000
+     */
+  maxBail: number;
+  source: BailSearchInputSource;
+}
+
+export interface BailSearchResumeInput {
+  /**
+     * @minLength 20
+     * @maxLength 200
+     */
+  resumeToken: string;
+}
+
+export interface BailSearchReadiness {
+  calendarVerified: boolean;
+  liveAvailable: boolean;
+  /** @nullable */
+  evidence: string | null;
+  reason: string;
+  scope: string;
+  authScope: string;
+}
+
+export interface BailSearchProgress {
+  completed: number;
+  total: number;
+  pending: number;
+}
+
+export interface BailSearchResult {
+  id: string;
+  docket_number: string;
+  hearing_date: string;
+  /** @nullable */
+  decision_date: string | null;
+  office: string;
+  /** @nullable */
+  bail_amount: number | null;
+  /** @nullable */
+  percentage: number | null;
+  classification: string;
+  /** @nullable */
+  evidence_page: number | null;
+  evidence_quote: string;
+  evidence_acquisition: string;
+  qualifies: boolean;
+  ambiguous: boolean;
+  /** @nullable */
+  error: string | null;
+}
+
+export type BailSearchStatus = typeof BailSearchStatus[keyof typeof BailSearchStatus];
+
+
+export const BailSearchStatus = {
+  running: 'running',
+  paused: 'paused',
+  complete: 'complete',
+} as const;
+
+export interface BailSearch {
+  searchId: string;
+  status: BailSearchStatus;
+  criteria: BailSearchInput;
+  progress: BailSearchProgress;
+  incomplete: boolean;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  resumeToken: string | null;
+  /** @nullable */
+  resumeAvailableAt: string | null;
+  results: BailSearchResult[];
+  createdAt: string;
+  updatedAt: string;
+  sourceNotice: string;
+}
+
 export interface WorkspacePasswordInput {
   /**
      * @minLength 1

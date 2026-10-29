@@ -8,6 +8,243 @@
 import * as zod from 'zod';
 
 
+export const GetBailSearchReadinessResponse = zod.object({
+  "calendarVerified": zod.boolean(),
+  "liveAvailable": zod.boolean(),
+  "evidence": zod.string().nullable(),
+  "reason": zod.string(),
+  "scope": zod.string(),
+  "authScope": zod.string()
+})
+
+
+export const listBailSearchesResponseCriteriaStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const listBailSearchesResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const listBailSearchesResponseCriteriaMaxBailMin = 0;
+export const listBailSearchesResponseCriteriaMaxBailMax = 20000000;
+
+
+
+export const ListBailSearchesResponseItem = zod.object({
+  "searchId": zod.string(),
+  "status": zod.enum(['running', 'paused', 'complete']),
+  "criteria": zod.object({
+  "startDate": zod.string().regex(listBailSearchesResponseCriteriaStartDateRegExp),
+  "endDate": zod.string().regex(listBailSearchesResponseCriteriaEndDateRegExp),
+  "maxBail": zod.number().min(listBailSearchesResponseCriteriaMaxBailMin).max(listBailSearchesResponseCriteriaMaxBailMax),
+  "source": zod.enum(['saved', 'live'])
+}),
+  "progress": zod.object({
+  "completed": zod.number().int(),
+  "total": zod.number().int(),
+  "pending": zod.number().int()
+}),
+  "incomplete": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "resumeToken": zod.string().nullable(),
+  "resumeAvailableAt": zod.string().nullable(),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "sourceNotice": zod.string()
+})
+export const ListBailSearchesResponse = zod.array(ListBailSearchesResponseItem)
+
+
+export const startBailSearchBodyStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startBailSearchBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startBailSearchBodyMaxBailMin = 0;
+export const startBailSearchBodyMaxBailMax = 20000000;
+
+
+
+export const StartBailSearchBody = zod.object({
+  "startDate": zod.string().regex(startBailSearchBodyStartDateRegExp),
+  "endDate": zod.string().regex(startBailSearchBodyEndDateRegExp),
+  "maxBail": zod.number().min(startBailSearchBodyMaxBailMin).max(startBailSearchBodyMaxBailMax),
+  "source": zod.enum(['saved', 'live'])
+})
+
+export const startBailSearchResponseCriteriaStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startBailSearchResponseCriteriaMaxBailMin = 0;
+export const startBailSearchResponseCriteriaMaxBailMax = 20000000;
+
+
+
+export const StartBailSearchResponse = zod.object({
+  "searchId": zod.string(),
+  "status": zod.enum(['running', 'paused', 'complete']),
+  "criteria": zod.object({
+  "startDate": zod.string().regex(startBailSearchResponseCriteriaStartDateRegExp),
+  "endDate": zod.string().regex(startBailSearchResponseCriteriaEndDateRegExp),
+  "maxBail": zod.number().min(startBailSearchResponseCriteriaMaxBailMin).max(startBailSearchResponseCriteriaMaxBailMax),
+  "source": zod.enum(['saved', 'live'])
+}),
+  "progress": zod.object({
+  "completed": zod.number().int(),
+  "total": zod.number().int(),
+  "pending": zod.number().int()
+}),
+  "incomplete": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "resumeToken": zod.string().nullable(),
+  "resumeAvailableAt": zod.string().nullable(),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "sourceNotice": zod.string()
+})
+
+
+export const GetBailSearchStatusParams = zod.object({
+  "searchId": zod.coerce.string().uuid()
+})
+
+export const getBailSearchStatusResponseCriteriaStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getBailSearchStatusResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getBailSearchStatusResponseCriteriaMaxBailMin = 0;
+export const getBailSearchStatusResponseCriteriaMaxBailMax = 20000000;
+
+
+
+export const GetBailSearchStatusResponse = zod.object({
+  "searchId": zod.string(),
+  "status": zod.enum(['running', 'paused', 'complete']),
+  "criteria": zod.object({
+  "startDate": zod.string().regex(getBailSearchStatusResponseCriteriaStartDateRegExp),
+  "endDate": zod.string().regex(getBailSearchStatusResponseCriteriaEndDateRegExp),
+  "maxBail": zod.number().min(getBailSearchStatusResponseCriteriaMaxBailMin).max(getBailSearchStatusResponseCriteriaMaxBailMax),
+  "source": zod.enum(['saved', 'live'])
+}),
+  "progress": zod.object({
+  "completed": zod.number().int(),
+  "total": zod.number().int(),
+  "pending": zod.number().int()
+}),
+  "incomplete": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "resumeToken": zod.string().nullable(),
+  "resumeAvailableAt": zod.string().nullable(),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "sourceNotice": zod.string()
+})
+
+
+export const ResumeBailSearchParams = zod.object({
+  "searchId": zod.coerce.string().uuid()
+})
+
+export const resumeBailSearchBodyResumeTokenMin = 20;
+export const resumeBailSearchBodyResumeTokenMax = 200;
+
+
+
+export const ResumeBailSearchBody = zod.object({
+  "resumeToken": zod.string().min(resumeBailSearchBodyResumeTokenMin).max(resumeBailSearchBodyResumeTokenMax)
+})
+
+export const resumeBailSearchResponseCriteriaStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const resumeBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const resumeBailSearchResponseCriteriaMaxBailMin = 0;
+export const resumeBailSearchResponseCriteriaMaxBailMax = 20000000;
+
+
+
+export const ResumeBailSearchResponse = zod.object({
+  "searchId": zod.string(),
+  "status": zod.enum(['running', 'paused', 'complete']),
+  "criteria": zod.object({
+  "startDate": zod.string().regex(resumeBailSearchResponseCriteriaStartDateRegExp),
+  "endDate": zod.string().regex(resumeBailSearchResponseCriteriaEndDateRegExp),
+  "maxBail": zod.number().min(resumeBailSearchResponseCriteriaMaxBailMin).max(resumeBailSearchResponseCriteriaMaxBailMax),
+  "source": zod.enum(['saved', 'live'])
+}),
+  "progress": zod.object({
+  "completed": zod.number().int(),
+  "total": zod.number().int(),
+  "pending": zod.number().int()
+}),
+  "incomplete": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "resumeToken": zod.string().nullable(),
+  "resumeAvailableAt": zod.string().nullable(),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "sourceNotice": zod.string()
+})
+
+
+export const ExportBailSearchParams = zod.object({
+  "searchId": zod.coerce.string().uuid()
+})
+
+export const ExportBailSearchResponse = zod.unknown()
+
+
 /**
  * @deprecated
  * @summary Disabled while the search implementation is rebuilt

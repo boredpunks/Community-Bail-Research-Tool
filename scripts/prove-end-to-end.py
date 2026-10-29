@@ -479,6 +479,58 @@ def latest_rows(entries: list[dict]) -> list[dict]:
     return list(unique.values())
 
 
+def select_bail_decision(entries: list[dict]) -> dict:
+    """Latest dated Bail Set decision; printed order is not same-day chronology."""
+    newest = latest_rows(entries)
+    keys = {
+        (entry["classification"], entry["amount"], entry.get("percentage"))
+        for entry in newest
+    }
+    ambiguous = len(keys) > 1
+    return {
+        "classification": "ambiguous" if ambiguous else (
+            newest[0]["classification"] if newest else "unknown"
+        ),
+        "is_ambiguous": ambiguous,
+        "decision_date": newest[0]["date"] if newest else None,
+        "observations": newest,
+        "history": sorted(entries, key=lambda entry: entry["date"], reverse=True),
+    }
+
+
+def cached_json() -> None:
+    """Machine entry point: cache only, never call fetch_pdf or the court."""
+    row = json.load(sys.stdin)
+    docket = row.get("docket_number")
+    url = row.get("sourceUrl", "")
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    if (
+        not isinstance(docket, str)
+        or parts.scheme != "https"
+        or parts.hostname != "ujsportal.pacourts.us"
+        or parts.path not in {"/Report/MdjDocketSheet", "/Report/CpDocketSheet"}
+        or query.get("docketNumber") != [docket]
+        or len(query.get("dnh", [])) != 1
+        or not query["dnh"][0]
+    ):
+        raise ValueError("Invalid saved source identity.")
+    cache_file = CACHE_DIR / f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.pdf"
+    if not cache_file.is_file():
+        print(json.dumps({"error": "Evidence is not locally available. No source request was made."}))
+        return
+    pdf_bytes = cache_file.read_bytes()
+    page_count = validate_pdf_bytes(pdf_bytes, docket)
+    entries = extract_bail(pdf_bytes, docket)
+    print(json.dumps({
+        "entries": entries,
+        "decision": select_bail_decision(entries),
+        "acquisition": "CACHE",
+        "page_count": page_count,
+        "http_requests": 0,
+    }))
+
+
 def process_docket(row: dict, index: int, total: int) -> dict:
     requests_before = _request_count
     result = {
@@ -520,6 +572,19 @@ def process_docket(row: dict, index: int, total: int) -> dict:
 
         print("      Extracting candidate bail text...")
         entries = extract_bail(pdf_bytes, row["docket_number"])
+        decision = select_bail_decision(entries)
+        result["decision_date"] = decision["decision_date"]
+        result["decision_classification"] = decision["classification"]
+        result["history"] = decision["history"]
+        result["other_bail_entries"] = [
+            entry for entry in entries if entry not in decision["observations"]
+        ]
+        entries = decision["observations"]
+        if decision["is_ambiguous"]:
+            result["observations"] = entries
+            result["status"] = "ambiguous_latest_decision"
+            print("      Conflicting latest-date bail decisions; manual review is required.")
+            return result
         monetary_entries = [
             entry for entry in entries if entry["classification"] == "monetary"
         ]
@@ -793,4 +858,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--cached-json" in sys.argv:
+        cached_json()
+    else:
+        main()

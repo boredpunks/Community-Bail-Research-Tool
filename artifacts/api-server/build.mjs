@@ -122,6 +122,8 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
   await mkdir(path.join(distDir, "ujs"), { recursive: true });
+  await mkdir(path.join(distDir, "search"), { recursive: true });
+  await copyFile(path.resolve(artifactDir, "../../scripts/prove-end-to-end.py"), path.join(distDir, "search/prove-end-to-end.py"));
   await copyFile(path.join(artifactDir, "src/ujs/bail_table.py"), path.join(distDir, "ujs/bail_table.py"));
   await copyFile(path.join(artifactDir, "src/ujs/document_diagnostics.py"), path.join(distDir, "ujs/document_diagnostics.py"));
   await copyFile(path.join(artifactDir, "src/ujs/calendar_structure.py"), path.join(distDir, "ujs/calendar_structure.py"));

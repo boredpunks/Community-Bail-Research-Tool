@@ -15,6 +15,87 @@ tags:
   - name: workspace-access
     description: Shared password access to the research workspace
 paths:
+  /bail-search/readiness:
+    get:
+      operationId: getBailSearchReadiness
+      responses:
+        "200":
+          description: Operation-specific readiness and saved-evidence scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearchReadiness" }
+  /bail-search/search:
+    get:
+      operationId: listBailSearches
+      responses:
+        "200":
+          description: Searches belonging to this signed-in session
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BailSearch" }
+    post:
+      operationId: startBailSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BailSearchInput" }
+      responses:
+        "201":
+          description: Durable search created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearch" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /bail-search/search/{searchId}/status:
+    parameters:
+      - name: searchId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getBailSearchStatus
+      responses:
+        "200":
+          description: Durable progress and actual evidence rows
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearch" }
+  /bail-search/search/{searchId}/resume:
+    parameters:
+      - name: searchId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: resumeBailSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BailSearchResumeInput" }
+      responses:
+        "200":
+          description: Resume accepted, preserving completed evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearch" }
+  /bail-search/search/{searchId}/export:
+    parameters:
+      - name: searchId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: exportBailSearch
+      responses:
+        "200":
+          description: All saved result rows, with completeness metadata
+          content:
+            text/csv:
+              schema: { type: string }
   /discovery/searches:
     post:
       operationId: startResearchCalendarSearch
@@ -483,6 +564,73 @@ components:
       in: cookie
       name: cbr_workspace
   schemas:
+    BailSearchInput:
+      type: object
+      additionalProperties: false
+      required: [startDate, endDate, maxBail, source]
+      properties:
+        startDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        endDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        maxBail: { type: number, minimum: 0, maximum: 20000000 }
+        source: { type: string, enum: [saved, live] }
+    BailSearchResumeInput:
+      type: object
+      required: [resumeToken]
+      properties:
+        resumeToken: { type: string, minLength: 20, maxLength: 200 }
+    BailSearchReadiness:
+      type: object
+      required: [calendarVerified, liveAvailable, evidence, reason, scope, authScope]
+      properties:
+        calendarVerified: { type: boolean }
+        liveAvailable: { type: boolean }
+        evidence: { type: [string, "null"] }
+        reason: { type: string }
+        scope: { type: string }
+        authScope: { type: string }
+    BailSearchProgress:
+      type: object
+      required: [completed, total, pending]
+      properties:
+        completed: { type: integer }
+        total: { type: integer }
+        pending: { type: integer }
+    BailSearchResult:
+      type: object
+      required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, qualifies, ambiguous, error]
+      properties:
+        id: { type: string }
+        docket_number: { type: string }
+        hearing_date: { type: string }
+        decision_date: { type: [string, "null"] }
+        office: { type: string }
+        bail_amount: { type: [number, "null"] }
+        percentage: { type: [number, "null"] }
+        classification: { type: string }
+        evidence_page: { type: [integer, "null"] }
+        evidence_quote: { type: string }
+        evidence_acquisition: { type: string }
+        qualifies: { type: boolean }
+        ambiguous: { type: boolean }
+        error: { type: [string, "null"] }
+    BailSearch:
+      type: object
+      required: [searchId, status, criteria, progress, incomplete, reason, resumeToken, resumeAvailableAt, results, createdAt, updatedAt, sourceNotice]
+      properties:
+        searchId: { type: string }
+        status: { type: string, enum: [running, paused, complete] }
+        criteria: { $ref: "#/components/schemas/BailSearchInput" }
+        progress: { $ref: "#/components/schemas/BailSearchProgress" }
+        incomplete: { type: boolean }
+        reason: { type: [string, "null"] }
+        resumeToken: { type: [string, "null"] }
+        resumeAvailableAt: { type: [string, "null"] }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/BailSearchResult" }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        sourceNotice: { type: string }
     WorkspacePasswordInput:
       type: object
       properties:

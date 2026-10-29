@@ -46,6 +46,7 @@ function LockWorkspace() {
 const NAV = [
   { href: '/menu', label: 'Menu' },
   { href: '/discovery', label: 'Search' },
+  { href: '/search', label: 'Search Bail' },
   { href: '/review', label: 'Review' },
   { href: '/candidates', label: 'Candidates' },
   { href: '/records/new', label: 'Enter record' },
