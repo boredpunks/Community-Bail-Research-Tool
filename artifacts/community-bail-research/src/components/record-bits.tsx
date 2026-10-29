@@ -26,6 +26,14 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
         <dd className="break-all"><a className="underline text-primary" href={r.sourceUrl} target="_blank" rel="noopener noreferrer">{r.sourceUrl}</a></dd>
         <dt className="mono text-sm">Source consulted</dt><dd>{formatInstant(r.sourceRetrievedAt)}</dd>
         <dt className="mono text-sm">Source's own as-of time</dt><dd>{formatInstant(r.sourceObservedAt)}</dd>
+        {r.discoveryEvidence?.documentAcquisition === 'CACHED_PDF' ? (
+          <>
+            <dt className="mono text-sm">Original PDF retrieval</dt><dd>{formatInstant(r.discoveryEvidence.originalDocumentRetrievedAt)}</dd>
+            <dt className="mono text-sm">Local PDF consultation</dt><dd>{formatInstant(r.discoveryEvidence.documentConsultedAt)}</dd>
+            <dt className="mono text-sm">Verified PDF SHA-256</dt><dd className="break-all">{r.discoveryEvidence.documentSha256 ?? 'Not recorded'}</dd>
+            <dt className="mono text-sm">Validated PDF pages</dt><dd>{r.discoveryEvidence.documentPageCount ?? 'Not recorded'}</dd>
+          </>
+        ) : null}
         <dt className="mono text-sm">Order date</dt><dd>{r.orderDate ?? 'Not recorded'}</dd>
         <dt className="mono text-sm">Bail category</dt><dd>{CATEGORY_LABEL[r.bailCategory]}</dd>
         <dt className="mono text-sm">Financial basis</dt><dd>{r.financialBasis ? BASIS_LABEL[r.financialBasis] : 'Not applicable'}</dd>
@@ -37,7 +45,7 @@ export function EvidenceDetails({ r }: { r: BailRecord }) {
       </dl>
       {r.discoveryEvidence ? (
         <div className="mt-3 border border-border rounded p-3" data-testid={`discovery-evidence-${r.id}`}>
-          <p className="mono text-sm font-semibold">Live discovery provenance</p>
+          <p className="mono text-sm font-semibold">Calendar and document provenance</p>
           <p className="hint break-all">Calendar: <a className="underline text-primary" href={r.discoveryEvidence.calendarUrl} target="_blank" rel="noopener noreferrer">{r.discoveryEvidence.calendarUrl}</a> retrieved {formatInstant(r.discoveryEvidence.calendarRetrievedAt)}</p>
           <p className="hint">{r.discoveryEvidence.courtOffice}; {r.discoveryEvidence.eventType}; event date {r.discoveryEvidence.eventDate ?? 'not recorded'}; extraction {r.discoveryEvidence.extractionOutcome}; posted entry state {r.discoveryEvidence.postedEntryState}</p>
           <ul className="mt-2 space-y-1 text-base">

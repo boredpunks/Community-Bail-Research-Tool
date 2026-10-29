@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { BailDecisionEvidence, DiscoveryProvenanceData } from "@workspace/db";
 
+export interface CachedBailExtraction {
+  entries: BailDecisionEvidence[];
+  sha256: string;
+  pageCount: number;
+  consultedAt: Date;
+}
+
 export function savedEntries(provenance: DiscoveryProvenanceData): BailDecisionEvidence[] | null {
   if (provenance.extractionOutcome !== "EXTRACTED") return null;
   return provenance.entries.map(entry => {
@@ -21,7 +28,7 @@ export function savedEntries(provenance: DiscoveryProvenanceData): BailDecisionE
 }
 
 /** Reuse the proven Python parser in cache-only mode, with bounded subprocess I/O. */
-export function extractSavedBail(docketNumber: string, sourceUrl: string): Promise<BailDecisionEvidence[]> {
+export function extractSavedBail(docketNumber: string, sourceUrl: string): Promise<CachedBailExtraction> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const root = [process.cwd(), path.resolve(process.cwd(), "../..")]
     .find(candidate => existsSync(path.join(candidate, "scripts/prove-end-to-end.py")));
@@ -45,11 +52,32 @@ export function extractSavedBail(docketNumber: string, sourceUrl: string): Promi
       try {
         const parsed = JSON.parse(output);
         if (parsed.error) return reject(new Error("Evidence is not locally available. No source request was made."));
-        if (!Array.isArray(parsed.entries) || parsed.http_requests !== 0) throw new Error();
-        resolve(parsed.entries);
+        if (!Array.isArray(parsed.entries) || parsed.http_requests !== 0
+          || !/^[a-f0-9]{64}$/.test(parsed.sha256)
+          || !Number.isSafeInteger(parsed.page_count) || parsed.page_count < 1 || parsed.page_count > 100
+          || parsed.entries.some((entry: unknown) => !validCachedEntry(entry, parsed.page_count))) throw new Error();
+        resolve({
+          entries: parsed.entries,
+          sha256: parsed.sha256,
+          pageCount: parsed.page_count,
+          consultedAt: new Date(),
+        });
       } catch { reject(new Error("Saved PDF parser returned invalid evidence.")); }
     });
     child.stdin.on("error", () => {});
     child.stdin.end(JSON.stringify({ docket_number: docketNumber, sourceUrl }));
   });
+}
+
+function validCachedEntry(value: unknown, pageCount: number): value is BailDecisionEvidence {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<BailDecisionEvidence>;
+  const parsedDate = typeof entry.date === "string" ? new Date(`${entry.date}T00:00:00Z`) : null;
+  return typeof entry.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry.date)
+    && !!parsedDate && Number.isFinite(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === entry.date
+    && ["monetary", "nominal", "unsecured", "nonmonetary", "denied", "unknown"].includes(entry.classification ?? "")
+    && (entry.amount === null || (typeof entry.amount === "number" && Number.isFinite(entry.amount) && entry.amount >= 0))
+    && (entry.percentage === null || (typeof entry.percentage === "number" && Number.isFinite(entry.percentage)))
+    && Number.isSafeInteger(entry.page) && (entry.page ?? 0) > 0 && (entry.page ?? 0) <= pageCount
+    && typeof entry.quote === "string" && entry.quote.trim().length > 0 && entry.quote.length <= 500;
 }

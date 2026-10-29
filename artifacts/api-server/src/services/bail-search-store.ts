@@ -52,6 +52,8 @@ export function serializeSearchResult(row: BailSearchResultRow) {
     classification: row.classification, evidence_page: row.evidencePage,
     evidence_quote: row.evidenceQuote, evidence_acquisition: row.evidenceAcquisition,
     qualifies: row.qualifies, ambiguous: row.ambiguous, error: row.error,
+    source_consulted_at: row.sourceConsultedAt?.toISOString() ?? row.sourceRetrievedAt?.toISOString() ?? null,
+    source_pdf_sha256: row.sourcePdfSha256,
   };
 }
 export async function enrichedResult(search: BailSearchRow, row: BailSearchResultRow) {
@@ -135,7 +137,8 @@ export async function exportSearchCsv(
   const result = await searchResponse(search);
   const columns = ["docket_number", "hearing_date", "decision_date", "office", "bail_amount",
     "percentage", "classification", "evidence_page", "evidence_quote", "qualifies", "ambiguous",
-    "error", "evidence_acquisition", "source_url", "source_retrieved_at", "saved_record_id", "review_status"] as const;
+    "error", "evidence_acquisition", "source_url", "source_retrieved_at", "source_consulted_at",
+    "source_pdf_sha256", "saved_record_id", "review_status"] as const;
   const selected = result.results.filter(row => {
     if (selection === "matches" && !(row.qualifies && row.bail_amount !== null && !row.ambiguous)) return false;
     if (selection !== "visible") return true;

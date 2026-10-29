@@ -29,7 +29,7 @@ export interface DiscoveryEntryData {
   orderDate: string | null;
   bailCategory: "MONETARY" | "NOMINAL" | "UNSECURED" | "NONMONETARY" | "RECOGNIZANCE" | "DENIED" | "UNKNOWN";
   amountCents: number | null;
-  financialBasis: "TOTAL_BAIL" | "RECORDED_BAIL_AMOUNT" | "UNSECURED_AMOUNT" | null;
+  financialBasis: "TOTAL_BAIL" | "CASH_DEPOSIT" | "SURETY_BOND" | "RECORDED_BAIL_AMOUNT" | "UNSECURED_AMOUNT" | null;
   sourceEntryId?: string;
   excerpt?: string;
   sourcePages?: number[];
@@ -53,7 +53,9 @@ export interface DiscoveryProvenanceData {
   documentSha256?: string;
   documentPageCount?: number;
   bailSectionPages?: number[];
-  documentAcquisition?: "AUTOMATED" | "MANUAL_UPLOAD";
+  documentAcquisition?: "AUTOMATED" | "MANUAL_UPLOAD" | "CACHED_PDF";
+  documentConsultedAt?: string;
+  originalDocumentRetrievedAt?: string | null;
 }
 
 export const discoveryJobsTable = pgTable("discovery_jobs", {

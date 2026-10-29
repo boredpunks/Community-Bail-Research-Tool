@@ -12,4 +12,5 @@ export type DiscoveryProvenanceDocumentAcquisition = typeof DiscoveryProvenanceD
 export const DiscoveryProvenanceDocumentAcquisition = {
   AUTOMATED: 'AUTOMATED',
   MANUAL_UPLOAD: 'MANUAL_UPLOAD',
+  CACHED_PDF: 'CACHED_PDF',
 } as const;

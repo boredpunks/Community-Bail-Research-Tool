@@ -11,8 +11,9 @@ async function storeItem(search: BailSearchRow, queued: BailSearchQueueItem, cac
   let error: string | null = null;
   let entries = item ? savedEntries(item.provenance) : null;
   let acquisition = "STORED_EXTRACTION";
+  let cacheEvidence: Awaited<ReturnType<typeof extractSavedBail>> | null = null;
   if (entries === null && cacheAllowed && item) {
-    try { entries = await extractSavedBail(item.docketNumber, item.sourceUrl); acquisition = "CACHE"; }
+    try { cacheEvidence = await extractSavedBail(item.docketNumber, item.sourceUrl); entries = cacheEvidence.entries; acquisition = "CACHE"; }
     catch { error = "Evidence is not locally available or could not be validated. No new request was made."; }
   } else if (entries === null) error = "Document evidence is pending or could not be extracted.";
   const decision = selectBailDecision(entries ?? []);
@@ -21,6 +22,9 @@ async function storeItem(search: BailSearchRow, queued: BailSearchQueueItem, cac
     sourceItemId: item?.id ?? null,
     sourceUrl: item?.sourceUrl ?? null,
     sourceRetrievedAt: item?.sourceRetrievedAt ?? null,
+    sourceConsultedAt: cacheEvidence?.consultedAt ?? item?.sourceRetrievedAt ?? null,
+    sourcePdfSha256: cacheEvidence?.sha256 ?? item?.provenance.documentSha256 ?? null,
+    sourcePageCount: cacheEvidence?.pageCount ?? item?.provenance.documentPageCount ?? null,
     office: queued.office, decisionDate: decision.decisionDate,
     classification: decision.classification,
     amountCents: decision.amount === null ? null : Math.round(decision.amount * 100),

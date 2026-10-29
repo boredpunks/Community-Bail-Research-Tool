@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useResumeBailSearch, useStartBailSearch } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { errMsg } from '@/lib/money';
-import { money, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
+import { formatInstant } from '@/lib/money';
+import { money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
 
 const LIVE_OFFICES = [
   { value: 'ANY', label: 'Any supported office' },
@@ -15,7 +16,6 @@ type LiveEvent = (typeof LIVE_EVENTS)[number];
 function todayNewYork() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
-
 export default function BailSearch() {
   const { run, status } = useLatestSearch();
   const promote = usePromoteSearch();
@@ -116,7 +116,7 @@ export default function BailSearch() {
         {rows.length ? (
           <div className="bail-compare-scroll">
             <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-search-rows">
-              <thead><tr><th>#</th><th>Docket</th><th>Date</th><th>Bail</th></tr></thead>
+              <thead><tr><th>#</th><th>Docket</th><th>Date</th><th>Bail</th><th>Evidence</th></tr></thead>
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={row.id} data-testid={`row-search-${row.id}`}>
@@ -124,6 +124,24 @@ export default function BailSearch() {
                     <th className="mono break-all">{row.docket_number}</th>
                     <td>{shortDate(row.hearing_date)}</td>
                     <td className="mono">{money(row.bail_amount)}</td>
+                    <td>
+                      <details data-testid={`details-search-evidence-${row.id}`}>
+                        <summary className="cursor-pointer mono text-xs text-primary">Inspect</summary>
+                        <div className="min-w-64 space-y-1 py-2">
+                          <p className="hint">Evidence page: {row.evidence_page ?? 'Not recorded'}</p>
+                          <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
+                          <p className="hint">Acquisition: {row.evidence_acquisition || 'Not recorded'}</p>
+                          <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
+                          <p className="hint">Local document consultation: {row.source_consulted_at ? formatInstant(row.source_consulted_at) : 'Not recorded'}</p>
+                          {row.source_pdf_sha256 ? <p className="hint break-all">Verified PDF SHA-256: {row.source_pdf_sha256}</p> : null}
+                          {safeSourceUrl(row.source_url) ? (
+                            <a href={safeSourceUrl(row.source_url)!} target="_blank" rel="noopener noreferrer" className="navlink">
+                              Open source document
+                            </a>
+                          ) : <p className="hint">Source document link unavailable.</p>}
+                        </div>
+                      </details>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -23,3 +23,4 @@
 - [Database separation proof](database-separation.md) — Local Unix-socket connections have no server IP; never treat a hash of “unknown” as a host fingerprint.
 - [Intentional worker stops](worker-pause-barriers.md) — Pre-transmission denials and explicit pauses are job pauses, not source-validation failures; preserve real source blocks.
 - [Bail setting vs. posted security](bail-set-vs-posted.md) — Keep a bail decision separate from later cash or surety postings.
+- [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.

@@ -1,4 +1,5 @@
-import { boolean, date, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, date, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import type { z } from "zod/v4";
 import { bailSearchesTable } from "./bail-searches";
@@ -17,6 +18,9 @@ export const bailSearchResultsTable = pgTable("bail_search_results", {
   sourceItemId: uuid("source_item_id"),
   sourceUrl: text("source_url"),
   sourceRetrievedAt: timestamp("source_retrieved_at", { withTimezone: true }),
+  sourceConsultedAt: timestamp("source_consulted_at", { withTimezone: true }),
+  sourcePdfSha256: text("source_pdf_sha256"),
+  sourcePageCount: integer("source_page_count"),
   savedRecordId: uuid("saved_record_id"),
   docketNumber: text("docket_number").notNull(),
   hearingDate: date("hearing_date", { mode: "string" }).notNull(),
@@ -33,7 +37,13 @@ export const bailSearchResultsTable = pgTable("bail_search_results", {
   history: jsonb("history").$type<BailDecisionEvidence[]>().notNull().default([]),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, t => [uniqueIndex("bail_search_result_docket_hearing").on(t.searchId, t.docketNumber, t.hearingDate)]);
+}, t => [
+  uniqueIndex("bail_search_result_docket_hearing").on(t.searchId, t.docketNumber, t.hearingDate),
+  check("bail_search_results_source_page_count_range",
+    sql`${t.sourcePageCount} IS NULL OR ${t.sourcePageCount} BETWEEN 1 AND 100`),
+  check("bail_search_results_source_pdf_sha256_format",
+    sql`${t.sourcePdfSha256} IS NULL OR ${t.sourcePdfSha256} ~ '^[a-f0-9]{64}$'`),
+]);
 export const insertBailSearchResultSchema = createInsertSchema(bailSearchResultsTable).omit({ id: true, createdAt: true });
 export type BailSearchResultRow = typeof bailSearchResultsTable.$inferSelect;
 export type InsertBailSearchResult = z.infer<typeof insertBailSearchResultSchema>;

@@ -526,6 +526,7 @@ def cached_json() -> None:
         "entries": entries,
         "decision": select_bail_decision(entries),
         "acquisition": "CACHE",
+        "sha256": hashlib.sha256(pdf_bytes).hexdigest(),
         "page_count": page_count,
         "http_requests": 0,
     }))

@@ -68,6 +68,9 @@ export const SaveBailSearchResultBody = zod.object({
   "shareWithWorkspace": zod.boolean()
 })
 
+export const saveBailSearchResultResponseSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+
 export const SaveBailSearchResultResponse = zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
@@ -85,6 +88,8 @@ export const SaveBailSearchResultResponse = zod.object({
   "error": zod.string().nullable(),
   "source_url": zod.string().nullish(),
   "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(saveBailSearchResultResponseSourcePdfSha256RegExp).nullish(),
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
@@ -136,6 +141,7 @@ export const listBailSearchesResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}
 export const listBailSearchesResponseCriteriaMaxBailMin = 0;
 export const listBailSearchesResponseCriteriaMaxBailMax = 20000000;
 
+export const listBailSearchesResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const ListBailSearchesResponseItem = zod.object({
@@ -175,6 +181,8 @@ export const ListBailSearchesResponseItem = zod.object({
   "error": zod.string().nullable(),
   "source_url": zod.string().nullish(),
   "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(listBailSearchesResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
@@ -214,6 +222,7 @@ export const startBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-
 export const startBailSearchResponseCriteriaMaxBailMin = 0;
 export const startBailSearchResponseCriteriaMaxBailMax = 20000000;
 
+export const startBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const StartBailSearchResponse = zod.object({
@@ -253,6 +262,8 @@ export const StartBailSearchResponse = zod.object({
   "error": zod.string().nullable(),
   "source_url": zod.string().nullish(),
   "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(startBailSearchResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
@@ -279,6 +290,7 @@ export const getBailSearchStatusResponseCriteriaEndDateRegExp = new RegExp('^\\d
 export const getBailSearchStatusResponseCriteriaMaxBailMin = 0;
 export const getBailSearchStatusResponseCriteriaMaxBailMax = 20000000;
 
+export const getBailSearchStatusResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const GetBailSearchStatusResponse = zod.object({
@@ -318,6 +330,8 @@ export const GetBailSearchStatusResponse = zod.object({
   "error": zod.string().nullable(),
   "source_url": zod.string().nullish(),
   "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(getBailSearchStatusResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
@@ -353,6 +367,7 @@ export const resumeBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}
 export const resumeBailSearchResponseCriteriaMaxBailMin = 0;
 export const resumeBailSearchResponseCriteriaMaxBailMax = 20000000;
 
+export const resumeBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const ResumeBailSearchResponse = zod.object({
@@ -392,6 +407,8 @@ export const ResumeBailSearchResponse = zod.object({
   "error": zod.string().nullable(),
   "source_url": zod.string().nullish(),
   "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(resumeBailSearchResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
@@ -992,7 +1009,9 @@ export const GetDiscoveryJobResponse = zod.object({
   "sourcePage": zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenancePdfEventsItemSourcePageMax).optional()
 })).max(getDiscoveryJobResponseItemsItemProvenancePdfEventsMax).optional(),
   "documentSha256": zod.string().regex(getDiscoveryJobResponseItemsItemProvenanceDocumentSha256RegExp).optional(),
-  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD']).optional(),
+  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD', 'CACHED_PDF']).optional(),
+  "documentConsultedAt": zod.coerce.date().optional(),
+  "originalDocumentRetrievedAt": zod.coerce.date().nullish(),
   "documentPageCount": zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenanceDocumentPageCountMax).optional(),
   "bailSectionPages": zod.array(zod.number().int().min(1).max(getDiscoveryJobResponseItemsItemProvenanceBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),
@@ -1305,7 +1324,9 @@ export const SaveDiscoveryObservationResponse = zod.object({
   "sourcePage": zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOnePdfEventsItemSourcePageMax).optional()
 })).max(saveDiscoveryObservationResponseDiscoveryEvidenceOnePdfEventsMax).optional(),
   "documentSha256": zod.string().regex(saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
-  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD']).optional(),
+  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD', 'CACHED_PDF']).optional(),
+  "documentConsultedAt": zod.coerce.date().optional(),
+  "originalDocumentRetrievedAt": zod.coerce.date().nullish(),
   "documentPageCount": zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
   "bailSectionPages": zod.array(zod.number().int().min(1).max(saveDiscoveryObservationResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
@@ -1438,7 +1459,9 @@ export const ListBailRecordsResponse = zod.object({
   "sourcePage": zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOnePdfEventsItemSourcePageMax).optional()
 })).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOnePdfEventsMax).optional(),
   "documentSha256": zod.string().regex(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
-  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD']).optional(),
+  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD', 'CACHED_PDF']).optional(),
+  "documentConsultedAt": zod.coerce.date().optional(),
+  "originalDocumentRetrievedAt": zod.coerce.date().nullish(),
   "documentPageCount": zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneDocumentPageCountMax).optional(),
   "bailSectionPages": zod.array(zod.number().int().min(1).max(listBailRecordsResponseRecordsItemDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
@@ -1579,7 +1602,9 @@ export const CreateBailRecordResponse = zod.object({
   "sourcePage": zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOnePdfEventsItemSourcePageMax).optional()
 })).max(createBailRecordResponseDiscoveryEvidenceOnePdfEventsMax).optional(),
   "documentSha256": zod.string().regex(createBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
-  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD']).optional(),
+  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD', 'CACHED_PDF']).optional(),
+  "documentConsultedAt": zod.coerce.date().optional(),
+  "originalDocumentRetrievedAt": zod.coerce.date().nullish(),
   "documentPageCount": zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
   "bailSectionPages": zod.array(zod.number().int().min(1).max(createBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),
@@ -1698,7 +1723,9 @@ export const ReviewBailRecordResponse = zod.object({
   "sourcePage": zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOnePdfEventsItemSourcePageMax).optional()
 })).max(reviewBailRecordResponseDiscoveryEvidenceOnePdfEventsMax).optional(),
   "documentSha256": zod.string().regex(reviewBailRecordResponseDiscoveryEvidenceOneDocumentSha256RegExp).optional(),
-  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD']).optional(),
+  "documentAcquisition": zod.enum(['AUTOMATED', 'MANUAL_UPLOAD', 'CACHED_PDF']).optional(),
+  "documentConsultedAt": zod.coerce.date().optional(),
+  "originalDocumentRetrievedAt": zod.coerce.date().nullish(),
   "documentPageCount": zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOneDocumentPageCountMax).optional(),
   "bailSectionPages": zod.array(zod.number().int().min(1).max(reviewBailRecordResponseDiscoveryEvidenceOneBailSectionPagesItemMax)).optional().describe('One-based pages containing the inspected bail section.')
 }),zod.null()]).optional(),

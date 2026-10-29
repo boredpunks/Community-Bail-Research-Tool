@@ -34,6 +34,9 @@ export interface DiscoveryProvenance {
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
   documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
+  documentConsultedAt?: Date;
+  /** @nullable */
+  originalDocumentRetrievedAt?: Date | null;
   /**
      * @minimum 1
      * @maximum 100

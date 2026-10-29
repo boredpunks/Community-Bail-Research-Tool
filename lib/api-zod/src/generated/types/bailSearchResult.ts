@@ -30,6 +30,13 @@ export interface BailSearchResult {
   source_url?: string | null;
   /** @nullable */
   source_retrieved_at?: string | null;
+  /** @nullable */
+  source_consulted_at?: string | null;
+  /**
+     * @nullable
+     * @pattern ^[a-f0-9]{64}$
+     */
+  source_pdf_sha256?: string | null;
   save_available?: boolean;
   /** @nullable */
   save_reason?: string | null;

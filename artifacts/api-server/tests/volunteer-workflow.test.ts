@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { chooseRecovery } from "../src/services/bail-search-recovery";
 import { selectBailDecision, qualifiesMonetary, csvCell } from "../src/lib/bail-decision";
+import { validCachedConsultationChronology } from "../src/lib/discovery-candidates";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
   noJob: false, sourceBlocked: false, cooldown: null, now: new Date("2026-10-29T12:00:00Z") };
@@ -51,4 +52,12 @@ test("empty evidence is unknown, never zero bail", () => {
 test("CSV escapes quotes and spreadsheet formulas", () => {
   assert.equal(csvCell('=SUM(1,2)'), '"\'=SUM(1,2)"');
   assert.equal(csvCell('a,"b"'), '"a,""b"""');
+});
+test("cached consultation chronology cannot precede calendar or known retrieval", () => {
+  const calendar = "2026-10-28T10:00:00.000Z";
+  const original = new Date("2026-10-28T11:00:00.000Z");
+  assert.equal(validCachedConsultationChronology(new Date("2026-10-28T12:00:00.000Z"), calendar, original), true);
+  assert.equal(validCachedConsultationChronology(new Date("2026-10-28T10:30:00.000Z"), calendar, original), false);
+  assert.equal(validCachedConsultationChronology(new Date("2026-10-28T09:59:00.000Z"), calendar, null), false);
+  assert.equal(validCachedConsultationChronology(new Date(Date.now() + 10 * 60_000), calendar, null), false);
 });

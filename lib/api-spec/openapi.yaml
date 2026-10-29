@@ -702,6 +702,8 @@ components:
         error: { type: [string, "null"] }
         source_url: { type: [string, "null"] }
         source_retrieved_at: { type: [string, "null"] }
+        source_consulted_at: { type: [string, "null"] }
+        source_pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
         save_available: { type: boolean }
         save_reason: { type: [string, "null"] }
         saved_record_id: { type: [string, "null"] }
@@ -964,7 +966,9 @@ components:
         matchingEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
         pdfEvents: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/MatchingEvent" } }
         documentSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        documentAcquisition: { type: string, enum: [AUTOMATED, MANUAL_UPLOAD] }
+        documentAcquisition: { type: string, enum: [AUTOMATED, MANUAL_UPLOAD, CACHED_PDF] }
+        documentConsultedAt: { type: string, format: date-time }
+        originalDocumentRetrievedAt: { type: [string, "null"], format: date-time }
         documentPageCount: { type: integer, minimum: 1, maximum: 100 }
         bailSectionPages:
           type: array

@@ -118,6 +118,13 @@ export interface BailSearchResult {
   source_url?: string | null;
   /** @nullable */
   source_retrieved_at?: string | null;
+  /** @nullable */
+  source_consulted_at?: string | null;
+  /**
+     * @nullable
+     * @pattern ^[a-f0-9]{64}$
+     */
+  source_pdf_sha256?: string | null;
   save_available?: boolean;
   /** @nullable */
   save_reason?: string | null;
@@ -600,6 +607,7 @@ export type DiscoveryProvenanceDocumentAcquisition = typeof DiscoveryProvenanceD
 export const DiscoveryProvenanceDocumentAcquisition = {
   AUTOMATED: 'AUTOMATED',
   MANUAL_UPLOAD: 'MANUAL_UPLOAD',
+  CACHED_PDF: 'CACHED_PDF',
 } as const;
 
 export interface DiscoveryProvenance {
@@ -624,6 +632,9 @@ export interface DiscoveryProvenance {
   /** @pattern ^[a-f0-9]{64}$ */
   documentSha256?: string;
   documentAcquisition?: DiscoveryProvenanceDocumentAcquisition;
+  documentConsultedAt?: string;
+  /** @nullable */
+  originalDocumentRetrievedAt?: string | null;
   /**
      * @minimum 1
      * @maximum 100
