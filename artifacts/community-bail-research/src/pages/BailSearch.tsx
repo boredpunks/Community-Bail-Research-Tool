@@ -124,15 +124,12 @@ export default function BailSearch() {
                     <td className="mono">{i + 1}</td>
                     <th className="mono break-all">{row.docket_number}</th>
                     <td>{shortDate(row.hearing_date)}</td>
-                    <td className="mono">
-                      {row.error ? 'Pending' : money(row.bail_amount) || (row.classification === 'nonmonetary' ? 'Nonmonetary' : '')}
-                    </td>
+                    <td className="mono">{money(row.bail_amount) || (row.classification === 'nonmonetary' ? 'Nonmonetary' : '')}</td>
                     <td>
                       <details data-testid={`details-search-evidence-${row.id}`}>
                         <summary className="cursor-pointer mono text-xs text-primary">Inspect</summary>
                         <div className="min-w-64 space-y-1 py-2">
                           <p className="hint">Evidence page: {row.evidence_page ?? 'Not recorded'}</p>
-                          {row.error ? <p className="hint">{row.error}</p> : null}
                           <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
                           <p className="hint">Acquisition: {row.evidence_acquisition || 'Not recorded'}</p>
                           <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>

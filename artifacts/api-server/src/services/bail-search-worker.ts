@@ -15,12 +15,8 @@ async function storeItem(search: BailSearchRow, queued: BailSearchQueueItem, cac
   let cacheEvidence: Awaited<ReturnType<typeof extractSavedBail>> | null = null;
   if (entries === null && cacheAllowed && item) {
     try { cacheEvidence = await extractSavedBail(item.docketNumber, item.sourceUrl); entries = cacheEvidence.entries; acquisition = "CACHE"; }
-    catch { error = "Evidence is not locally available or could not be validated. No new request was made."; acquisition = "UNAVAILABLE"; }
-  } else if (entries === null) {
-    const pending = item?.provenance.extractionOutcome === "UNPROCESSED";
-    error = pending ? "Docket PDF has not been checked yet." : "Document evidence could not be validated.";
-    acquisition = pending ? "PENDING_DOCUMENT" : "UNAVAILABLE";
-  }
+    catch { error = "Evidence is not locally available or could not be validated. No new request was made."; }
+  } else if (entries === null) error = "Document evidence is pending or could not be extracted.";
   const decision = selectBailDecision(entries ?? []);
   const values = {
     searchId: search.id, docketNumber: queued.docketNumber, hearingDate: queued.hearingDate,
@@ -78,68 +74,6 @@ export async function publishVerifiedDocumentToSearch(jobId: string, itemId: str
       processed: results.filter(row => !row.error).length,
       updatedAt: new Date(),
     }).where(eq(bailSearchesTable.id, search.id));
-  }
-}
-
-/** Put every in-scope calendar hit in Search immediately as an unchecked row. */
-export async function publishCalendarRowsToSearch(jobId: string): Promise<number> {
-  const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, jobId));
-  if (!job?.calendarComplete || job.resultsExpiredAt) return 0;
-  const linkedSearches = await db.select().from(bailSearchesTable)
-    .where(eq(bailSearchesTable.discoveryJobId, jobId));
-  if (!linkedSearches.length) return 0;
-  const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, jobId));
-  let projected = 0;
-  for (const search of linkedSearches) {
-    if (search.criteria.source !== "live") continue;
-    let total = 0;
-    for (const item of items) {
-      if (search.criteria.courtOffice && search.criteria.courtOffice !== "ANY"
-        && item.provenance.courtOffice !== search.criteria.courtOffice) continue;
-      for (const hearingDate of resultDatesForItem(search.criteria, item)) {
-        total++;
-        projected++;
-        await db.insert(bailSearchResultsTable).values({
-          searchId: search.id, docketNumber: item.docketNumber, hearingDate,
-          office: item.provenance.courtOffice, sourceItemId: item.id, sourceUrl: item.sourceUrl,
-          sourceRetrievedAt: null, sourceConsultedAt: null, sourcePdfSha256: null, sourcePageCount: null,
-          decisionDate: null, classification: "pending", amountCents: null, percentage: null,
-          evidencePage: null, evidenceQuote: "Calendar result found. Docket PDF has not been checked yet.",
-          evidenceAcquisition: "PENDING_DOCUMENT", qualifies: false, ambiguous: false, history: [],
-          error: "Docket PDF has not been checked yet.",
-        }).onConflictDoNothing({
-          target: [bailSearchResultsTable.searchId, bailSearchResultsTable.docketNumber, bailSearchResultsTable.hearingDate],
-        });
-      }
-    }
-    const results = await db.select().from(bailSearchResultsTable)
-      .where(eq(bailSearchResultsTable.searchId, search.id));
-    await db.update(bailSearchesTable).set({
-      total,
-      processed: results.filter(row => !row.error).length,
-      updatedAt: new Date(),
-    }).where(eq(bailSearchesTable.id, search.id));
-  }
-  return projected;
-}
-
-async function reconcileStoredSearchResults() {
-  const searches = await db.select().from(bailSearchesTable)
-    .where(inArray(bailSearchesTable.status, ["running", "paused", "complete"]));
-  for (const search of searches) {
-    if (search.criteria.source !== "live" || !search.discoveryJobId) continue;
-    const [job] = await db.select().from(discoveryJobsTable)
-      .where(eq(discoveryJobsTable.id, search.discoveryJobId));
-    if (!job?.calendarComplete || job.resultsExpiredAt) continue;
-    const calendarRows = await publishCalendarRowsToSearch(job.id);
-    logger.info({ calendarRows }, "Reconciled retained calendar rows into Search");
-    const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id));
-    for (const item of items) {
-      if (item.sourceRetrievedAt && item.provenance.documentSha256
-        && ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)) {
-        await publishVerifiedDocumentToSearch(job.id, item.id);
-      }
-    }
   }
 }
 export async function pauseSearch(search: BailSearchRow, reason: string, availableAt = new Date()) {
@@ -202,16 +136,41 @@ export async function runBailSearch(search: BailSearchRow) {
     await pauseSearch(search, "Processing stopped after a local error. Results are retained; no automatic retry.");
   } finally { active.delete(search.id); }
 }
+export async function publishCalendarRowsToSearch(jobId: string) {
+  const [job] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, jobId));
+  if (!job?.calendarComplete || job.resultsExpiredAt) return 0;
+  const searches = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.discoveryJobId, jobId));
+  const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, jobId));
+  let projected = 0;
+  for (const search of searches) {
+    if (search.criteria.source !== "live") continue;
+    let total = 0;
+    for (const item of items) {
+      if (search.criteria.courtOffice && search.criteria.courtOffice !== "ANY"
+        && item.provenance.courtOffice !== search.criteria.courtOffice) continue;
+      for (const hearingDate of resultDatesForItem(search.criteria, item)) {
+        total++;
+        projected++;
+        await storeItem(search, {
+          itemId: item.id, docketNumber: item.docketNumber, hearingDate, office: item.provenance.courtOffice,
+        }, false);
+      }
+    }
+    const results = await db.select().from(bailSearchResultsTable)
+      .where(eq(bailSearchResultsTable.searchId, search.id));
+    await db.update(bailSearchesTable).set({
+      total,
+      processed: results.filter(row => !row.error).length,
+      updatedAt: new Date(),
+    }).where(eq(bailSearchesTable.id, search.id));
+  }
+  return projected;
+}
 export async function startBailSearchWorker() {
   // Startup cannot assume an interrupted request succeeded.
   const interrupted = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "running"));
   for (const search of interrupted) await pauseSearch(search, "Server restarted. Saved results retained; resume explicitly.");
-  // Rebuild the local Search projection from retained calendar/PDF evidence.
-  // This is database-only and never makes a court request.
-  try { await reconcileStoredSearchResults(); }
-  catch (error) {
-    logger.error({ err: error instanceof Error ? error.name : "UNKNOWN" }, "Search result projection reconciliation failed");
-  }
   let busy = false;
   const timer = setInterval(async () => {
     if (busy) return;
