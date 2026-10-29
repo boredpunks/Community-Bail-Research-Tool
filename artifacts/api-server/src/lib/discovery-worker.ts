@@ -235,6 +235,26 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
     : ["-u", script];
   const child = spawn("python", args, { stdio: ["pipe", "pipe", "pipe"], detached: true });
   activeChild = child;
+  // A replaced/paused job must release its browser even when no protocol
+  // messages are arriving (for example while the browser waits on the source).
+  let checkingOwnership = false;
+  let stoppingChild = false;
+  const ownershipTimer = setInterval(async () => {
+    if (checkingOwnership || stoppingChild) return;
+    checkingOwnership = true;
+    try {
+      const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
+      if (current?.status !== "RUNNING") {
+        stoppingChild = true;
+        if (child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already exited. */ }
+      }
+    } catch {
+      // Loss of the database cannot grant permission for more source work.
+      stoppingChild = true;
+      if (child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already exited. */ }
+    } finally { checkingOwnership = false; }
+  }, 1000);
+  ownershipTimer.unref();
   let observationTimedOut = false;
   const observationTimer = courtroomObservationOnly ? setTimeout(() => {
     observationTimedOut = true;
@@ -663,12 +683,17 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
       } else await pause(job, `Worker stopped before completion (exit ${code}; ${stderrBytes} diagnostic bytes). No automatic retry; partial results retained.`);
     }
   } catch (error) {
+    if (stoppingChild) {
+      await pause(job, "Collection stopped because this worker no longer owns an active search. Results retained.");
+      return;
+    }
     const rejected = calendarDiagnosticRejection(error instanceof Error ? error.message : null);
     if (rejected) await discoveryEvent(job, "PARENT_DIAGNOSTIC_REJECTION",
       `${rejected}. The worker diagnostic was rejected locally; this does not establish a court-form defect. No automatic retry.`);
     await validationStop("WORKER_PROTOCOL_FAILURE");
     throw error;
   } finally {
+    clearInterval(ownershipTimer);
     if (observationTimer) clearTimeout(observationTimer);
     if (child.pid) {
       try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already exited. */ }

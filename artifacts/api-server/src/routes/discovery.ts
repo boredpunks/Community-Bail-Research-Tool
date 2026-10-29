@@ -1,6 +1,6 @@
 import { Router, raw, type IRouter } from "express";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { bailRecordsTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
+import { bailRecordsTable, bailSearchesTable, db, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import {
   ControlDiscoveryJobBody, ControlDiscoveryJobParams, ControlDiscoveryJobResponse,
   GetDiscoveryJobParams,
@@ -236,6 +236,12 @@ router.post("/discovery/jobs/:jobId/control", async (req, res): Promise<void> =>
     }
     const status = action === "CANCEL" ? "CANCELLED" : action === "RESUME" ? "QUEUED" : "PAUSED";
     const [updated] = await tx.update(discoveryJobsTable).set({ status, updatedAt: new Date(), message: `${action}: partial results and original budgets preserved. An already-started source request may finish.` }).where(eq(discoveryJobsTable.id, job.id)).returning();
+    // Keep the volunteer view attached to the same authorized engine run.
+    await tx.update(bailSearchesTable).set({
+      status: action === "RESUME" ? "running" : "paused",
+      reason: action === "RESUME" ? null : `${action}: partial results retained.`,
+      updatedAt: new Date(),
+    }).where(eq(bailSearchesTable.discoveryJobId, job.id));
     if (job.assessmentId && job.status === "QUEUED") {
       await tx.update(discoveryAssessmentsTable).set({ state: "FAILED", completedAt: new Date(),
         report: { requests: job.requestsUsed, validDocuments: 0, failures: 0,

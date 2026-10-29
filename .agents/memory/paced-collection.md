@@ -5,6 +5,12 @@ description: User's requirement to support slow automated runs instead of treati
 
 Build around slow, resumable automation when source access requires pacing. The user wants to automate checking system data and is willing to wait to query a larger set, such as 200 dockets.
 
+Do not apply a local PDF-processing time slice to an active paced live search.
+
+**Why:** Loading the real calendar and its required resources can consume several minutes under the protected response-completion pacing, before document processing starts. A local computation deadline would cancel valid source progress.
+
+**How to apply:** Live searches obey source request budgets, pacing, server waits and genuine stop conditions independently of local extraction deadlines.
+
 Run downloads one at a time, with a pause after each download finishes, rather than requiring the user to start each download separately.
 
 **Why:** The user said, “The successful download method should be a continuous search that takes time to pause after each download so as not to trip the too many attempts error.”

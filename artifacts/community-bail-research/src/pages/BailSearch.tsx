@@ -103,6 +103,7 @@ export default function BailSearch() {
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
             {run.status === 'paused' && (recovery?.message || run.reason) ? <p className="notice" role="status" data-testid="text-recovery-message">{recovery?.message || run.reason}</p> : null}
+            {run.status === 'running' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}
             {canResume ? (
               <button type="button" className="btn" disabled={waiting || resume.isPending} data-testid="button-resume-search"
                 onClick={() => run.resumeToken && resume.mutate({ searchId: run.searchId, data: { resumeToken: run.resumeToken } }, { onSuccess: promote })}>

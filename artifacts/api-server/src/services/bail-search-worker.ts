@@ -80,7 +80,9 @@ async function syncLive(search: BailSearchRow) {
   if (job.status === "COMPLETED" && job.calendarComplete && job.paginationComplete && !job.resultCapReached && results.length === total && results.every(row => !row.error)) {
     await db.update(bailSearchesTable).set({ status: "complete", reason: null }).where(eq(bailSearchesTable.id, search.id)); return;
   }
-  if (!["RUNNING", "QUEUED"].includes(job.status) || Date.now() >= (search.leaseExpiresAt?.getTime() ?? 0)) {
+  // The live engine owns its request budgets and waits. The local saved-PDF
+  // processing slice must not cancel a legitimate paced calendar search.
+  if (!["RUNNING", "QUEUED"].includes(job.status)) {
     const source = await discoverySourceStatus();
     await pauseSearch(search, job.message || "Processing paused. Partial results retained.",
       source.nextEligibleAt ? new Date(source.nextEligibleAt) : new Date());
