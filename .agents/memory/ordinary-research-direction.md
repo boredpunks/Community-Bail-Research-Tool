@@ -58,6 +58,14 @@ app and explicitly defined this simpler workflow.
 navigation or extra save-for-review steps. Keep automatic matching into Review
 separate from explicit persistence into Candidates. A display reset is not
 authorization to delete existing saved records.
+
+Retain the original three-box menu as the default destination after workspace
+entry, with boxes opening Search, Review, and Candidates.
+
+**Why:** The user explicitly preferred the original menu with three boxes.
+
+**How to apply:** Keep that entry menu and an easy route back to it while
+preserving the simplified three-screen workflow.
 Report live outcomes separately from local/browser-mocked checks. Pacing
 defaults are not court requirements; preserve only stricter requirements
 actually supported by policy or observed server instructions.

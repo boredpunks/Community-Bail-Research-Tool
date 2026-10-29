@@ -56,7 +56,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <a href="#main" className="sr-only focus:not-sr-only focus:p-3 focus:bg-card">Skip to content</a>
       <header className="border-b-2 border-primary bg-background">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center gap-x-6 gap-y-3 justify-between">
-          <Link href="/" className="block" data-testid="link-home">
+          <Link href="/menu" className="block" aria-label="Return to menu" data-testid="link-home">
             <div className="mono text-2xl md:text-3xl font-bold text-primary title-glow">
               BAIL RESEARCH SEARCH<span className="cursor-block" aria-hidden="true" />
             </div>

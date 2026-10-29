@@ -7,9 +7,9 @@ import { useWorkspaceAccess } from '@/lib/workspace-access';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-/** Accept only same-app absolute paths; anything else falls back to /search. */
+/** Accept only same-app absolute paths; anything else falls back to the menu. */
 export function safeNext(raw: string | null): string {
-  const fallback = '/search';
+  const fallback = '/menu';
   if (!raw) return fallback;
   let value = raw.trim();
   if (!value.startsWith('/') || value.startsWith('//')) return fallback;
