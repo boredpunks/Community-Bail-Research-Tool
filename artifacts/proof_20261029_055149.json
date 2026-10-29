@@ -1,0 +1,18 @@
+[
+  {
+    "index": 0,
+    "docket_number": "MJ-05247-CR-0000502-2025",
+    "hearing_date": "2026-10-28",
+    "hearing_time": "12:51 am",
+    "office": "MDJ-05-2-47",
+    "event_type": "Bail Hearing",
+    "courtroom": null,
+    "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05247-CR-0000502-2025&dnh=bz3yc0mNGOMQzwUjpdqYQQ%3D%3D",
+    "status": "no_verified_bail_text",
+    "error": null,
+    "observations": [],
+    "bail_amounts": [],
+    "pdf_hash": "44580a464bb2efcc493e338b6d020b2534e8e36143d599338e5a0646228f88e6",
+    "processed_at": "2026-10-29T05:51:45.332920"
+  }
+]

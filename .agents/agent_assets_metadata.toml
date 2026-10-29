@@ -28,3 +28,17 @@ mtime_ms = 1792503604794
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/2b1ceac3-e3d4-4155-b38c-9f8e41bf3c99/03fce9fb-620b-4816-b6d0-965d170a17de"
 storage_version_token = "1792503669839097"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "xyaWzMUi-ivJgfq5d9yhV"
+uri = "file://artifacts/proof_20261029_055149.csv"
+type = "table"
+title = "MDJ proof run CSV"
+description = "One-request run record; the PDF was retrieved, but no identity-matched bail observation was extracted."
+logical_id = "2cbb0cd2-beeb-4c56-9df4-864487988537"
+content_hash = "sha256:87d687937b4a61d8edf834d4f89b8952a3141f58bfb44ee380fda7e49d5aed70"
+size = 322
+mtime_ms = 1793253109729
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/2cbb0cd2-beeb-4c56-9df4-864487988537/3f8911a9-863e-46d2-bb6d-9108f43074db"
+storage_version_token = "1793253160951323"
+content_type = "text/csv"
