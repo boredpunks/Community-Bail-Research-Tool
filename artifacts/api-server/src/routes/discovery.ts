@@ -328,7 +328,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/single-document-proof", async 
     if (!queued) throw new Error("Proof job changed during authorization.");
     await tx.insert(discoveryEventsTable).values({
       jobId: job.id, ownerId: job.ownerId, kind: "SINGLE_DOCUMENT_PROOF_AUTHORIZED",
-      message: "One stored CP-05-02-Crim Bail Hearing link authorized once; no Search rerun, URL reconstruction, or second PDF. Existing source ledger and stop conditions remain active.",
+      message: "One stored CP-05-02-Crim Formal Arraignment link authorized once; no Search rerun, URL reconstruction, or second PDF. Existing source ledger and stop conditions remain active.",
     });
     return { job: queued, itemId: item.id, assessmentId: permit!.id, status: 202 as const };
   });

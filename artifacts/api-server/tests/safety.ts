@@ -66,16 +66,31 @@ check(isExactAuthorizedSessionRefreshCriteria(sessionRefreshCriteria));
 check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, requestCap: 501 }));
 check(!isExactAuthorizedSessionRefreshCriteria({ ...sessionRefreshCriteria, addedScope: true }));
 const onePdfCriteria = {
-  resultVersion: 2, courtOffice: "ANY", courtRoom: "ANY", eventType: "Bail Hearing",
-  startDate: "2026-10-28", endDate: "2026-10-31", recordCap: 6, requestCap: 20,
-  matchTarget: 1, matchFilters: {
-    monetaryUpperBoundCents: 2_999_999, monetaryLowerBoundCents: null,
+  resultVersion: 2, courtOffice: "ANY", courtRoom: "ANY", eventType: "Formal Arraignment",
+  startDate: "2026-10-29", endDate: "2026-10-31", recordCap: 200, requestCap: 500,
+  matchTarget: 200, matchFilters: {
+    monetaryUpperBoundCents: 200000, monetaryLowerBoundCents: null,
     inclusiveMaximum: true, excludeShownPosted: false,
   },
 };
-check(validSingleDocumentProofCriteria(onePdfCriteria, new Date("2026-10-28T16:00:00Z")));
-check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, requestCap: 21 }, new Date("2026-10-28T16:00:00Z")));
-check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, addedScope: true }, new Date("2026-10-28T16:00:00Z")));
+check(validSingleDocumentProofCriteria(onePdfCriteria, new Date("2026-10-29T16:00:00Z")));
+check(!validSingleDocumentProofCriteria(onePdfCriteria, new Date("2026-10-30T16:00:00Z")));
+check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, requestCap: 501 }, new Date("2026-10-29T16:00:00Z")));
+check(!validSingleDocumentProofCriteria({ ...onePdfCriteria, addedScope: true }, new Date("2026-10-29T16:00:00Z")));
+const approvedProofRow = {
+  id: singleDocumentProofItemId, docketNumber: "CP-02-CR-0006336-2026",
+  sourceUrl: "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0006336-2026&dnh=offline-fixture",
+  capturedAt: "2026-10-29T16:23:02Z",
+  provenance: {
+    courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS",
+    eventDate: "2026-10-30", eventType: "Formal Arraignment", extractionOutcome: "UNPROCESSED",
+    matchingEvents: [{eventDate: "2026-10-30", eventType: "Formal Arraignment", eventTime: "09:00 am"}],
+  },
+};
+check(validSingleDocumentProofRow(approvedProofRow, new Date("2026-10-29T16:30:00Z")));
+check(!validSingleDocumentProofRow({...approvedProofRow, id: randomUUID()}, new Date("2026-10-29T16:30:00Z")));
+check(!validSingleDocumentProofRow(approvedProofRow, new Date("2026-10-30T16:30:00Z")));
+check(!validSingleDocumentProofRow({...approvedProofRow, provenance: {...approvedProofRow.provenance, extractionOutcome: "EXTRACTED"}}, new Date("2026-10-29T16:30:00Z")));
 check(!validSingleDocumentProofRow({
   id: singleDocumentProofItemId, docketNumber: "", sourceUrl: "", capturedAt: null, provenance: null,
 }, new Date("2026-10-28T16:00:00Z")));

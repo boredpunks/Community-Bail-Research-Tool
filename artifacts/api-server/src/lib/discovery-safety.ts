@@ -5,7 +5,9 @@ import { validCalendarPreviewCriteria } from "./calendar-criteria";
 export const integratedSourceMethod = "playwright-calendar+public-http-pdf-v16";
 export const calendarPreviewMethod = "playwright-calendar-preview-v9";
 export const singleDocumentProofMethod = "public-http-single-pdf-proof-v1";
-export const singleDocumentProofItemId = "68ed5e4d-e993-41a1-9eb6-4af293de6eb8";
+// Explicitly approved one-PDF check from the saved Oct 29–31 search.
+// This is not permission for any second document or another calendar request.
+export const singleDocumentProofItemId = "e081f757-83e5-419c-8f44-96fec2d02282";
 export const resultRetentionMs = 24 * 60 * 60 * 1000;
 export const singleDocumentProofMaxLinkAgeMs = resultRetentionMs;
 export const calendarAuditHeaders = [
@@ -188,12 +190,12 @@ export function validSingleDocumentProofCriteria(value: unknown, now = new Date(
   return Object.keys(criteria).length === 10
     && criteria.resultVersion === 2
     && criteria.courtOffice === "ANY" && criteria.courtRoom === "ANY"
-    && criteria.eventType === "Bail Hearing"
-    && criteria.startDate === today && criteria.endDate === "2026-10-31"
-    && criteria.recordCap === 6 && criteria.requestCap === 20 && criteria.matchTarget === 1
+    && criteria.eventType === "Formal Arraignment"
+    && criteria.startDate === "2026-10-29" && criteria.startDate === today && criteria.endDate === "2026-10-31"
+    && criteria.recordCap === 200 && criteria.requestCap === 500 && criteria.matchTarget === 200
     && !!filters && Object.keys(filters).length === 4
     && filters.monetaryLowerBoundCents === null
-    && filters.monetaryUpperBoundCents === 2_999_999
+    && filters.monetaryUpperBoundCents === 200000
     && filters.inclusiveMaximum === true && filters.excludeShownPosted === false;
 }
 
@@ -212,13 +214,14 @@ export function validSingleDocumentProofRow(input: {
   try { url = new URL(sourceUrl); } catch { return false; }
   return age >= 0 && age <= singleDocumentProofMaxLinkAgeMs
     && proof.courtOffice === "CP-05-02-Crim" && proof.courtType === "COMMON_PLEAS"
-    && proof.eventDate === new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now)
-    && proof.eventType === "Bail Hearing" && proof.extractionOutcome === "UNPROCESSED"
+    && docketNumber === "CP-02-CR-0006336-2026"
+    && proof.eventDate === "2026-10-30"
+    && proof.eventType === "Formal Arraignment" && proof.extractionOutcome === "UNPROCESSED"
     && Array.isArray(events) && events.length === 1
     && !!events[0] && typeof events[0] === "object"
     && (events[0] as Record<string, unknown>).eventDate === proof.eventDate
-    && (events[0] as Record<string, unknown>).eventType === "Bail Hearing"
-    && (events[0] as Record<string, unknown>).eventTime === "08:30 am"
+    && (events[0] as Record<string, unknown>).eventType === "Formal Arraignment"
+    && (events[0] as Record<string, unknown>).eventTime === "09:00 am"
     && url.pathname === "/Report/CpDocketSheet"
     && url.searchParams.getAll("dnh").length === 1
     && Boolean(url.searchParams.get("dnh"));
