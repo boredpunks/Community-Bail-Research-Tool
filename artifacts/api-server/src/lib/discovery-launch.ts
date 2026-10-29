@@ -49,9 +49,19 @@ export function newResearchCriteria(input: Record<string, unknown>): DiscoveryCr
 export async function launchDiscovery(
   criteria: DiscoveryCriteriaData, ownerId: string, ownerIds: string[],
   onCreated?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], job: typeof discoveryJobsTable.$inferSelect) => Promise<void>,
+  beforeLaunch?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<void>,
 ) {
+  class RejectedReplacement extends Error {
+    constructor(readonly result: { error: string; status: number }) { super(result.error); }
+  }
+  const reject = (error: string, status: number) => {
+    if (beforeLaunch) throw new RejectedReplacement({ error, status });
+    return { error, status };
+  };
+  try {
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(74651284)`);
+    if (beforeLaunch) await beforeLaunch(tx);
     const active = await tx.select().from(discoveryJobsTable).where(and(
       inArray(discoveryJobsTable.ownerId, ownerIds), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
     const duplicate = active.find(job => criteriaIdentity(job.criteria) === criteriaIdentity(criteria));
@@ -59,17 +69,21 @@ export async function launchDiscovery(
       if (onCreated) await onCreated(tx, duplicate);
       return { job: duplicate };
     }
-    if (active.length) return { error: "Pause or finish the active research job before starting another.", status: 409 };
+    if (active.length) return reject("Another session has an active research job. Wait until it stops before starting another.", 409);
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
     // Discovery may proceed even while the separate document client is blocked.
     // The request scheduler still denies every unverified PDF transmission.
     const block = await calendarAdmission(tx, source);
-    if (block) return { error: `Collection blocked: ${block}. Existing evidence is retained.`, status: 409 };
+    if (block) return reject(`Collection blocked: ${block}. Existing evidence is retained.`, 409);
     const [job] = await tx.insert(discoveryJobsTable).values({ ownerId, criteria,
       message: "Queued with fixed calendar criteria, monetary filters, target, and budgets." }).returning();
     if (onCreated) await onCreated(tx, job!);
     return { job: job! };
   });
-  return result.job ? { payload: await jobSummary(result.job), status: 201, error: undefined }
+  return "job" in result ? { payload: await jobSummary(result.job), status: 201, error: undefined }
     : {payload: undefined, error: result.error, status: result.status};
+  } catch (error) {
+    if (error instanceof RejectedReplacement) return { payload: undefined, ...error.result };
+    throw error;
+  }
 }

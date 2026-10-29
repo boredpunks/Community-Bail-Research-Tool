@@ -329,6 +329,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getSaveBailSearchResultMutationOptions(options));
     }
 
+export const getListBailSearchCandidatesUrl = () => {
+
+
+
+
+  return `/api/bail-search/candidates`
+}
+
+/**
+ * @summary List explicitly saved search candidates in this workspace
+ */
+export const listBailSearchCandidates = async ( options?: Parameters<typeof customFetch>[1]): Promise<BailSearchResult[]> => {
+
+  return customFetch<BailSearchResult[]>(getListBailSearchCandidatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBailSearchCandidatesQueryKey = () => {
+    return [
+    `/api/bail-search/candidates`
+    ] as const;
+    }
+
+
+export const getListBailSearchCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof listBailSearchCandidates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBailSearchCandidatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBailSearchCandidates>>> = ({ signal }) => listBailSearchCandidates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBailSearchCandidatesQueryResult = NonNullable<Awaited<ReturnType<typeof listBailSearchCandidates>>>
+export type ListBailSearchCandidatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List explicitly saved search candidates in this workspace
+ */
+
+export function useListBailSearchCandidates<TData = Awaited<ReturnType<typeof listBailSearchCandidates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBailSearchCandidatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetBailSearchReadinessUrl = () => {
 
 

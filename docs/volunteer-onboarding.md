@@ -1,7 +1,7 @@
 # Volunteer access and first-use guide
 
 ## Release status
-This guide describes the live-calendar and collected-evidence volunteer search.
+This guide describes the Search → Review → Candidates workflow.
 Publish the verified main branch before circulating the invitation. A working
 existing production URL does not establish that these changes are already published.
 
@@ -12,27 +12,22 @@ channel. Never forward passwords in the invitation, export, or feedback form.
 The shared password does not create individual volunteer accounts.
 
 ## First search
-1. Enter the workspace. Search Bail is the starting page.
-2. Live calendar search is the default. Choose a supported event and court office,
-   a hearing window of up to seven days starting today or later, and a maximum
-   **recorded bail set**. Dates are not filing dates; the amount is not an amount
-   payable or a release-cost estimate. Source limits or missing documents may pause
-   a run. Collected workspace evidence is also available as a separate mode.
-3. In collected-evidence mode, the notice reports the distinct collected dockets
-   available to the workspace. This is not the number with usable PDF evidence or
-   a countywide count.
-4. Search. Read the checked/pending counts and any incomplete-coverage warning.
-   Missing evidence is not proof of no bail or zero bail.
-5. Review the decision date, category, page and quote. Open a source link only
-   when available; links may expire or require normal court access.
-6. Download all results or only amount-filter matches. CSV metadata identifies
-   partial searches, source scope, selected criteria and the exported subset.
-7. Save an eligible result for review only after accepting that its evidence will
-   enter the shared workspace. Incomplete cache provenance cannot be silently
-   promoted into a verified observation; use verified evidence entry if needed.
-8. Source confirmation and applicable-order review are separate decisions. Leave
-   the applicable order unresolved if you cannot establish it. Saving or matching
-   an amount never establishes current custody, eligibility, or an amount due.
+1. Open **Search**. Choose hearing start, hearing end, and maximum recorded bail.
+   The window must start today or later and cover at most seven days. Optional
+   Settings contains the supported court office and calendar event.
+2. Click **Search** below the settings to launch the live court search.
+3. Raw, unfiltered rows appear below the button: row number, docket, hearing date,
+   and bail amount when available. Missing amounts are not zero amounts.
+4. **Review** automatically shows matching results from this search as they arrive.
+   Each row contains the docket, bail amount, and source-PDF citation when available.
+5. Mark a Review row **Candidate** to save it to the shared **Candidates** page.
+   Everyone with workspace access can see saved candidates. Missing or unverified
+   evidence cannot be silently promoted into a verified saved observation.
+6. Launching a new search replaces the displayed Search and Review results.
+   Candidates remain saved. If a launch is rejected, the previous results remain.
+
+A match or candidate marking does not establish custody, release eligibility,
+the applicable order, or an amount payable.
 
 ## Paused searches
 - **Evidence needed:** review the checked results now; obtain verified missing
@@ -40,11 +35,12 @@ The shared password does not create individual volunteer accounts.
 - **Wait until a time:** results remain available; continue only when offered.
 - **Source blocked:** preserve results and contact the coordinator rather than
   repeatedly retrying or bypassing access restrictions.
-- **New search required:** use Edit this search to copy criteria into a new run.
+- **New search required:** enter the hearing dates and amount on Search and launch
+  a new run. A successful new launch stops the previous run from this session.
 
-Search history is tied to the current signed-in session, not an individual
+The latest search is tied to the current signed-in session, not an individual
 account. Locking the workspace or session expiry ends access to private searches;
-explicitly saved observations remain in the shared workspace.
+explicitly saved candidates remain in the shared workspace.
 
 ## Tell us what you actually need
 Open https://community-bail-research-tool.replit.app/feedback .
@@ -60,9 +56,9 @@ in your own words; this form is for real volunteer needs, not eligibility review
 ## Coordinator release checklist
 - Confirm main contains the verified workflow and publish the update.
 - Apply the additive database schema changes through the publishing flow.
-- Verify the published readiness/count and a collected-evidence search without
-  making new court requests. Development records are not automatically production
-  data; a real production count of zero must remain zero, not a preview count.
+- Verify the three-page workflow and source readiness without sending court
+  requests solely for interface testing. Development records are not automatically
+  production data; an empty production list must remain empty.
 - Send the invitation only after the updated release is reachable.
 - Deliver the shared password separately.
 - Review actual feedback with volunteers before choosing further features.

@@ -60,6 +60,18 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BailSearchResult" }
+  /bail-search/candidates:
+    get:
+      operationId: listBailSearchCandidates
+      summary: List explicitly saved search candidates in this workspace
+      responses:
+        "200":
+          description: Persisted candidates, independent of the latest search
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BailSearchResult" }
   /bail-search/readiness:
     get:
       operationId: getBailSearchReadiness

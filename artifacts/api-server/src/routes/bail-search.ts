@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { db, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, discoverySourceTable, volunteerFeedbackTable } from "@workspace/db";
+import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, discoverySourceTable, volunteerFeedbackTable } from "@workspace/db";
 import { StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody, SaveBailSearchResultBody, SaveBailSearchResultParams, ExportBailSearchQueryParams } from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
 import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, searchRecovery, enrichedResult, validResumeToken, validateSearchDates } from "../services/bail-search-store";
-import { shareResult } from "../services/bail-search-evidence";
+import { safeDocketLink, shareResult } from "../services/bail-search-evidence";
 import { easternToday } from "../lib/discovery";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
@@ -27,6 +27,35 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/readiness", async (_req, res) => { res.json(await calendarSearchReadiness(getWorkspaceIdentity(res).ownerIds)); });
+router.get("/candidates", async (_req, res) => {
+  const rows = await db.select({ result: bailSearchResultsTable, search: bailSearchesTable, saved: bailRecordsTable })
+    .from(bailSearchResultsTable)
+    .innerJoin(bailSearchesTable, eq(bailSearchesTable.id, bailSearchResultsTable.searchId))
+    .innerJoin(bailRecordsTable, eq(bailRecordsTable.id, bailSearchResultsTable.savedRecordId))
+    .where(inArray(bailRecordsTable.ownerId, getWorkspaceIdentity(res).ownerIds))
+    .orderBy(desc(bailRecordsTable.createdAt));
+  const seen = new Set<string>();
+  const unique = rows.filter(({ result }) => {
+    if (seen.has(result.savedRecordId!)) return false;
+    seen.add(result.savedRecordId!);
+    return true;
+  });
+  res.json(await Promise.all(unique.map(async ({ result, search, saved }) => {
+    const entry = saved.discoveryEvidence?.entries.find(value =>
+      value.orderDate === saved.orderDate && value.amountCents === saved.amountCents && value.bailCategory === saved.bailCategory);
+    return {
+      ...await enrichedResult(search, result),
+      // A saved candidate is a snapshot, not the worker's later mutable result.
+      docket_number: saved.docketNumber,
+      bail_amount: saved.amountCents === null ? null : saved.amountCents / 100,
+      decision_date: saved.orderDate,
+      source_url: safeDocketLink(saved.sourceUrl, saved.docketNumber),
+      source_retrieved_at: saved.sourceRetrievedAt.toISOString(),
+      evidence_page: entry?.sourcePages?.[0] ?? null,
+      saved_record_id: saved.id,
+    };
+  })));
+});
 router.get("/feedback", async (_req, res) => {
   const rows = await db.select().from(volunteerFeedbackTable).orderBy(desc(volunteerFeedbackTable.createdAt)).limit(100);
   res.json(rows.map(({ ownerId: _owner, createdAt, ...row }) => ({ ...row, createdAt: createdAt.toISOString() })));
@@ -99,6 +128,19 @@ router.post("/search", async (req, res) => {
           leaseExpiresAt: new Date(Date.now() + SEARCH_SLICE_MS),
         }).returning();
         searchId = created!.id;
+      }, async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
+        const previous = await tx.select().from(bailSearchesTable).where(and(
+          eq(bailSearchesTable.ownerId, ownerId), eq(bailSearchesTable.status, "running"),
+        ));
+        for (const prior of previous) {
+          if (prior.discoveryJobId) await tx.update(discoveryJobsTable)
+            .set({ status: "PAUSED", message: "Replaced by a new search.", updatedAt: new Date() })
+            .where(and(eq(discoveryJobsTable.id, prior.discoveryJobId), inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"])));
+          await tx.update(bailSearchesTable).set({
+            status: "paused", reason: "Replaced by a new search.", resumeVersion: prior.resumeVersion + 1, updatedAt: new Date(),
+          }).where(eq(bailSearchesTable.id, prior.id));
+        }
       });
     } catch (error) {
       if (error instanceof ActiveVolunteerSearchError) {
@@ -170,6 +212,9 @@ router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
     eq(bailSearchResultsTable.id, params.data.resultId), eq(bailSearchResultsTable.searchId, res.locals.search.id),
   ));
   if (!row) { res.status(404).json({ error: "Result not found in this search." }); return; }
+  if (!row.qualifies || row.ambiguous) {
+    res.status(409).json({ error: "Only matching, unambiguous results can be marked as candidates." }); return;
+  }
   let recordId: string;
   try { recordId = await shareResult(res.locals.search, row, getWorkspaceIdentity(res).ownerId); }
   catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : "Evidence cannot be saved." }); return; }

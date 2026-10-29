@@ -92,6 +92,34 @@ export const SaveBailSearchResultResponse = zod.object({
 })
 
 
+/**
+ * @summary List explicitly saved search candidates in this workspace
+ */
+export const ListBailSearchCandidatesResponseItem = zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
+})
+export const ListBailSearchCandidatesResponse = zod.array(ListBailSearchCandidatesResponseItem)
+
+
 export const GetBailSearchReadinessResponse = zod.object({
   "calendarVerified": zod.boolean(),
   "liveAvailable": zod.boolean(),

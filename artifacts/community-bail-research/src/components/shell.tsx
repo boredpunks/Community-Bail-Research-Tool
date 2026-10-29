@@ -44,14 +44,9 @@ function LockWorkspace() {
 }
 
 const NAV = [
-  { href: '/menu', label: 'Menu' },
-  { href: '/search', label: 'Search bail' },
-  { href: '/discovery', label: 'Advanced court search' },
+  { href: '/search', label: 'Search' },
   { href: '/review', label: 'Review' },
-  { href: '/candidates', label: 'Saved dockets' },
-  { href: '/records/new', label: 'Enter record' },
-  { href: '/research', label: 'Saved records' },
-  { href: '/feedback', label: 'Feedback' },
+  { href: '/candidates', label: 'Candidates' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {

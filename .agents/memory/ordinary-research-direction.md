@@ -29,8 +29,9 @@ another and explicitly requested a working source-action/PDF-upload fallback.
 **How to apply:** Finish authorized offline implementation and verification
 without asking whether to begin it. Do not commit personal PDF records.
 
-For the volunteer Bail Search, make live calendar search the default and keep
-collected workspace evidence as an explicit alternate mode. Do not describe live
+For the volunteer Bail Search, use the live calendar search. The later
+three-screen simplification supersedes the collected-evidence alternate-mode UI.
+Do not describe live
 search as unavailable or “coming soon” when runtime readiness allows it; show the
 actual date, scope, quota and pacing limits instead.
 
