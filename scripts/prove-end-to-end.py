@@ -28,6 +28,8 @@ import requests
 BASE_URL = "https://ujsportal.pacourts.us"
 USER_AGENT = "CommunityBailResearch-SourceAssessment/1.0"
 MAX_PDF_SIZE = 4 * 1024 * 1024
+CACHE_DIR = Path(".cache/community-bail-proof")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 PROOF_ROWS = [
     {
@@ -91,9 +93,19 @@ def classify_bail(bail_text: str) -> dict:
     return result
 
 
-def fetch_pdf(url: str) -> tuple[bytes, str]:
-    """Fetch exactly once, without redirects or automatic retries."""
-    response = requests.get(
+def fetch_pdf(url: str) -> tuple[bytes, str, str]:
+    """Use a validated cached PDF, or fetch once and cache before parsing."""
+    cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cache_file = CACHE_DIR / f"{cache_key}.pdf"
+
+    if cache_file.exists():
+        pdf_bytes = cache_file.read_bytes()
+        if len(pdf_bytes) > MAX_PDF_SIZE or not pdf_bytes.startswith(b"%PDF-"):
+            raise RuntimeError("Cached PDF failed validation; refusing another source request")
+        print(f"      Using cached PDF: {cache_file}")
+        return pdf_bytes, hashlib.sha256(pdf_bytes).hexdigest(), str(cache_file)
+
+    with requests.get(
         url,
         headers={
             "User-Agent": USER_AGENT,
@@ -102,38 +114,42 @@ def fetch_pdf(url: str) -> tuple[bytes, str]:
         timeout=30,
         allow_redirects=False,
         stream=True,
-    )
+    ) as response:
+        if response.status_code == 401:
+            raise RuntimeError("HTTP 401: Access denied")
+        if response.status_code == 403:
+            raise RuntimeError("HTTP 403: Forbidden")
+        if response.status_code == 429:
+            raise RuntimeError("HTTP 429: Rate limited; stop without retrying")
+        if response.status_code != 200:
+            raise RuntimeError(f"HTTP {response.status_code}")
 
-    if response.status_code == 401:
-        raise RuntimeError("HTTP 401: Access denied")
-    if response.status_code == 403:
-        raise RuntimeError("HTTP 403: Forbidden")
-    if response.status_code == 429:
-        raise RuntimeError("HTTP 429: Rate limited; stop without retrying")
-    if response.status_code != 200:
-        raise RuntimeError(f"HTTP {response.status_code}")
+        content_type = response.headers.get("Content-Type", "")
+        if "application/pdf" not in content_type and "application/octet-stream" not in content_type:
+            raise RuntimeError(f"Wrong Content-Type: {content_type}")
 
-    content_type = response.headers.get("Content-Type", "")
-    if "application/pdf" not in content_type and "application/octet-stream" not in content_type:
-        raise RuntimeError(f"Wrong Content-Type: {content_type}")
-
-    chunks = []
-    total = 0
-    for chunk in response.iter_content(chunk_size=8192):
-        total += len(chunk)
-        if total > MAX_PDF_SIZE:
-            raise RuntimeError("PDF exceeds 4MB limit")
-        chunks.append(chunk)
+        chunks = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=8192):
+            total += len(chunk)
+            if total > MAX_PDF_SIZE:
+                raise RuntimeError("PDF exceeds 4MB limit")
+            chunks.append(chunk)
 
     pdf_bytes = b"".join(chunks)
     if not pdf_bytes.startswith(b"%PDF-"):
         raise RuntimeError("Invalid PDF header")
 
-    return pdf_bytes, hashlib.sha256(pdf_bytes).hexdigest()
+    pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    temp_file = cache_file.with_suffix(".pdf.tmp")
+    temp_file.write_bytes(pdf_bytes)
+    temp_file.replace(cache_file)
+    print(f"      Cached validated PDF: {cache_file}")
+    return pdf_bytes, pdf_hash, str(cache_file)
 
 
 def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
-    """Extract candidate bail-table lines, requiring an exact docket identity."""
+    """Bind dates and amounts in bail rows; require exact docket identity."""
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
     observations = []
 
@@ -155,60 +171,81 @@ def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
         if pdf_docket != expected_docket:
             continue
 
-        lines = page_text.split("\n")
-        in_bail_section = False
-        bail_amounts = []
+        bail_start = page_text.find(heading)
+        if bail_start < 0:
+            continue
+        section_end = len(page_text)
+        upper_text = page_text.upper()
+        for marker in (
+            "BAIL POSTED",
+            "CHARGES",
+            "DEFENDANT INFORMATION",
+            "CONFINEMENT",
+            "CASE PARTICIPANTS",
+        ):
+            marker_pos = upper_text.find(marker, bail_start + len(heading))
+            if marker_pos >= 0:
+                section_end = min(section_end, marker_pos)
+        bail_section = page_text[bail_start:section_end]
 
-        for line in lines:
-            if heading in line or (heading == "BAIL" and line.strip() == "BAIL"):
-                in_bail_section = True
+        date_matches = list(
+            re.finditer(r"(?<!\d)(\d{1,2}/\d{1,2}/\d{4})(?!\d)", bail_section)
+        )
+        bail_rows = []
+        for row_index, date_match in enumerate(date_matches):
+            row_start = date_match.start()
+            row_end = (
+                date_matches[row_index + 1].start()
+                if row_index + 1 < len(date_matches)
+                else len(bail_section)
+            )
+            row_text = bail_section[row_start:row_end].strip()
+            amount_matches = list(
+                re.finditer(r"\$(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{2}))?", row_text)
+            )
+            if not amount_matches:
                 continue
 
-            if not in_bail_section:
+            amount_match = amount_matches[-1]
+            amount_text = amount_match.group(1).replace(",", "")
+            cents = amount_match.group(2) or "00"
+            amount = int(amount_text) if cents == "00" else float(f"{amount_text}.{cents}")
+            if amount <= 0:
                 continue
 
-            amount_match = re.search(r"\$(\d{1,3}(?:,\d{3})*|\d+)(?:\.00)?", line)
-            if amount_match:
-                amount = int(amount_match.group(1).replace(",", ""))
-                if amount > 0:
-                    line_lower = line.lower()
-                    is_nonmonetary = "nonmonetary" in line_lower or "ror" in line_lower
-                    pct_match = re.search(r"(\d+)\s*%", line)
-                    bail_type = "Monetary"
-                    if "cash" in line_lower:
-                        bail_type = "Cash"
-                    elif "surety" in line_lower:
-                        bail_type = "Surety"
-                    elif is_nonmonetary:
-                        bail_type = "Nonmonetary"
+            row_lower = row_text.lower()
+            is_nonmonetary = "nonmonetary" in row_lower or "ror" in row_lower
+            bail_type = "Nonmonetary" if is_nonmonetary else "Monetary"
+            if "cash" in row_lower:
+                bail_type = "Cash"
+            elif "surety" in row_lower:
+                bail_type = "Surety"
+            pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%", row_text)
 
-                    bail_amounts.append(
-                        {
-                            "page": page_num + 1,
-                            "amount": amount,
-                            "bail_type": bail_type,
-                            "percentage": int(pct_match.group(1)) if pct_match else None,
-                            "quote": line.strip()[:500],
-                            "classification": (
-                                "nonmonetary" if is_nonmonetary else "monetary"
-                            ),
-                            "posted": None,
-                        }
-                    )
+            try:
+                parsed_date = datetime.strptime(date_match.group(1), "%m/%d/%Y").date()
+            except ValueError:
+                continue
 
-            if any(
-                heading_text in line.upper()
-                for heading_text in (
-                    "CHARGES",
-                    "DEFENDANT INFORMATION",
-                    "CONFINEMENT",
-                    "CASE PARTICIPANTS",
-                )
-            ):
-                break
+            bail_rows.append(
+                {
+                    "date": parsed_date.isoformat(),
+                    "date_sort": parsed_date,
+                    "amount": amount,
+                    "bail_type": bail_type,
+                    "percentage": float(pct_match.group(1)) if pct_match else None,
+                    "quote": row_text[:500],
+                    "classification": "monetary" if not is_nonmonetary else "nonmonetary",
+                    "posted": None,
+                }
+            )
 
-        if bail_amounts:
-            observations.append(bail_amounts[-1])
+        monetary_rows = [row for row in bail_rows if row["classification"] == "monetary"]
+        if monetary_rows:
+            latest = max(monetary_rows, key=lambda row: row["date_sort"])
+            latest.pop("date_sort")
+            latest["page"] = page_num + 1
+            observations.append(latest)
 
     document.close()
     return observations
@@ -229,14 +266,16 @@ def process_docket(row: dict, index: int, total: int) -> dict:
         "observations": [],
         "bail_amounts": [],
         "pdf_hash": None,
+        "pdf_cache_path": None,
         "processed_at": datetime.now().isoformat(),
     }
 
     try:
         print(f"\n[{index + 1}/{total}] {result['docket_number']}")
         print("      Fetching PDF (single request; no retry)...")
-        pdf_bytes, pdf_hash = fetch_pdf(row["sourceUrl"])
+        pdf_bytes, pdf_hash, pdf_cache_path = fetch_pdf(row["sourceUrl"])
         result["pdf_hash"] = pdf_hash
+        result["pdf_cache_path"] = pdf_cache_path
         print(f"      PDF received: {len(pdf_bytes):,} bytes ({pdf_hash[:16]}...)")
 
         print("      Extracting candidate bail text...")
@@ -259,7 +298,9 @@ def process_docket(row: dict, index: int, total: int) -> dict:
                 )
                 print(
                     f"      Candidate: ${observation['amount']:,} "
-                    f"({observation['bail_type']}{pct}), page {observation['page']}"
+                    f"({observation['bail_type']}{pct}), "
+                    f"effective {observation.get('date', 'date unknown')}, "
+                    f"page {observation['page']}"
                 )
             print("      Verify the quoted docket identity and bail terms manually.")
         else:
@@ -293,6 +334,7 @@ def write_outputs(results: list[dict]) -> tuple[str, str]:
                 "classification",
                 "percentage",
                 "posted",
+                "bail_date",
                 "bail_page",
                 "pdf_hash",
                 "status",
@@ -316,6 +358,7 @@ def write_outputs(results: list[dict]) -> tuple[str, str]:
                             observation["classification"],
                             observation["percentage"],
                             observation.get("posted"),
+                            observation.get("date"),
                             observation["page"],
                             result["pdf_hash"],
                             result["status"],
@@ -331,6 +374,7 @@ def write_outputs(results: list[dict]) -> tuple[str, str]:
                         result["office"],
                         result["event_type"],
                         result.get("courtroom"),
+                        None,
                         None,
                         None,
                         None,

@@ -56,3 +56,17 @@ mtime_ms = 1793254132952
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/c28c8f28-ec37-4813-b88d-4447d6b3ad7f/2bf8dae1-1d27-403b-83e5-fe7a8b273544"
 storage_version_token = "1793254192376488"
 content_type = "text/csv"
+
+[[outputs]]
+id = "aQGLdNONX1aoofccW8U2U"
+uri = "file://artifacts/proof_20261029_063610.csv"
+type = "table"
+title = "Verified MDJ bail extraction CSV"
+description = "The cached PDF page 3 shows the 10/28/2026 bail setting of $1,000 at 10%; posted-bail transactions were kept separate."
+logical_id = "95f9d333-4dd8-42c1-9a05-ae7255c62b75"
+content_hash = "sha256:f2857ddd25193bcd5ef1b31e3784f3caaab9779a118d02eff68f9f5b495a14e8"
+size = 366
+mtime_ms = 1793255770748
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/95f9d333-4dd8-42c1-9a05-ae7255c62b75/c8b151f5-bf68-4f33-b9b8-b66fc1c369ff"
+storage_version_token = "1793255931775121"
+content_type = "text/csv"

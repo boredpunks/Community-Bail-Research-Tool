@@ -3,7 +3,10 @@
 
 # No need to store the pnpm store twice.
 .local
+.cache/
 /generated-artifacts/
+/artifacts/proof_*.csv
+/artifacts/proof_*.json
 /attached_assets/0_MdjDocketSheet_1792386602509.pdf
 /attached_assets/Pasted-I-checked-GitHub-directly-PR-2-is-open-and-unmerged-at-_1792419734785.txt
 /attached_assets/Pasted-PDF-remove-it-from-the-branch-preserve-the-local-file-R_1792422778869.txt
