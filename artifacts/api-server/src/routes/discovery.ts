@@ -10,6 +10,7 @@ import {
   ListDiscoveryAssessmentsResponse,
   CreateDiscoveryJobBody,
   StartSingleDocumentProofBody, StartSingleDocumentProofParams, StartSingleDocumentProofResponse,
+  GetResearchOperationsResponse,
 } from "@workspace/api-zod";
 import { discoveryEvent, discoveryPolicy, easternToday, jobSummary } from "../lib/discovery";
 import { serializeBailRecord } from "../lib/bail-records";
@@ -98,14 +99,16 @@ router.get("/discovery/operations", async (_req, res): Promise<void> => {
   const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
   const calendarBlock = await calendarAdmission(db, source);
   const documentBlock = (await discoverySourceStatus()).blockedReason;
-  res.json({
+  const payload = {
     calendarEnabled: !calendarBlock,
     calendarBlockedReason: calendarBlock,
     documentEnabled: !documentBlock,
     documentBlockedReason: documentBlock,
     pacing: researchPacing,
     notice: "Calendar discovery and document retrieval have separate source-access readiness. Offline PDF verification remains available.",
-  });
+  };
+  GetResearchOperationsResponse.parse(payload);
+  res.json(payload);
 });
 
 router.post(["/discovery/calendar-previews", "/discovery/searches"], async (req, res): Promise<void> => {

@@ -49,7 +49,7 @@ paths:
                   calendarEnabled: { type: boolean }
                   calendarBlockedReason: { type: ["string", "null"] }
                   documentEnabled: { type: boolean }
-                  documentBlockedReason: { type: string }
+                  documentBlockedReason: { type: ["string", "null"] }
                   pacing:
                     type: object
                     additionalProperties: { type: integer }

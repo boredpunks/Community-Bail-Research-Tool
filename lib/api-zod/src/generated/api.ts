@@ -39,7 +39,7 @@ export const GetResearchOperationsResponse = zod.object({
   "calendarEnabled": zod.boolean(),
   "calendarBlockedReason": zod.string().nullable(),
   "documentEnabled": zod.boolean(),
-  "documentBlockedReason": zod.string(),
+  "documentBlockedReason": zod.string().nullable(),
   "pacing": zod.record(zod.string(), zod.number().int()),
   "notice": zod.string()
 })

@@ -58,11 +58,16 @@ import { calendarPreviewRequestAllowed, qualifyingMonetaryTotal, throttleDeadlin
 import { makeCalendarPreviewCriteria } from "../src/lib/calendar-criteria";
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import type { DiscoveryProvenanceData } from "@workspace/db";
+import { GetResearchOperationsResponse } from "@workspace/api-zod";
 
 const source = {blockedReason:"ACCESS_DENIED", pausedUntil:null, latencyWarning:null} as any;
 const denial = {method:"GET",path:"/Report/MdjDocketSheet",statusCode:401,outcome:"ACCESS_DENIED"};
 assert.equal(calendarOperationBlock(source,[denial]),null);
 assert.equal(source.blockedReason,"ACCESS_DENIED"); // No relabel or clearance.
+assert.equal(calendarOperationBlock(
+  {...source,blockedReason:"SOURCE_VALIDATION_BARRIER"},[]),null);
+assert.equal(calendarOperationBlock(
+  {...source,blockedReason:"COLLECTION_NOT_APPROVED"},[]),null);
 assert.equal(calendarOperationBlock(source,[]),"ACCESS_DENIED");
 assert.equal(calendarOperationBlock(source,[{...denial,path:"/CaseSearch"}]),"ACCESS_DENIED");
 assert.equal(calendarOperationBlock(source,[denial,{...denial,outcome:"CHALLENGE",path:"/CaseSearch"}]),"ACCESS_DENIED");
@@ -81,6 +86,20 @@ for (const origin of [
 assert.equal(calendarOperationBlock(retainedSizeLimit,[]),"SIZE_LIMIT");
 assert.equal(calendarOperationBlock({...retainedSizeLimit,pausedUntil:new Date(Date.now()+60_000)},
   [sizeLimitCalendarRequest]),"SOURCE_COOLDOWN");
+const calendarReadyDocumentBlocked = GetResearchOperationsResponse.parse({
+  calendarEnabled: true, calendarBlockedReason: null,
+  documentEnabled: false, documentBlockedReason: "ACCESS_DENIED",
+  pacing: {}, notice: "Separate readiness.",
+});
+assert.equal(calendarReadyDocumentBlocked.calendarEnabled, true);
+assert.equal(calendarReadyDocumentBlocked.documentEnabled, false);
+const calendarBlockedDocumentReady = GetResearchOperationsResponse.parse({
+  calendarEnabled: false, calendarBlockedReason: "REQUEST_IN_FLIGHT",
+  documentEnabled: true, documentBlockedReason: null,
+  pacing: {}, notice: "Separate readiness.",
+});
+assert.equal(calendarBlockedDocumentReady.calendarEnabled, false);
+assert.equal(calendarBlockedDocumentReady.calendarBlockedReason, "REQUEST_IN_FLIGHT");
 for(const path of ["/Report/MdjDocketSheet","/Report/CpDocketSheet"])
   assert.equal(calendarPreviewRequestAllowed(path,"GET"),false);
 assert.equal(calendarPreviewRequestAllowed("/CaseSearch","POST"),true);

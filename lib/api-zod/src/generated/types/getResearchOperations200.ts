@@ -12,7 +12,8 @@ export type GetResearchOperations200 = {
   /** @nullable */
   calendarBlockedReason: string | null;
   documentEnabled: boolean;
-  documentBlockedReason: string;
+  /** @nullable */
+  documentBlockedReason: string | null;
   pacing: GetResearchOperations200Pacing;
   notice: string;
 };

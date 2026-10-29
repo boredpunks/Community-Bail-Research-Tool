@@ -280,6 +280,8 @@ def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
                 "DEFENDANT INFORMATION",
                 "CONFINEMENT",
                 "CASE PARTICIPANTS",
+                "MDJS 1200",
+                "PRINTED:",
             ):
                 marker_pos = upper_text.find(marker, bail_start + len(heading))
                 if marker_pos >= 0:
@@ -312,7 +314,7 @@ def extract_bail(pdf_bytes: bytes, expected_docket: str) -> list[dict]:
                         else float(f"{amount_text}.{cents}")
                     )
 
-                if "denied" in row_lower:
+                if re.search(r"\b(?:denied|deny)\b", row_lower):
                     classification, bail_type = "denied", "Denied"
                 elif "unsecured" in row_lower:
                     classification, bail_type = "unsecured", "Unsecured"

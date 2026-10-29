@@ -70,3 +70,31 @@ mtime_ms = 1793255770748
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/95f9d333-4dd8-42c1-9a05-ae7255c62b75/c8b151f5-bf68-4f33-b9b8-b66fc1c369ff"
 storage_version_token = "1793255931775121"
 content_type = "text/csv"
+
+[[outputs]]
+id = "FgpzfxcPkK99EOSJid-1y"
+uri = "file://artifacts/proof_20261029_074758.csv"
+type = "table"
+title = "Six-docket bail results (CSV)"
+description = "Sanitized CSV from six saved dockets; no new requests on the offline rerun."
+logical_id = "8233b4bf-813d-4d46-87a0-f431d4d8955b"
+content_hash = "sha256:a491a29bc6e5f6e78383314d8d339e1d86c597342f6f77a0c2282f53faecfb6d"
+size = 2470
+mtime_ms = 1793260078787
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/8233b4bf-813d-4d46-87a0-f431d4d8955b/10369be0-dc69-4860-b77f-8837293235b4"
+storage_version_token = "1793260356240172"
+content_type = "text/csv"
+
+[[outputs]]
+id = "lc8Xe9a592CjAPTinRBuk"
+uri = "file://artifacts/proof_20261029_074758.json"
+type = "unspecified"
+title = "Six-docket bail results (JSON)"
+description = "Detailed sanitized extraction with source references, candidate classifications, and request counts."
+logical_id = "a89b1aec-6e00-46c9-81fc-85cd166ef4ba"
+content_hash = "sha256:3e73b8e756e0dae4d67629ca75f131d3314dbf07e33475b7d48b8810fa71ffe4"
+size = 9266
+mtime_ms = 1793260078791
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/a89b1aec-6e00-46c9-81fc-85cd166ef4ba/19489b46-1056-4403-9b33-7b2ced764eed"
+storage_version_token = "1793260356772657"
+content_type = "application/octet-stream"

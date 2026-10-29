@@ -3,8 +3,10 @@ import { Link } from 'wouter';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetDiscoveryPolicy,
+  useGetResearchOperations,
   useCreateDiscoveryJob,
   getGetDiscoveryPolicyQueryKey,
+  getGetResearchOperationsQueryKey,
   useListDiscoveryJobs,
   useGetDiscoveryJob,
   useControlDiscoveryJob,
@@ -18,6 +20,7 @@ import {
 } from '@workspace/api-client-react';
 import { projectQualifyingRows, qualifyingRowsCsv, matchingEvents, eventConflict, type QualifyingRow, type MonetaryFilters } from '@workspace/bail-research';
 import { Shell, PageHead } from '@/components/shell';
+import { SourceReadiness } from '@/components/source-readiness';
 import {
   uploadLocalDocument, isHttpsPortal,
   type ReportWithRequests, type EntryExt, type LocalUploadResult,
@@ -271,6 +274,11 @@ function EvidenceRow({ row, it }: { row: QualifyingRow; it: DiscoveryItem }) {
 export default function Discovery() {
   const qc = useQueryClient();
   const policy = useGetDiscoveryPolicy({ query: { queryKey: getGetDiscoveryPolicyQueryKey() } });
+  const operations = useGetResearchOperations({ query: {
+    queryKey: getGetResearchOperationsQueryKey(),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  } });
   const jobs = useListDiscoveryJobs({ query: {
     queryKey: getListDiscoveryJobsQueryKey(),
   } });
@@ -323,6 +331,7 @@ export default function Discovery() {
     if (id) qc.invalidateQueries({ queryKey: getGetDiscoveryJobQueryKey(id) });
     qc.invalidateQueries({ queryKey: getListDiscoveryJobsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetDiscoveryPolicyQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetResearchOperationsQueryKey() });
   }
 
   // Refresh job list when the selected job reaches a terminal state.
@@ -436,13 +445,6 @@ export default function Discovery() {
     : job.status === 'COMPLETED' && job.paginationComplete && job.unprocessed === 0 ? `Target unmet: candidates exhausted with ${job.matching} of ${targetN} matching dockets.`
     : `Target unmet: the job stopped (${job.status}) before full coverage; ${job.matching} of ${targetN} matching dockets.`;
   const pct = job && job.discovered > 0 ? Math.min(100, Math.round((job.processed / job.discovered) * 100)) : 0;
-  const blockers = pol ? [
-    !pol.collectionEnabled ? 'Automated collection is not enabled in the current policy.' : null,
-    pol.blockedReason ? `Blocked: ${pol.blockedReason}` : null,
-    pol.pausedUntil ? `Source paused until ${formatInstant(pol.pausedUntil)}.` : null,
-    pol.latencyWarning ? `Latency warning: ${pol.latencyWarning}` : null,
-  ].filter(Boolean) as string[] : [];
-
   return (
     <Shell>
       <PageHead label="Search" title="Calendar search and docket evidence">
@@ -456,10 +458,13 @@ export default function Discovery() {
           <li><span className="tag text-warning">Live / deployed</span> Not yet established. Live calendar retrieval has not been verified end to end; treat zero or partial results as unverified coverage.</li>
           {pol?.coverageNote ? <li className="hint">{pol.coverageNote}</li> : null}
         </ul>
+        {operations.isLoading ? <div className="skel h-6 mt-2" aria-label="Loading source readiness" /> : operations.isError ? (
+          <p className="errbox mt-2" role="alert">Calendar and document readiness unavailable. {errMsg(operations.error)} <button type="button" className="btn ml-2" onClick={() => operations.refetch()} data-testid="button-retry-operations">Retry</button></p>
+        ) : operations.data ? (
+          <SourceReadiness operations={operations.data} />
+        ) : null}
         {policy.isLoading ? <div className="skel h-6 mt-2" /> : policy.isError ? (
           <p className="errbox mt-2" role="alert">Collection policy unavailable. {errMsg(policy.error)} <button type="button" className="btn ml-2" onClick={() => policy.refetch()} data-testid="button-retry-policy">Retry</button></p>
-        ) : blockers.length ? (
-          <ul className="errbox mt-2 space-y-1" role="alert" data-testid="list-blockers">{blockers.map((b) => <li key={b}>{b}</li>)}</ul>
         ) : null}
         {pol ? (
           <details className="mt-2">
@@ -497,7 +502,7 @@ export default function Discovery() {
           <label className="flex items-center gap-2"><input type="checkbox" checked disabled data-testid="checkbox-scheduled" />Scheduled Events Only (enforced)</label>
           <p className="hint">Posted bail is included. Target counts distinct dockets, not table rows; the target may remain unmet if the request cap is reached. Request cap counts all calendar, asset, and PDF requests. Budgets: record cap {pol ? `${pol.defaultRecordCap} default, ${pol.maxRecordCap} max` : 'loading'}; request cap {pol ? `${pol.defaultRequestCap} default, ${pol.maxRequestCap} max` : 'loading'}. Requests pause between transmissions; any longer adaptive delay still applies.</p>
           {formErr ? <p className="errbox" role="alert" data-testid="text-form-error">{formErr}</p> : null}
-          <button type="submit" className="btn btn-primary" disabled={create.isPending || policy.isLoading} data-testid="button-search">
+          <button type="submit" className="btn btn-primary" disabled={create.isPending || policy.isLoading || operations.isLoading || operations.isError || !operations.data?.calendarEnabled} data-testid="button-search">
             {create.isPending ? 'Starting…' : 'Start search'}
           </button>
         </form>
