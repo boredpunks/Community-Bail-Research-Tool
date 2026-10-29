@@ -375,6 +375,31 @@
   .bail-result-match { border-left-color: hsl(var(--primary)); }
   .bail-result-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: .6rem; }
   .bail-docket { font-weight: 700; }
+  .bail-result-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .65rem;
+  }
+  .bail-result-controls > label { flex: 1 1 11rem; max-width: 18rem; }
+  .bail-sort-direction { min-height: 2.7rem; }
+  .bail-view-switch { display: flex; gap: .35rem; }
+  .bail-cards-view.bail-cards-mobile { display: none; }
+  .bail-compare-scroll { overflow-x: auto; border: 1px solid hsl(var(--border)); }
+  .bail-compare-table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: .82rem; }
+  .bail-compare-table th, .bail-compare-table td {
+    padding: .65rem .7rem;
+    border-bottom: 1px solid hsl(var(--border));
+    text-align: left;
+    vertical-align: top;
+  }
+  .bail-compare-table thead { background: hsl(var(--muted) / .45); }
+  .bail-compare-table thead th { position: sticky; top: 0; z-index: 1; }
+  .bail-compare-table tbody th { font-weight: 600; }
+  .bail-compare-table tbody tr:last-child > * { border-bottom: 0; }
+  .bail-compare-details { min-width: 12rem; }
+  .bail-compare-details[open] { min-width: min(24rem, 70vw); }
+  .bail-compare-details .bail-evidence { font-size: .85rem; }
   .bail-result-facts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -421,6 +446,9 @@
 
 @media (max-width: 767px) {
   .bail-search-layout { grid-template-columns: minmax(0, 1fr); }
+  .bail-view-switch { display: none; }
+  .bail-cards-view.bail-cards-mobile { display: block; }
+  .bail-compare-view { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

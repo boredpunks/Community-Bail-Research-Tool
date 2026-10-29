@@ -90,9 +90,12 @@ router.use("/search/:searchId", async (req, res, next) => {
 router.get("/search/:searchId/status", async (_req, res) => { res.json(await searchResponse(res.locals.search)); });
 router.get("/search/:searchId/export", async (_req, res) => {
   const query = ExportBailSearchQueryParams.safeParse(_req.query);
-  if (!query.success) { res.status(400).json({ error: "Choose all records or amount-filter matches." }); return; }
+  if (!query.success) { res.status(400).json({ error: "Choose all records, amount-filter matches, or visible records." }); return; }
+  if (query.data.selection === "visible" && query.data.officeMode === "exact" && query.data.office === undefined) {
+    res.status(400).json({ error: "Choose an office to export the visible office-filtered records." }); return;
+  }
   res.type("text/csv").attachment(`bail-search-${new Date().toISOString().slice(0, 10)}.csv`)
-    .send(await exportSearchCsv(res.locals.search, query.data.selection));
+    .send(await exportSearchCsv(res.locals.search, query.data.selection, query.data.office, query.data.officeMode));
 });
 router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
   const params = SaveBailSearchResultParams.safeParse(req.params);

@@ -12,4 +12,5 @@ export type ExportBailSearchSelection = typeof ExportBailSearchSelection[keyof t
 export const ExportBailSearchSelection = {
   all: 'all',
   matches: 'matches',
+  visible: 'visible',
 } as const;

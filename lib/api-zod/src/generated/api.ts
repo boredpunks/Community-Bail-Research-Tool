@@ -376,9 +376,14 @@ export const ExportBailSearchParams = zod.object({
 })
 
 export const exportBailSearchQuerySelectionDefault = `all`;
+export const exportBailSearchQueryOfficeMax = 200;
+
+
 
 export const ExportBailSearchQueryParams = zod.object({
-  "selection": zod.enum(['all', 'matches']).default(exportBailSearchQuerySelectionDefault)
+  "selection": zod.enum(['all', 'matches', 'visible']).default(exportBailSearchQuerySelectionDefault),
+  "office": zod.coerce.string().max(exportBailSearchQueryOfficeMax).optional().describe('Exact office to include when selection is visible.'),
+  "officeMode": zod.enum(['exact', 'unrecorded']).optional().describe('Filter visible records by exact office or missing office.')
 })
 
 export const ExportBailSearchResponse = zod.unknown()

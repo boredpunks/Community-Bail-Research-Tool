@@ -56,6 +56,7 @@ export * from './discoveryProvenanceDocumentAcquisition';
 export * from './discoveryReport';
 export * from './discoveryReportRequestsItem';
 export * from './discoverySavedObservation';
+export * from './exportBailSearchOfficeMode';
 export * from './exportBailSearchParams';
 export * from './exportBailSearchSelection';
 export * from './extractionOutcome';

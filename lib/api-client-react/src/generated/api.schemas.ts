@@ -890,6 +890,15 @@ export type SaveBailSearchResultBody = {
 
 export type ExportBailSearchParams = {
 selection?: ExportBailSearchSelection;
+/**
+ * Exact office to include when selection is visible.
+ * @maxLength 200
+ */
+office?: string;
+/**
+ * Filter visible records by exact office or missing office.
+ */
+officeMode?: ExportBailSearchOfficeMode;
 };
 
 export type ExportBailSearchSelection = typeof ExportBailSearchSelection[keyof typeof ExportBailSearchSelection];
@@ -898,6 +907,15 @@ export type ExportBailSearchSelection = typeof ExportBailSearchSelection[keyof t
 export const ExportBailSearchSelection = {
   all: 'all',
   matches: 'matches',
+  visible: 'visible',
+} as const;
+
+export type ExportBailSearchOfficeMode = typeof ExportBailSearchOfficeMode[keyof typeof ExportBailSearchOfficeMode];
+
+
+export const ExportBailSearchOfficeMode = {
+  exact: 'exact',
+  unrecorded: 'unrecorded',
 } as const;
 
 export type GetResearchOperations200Pacing = {[key: string]: number};

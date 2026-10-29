@@ -138,7 +138,15 @@ paths:
       parameters:
         - name: selection
           in: query
-          schema: { type: string, enum: [all, matches], default: all }
+          schema: { type: string, enum: [all, matches, visible], default: all }
+        - name: office
+          in: query
+          description: Exact office to include when selection is visible.
+          schema: { type: string, maxLength: 200 }
+        - name: officeMode
+          in: query
+          description: Filter visible records by exact office or missing office.
+          schema: { type: string, enum: [exact, unrecorded] }
       responses:
         "200":
           description: All saved result rows, with completeness metadata

@@ -77,7 +77,7 @@ const STAGE_LABEL: Record<string, string> = {
   complete: 'Complete',
 };
 
-function downloadCsv(csv: string, selection: 'all' | 'matches') {
+function downloadCsv(csv: string, selection: 'all' | 'matches' | 'visible') {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -152,12 +152,38 @@ function SaveControl({ row, searchId }: { row: BailSearchResult; searchId: strin
   );
 }
 
+function EvidencePanel({ row, searchId }: { row: BailSearchResult; searchId: string }) {
+  const sourceUrl = safeSourceUrl(row.source_url);
+  return (
+    <>
+      <div className="bail-evidence">
+        <p className="mono text-xs font-semibold uppercase tracking-wide">
+          Evidence{row.evidence_page != null ? ` · page ${row.evidence_page}` : ' · page not recorded'}
+        </p>
+        <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
+        <p className="hint">Acquisition: {row.evidence_acquisition || 'Not recorded'}</p>
+        <p className="hint">Source consulted: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
+        {sourceUrl ? (
+          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="navlink inline-flex items-center gap-1 mt-2" data-testid={`link-source-${row.id}`}>
+            Open source document <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        ) : <p className="hint">Source document link unavailable.</p>}
+      </div>
+      <SaveControl row={row} searchId={searchId} />
+    </>
+  );
+}
+
+function evidenceStatus(row: BailSearchResult) {
+  if (row.error) return 'Processing error';
+  return row.evidence_quote?.trim() ? 'Quote captured · unverified' : 'No quote captured';
+}
+
 function ResultCard({ row, searchId }: { row: BailSearchResult; searchId: string }) {
   const match = isMatch(row);
   const kind = row.ambiguous ? 'Ambiguous decision'
     : match ? 'Within your amount filter'
       : row.classification.replaceAll('_', ' ').toLowerCase();
-  const sourceUrl = safeSourceUrl(row.source_url);
   return (
     <article className={`bail-result ${match ? 'bail-result-match' : ''}`} data-testid={`result-${row.id}`}>
       <div className="bail-result-top">
@@ -180,35 +206,8 @@ function ResultCard({ row, searchId }: { row: BailSearchResult; searchId: string
         </p>
       ) : null}
       {row.error ? <p className="errbox mt-3">{row.error}</p> : null}
-      <div className="bail-evidence">
-        <p className="mono text-xs font-semibold uppercase tracking-wide">
-          Evidence{row.evidence_page != null ? ` · page ${row.evidence_page}` : ' · page not recorded'}
-        </p>
-        <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
-        <p className="hint">Acquisition: {row.evidence_acquisition || 'Not recorded'}</p>
-        <p className="hint">Source consulted: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
-        {sourceUrl ? (
-          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="navlink inline-flex items-center gap-1 mt-2" data-testid={`link-source-${row.id}`}>
-            Open source document <ExternalLink size={14} aria-hidden="true" />
-          </a>
-        ) : <p className="hint">Source document link unavailable.</p>}
-      </div>
-      <SaveControl row={row} searchId={searchId} />
+      <EvidencePanel row={row} searchId={searchId} />
     </article>
-  );
-}
-
-function ResultSection({ title, rows, detail, searchId }: { title: string; rows: BailSearchResult[]; detail: string; searchId: string }) {
-  if (!rows.length) return null;
-  return (
-    <section className="mt-7" aria-label={title}>
-      <div className="bail-section-heading">
-        <h3 className="mono text-lg font-bold">{title}</h3>
-        <span className="tag">{rows.length} {rows.length === 1 ? 'record' : 'records'}</span>
-      </div>
-      <p className="hint mb-3">{detail}</p>
-      <div className="grid gap-3">{rows.map((row) => <ResultCard key={row.id} row={row} searchId={searchId} />)}</div>
-    </section>
   );
 }
 
@@ -222,7 +221,11 @@ export default function BailSearch() {
   const [maxBail, setMaxBail] = useState('2000');
   const [formError, setFormError] = useState('');
   const [exportError, setExportError] = useState('');
-  const [exporting, setExporting] = useState<'all' | 'matches' | null>(null);
+  const [exporting, setExporting] = useState<'all' | 'matches' | 'visible' | null>(null);
+  const [resultView, setResultView] = useState<'cards' | 'compare'>('cards');
+  const [officeFilter, setOfficeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'hearing_date' | 'decision_date' | 'bail_amount'>('hearing_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [lastExport, setLastExport] = useState('');
   const [clock, setClock] = useState(Date.now());
   const selectedRunStarted = useRef<{ id: string; at: number } | null>(null);
@@ -287,12 +290,32 @@ export default function BailSearch() {
   const totalKnown = !!run && run.progress.total > 0 && stage !== 'finding_hearings';
   const results = run?.results ?? [];
   const qualifying = useMemo(() => results.filter(isMatch), [results]);
-  const other = useMemo(() => results.filter((row) => !qualifying.includes(row)), [results, qualifying]);
+  const officeOptions = useMemo(() => [...new Set(results
+    .filter((row) => row.office?.trim())
+    .map((row) => row.office!))].sort((left, right) => left.localeCompare(right)), [results]);
+  const visibleRows = useMemo(() => {
+    const filtered = results.filter((row) => officeFilter === 'all'
+      || (officeFilter === 'unrecorded' ? !row.office?.trim() : row.office === officeFilter.slice('office:'.length)));
+    const value = (row: BailSearchResult) => sortBy === 'bail_amount' ? row.bail_amount : row[sortBy];
+    return filtered.map((row, index) => ({ row, index })).sort((left, right) => {
+      const a = value(left.row);
+      const b = value(right.row);
+      const aMissing = a == null || a === '';
+      const bMissing = b == null || b === '';
+      if (aMissing !== bMissing) return aMissing ? 1 : -1;
+      if (!aMissing && !bMissing) {
+        const comparison = a! < b! ? -1 : a! > b! ? 1 : 0;
+        if (comparison) return sortDirection === 'asc' ? comparison : -comparison;
+      }
+      return left.row.docket_number.localeCompare(right.row.docket_number) || left.index - right.index;
+    }).map(({ row }) => row);
+  }, [results, officeFilter, sortBy, sortDirection]);
 
   function selectSearch(id: string) {
     setSearchId(id);
     writeSearchParam(id);
     selectedRunStarted.current = null;
+    setOfficeFilter('all');
   }
 
   function newSearch() {
@@ -305,6 +328,7 @@ export default function BailSearch() {
     setFormError('');
     setExportError('');
     setLastExport('');
+    setOfficeFilter('all');
   }
 
   function editSearch() {
@@ -348,16 +372,27 @@ export default function BailSearch() {
     });
   }
 
-  async function exportRun(selection: 'all' | 'matches') {
+  async function exportRun(selection: 'all' | 'matches' | 'visible') {
     if (!searchId) return;
     setExportError('');
     setLastExport('');
     setExporting(selection);
     try {
-      const csv = await exportBailSearch(searchId, { selection });
+      const csv = await exportBailSearch(searchId, {
+        selection,
+        ...(selection === 'visible' && officeFilter.startsWith('office:') ? {
+          office: officeFilter.slice('office:'.length),
+          officeMode: 'exact',
+        } : {}),
+        ...(selection === 'visible' && officeFilter === 'unrecorded' ? { officeMode: 'unrecorded' } : {}),
+      });
       downloadCsv(csv, selection);
-      const count = selection === 'all' ? results.length : qualifying.length;
-      setLastExport(`Downloaded ${selection === 'all' ? 'all records' : 'amount-filter matches only'} (${count} ${count === 1 ? 'row' : 'rows'}${run?.incomplete ? ', partial search' : ''}).`);
+      const count = selection === 'all' ? results.length : selection === 'matches' ? qualifying.length : visibleRows.length;
+      const label = selection === 'all' ? 'all records'
+        : selection === 'matches' ? 'amount-filter matches across all offices'
+          : `visible records${officeFilter === 'unrecorded' ? ' with no recorded office'
+            : officeFilter.startsWith('office:') ? ` for ${officeFilter.slice('office:'.length)}` : ' across all offices'}`;
+      setLastExport(`Downloaded ${label} (${count} ${count === 1 ? 'row' : 'rows'}${run?.incomplete ? ', partial search' : ''}).`);
     } catch (error) {
       setExportError(`CSV export failed: ${errMsg(error)}`);
     } finally {
@@ -375,6 +410,7 @@ export default function BailSearch() {
   const collectedText = readiness.isLoading ? 'loading count' : typeof collected === 'number' && Number.isFinite(collected) ? collected.toLocaleString('en-US') : 'an unknown number of';
   const allLabel = `Download CSV — all records (${results.length})${run?.incomplete ? ' · partial' : ''}`;
   const matchLabel = `Download CSV — amount-filter matches (${qualifying.length})${run?.incomplete ? ' · partial' : ''}`;
+  const visibleLabel = `Download CSV — visible records (${visibleRows.length})${run?.incomplete ? ' · partial' : ''}`;
 
   return (
     <Shell>
@@ -542,6 +578,9 @@ export default function BailSearch() {
                   <button type="button" className="btn" onClick={() => exportRun('matches')} disabled={!!exporting} data-testid="button-export-matches">
                     <ArrowDownToLine size={17} aria-hidden="true" className="mr-2" />{exporting === 'matches' ? 'Preparing CSV…' : matchLabel}
                   </button>
+                  <button type="button" className="btn" onClick={() => exportRun('visible')} disabled={!!exporting} data-testid="button-export-visible">
+                    <ArrowDownToLine size={17} aria-hidden="true" className="mr-2" />{exporting === 'visible' ? 'Preparing CSV…' : visibleLabel}
+                  </button>
                 </div>
                 {exportError ? <p className="hint text-destructive mt-2" role="alert">{exportError}</p> : null}
                 {lastExport ? <p className="hint mt-2" role="status" data-testid="status-last-export">{lastExport}</p> : null}
@@ -553,7 +592,7 @@ export default function BailSearch() {
           {run && !statusQuery.isError ? (
             <div className="panel mt-4">
               <div className="bail-results-summary">
-                <div><span className="bail-count" data-testid="text-match-count">{qualifying.length}</span><span className="hint"> within your amount filter</span></div>
+                <div><span className="bail-count" data-testid="text-match-count">{qualifying.length}</span><span className="hint"> within your amount filter across all offices</span></div>
                 <p className="hint">Within your amount filter means a recorded monetary amount at or below your maximum, with no ambiguous decision flag. It does not imply release eligibility, current custody, release cost, or an operative order.</p>
               </div>
               <details className="mt-3" data-testid="details-glossary">
@@ -578,8 +617,98 @@ export default function BailSearch() {
                   <div><strong>Records found, but none within your amount filter.</strong><p className="hint">{run.incomplete ? 'The search is also incomplete, so more records may exist. ' : ''}Inspect the other records below; some may be ambiguous or lack readable evidence.</p></div>
                 </div>
               ) : null}
-              {qualifying.length ? <ResultSection searchId={run.searchId} title="Within your amount filter" rows={qualifying} detail="These records show a recorded amount at or below your filter. Check the source quote and dates; this does not establish current custody, amount due, release eligibility, or an operative order." /> : null}
-              <ResultSection searchId={run.searchId} title="Other, unknown, or outside the filter" rows={other} detail="Amounts in this section are outside your amount filter or unclear. They may be above the maximum, unknown, unsecured, denied, nonmonetary, or ambiguous." />
+              {results.length > 0 ? (
+                <section className="mt-5" aria-label="Filter and compare collected results" data-testid="section-result-controls">
+                  <div className="bail-result-controls">
+                    <label className="block">
+                      <span className="lbl">Filter by office</span>
+                      <select className="field" value={officeFilter} onChange={(event) => setOfficeFilter(event.target.value)} data-testid="select-result-office">
+                        <option value="all">All offices ({results.length})</option>
+                        {officeOptions.map((office) => (
+                          <option key={office} value={`office:${office}`}>{office} ({results.filter((row) => row.office === office).length})</option>
+                        ))}
+                        {results.some((row) => !row.office?.trim()) ? (
+                          <option value="unrecorded">Office not recorded ({results.filter((row) => !row.office?.trim()).length})</option>
+                        ) : null}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="lbl">Sort by</span>
+                      <select className="field" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} data-testid="select-result-sort">
+                        <option value="hearing_date">Hearing date</option>
+                        <option value="decision_date">Decision date</option>
+                        <option value="bail_amount">Recorded amount</option>
+                      </select>
+                    </label>
+                    <button type="button" className="btn bail-sort-direction" onClick={() => setSortDirection((value) => value === 'asc' ? 'desc' : 'asc')} aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`} data-testid="button-sort-direction">
+                      {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                    </button>
+                    <div className="bail-view-switch" role="group" aria-label="Result layout">
+                      <button type="button" className={`btn ${resultView === 'cards' ? 'btn-primary' : ''}`} aria-pressed={resultView === 'cards'} onClick={() => setResultView('cards')} data-testid="button-view-cards">Cards</button>
+                      <button type="button" className={`btn ${resultView === 'compare' ? 'btn-primary' : ''}`} aria-pressed={resultView === 'compare'} onClick={() => setResultView('compare')} data-testid="button-view-compare">Compare</button>
+                    </div>
+                  </div>
+                  <p className="hint mt-2" role="status" aria-live="polite" data-testid="status-visible-results">
+                    Showing {visibleRows.length} of {results.length} collected result{results.length === 1 ? '' : 's'}. Unknown dates and amounts stay in the list and sort last.
+                  </p>
+                  {!visibleRows.length ? (
+                    <div className="bail-empty mt-3" data-testid="empty-office-results">
+                      <Info size={22} aria-hidden="true" />
+                      <div><strong>No collected results match this office filter.</strong><p className="hint">Change the office filter to see other results. Search coverage is unchanged.</p></div>
+                    </div>
+                  ) : null}
+                  <div className={`bail-cards-view ${resultView === 'compare' ? 'bail-cards-mobile' : ''}`} data-testid="list-result-cards">
+                    {visibleRows.length ? (
+                      <div className="grid gap-3 mt-3">{visibleRows.map((row) => <ResultCard key={row.id} row={row} searchId={run.searchId} />)}</div>
+                    ) : null}
+                  </div>
+                  {resultView === 'compare' ? (
+                    <div className="bail-compare-view mt-3" data-testid="table-result-comparison">
+                      <div className="bail-compare-scroll">
+                        <table className="bail-compare-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Docket</th>
+                              <th scope="col">Office</th>
+                              <th scope="col">Hearing</th>
+                              <th scope="col">Decision</th>
+                              <th scope="col">Recorded amount</th>
+                              <th scope="col">Evidence status</th>
+                              <th scope="col">Classification</th>
+                              <th scope="col">Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleRows.map((row) => {
+                              const match = isMatch(row);
+                              const classification = row.ambiguous ? 'Ambiguous decision'
+                                : match ? 'Within your amount filter'
+                                  : row.classification.replaceAll('_', ' ').toLowerCase();
+                              return (
+                                <tr key={row.id} data-testid={`compare-row-${row.id}`}>
+                                  <th scope="row" className="mono break-all">{row.docket_number}</th>
+                                  <td>{row.office || 'Not recorded'}</td>
+                                  <td>{date(row.hearing_date)}</td>
+                                  <td>{date(row.decision_date)}</td>
+                                  <td className="mono">{money(row.bail_amount)}</td>
+                                  <td>{evidenceStatus(row)}</td>
+                                  <td><span className={`tag ${match ? 'text-primary' : 'text-muted-foreground'}`}>{classification}</span></td>
+                                  <td>
+                                    <details className="bail-compare-details">
+                                      <summary className="navlink cursor-pointer" data-testid={`summary-compare-evidence-${row.id}`}>Evidence</summary>
+                                      <EvidencePanel row={row} searchId={run.searchId} />
+                                    </details>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
               {run.status === 'running' && !results.length ? <p className="hint mt-5">No results have been reported yet. Evidence may still be processing.</p> : null}
               {run.status !== 'running' ? (
                 <section className="mt-7 border-t border-border pt-4" data-testid="section-next-steps">
@@ -588,7 +717,7 @@ export default function BailSearch() {
                     <li>Open each source document and compare it with the quoted evidence.</li>
                     <li>Save a result for review only if you want it in the shared workspace.</li>
                     <li>Review saved dockets in the <Link href="/review" className="underline" data-testid="link-next-review">review queue</Link> or see <Link href="/candidates" className="underline" data-testid="link-next-saved">Saved dockets</Link>.</li>
-                    <li>Download a CSV of all records or only amount-filter matches.</li>
+                    <li>Download all records, amount-filter matches, or the office-filtered visible results.</li>
                     <li>Something missing or confusing? <Link href="/feedback" className="underline" data-testid="link-next-feedback">Tell us what you need</Link>.</li>
                   </ol>
                 </section>

@@ -126,21 +126,36 @@ export async function savedQueue(criteria: BailSearchCriteria, ownerIds: string[
   }
   return [...queue.values()];
 }
-export async function exportSearchCsv(search: BailSearchRow, selection: "all" | "matches" = "all") {
+export async function exportSearchCsv(
+  search: BailSearchRow,
+  selection: "all" | "matches" | "visible" = "all",
+  office?: string,
+  officeMode?: "exact" | "unrecorded",
+) {
   const result = await searchResponse(search);
   const columns = ["docket_number", "hearing_date", "decision_date", "office", "bail_amount",
     "percentage", "classification", "evidence_page", "evidence_quote", "qualifies", "ambiguous",
     "error", "evidence_acquisition", "source_url", "source_retrieved_at", "saved_record_id", "review_status"] as const;
+  const selected = result.results.filter(row => {
+    if (selection === "matches" && !(row.qualifies && row.bail_amount !== null && !row.ambiguous)) return false;
+    if (selection !== "visible") return true;
+    if (officeMode === "unrecorded") return !row.office?.trim();
+    if (officeMode === "exact") return office !== undefined && row.office === office;
+    return true;
+  });
+  const officeDescription = selection !== "visible" ? "" : officeMode === "unrecorded"
+    ? "; office: not recorded"
+    : officeMode === "exact" ? `; office: ${office}` : "; office: all";
   return [
     `# Search incomplete: ${result.incomplete}`,
     `# Generated: ${new Date().toISOString()}`,
     `# Source: ${search.criteria.source === "live" ? "live calendar search" : "saved evidence only; no new court requests"}`,
     "# Coverage scope: completion means the reported evidence set was checked, not complete court coverage",
     `# Hearing dates: ${search.criteria.startDate} through ${search.criteria.endDate}; maximum recorded bail: ${search.criteria.maxBail}`,
-    `# Selection: ${selection}; matches are amount-filter matches, not release eligibility`,
+    `# Selection: ${selection}${officeDescription}; matches are amount-filter matches, not release eligibility`,
     `# Coverage: ${result.progress.completed}/${result.progress.total} complete; ${result.progress.pending} pending`,
     columns.join(","),
-    ...result.results.filter(row => selection === "all" || row.qualifies).map(row => columns.map(column => csvCell(row[column])).join(",")),
+    ...selected.map(row => columns.map(column => csvCell(row[column])).join(",")),
     "",
   ].join("\r\n");
 }

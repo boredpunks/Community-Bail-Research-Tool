@@ -5,8 +5,18 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { ExportBailSearchOfficeMode } from './exportBailSearchOfficeMode';
 import type { ExportBailSearchSelection } from './exportBailSearchSelection';
 
 export type ExportBailSearchParams = {
 selection?: ExportBailSearchSelection;
+/**
+ * Exact office to include when selection is visible.
+ * @maxLength 200
+ */
+office?: string;
+/**
+ * Filter visible records by exact office or missing office.
+ */
+officeMode?: ExportBailSearchOfficeMode;
 };
