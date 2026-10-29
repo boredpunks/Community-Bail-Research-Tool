@@ -17,6 +17,7 @@ export interface BailSearchQueueItem {
 export const bailSearchesTable = pgTable("bail_searches", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: text("owner_id").notNull(),
+  discoveryJobId: uuid("discovery_job_id"),
   criteria: jsonb("criteria").$type<BailSearchCriteria>().notNull(),
   status: text("status").notNull().default("paused"),
   queue: jsonb("queue").$type<BailSearchQueueItem[]>().notNull().default([]),

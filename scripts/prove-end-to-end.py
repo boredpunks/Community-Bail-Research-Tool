@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-import fitz
+import pymupdf as fitz
 import requests
 
 USER_AGENT = "CommunityBailResearch-SourceAssessment/1.0"

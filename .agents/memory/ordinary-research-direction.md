@@ -31,3 +31,14 @@ without asking whether to begin it. Do not commit personal PDF records.
 Report live outcomes separately from local/browser-mocked checks. Pacing
 defaults are not court requirements; preserve only stricter requirements
 actually supported by policy or observed server instructions.
+
+Do not make volunteer UI delivery depend on completion of a separate calendar
+reliability task. Reuse proven extraction while reporting live calendar access
+separately; a fixed-docket cached run is not general date-range discovery.
+
+**Why:** The user explicitly requested building the volunteer UI on what is
+proven and cancelling the separate reliability work.
+
+**How to apply:** Use actual source admission rules, not task status, to decide
+whether a submitted live search can run. Preserve partial results and explicit
+resume behavior without claiming live verification from cached evidence.

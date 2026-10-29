@@ -13,7 +13,6 @@ import {
   type BailSearchResult,
 } from '@workspace/api-client-react';
 import { AlertTriangle, ArrowDownToLine, Clock3, FileSearch, Info, RefreshCw } from 'lucide-react';
-import { useLocation } from 'wouter';
 import { Shell, PageHead } from '@/components/shell';
 import { errMsg, formatInstant } from '@/lib/money';
 
@@ -108,13 +107,13 @@ function ResultSection({ title, rows, detail }: { title: string; rows: BailSearc
 
 export default function BailSearch() {
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
   const readiness = useGetBailSearchReadiness();
   const searches = useListBailSearches({ query: { queryKey: getListBailSearchesQueryKey() } });
   const [searchId, setSearchId] = useState(readSearchParam);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [maxBail, setMaxBail] = useState('');
+  const [maxBail, setMaxBail] = useState('2000');
+  const [source, setSource] = useState<'live' | 'saved'>('live');
   const [formError, setFormError] = useState('');
   const [exportError, setExportError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -200,7 +199,7 @@ export default function BailSearch() {
     if (!maxBail.trim() || !Number.isFinite(amount) || amount < 0 || amount > 20_000_000) {
       setFormError('Enter a maximum bail set from $0 to $20,000,000.'); return;
     }
-    started.mutate({ data: { startDate, endDate, maxBail: amount, source: 'saved' } }, {
+    started.mutate({ data: { startDate, endDate, maxBail: amount, source } }, {
       onSuccess: (result) => {
         queryClient.setQueryData(getGetBailSearchStatusQueryKey(result.searchId), result);
         queryClient.invalidateQueries({ queryKey: getListBailSearchesQueryKey() });
@@ -245,7 +244,7 @@ export default function BailSearch() {
   return (
     <Shell>
       <PageHead label="Volunteer search" title="Search bail evidence">
-        Find source-backed records from the evidence already saved in this workspace. This page does not request new court records.
+        Search hearing dates, inspect bail decisions, and export source-backed results. Partial searches retain their evidence.
       </PageHead>
 
       <div className="bail-search-layout">
@@ -255,15 +254,18 @@ export default function BailSearch() {
               <div className="bail-source-mark" aria-hidden="true"><FileSearch size={21} /></div>
               <div>
                 <p className="bracket">Source mode</p>
-                <h2 id="source-heading" className="mono text-xl font-bold">Saved workspace evidence</h2>
+                <h2 id="source-heading" className="mono text-xl font-bold">Choose your source</h2>
               </div>
             </div>
-            <p className="mt-3">Selected: <strong>saved workspace evidence</strong>. This searches evidence already held here; it sends no new court requests and is not a live search.</p>
-            <div className="bail-live-note mt-3">
-              <span className="tag text-warning">Live</span>
-              <p><strong>Auto-discovery coming soon.</strong> Live source access has not been verified and is unavailable here.</p>
-            </div>
+            <label className="block mt-3"><span className="lbl">Search source</span><select className="field" value={source} onChange={event => setSource(event.target.value as 'live' | 'saved')}>
+              <option value="live">Live calendar search</option>
+              <option value="saved">Saved workspace evidence — no new requests</option>
+            </select></label>
+            <p className="hint mt-3">{source === 'live'
+              ? 'Bail Hearing · all supported offices · any room. Today or later, at most seven days. Source restrictions may pause collection; no automatic retries.'
+              : 'Search existing calendar records and locally available evidence. This is not live court coverage.'}</p>
             {readiness.isLoading ? <div className="skel mt-3 h-5" aria-label="Loading source status" /> : null}
+            {source === 'live' && readiness.data && !readiness.data.liveAvailable ? <p className="notice mt-3" role="status">{readiness.data.reason}</p> : null}
             {readiness.isError ? (
               <div className="hint mt-3" role="status">Readiness details are temporarily unavailable. Saved-evidence search remains explicitly non-live.</div>
             ) : readiness.data ? (
@@ -301,10 +303,10 @@ export default function BailSearch() {
               <span className="hint text-sm">Records at or below this recorded amount may qualify.</span>
             </label>
             {formError ? <p className="errbox" role="alert" data-testid="error-search-form">{formError}</p> : null}
-            <button className="btn btn-primary" type="submit" disabled={started.isPending} data-testid="button-start-bail-search">
-              {started.isPending ? 'Starting saved search…' : 'Search saved evidence'}
+            <button className="btn btn-primary" type="submit" disabled={started.isPending || (source === 'live' && !readiness.data?.liveAvailable)} data-testid="button-start-bail-search">
+              {started.isPending ? 'Starting search…' : 'Search bail'}
             </button>
-            {started.isPending ? <p className="hint" role="status">Starting a search using evidence already saved in this workspace.</p> : null}
+            {started.isPending ? <p className="hint" role="status">Saving your search criteria…</p> : null}
           </form>
 
           <section className="panel" aria-labelledby="history-heading" data-testid="section-search-history">
@@ -322,7 +324,7 @@ export default function BailSearch() {
             {searches.data?.length === 0 ? (
               <div className="bail-empty mt-4">
                 <Clock3 size={22} aria-hidden="true" />
-                <div><strong>No saved-evidence searches yet.</strong><p className="hint">Choose a hearing window to start one. Only server-returned searches appear here.</p></div>
+                <div><strong>No searches yet.</strong><p className="hint">Choose a hearing window to start one. Only server-returned searches appear here.</p></div>
               </div>
             ) : null}
             {searches.data?.length ? (
@@ -359,13 +361,13 @@ export default function BailSearch() {
             ) : null}
             {run ? (
               <>
-                <p className="hint mt-3">Hearing dates {date(run.criteria.startDate)} through {date(run.criteria.endDate)} · maximum recorded bail {money(run.criteria.maxBail)} · saved evidence only.</p>
+                <p className="hint mt-3">Hearing dates {date(run.criteria.startDate)} through {date(run.criteria.endDate)} · maximum recorded bail {money(run.criteria.maxBail)} · {run.criteria.source} evidence.</p>
                 {run.sourceNotice ? <p className="bail-source-notice mt-3">{run.sourceNotice}</p> : null}
                 {run.status === 'running' ? (
                   <div className="bail-progress mt-4" role="status" data-testid="status-search-progress">
-                    <div className="flex justify-between gap-3"><strong>Searching existing evidence</strong><span className="mono">{run.progress.completed}/{run.progress.total}</span></div>
+                    <div className="flex justify-between gap-3"><strong>{run.criteria.source === 'live' ? 'Searching source evidence' : 'Searching existing evidence'}</strong><span className="mono">{run.progress.completed}/{run.progress.total}</span></div>
                     <div className="bail-progress-track" aria-label={`${run.progress.completed} of ${run.progress.total} evidence items processed`}><span style={{ width: `${run.progress.total ? Math.min(100, run.progress.completed / run.progress.total * 100) : 0}%` }} /></div>
-                    <p className="hint">{run.progress.pending} pending. No court requests are being made.</p>
+                    <p className="hint">{run.progress.pending} pending. {run.criteria.source === 'saved' ? 'No court requests are being made.' : 'Source requests follow shared pacing and access safeguards.'}</p>
                     {stalled ? <div className="notice mt-3"><strong>Progress has not finished.</strong> Automatic checks stopped after five minutes to avoid polling indefinitely. Reload status to check once more.</div> : null}
                   </div>
                 ) : null}
@@ -380,7 +382,7 @@ export default function BailSearch() {
                     {resume.isError ? <p className="errbox mt-3" role="alert">Resume failed: {errMsg(resume.error)}</p> : null}
                   </div>
                 ) : null}
-                {run.status === 'complete' ? <p className="bail-complete mt-4" role="status">Search complete. Results reflect only the evidence available in this saved workspace.</p> : null}
+                {run.status === 'complete' ? <p className="bail-complete mt-4" role="status">Search complete for the reported scope. {run.sourceNotice}</p> : null}
                 {run.incomplete ? <div className="notice mt-3"><strong>Incomplete coverage.</strong> Treat the records below as partial; they do not represent all hearings or decisions in the date window.</div> : null}
                 {run.reason && run.status !== 'paused' ? <p className="hint mt-2">{run.reason}</p> : null}
                 <div className="mt-4 flex flex-wrap items-center gap-3">

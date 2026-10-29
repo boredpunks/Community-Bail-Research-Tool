@@ -8,16 +8,17 @@ as part of volunteer-search integration.
 The six-docket proof establishes local extraction from validated cached PDFs,
 not current calendar submission, pagination coverage, or deployed PDF access.
 
-The volunteer page labels live discovery “Auto-discovery coming soon” and disables
-that option. A separate, explicitly selected saved-evidence mode searches existing
+Task status is not a runtime admission gate. At the user's direction, the volunteer
+page can start the existing calendar service under its actual source safeguards.
+A separate, explicitly selected saved-evidence mode searches existing
 workspace calendar rows and already stored extraction evidence or cached PDFs.
 It never performs a court request or treats its coverage as live/current.
 
-To enable live discovery, first obtain current user-approved exact calendar
-criteria and finish the calendar-specific transport/result proof. Then integrate
-that verified capability with durable execution, source request accounting,
-cooldown-aware resumption, and document-client readiness separately. A constant
-or successful cached run must not be used to claim verification.
+Live criteria are chosen explicitly on submission: hearing dates, Bail Hearing,
+all supported offices, any room. The existing source admission, pacing, document
+verification, budget and cooldown policies remain authoritative. No live acceptance
+claim follows from the six-docket cached run. The first actual search may pause
+with a source-access or transport failure; partial results remain available.
 
 ## Authentication boundary
 

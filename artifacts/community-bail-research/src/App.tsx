@@ -76,7 +76,7 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
       : location === '/' ? 'Workspace access'
       : 'Page not found';
     const title = `${page} | Community Bail Research`;
-    const description = location === '/search' ? 'Search saved, source-backed bail evidence within a hearing date window. No live court requests are made.'
+    const description = location === '/search' ? 'Search bail evidence within a hearing date window, retain partial results, and export source-backed records.'
       : location === '/research' ? 'Search shared source-backed docket observations and inspect explicitly filtered descriptive financial ranges.'
       : location === '/records/new' ? 'Enter a real docket observation with source evidence and consultation time. Unknown details remain unknown.'
       : location === '/discovery' ? 'Start bounded live court discovery jobs and inspect docket and bail results before saving any observation.'
