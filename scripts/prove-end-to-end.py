@@ -2,8 +2,8 @@
 """
 Six-row saved-job proof (Calendar Results → PDF Fetch → Bail Extraction)
 
-Rows are read from the configured development database at runtime. Source URLs
-and DNH values stay in memory and are omitted from generated reports. This
+The six exact rows are defined below. Source URLs and DNH values are used only
+for retrieval and validation; they are omitted from generated reports. This
 standalone runner makes plain GET requests only; it does not update app review
 state or bypass a source denial.
 
@@ -42,7 +42,68 @@ LOCAL_PDF_OVERRIDES = {
     ),
 }
 
-PROOF_ROWS: list[dict] = []
+PROOF_ROWS: list[dict] = [
+    {
+        "docket_number": "MJ-05247-CR-0000502-2025",
+        "dnh": "bz3yc0mNGOMQzwUjpdqYQQ==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05247-CR-0000502-2025&dnh=bz3yc0mNGOMQzwUjpdqYQQ%3D%3D",
+        "hearing_date": "2026-10-28",
+        "hearing_time": "12:51 am",
+        "office": "MDJ-05-2-47",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+    {
+        "docket_number": "MJ-05214-CR-0000553-2026",
+        "dnh": "Ncdns+orTqUADPymLY+Vqw==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05214-CR-0000553-2026&dnh=Ncdns%2BorTqUADPymLY%2BVqw%3D%3D",
+        "hearing_date": "2026-10-29",
+        "hearing_time": "09:00 am",
+        "office": "MDJ-05-2-14",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+    {
+        "docket_number": "MJ-05214-CR-0000246-2026",
+        "dnh": "J23XLMBst45i05cAWKi6kA==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05214-CR-0000246-2026&dnh=J23XLMBst45i05cAWKi6kA%3D%3D",
+        "hearing_date": "2026-10-29",
+        "hearing_time": "09:00 am",
+        "office": "MDJ-05-2-14",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+    {
+        "docket_number": "MJ-05207-CR-0000269-2026",
+        "dnh": "cu+7EHgCXD1ituq5aTCElg==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05207-CR-0000269-2026&dnh=cu%2B7EHgCXD1ituq5aTCElg%3D%3D",
+        "hearing_date": "2026-10-29",
+        "hearing_time": "09:30 am",
+        "office": "MDJ-05-2-07",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+    {
+        "docket_number": "MJ-05003-CR-0006914-2026",
+        "dnh": "eVhnQzCUlyDbF/7lJOgnXA==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/MdjDocketSheet?docketNumber=MJ-05003-CR-0006914-2026&dnh=eVhnQzCUlyDbF%2F7lJOgnXA%3D%3D",
+        "hearing_date": "2026-10-28",
+        "hearing_time": "08:30 am",
+        "office": "MDJ-05-0-03",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+    {
+        "docket_number": "CP-02-CR-0003870-2026",
+        "dnh": "fXP/LUkAZHU4fxKH46mgkw==",
+        "sourceUrl": "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0003870-2026&dnh=fXP%2FLUkAZHU4fxKH46mgkw%3D%3D",
+        "hearing_date": "2026-10-28",
+        "hearing_time": "08:30 am",
+        "office": "CP-05-02-Crim",
+        "event_type": "Bail Hearing",
+        "courtroom": None,
+    },
+]
 _last_request_started: float | None = None
 _request_count = 0
 
@@ -116,6 +177,39 @@ def load_proof_rows() -> list[dict]:
                 f"Row {expected_position} is missing calendar metadata; no source request was made."
             )
     return rows
+
+def validate_proof_rows(rows: list[dict]) -> None:
+    """Validate row identity and approved UJS docket routes before retrieval."""
+    if len(rows) != EXPECTED_ROW_COUNT:
+        raise RuntimeError(
+            f"Expected exactly {EXPECTED_ROW_COUNT} proof rows; no source request was made."
+        )
+
+    seen_dockets = set()
+    allowed_paths = {"/Report/MdjDocketSheet", "/Report/CpDocketSheet"}
+    for index, row in enumerate(rows):
+        docket_number = row.get("docket_number")
+        parts = urlsplit(row.get("sourceUrl") or "")
+        query = parse_qs(parts.query, keep_blank_values=True)
+        if (
+            not isinstance(docket_number, str)
+            or docket_number in seen_dockets
+            or parts.scheme != "https"
+            or parts.hostname != "ujsportal.pacourts.us"
+            or parts.path not in allowed_paths
+            or query.get("docketNumber") != [docket_number]
+            or query.get("dnh") != [row.get("dnh")]
+            or not all(
+                row.get(field)
+                for field in ("hearing_date", "hearing_time", "office", "event_type")
+            )
+        ):
+            raise RuntimeError(
+                f"Proof row {index} failed docket, metadata or source URL validation; no request was made."
+            )
+        row["source_reference"] = f"{parts.hostname}{parts.path}"
+        seen_dockets.add(docket_number)
+
 
 ARTIFACTS_DIR = Path("artifacts")
 ARTIFACTS_DIR.mkdir(exist_ok=True)
@@ -390,7 +484,7 @@ def process_docket(row: dict, index: int, total: int) -> dict:
     result = {
         "index": index,
         "job_id": JOB_ID,
-        "item_id": row["item_id"],
+        "item_id": row.get("item_id"),
         "docket_number": row["docket_number"],
         "hearing_date": row["hearing_date"],
         "hearing_time": row.get("hearing_time"),
@@ -511,7 +605,7 @@ def deferred_result(row: dict, index: int, stop_reason: str) -> dict:
     return {
         "index": index,
         "job_id": JOB_ID,
-        "item_id": row["item_id"],
+        "item_id": row.get("item_id"),
         "docket_number": row["docket_number"],
         "hearing_date": row["hearing_date"],
         "hearing_time": row.get("hearing_time"),
@@ -625,9 +719,8 @@ def main() -> None:
     print("Six-row saved-job PDF retrieval and bail candidate extraction")
     print("=" * 70)
 
-    global PROOF_ROWS
     try:
-        PROOF_ROWS = load_proof_rows()
+        validate_proof_rows(PROOF_ROWS)
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
 
@@ -635,7 +728,7 @@ def main() -> None:
         print(json.dumps(
             [
                 {
-                    "position": row["position"],
+                    "position": position,
                     "docket_number": row["docket_number"],
                     "hearing_date": row["hearing_date"],
                     "hearing_time": row["hearing_time"],
@@ -643,7 +736,7 @@ def main() -> None:
                     "event_type": row["event_type"],
                     "courtroom": row["courtroom"],
                 }
-                for row in PROOF_ROWS
+                for position, row in enumerate(PROOF_ROWS)
             ],
             indent=2,
         ))
