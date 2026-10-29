@@ -21,6 +21,7 @@ import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "../src/lib/session-refresh-safety";
+import { canUseOrdinarySearchFirstPdfAccessCheck } from "../src/lib/ordinary-search-access";
 import { discoveryPolicy } from "../src/lib/discovery";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
@@ -127,6 +128,31 @@ const accessCheckFixture = {
 check(canUseFirstPdfAccessCheck(accessCheckFixture));
 check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorPdfRequests: 1 }));
 check(!canUseFirstPdfAccessCheck({ ...accessCheckFixture, priorSearchPosts: 2 }));
+const ordinaryAccessCheckFixture = {
+  jobId: "ordinary-job", expectedJobId: "ordinary-job",
+  itemId: "ordinary-item", expectedItemId: "ordinary-item",
+  docketNumber: "CP-02-CR-0006336-2026", expectedDocketNumber: "CP-02-CR-0006336-2026",
+  url: "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0006336-2026&dnh=offline-fixture",
+  expectedUrl: "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0006336-2026&dnh=offline-fixture",
+  requestPath: "/Report/CpDocketSheet", method: "GET",
+  block: "ACCESS_UNVERIFIED", sourceBlockedReason: null,
+  accessVerifiedAt: null, verifiedMethod: null, pausedUntil: null,
+  activeRequestId: null, latencyWarning: null, jobStatus: "RUNNING",
+  calendarComplete: true, assessmentId: null,
+  criteria: { ...sessionRefreshCriteria, courtOffice: "ANY", eventType: "Bail Hearing",
+    endDate: "2026-10-31" },
+  liveSearchLinked: true, firstPendingItem: true, supportedCourtType: true,
+  priorPdfRequests: 0, priorSearchPosts: 1,
+};
+check(canUseOrdinarySearchFirstPdfAccessCheck(ordinaryAccessCheckFixture));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorPdfRequests: 1 }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 2 }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, liveSearchLinked: false }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, supportedCourtType: false }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, sourceBlockedReason: "ACCESS_DENIED" }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, activeRequestId: "in-flight" }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture,
+  criteria: { ...ordinaryAccessCheckFixture.criteria, calendarPreviewOnly: true } }));
 const now0 = Date.parse("2026-10-06T16:00:00Z");
 let time = now0;
 const approved = { id: "UJS", accessVerifiedAt: new Date(now0), verifiedMethod: integratedSourceMethod, collectionApprovedAt: new Date(now0) };

@@ -13,7 +13,7 @@ import sys
 from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
-from evidence import CalendarResults, DOCKET, calendar_result_state, extract_bail
+from evidence import CalendarResults, DOCKET, automatic_pdf_supported, calendar_result_state, extract_bail
 import public_http
 from document_diagnostics import denial_evidence, link_elapsed_seconds
 from optional_resources import IMAGE, FONT
@@ -1064,6 +1064,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             for item in items[:config["remainingRecords"]]:
                 if stopped:
                     break
+                if not automatic_pdf_supported(item):
+                    continue
                 response = None
                 try:
                     response, body, retrieved = await retrieve(

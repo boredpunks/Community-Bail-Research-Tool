@@ -62,7 +62,7 @@ router.get("/feedback", async (_req, res) => {
 });
 router.post("/feedback", async (req, res) => {
   const input = SubmitVolunteerFeedbackBody.safeParse(req.body);
-  if (!input.success || Object.values(input.data).some(value => !value.trim())) {
+  if (!input.success || Object.values(input.data).some(value => typeof value !== "string" || !value.trim())) {
     res.status(400).json({ error: "Answer each feedback question using 1–2,000 characters. Do not include personal case details." }); return;
   }
   const ownerId: string = res.locals.searchOwner;

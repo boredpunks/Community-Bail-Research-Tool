@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { randomInt } from "node:crypto";
-import { db, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
+import { db, bailSearchesTable, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import {
   allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed,
@@ -20,6 +20,7 @@ import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from ".
 import { calendarAdmission } from "./research-operations";
 import { effectiveAdaptiveSpacing, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria } from "./session-refresh-safety";
+import { canUseOrdinarySearchFirstPdfAccessCheck } from "./ordinary-search-access";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,6 +32,8 @@ export type RequestReservationAuthorization = {
   authorizedSessionRefreshJobId?: string;
   refreshCalendarSession?: boolean;
   firstPdfAccessCheck?: { itemId: string; docketNumber: string; url: string };
+  authorizedOrdinarySearchJobId?: string;
+  ordinarySearchFirstPdfAccessCheck?: { itemId: string; docketNumber: string; url: string };
   keepSessionAcrossQuota?: boolean;
 };
 
@@ -66,6 +69,8 @@ export async function reserveSourceRequest(
       let singleDocumentProofPermit = false;
       let sessionRefreshScope = false;
       let firstPdfAccessCheckAllowed = false;
+      let ordinarySearchAccessCheckAllowed = false;
+      let collectionBlockReason: string | null = null;
       if (current.assessmentId) {
         const [permit] = await tx.select().from(discoveryAssessmentsTable).where(eq(discoveryAssessmentsTable.id, current.assessmentId)).for("update");
         const expectedMethod = permit?.stage === "RESEARCH_RUN" ? researchMethod
@@ -163,6 +168,7 @@ export async function reserveSourceRequest(
           && calendarPreviewRequestAllowed(requestPath, method);
         const block = current.criteria.calendarPreviewOnly || independentCalendar
           ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
+        collectionBlockReason = block;
         if (block === "ACCESS_UNVERIFIED" && authorization.firstPdfAccessCheck
           && authorization.authorizedSessionRefreshJobId === current.id) {
           const [candidate] = await tx.select().from(discoveryItemsTable).where(and(
@@ -201,7 +207,66 @@ export async function reserveSourceRequest(
             priorSearchPosts: previousSearches.length,
           }) && candidate?.docketNumber === authorization.firstPdfAccessCheck.docketNumber;
         }
-        if (block && !firstPdfAccessCheckAllowed) return deny(block);
+        if (collectionBlockReason === "ACCESS_UNVERIFIED" && authorization.ordinarySearchFirstPdfAccessCheck
+          && authorization.authorizedOrdinarySearchJobId === current.id) {
+          const linkedSearches = await tx.select({ criteria: bailSearchesTable.criteria })
+            .from(bailSearchesTable)
+            .where(and(
+              eq(bailSearchesTable.discoveryJobId, current.id),
+              eq(bailSearchesTable.ownerId, current.ownerId),
+              eq(bailSearchesTable.status, "running"),
+            ))
+            .limit(1);
+          const [candidate] = await tx.select().from(discoveryItemsTable).where(and(
+            eq(discoveryItemsTable.jobId, current.id),
+            eq(discoveryItemsTable.sourceUrl, String(url)),
+          ));
+          const ordered = await tx.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
+          const firstPending = ordered.find(item => item.provenance.extractionOutcome === "UNPROCESSED");
+          const previousPdfs = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+            ));
+          const previousSearches = await tx.select({ id: discoveryRequestsTable.id })
+            .from(discoveryRequestsTable)
+            .where(and(
+              eq(discoveryRequestsTable.jobId, current.id),
+              eq(discoveryRequestsTable.path, "/CaseSearch"),
+              eq(discoveryRequestsTable.method, "POST"),
+            ));
+          ordinarySearchAccessCheckAllowed = canUseOrdinarySearchFirstPdfAccessCheck({
+            jobId: current.id,
+            expectedJobId: authorization.authorizedOrdinarySearchJobId,
+            itemId: candidate?.id ?? "",
+            expectedItemId: authorization.ordinarySearchFirstPdfAccessCheck.itemId,
+            docketNumber: candidate?.docketNumber ?? "",
+            expectedDocketNumber: authorization.ordinarySearchFirstPdfAccessCheck.docketNumber,
+            url: String(url),
+            expectedUrl: authorization.ordinarySearchFirstPdfAccessCheck.url,
+            requestPath: String(requestPath),
+            method: String(method),
+            block,
+            sourceBlockedReason: source.blockedReason,
+            accessVerifiedAt: source.accessVerifiedAt,
+            verifiedMethod: source.verifiedMethod,
+            pausedUntil: source.pausedUntil,
+            activeRequestId: source.activeRequestId,
+            latencyWarning: source.latencyWarning,
+            jobStatus: current.status,
+            calendarComplete: current.calendarComplete,
+            assessmentId: current.assessmentId,
+            criteria: current.criteria,
+              liveSearchLinked: linkedSearches.some(search => search.criteria.source === "live"),
+            firstPendingItem: firstPending?.id === candidate?.id,
+            supportedCourtType: candidate?.provenance.courtType === "MDJ"
+              || candidate?.provenance.courtType === "COMMON_PLEAS",
+            priorPdfRequests: previousPdfs.length,
+            priorSearchPosts: previousSearches.length,
+          });
+        }
+        if (block && !firstPdfAccessCheckAllowed && !ordinarySearchAccessCheckAllowed) return deny(block);
       }
       if (diagnosticPermit || boundedPermit && method === "GET" && !["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(requestPath))) {
         const [priorPath] = await tx.select({ id: discoveryRequestsTable.id })
@@ -289,6 +354,17 @@ export async function reserveSourceRequest(
           const next = ordered.find((candidate) => candidate.provenance.extractionOutcome === "UNPROCESSED");
           if (next?.id !== item.id) return deny("FIRST_PDF_ACCESS_CHECK_ORDER_MISMATCH");
         }
+        if (collectionBlockReason === "ACCESS_UNVERIFIED" && authorization.ordinarySearchFirstPdfAccessCheck
+          && authorization.authorizedOrdinarySearchJobId === current.id) {
+          if (!ordinarySearchAccessCheckAllowed || item?.id !== authorization.ordinarySearchFirstPdfAccessCheck.itemId
+            || item.docketNumber !== authorization.ordinarySearchFirstPdfAccessCheck.docketNumber
+            || item.provenance.extractionOutcome !== "UNPROCESSED")
+            return deny("ORDINARY_SEARCH_FIRST_PDF_SCOPE_MISMATCH");
+          const ordered = await tx.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
+          const next = ordered.find(candidate => candidate.provenance.extractionOutcome === "UNPROCESSED");
+          if (next?.id !== item.id) return deny("ORDINARY_SEARCH_FIRST_PDF_ORDER_MISMATCH");
+        }
         if (!proofPermit && !singleDocumentProofPermit
           && (!item || item.provenance.extractionOutcome !== "UNPROCESSED")) return deny("DOCUMENT_NOT_PENDING");
         const [prior] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.jobId, current.id), eq(discoveryRequestsTable.resourceKey, resourceKey))).limit(1);
@@ -320,7 +396,12 @@ export async function reserveSourceRequest(
         requestsUsed: current.requestsUsed + 1, updatedAt: now,
         message: `Request ${current.requestsUsed + 1}/${current.criteria.requestCap}: ${method} ${requestPath}. All transmitted assets count.`,
       }).where(eq(discoveryJobsTable.id, current.id));
-      return { allow: true as const, requestId: request!.id };
+      return {
+        allow: true as const,
+        requestId: request!.id,
+        ...(firstPdfAccessCheckAllowed || ordinarySearchAccessCheckAllowed
+          ? { firstPdfAccessCheckAuthorized: true as const } : {}),
+      };
     });
     if ("waitMs" in decision) { await (context.sleep ?? sleep)(decision.waitMs!); continue; }
     return decision;

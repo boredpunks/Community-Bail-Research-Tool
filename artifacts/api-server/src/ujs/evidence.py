@@ -97,6 +97,11 @@ def docket_from_cells(cells, headers):
     return None
 
 
+def automatic_pdf_supported(item):
+    """Skip calendar rows the parent has already classified as unsupported."""
+    return isinstance(item, dict) and item.get("courtType") != "UNSUPPORTED"
+
+
 def iso_date(text):
     try:
         return datetime.strptime(text, "%m/%d/%Y").date().isoformat()

@@ -2,7 +2,7 @@ import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { db, pool, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
+import { db, pool, bailSearchesTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
   allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, integratedSourceMethod,
@@ -116,6 +116,44 @@ async function establishSessionRefreshAccessProof(job: DiscoveryJobRow, requestI
   });
 }
 
+async function establishOrdinarySearchAccessProof(job: DiscoveryJobRow, requestId: string, itemId: string): Promise<boolean> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
+    const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
+    const [search] = await tx.select().from(bailSearchesTable).where(and(
+      eq(bailSearchesTable.discoveryJobId, job.id),
+      eq(bailSearchesTable.ownerId, job.ownerId),
+      eq(bailSearchesTable.status, "running"),
+    )).for("update");
+    const [request] = await tx.select().from(discoveryRequestsTable).where(and(
+      eq(discoveryRequestsTable.id, requestId),
+      eq(discoveryRequestsTable.jobId, job.id),
+      eq(discoveryRequestsTable.itemId, itemId),
+      eq(discoveryRequestsTable.method, "GET"),
+      inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+      eq(discoveryRequestsTable.outcome, "OK"),
+      eq(discoveryRequestsTable.statusCode, 200),
+    )).for("update");
+    const [item] = await tx.select().from(discoveryItemsTable).where(and(
+      eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, job.id),
+    ));
+    if (!source || !current || current.status !== "RUNNING" || !search || search.criteria.source !== "live"
+      || current.assessmentId !== null || current.criteria.resultVersion !== 2
+      || current.criteria.calendarPreviewOnly === true || !current.calendarComplete || !request || !item
+      || source.blockedReason !== null || source.pausedUntil !== null || source.activeRequestId !== null
+      || source.latencyWarning !== null || source.accessVerifiedAt !== null || source.verifiedMethod !== null
+      || !item.sourceRetrievedAt || !item.provenance.documentSha256
+      || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome))
+      return false;
+    await tx.update(discoverySourceTable).set({
+      accessVerifiedAt: now,
+      verifiedMethod: integratedSourceMethod,
+    }).where(eq(discoverySourceTable.id, sourceId));
+    return true;
+  });
+}
+
 const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.provenance;
 
 type RunJobOptions = {
@@ -187,6 +225,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   const calendarPreviewOnly = job.criteria.calendarPreviewOnly === true;
   const calendarOnlyPermit = permit?.stage === "CALENDAR_ONLY" && permit.expectedMethod === calendarPreviewMethod;
   const boundedEngine = permit?.stage === "BOUNDED_ENGINE" && permit.expectedMethod === boundedEngineMethod;
+  const ordinarySearchAccessScope = !job.assessmentId
+    && job.criteria.resultVersion === 2 && job.criteria.calendarPreviewOnly !== true;
   const researchRun = permit?.stage === "RESEARCH_RUN" && permit.expectedMethod === researchMethod
     && validResearchCriteria(job.criteria);
   if (permit?.stage === "RESEARCH_RUN" && !researchRun) throw new Error("Invalid research-run scope");
@@ -287,6 +327,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   let accessCheckResponseValid = false;
   let accessCheckConsumed = false;
   let accessCheckVerified = false;
+  let ordinaryAccessCheckItem: { id: string; docketNumber: string; url: string } | null = null;
+  let ordinaryAccessCheckRequestId: string | null = null;
+  let ordinaryAccessCheckResponseValid = false;
+  let ordinaryAccessCheckConsumed = false;
+  let ordinaryAccessCheckVerified = false;
   let stderrBytes = 0;
   child.stderr.on("data", (buffer: Buffer) => { stderrBytes += buffer.length; }); // Never log source/cookie/PDF text.
   child.stdin.write(JSON.stringify({
@@ -331,6 +376,17 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           ...(refreshCalendarActive ? { refreshCalendarSession: true } : {}),
           ...(exactSessionRefresh && refreshCalendarValidated && accessCheckItem && !accessCheckConsumed
             ? { firstPdfAccessCheck: { itemId: accessCheckItem.id, docketNumber: accessCheckItem.docketNumber, url: accessCheckItem.url } } : {}),
+          ...(ordinarySearchAccessScope && ordinaryAccessCheckItem && !ordinaryAccessCheckConsumed
+            && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(message.path))
+            && String(message.method) === "GET" && String(message.url) === ordinaryAccessCheckItem.url
+            ? {
+              authorizedOrdinarySearchJobId: job.id,
+              ordinarySearchFirstPdfAccessCheck: {
+                itemId: ordinaryAccessCheckItem.id,
+                docketNumber: ordinaryAccessCheckItem.docketNumber,
+                url: ordinaryAccessCheckItem.url,
+              },
+            } : {}),
           ...(exactSessionRefresh && options.waitAcrossQuota ? { keepSessionAcrossQuota: true } : {}),
         };
         const permission = inspectionOnly
@@ -343,6 +399,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           accessCheckConsumed = true;
           accessCheckRequestId = String(permission.requestId);
         }
+        if (requestAuthorization.ordinarySearchFirstPdfAccessCheck && permission.allow
+          && "requestId" in permission && "firstPdfAccessCheckAuthorized" in permission
+          && permission.firstPdfAccessCheckAuthorized === true) {
+          ordinaryAccessCheckConsumed = true;
+          ordinaryAccessCheckRequestId = String(permission.requestId);
+        }
         if (boundedEngine && !boundedObservationComplete && permission.allow) boundedObservationRequests++;
         child.stdin.write(JSON.stringify(permission) + "\n");
       } else if (message.kind === "response") {
@@ -352,6 +414,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         const continueRun = await sourceOutcome(job, message);
         if (exactSessionRefresh && accessCheckRequestId === String(message.requestId))
           accessCheckResponseValid = message.outcome === "OK" && message.status === 200 && continueRun;
+        if (ordinaryAccessCheckRequestId === String(message.requestId))
+          ordinaryAccessCheckResponseValid = message.outcome === "OK" && message.status === 200 && continueRun;
         const [accounted] = await db.select({durationMs: discoveryRequestsTable.durationMs})
           .from(discoveryRequestsTable).where(and(
             eq(discoveryRequestsTable.id, message.requestId), eq(discoveryRequestsTable.jobId, job.id)));
@@ -576,6 +640,20 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           }
         });
         await publishCalendarRowsToSearch(job.id);
+        if (ordinarySearchAccessScope && !exactSessionRefresh) {
+          const saved = await db.select().from(discoveryItemsTable)
+            .where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
+          const firstPending = saved.find(item => item.provenance.extractionOutcome === "UNPROCESSED"
+            && ["MDJ", "COMMON_PLEAS"].includes(item.provenance.courtType ?? "")
+            && validCalendarDocketLink(item.sourceUrl, item.docketNumber));
+          if (firstPending) {
+            ordinaryAccessCheckItem = {
+              id: firstPending.id,
+              docketNumber: firstPending.docketNumber,
+              url: firstPending.sourceUrl,
+            };
+          }
+        }
         if (exactSessionRefresh && refreshedFirstAccessCheck) {
           refreshCalendarValidated = true;
           refreshCalendarActive = false;
@@ -625,6 +703,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
+        if (["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome))
+          await publishVerifiedDocumentToSearch(job.id, item.id);
         if (exactSessionRefresh && accessCheckConsumed && accessCheckItem?.id === item.id) {
           if (accessCheckResponseValid && accessCheckRequestId
             && ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) {
@@ -636,6 +716,20 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           }
           if (!accessCheckVerified && outcome !== "IDENTITY_MISMATCH")
             await pause(job, "FIRST_PDF_ACCESS_CHECK_FAILED: the first refreshed document did not validate; collection stopped without another PDF request.");
+        }
+        if (ordinaryAccessCheckConsumed && ordinaryAccessCheckItem?.id === item.id) {
+          if (ordinaryAccessCheckResponseValid && ordinaryAccessCheckRequestId
+            && ["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome)) {
+            ordinaryAccessCheckVerified = await establishOrdinarySearchAccessProof(
+              job, ordinaryAccessCheckRequestId, item.id,
+            );
+            if (ordinaryAccessCheckVerified) {
+              await discoveryEvent(job, "ORDINARY_SEARCH_ACCESS_VERIFIED",
+                "The first search-linked PDF was retrieved and identity-validated through the integrated client. The existing paced document loop may continue within its original caps.");
+            }
+          }
+          if (!ordinaryAccessCheckVerified && outcome !== "IDENTITY_MISMATCH")
+            await pause(job, "ORDINARY_SEARCH_FIRST_PDF_ACCESS_CHECK_FAILED: the first document did not validate; collection stopped without another PDF request.");
         }
         if (outcome === "IDENTITY_MISMATCH") await validationStop("DOCUMENT_VALIDATION_FAILED");
       } else if (message.kind === "checkpoint") {

@@ -9,7 +9,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
-from evidence import CalendarResults, exact_docket_link
+from evidence import CalendarResults, automatic_pdf_supported, exact_docket_link
 from calendar_dom import complete_result_framing, projection_rejection_reason
 from calendar_structure import STRUCTURE_REASONS
 
@@ -38,6 +38,12 @@ def action_row(*hrefs):
 
 
 class CandidateSelection(unittest.TestCase):
+    def test_unsupported_calendar_rows_are_not_downloaded(self):
+        self.assertFalse(automatic_pdf_supported({"courtType": "UNSUPPORTED"}))
+        self.assertTrue(automatic_pdf_supported({"courtType": "COMMON_PLEAS"}))
+        self.assertTrue(automatic_pdf_supported({"courtType": "MDJ"}))
+        self.assertTrue(automatic_pdf_supported({"sourceUrl": SHEET}))
+
     def test_identical_relative_anchors(self):
         parser = parse(action_row(SHEET, SHEET))
         self.assertEqual(parser.rows[0][1], ORIGIN + SHEET)
