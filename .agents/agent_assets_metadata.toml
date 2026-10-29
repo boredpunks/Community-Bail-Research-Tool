@@ -42,3 +42,17 @@ mtime_ms = 1793253109729
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/2cbb0cd2-beeb-4c56-9df4-864487988537/3f8911a9-863e-46d2-bb6d-9108f43074db"
 storage_version_token = "1793253160951323"
 content_type = "text/csv"
+
+[[outputs]]
+id = "xsLbEabFaN9YoJtwYBCqK"
+uri = "file://artifacts/proof_20261029_060852.csv"
+type = "table"
+title = "MDJ candidate extraction CSV"
+description = "One-request result: a $2,000 candidate was extracted on page 3; percentage was not captured, so this is not verified bail evidence."
+logical_id = "c28c8f28-ec37-4813-b88d-4447d6b3ad7f"
+content_hash = "sha256:aed906a4923158712261011516aa6d6b8ccaff57bd9d86247fc0a28ad6e59041"
+size = 341
+mtime_ms = 1793254132952
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:fac31d73-719f-48a4-9df7-b3fb47f37f8a/c28c8f28-ec37-4813-b88d-4447d6b3ad7f/2bf8dae1-1d27-403b-83e5-fe7a8b273544"
+storage_version_token = "1793254192376488"
+content_type = "text/csv"
