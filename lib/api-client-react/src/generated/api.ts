@@ -30,6 +30,7 @@ import type {
   BailSearch,
   BailSearchInput,
   BailSearchReadiness,
+  BailSearchResult,
   BailSearchResumeInput,
   CalendarPreviewInput,
   ConflictResponse,
@@ -42,12 +43,14 @@ import type {
   DiscoveryObservationInput,
   DiscoveryPolicy,
   DiscoveryReport,
+  ExportBailSearchParams,
   ForbiddenResponse,
   GetBailRangeParams,
   GetResearchOperations200,
   HealthStatus,
   ListBailRecordsParams,
   NotFoundResponse,
+  SaveBailSearchResultBody,
   SingleDocumentProofInput,
   SingleDocumentProofResponse,
   TooManyRequestsResponse,
@@ -55,6 +58,8 @@ import type {
   UnavailableResponse,
   UploadResearchDocument201,
   UploadResearchDocumentParams,
+  VolunteerFeedback,
+  VolunteerFeedbackInput,
   WorkspacePasswordInput,
   WorkspaceSession
 } from './api.schemas';
@@ -85,6 +90,244 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListVolunteerFeedbackUrl = () => {
+
+
+
+
+  return `/api/bail-search/feedback`
+}
+
+export const listVolunteerFeedback = async ( options?: Parameters<typeof customFetch>[1]): Promise<VolunteerFeedback[]> => {
+
+  return customFetch<VolunteerFeedback[]>(getListVolunteerFeedbackUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVolunteerFeedbackQueryKey = () => {
+    return [
+    `/api/bail-search/feedback`
+    ] as const;
+    }
+
+
+export const getListVolunteerFeedbackQueryOptions = <TData = Awaited<ReturnType<typeof listVolunteerFeedback>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVolunteerFeedback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVolunteerFeedbackQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVolunteerFeedback>>> = ({ signal }) => listVolunteerFeedback({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVolunteerFeedback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVolunteerFeedbackQueryResult = NonNullable<Awaited<ReturnType<typeof listVolunteerFeedback>>>
+export type ListVolunteerFeedbackQueryError = ErrorType<unknown>
+
+
+
+export function useListVolunteerFeedback<TData = Awaited<ReturnType<typeof listVolunteerFeedback>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVolunteerFeedback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVolunteerFeedbackQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubmitVolunteerFeedbackUrl = () => {
+
+
+
+
+  return `/api/bail-search/feedback`
+}
+
+export const submitVolunteerFeedback = async (volunteerFeedbackInput: VolunteerFeedbackInput, options?: Parameters<typeof customFetch>[1]): Promise<VolunteerFeedback> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<VolunteerFeedback>(getSubmitVolunteerFeedbackUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(volunteerFeedbackInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitVolunteerFeedbackMutationKey = () => ['submitVolunteerFeedback'] as const;
+
+export const getSubmitVolunteerFeedbackMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitVolunteerFeedback>>, TError,SubmitVolunteerFeedbackMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitVolunteerFeedback>>, TError,SubmitVolunteerFeedbackMutationVariables, TContext> => {
+
+const mutationKey = getSubmitVolunteerFeedbackMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitVolunteerFeedback>>, SubmitVolunteerFeedbackMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitVolunteerFeedback(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitVolunteerFeedbackMutationResult = NonNullable<Awaited<ReturnType<typeof submitVolunteerFeedback>>>
+    export type SubmitVolunteerFeedbackMutationBody = BodyType<VolunteerFeedbackInput>
+    export type SubmitVolunteerFeedbackMutationError = ErrorType<unknown>
+    export type SubmitVolunteerFeedbackMutationVariables = {data: BodyType<VolunteerFeedbackInput>}
+
+    export const useSubmitVolunteerFeedback = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitVolunteerFeedback>>, TError,SubmitVolunteerFeedbackMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitVolunteerFeedback>>,
+        TError,
+        SubmitVolunteerFeedbackMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitVolunteerFeedbackMutationOptions(options));
+    }
+
+export const getSaveBailSearchResultUrl = (searchId: string,
+    resultId: string,) => {
+
+
+
+
+  return `/api/bail-search/search/${searchId}/results/${resultId}/save`
+}
+
+export const saveBailSearchResult = async (searchId: string,
+    resultId: string,
+    saveBailSearchResultBody: SaveBailSearchResultBody, options?: Parameters<typeof customFetch>[1]): Promise<BailSearchResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BailSearchResult>(getSaveBailSearchResultUrl(searchId,resultId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(saveBailSearchResultBody)
+  }
+);}
+
+
+
+
+
+export const getSaveBailSearchResultMutationKey = () => ['saveBailSearchResult'] as const;
+
+export const getSaveBailSearchResultMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext> => {
+
+const mutationKey = getSaveBailSearchResultMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveBailSearchResult>>, SaveBailSearchResultMutationVariables> = (props) => {
+          const {searchId,resultId,data} = props ?? {};
+
+          return  saveBailSearchResult(searchId,resultId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveBailSearchResultMutationResult = NonNullable<Awaited<ReturnType<typeof saveBailSearchResult>>>
+    export type SaveBailSearchResultMutationBody = BodyType<SaveBailSearchResultBody>
+    export type SaveBailSearchResultMutationError = ErrorType<unknown>
+    export type SaveBailSearchResultMutationVariables = {searchId: string;resultId: string;data: BodyType<SaveBailSearchResultBody>}
+
+    export const useSaveBailSearchResult = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveBailSearchResult>>,
+        TError,
+        SaveBailSearchResultMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveBailSearchResultMutationOptions(options));
+    }
 
 export const getGetBailSearchReadinessUrl = () => {
 
@@ -464,17 +707,26 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getResumeBailSearchMutationOptions(options));
     }
 
-export const getExportBailSearchUrl = (searchId: string,) => {
+export const getExportBailSearchUrl = (searchId: string,
+    params?: ExportBailSearchParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/bail-search/search/${searchId}/export`
+  return stringifiedParams.length > 0 ? `/api/bail-search/search/${searchId}/export?${stringifiedParams}` : `/api/bail-search/search/${searchId}/export`
 }
 
-export const exportBailSearch = async (searchId: string, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+export const exportBailSearch = async (searchId: string,
+    params?: ExportBailSearchParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
 
-  return customFetch<string>(getExportBailSearchUrl(searchId),
+  return customFetch<string>(getExportBailSearchUrl(searchId,params),
   {
     ...options,
     method: 'GET'
@@ -487,23 +739,25 @@ export const exportBailSearch = async (searchId: string, options?: Parameters<ty
 
 
 
-export const getExportBailSearchQueryKey = (searchId: string,) => {
+export const getExportBailSearchQueryKey = (searchId: string,
+    params?: ExportBailSearchParams,) => {
     return [
-    `/api/bail-search/search/${searchId}/export`
+    `/api/bail-search/search/${searchId}/export`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getExportBailSearchQueryOptions = <TData = Awaited<ReturnType<typeof exportBailSearch>>, TError = ErrorType<unknown>>(searchId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBailSearch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getExportBailSearchQueryOptions = <TData = Awaited<ReturnType<typeof exportBailSearch>>, TError = ErrorType<unknown>>(searchId: string,
+    params?: ExportBailSearchParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBailSearch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getExportBailSearchQueryKey(searchId);
+  const queryKey =  queryOptions?.queryKey ?? getExportBailSearchQueryKey(searchId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportBailSearch>>> = ({ signal }) => exportBailSearch(searchId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportBailSearch>>> = ({ signal }) => exportBailSearch(searchId,params, { signal, ...requestOptions });
 
 
 
@@ -518,11 +772,12 @@ export type ExportBailSearchQueryError = ErrorType<unknown>
 
 
 export function useExportBailSearch<TData = Awaited<ReturnType<typeof exportBailSearch>>, TError = ErrorType<unknown>>(
- searchId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBailSearch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ searchId: string,
+    params?: ExportBailSearchParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBailSearch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getExportBailSearchQueryOptions(searchId,options)
+  const queryOptions = getExportBailSearchQueryOptions(searchId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -7,7 +7,9 @@
  */
 import type { BailSearchInput } from './bailSearchInput';
 import type { BailSearchProgress } from './bailSearchProgress';
+import type { BailSearchRecovery } from './bailSearchRecovery';
 import type { BailSearchResult } from './bailSearchResult';
+import type { BailSearchStage } from './bailSearchStage';
 import type { BailSearchStatus } from './bailSearchStatus';
 
 export interface BailSearch {
@@ -26,4 +28,6 @@ export interface BailSearch {
   createdAt: string;
   updatedAt: string;
   sourceNotice: string;
+  stage?: BailSearchStage;
+  recovery?: BailSearchRecovery;
 }

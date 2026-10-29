@@ -103,8 +103,8 @@ export default function Research({ candidates = false }: { candidates?: boolean 
 
   return (
     <Shell>
-      <PageHead label={candidates ? 'Candidates' : 'Search saved records'} title={candidates ? 'Candidates' : 'Search records'}>
-        {candidates ? 'Observations you explicitly saved, with review status shown. Candidates are not recommendations, custody confirmation, or release eligibility. ' : null}Searches only observations already saved in this workspace. It does not contact court sources or search countywide. Names are not searchable.
+      <PageHead label={candidates ? 'Saved dockets' : 'Search saved records'} title={candidates ? 'Saved dockets' : 'Search records'}>
+        {candidates ? 'Observations you explicitly saved, with review status shown. Saving a docket is not confirming a source match or interpreting an order. Saved dockets are not recommendations, custody confirmation, or release eligibility. ' : null}Searches only observations already saved in this workspace. It does not contact court sources or search countywide. Names are not searchable.
       </PageHead>
 
       <div className="panel mb-8" data-testid="panel-discovery-link">

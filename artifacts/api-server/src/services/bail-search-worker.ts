@@ -18,6 +18,9 @@ async function storeItem(search: BailSearchRow, queued: BailSearchQueueItem, cac
   const decision = selectBailDecision(entries ?? []);
   const values = {
     searchId: search.id, docketNumber: queued.docketNumber, hearingDate: queued.hearingDate,
+    sourceItemId: item?.id ?? null,
+    sourceUrl: item?.sourceUrl ?? null,
+    sourceRetrievedAt: item?.sourceRetrievedAt ?? null,
     office: queued.office, decisionDate: decision.decisionDate,
     classification: decision.classification,
     amountCents: decision.amount === null ? null : Math.round(decision.amount * 100),

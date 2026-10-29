@@ -5,6 +5,28 @@ import { SpinningA } from '@/components/spinning-a';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useWorkspaceAccess } from '@/lib/workspace-access';
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+/** Accept only same-app absolute paths; anything else falls back to /search. */
+export function safeNext(raw: string | null): string {
+  const fallback = '/search';
+  if (!raw) return fallback;
+  let value = raw.trim();
+  if (!value.startsWith('/') || value.startsWith('//')) return fallback;
+  let decoded = value;
+  try { decoded = decodeURIComponent(value); } catch { return fallback; }
+  if (/[\\\u0000-\u001f]/.test(value) || /[\\\u0000-\u001f]/.test(decoded)) return fallback;
+  if (decoded.startsWith('//') || /^\/[^/]*:/.test(decoded) || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) return fallback;
+  try {
+    const parsed = new URL(value, 'https://workspace.invalid');
+    if (parsed.origin !== 'https://workspace.invalid') return fallback;
+    value = parsed.pathname + parsed.search + parsed.hash;
+  } catch { return fallback; }
+  if (BASE && (value === BASE || value.startsWith(`${BASE}/`))) value = value.slice(BASE.length) || '/';
+  if (value === '/' || value.startsWith('/?')) return fallback;
+  return value;
+}
+
 export default function Home() {
   const access = useWorkspaceAccess();
   const [, setLocation] = useLocation();
@@ -12,7 +34,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
 
-  const destination = '/menu';
+  const destination = safeNext(typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('next'));
 
   async function enter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +81,7 @@ export default function Home() {
         <DialogContent className="border-primary bg-background text-foreground sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="mono text-primary">Workspace password</DialogTitle>
-            <DialogDescription>Enter the shared password to continue.</DialogDescription>
+            <DialogDescription>Enter the shared workspace password to continue. Everyone with this password sees the same saved records; there are no individual accounts.</DialogDescription>
           </DialogHeader>
           <form onSubmit={enter}>
             <label htmlFor="workspace-password" className="sr-only">Workspace password</label>
@@ -85,7 +107,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       <p className="hint mt-8 max-w-md text-center">
-        One shared password opens all records; actions are not tied to individual accounts. A shared workspace for aggregating and analyzing 412 bail data.
+        One shared password opens all records; actions are not tied to individual accounts, and saved evidence is visible to everyone in the workspace. A shared workspace for aggregating and analyzing 412 bail data.
       </p>
     </CageRoom>
   );

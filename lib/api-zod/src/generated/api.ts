@@ -8,13 +8,98 @@
 import * as zod from 'zod';
 
 
+export const listVolunteerFeedbackResponseOneTryingToDoMax = 2000;
+
+export const listVolunteerFeedbackResponseOneObstacleMax = 2000;
+
+export const listVolunteerFeedbackResponseOneNeededMax = 2000;
+
+
+
+export const ListVolunteerFeedbackResponseItem = zod.object({
+  "tryingToDo": zod.string().min(1).max(listVolunteerFeedbackResponseOneTryingToDoMax),
+  "obstacle": zod.string().min(1).max(listVolunteerFeedbackResponseOneObstacleMax),
+  "needed": zod.string().min(1).max(listVolunteerFeedbackResponseOneNeededMax)
+}).and(zod.object({
+  "id": zod.string(),
+  "createdAt": zod.string()
+}))
+export const ListVolunteerFeedbackResponse = zod.array(ListVolunteerFeedbackResponseItem)
+
+
+export const submitVolunteerFeedbackBodyTryingToDoMax = 2000;
+
+export const submitVolunteerFeedbackBodyObstacleMax = 2000;
+
+export const submitVolunteerFeedbackBodyNeededMax = 2000;
+
+
+
+export const SubmitVolunteerFeedbackBody = zod.object({
+  "tryingToDo": zod.string().min(1).max(submitVolunteerFeedbackBodyTryingToDoMax),
+  "obstacle": zod.string().min(1).max(submitVolunteerFeedbackBodyObstacleMax),
+  "needed": zod.string().min(1).max(submitVolunteerFeedbackBodyNeededMax)
+})
+
+export const submitVolunteerFeedbackResponseOneTryingToDoMax = 2000;
+
+export const submitVolunteerFeedbackResponseOneObstacleMax = 2000;
+
+export const submitVolunteerFeedbackResponseOneNeededMax = 2000;
+
+
+
+export const SubmitVolunteerFeedbackResponse = zod.object({
+  "tryingToDo": zod.string().min(1).max(submitVolunteerFeedbackResponseOneTryingToDoMax),
+  "obstacle": zod.string().min(1).max(submitVolunteerFeedbackResponseOneObstacleMax),
+  "needed": zod.string().min(1).max(submitVolunteerFeedbackResponseOneNeededMax)
+}).and(zod.object({
+  "id": zod.string(),
+  "createdAt": zod.string()
+}))
+
+
+export const SaveBailSearchResultParams = zod.object({
+  "searchId": zod.coerce.string().uuid(),
+  "resultId": zod.coerce.string().uuid()
+})
+
+export const SaveBailSearchResultBody = zod.object({
+  "shareWithWorkspace": zod.boolean()
+})
+
+export const SaveBailSearchResultResponse = zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.number().int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
+})
+
+
 export const GetBailSearchReadinessResponse = zod.object({
   "calendarVerified": zod.boolean(),
   "liveAvailable": zod.boolean(),
   "evidence": zod.string().nullable(),
   "reason": zod.string(),
   "scope": zod.string(),
-  "authScope": zod.string()
+  "authScope": zod.string(),
+  "collectedDockets": zod.number().int()
 })
 
 
@@ -57,11 +142,23 @@ export const ListBailSearchesResponseItem = zod.object({
   "evidence_acquisition": zod.string(),
   "qualifies": zod.boolean(),
   "ambiguous": zod.boolean(),
-  "error": zod.string().nullable()
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
-  "sourceNotice": zod.string()
+  "sourceNotice": zod.string(),
+  "stage": zod.enum(['finding_hearings', 'checking_documents', 'paused', 'complete']).optional(),
+  "recovery": zod.object({
+  "action": zod.enum(['none', 'resume', 'wait', 'evidence_needed', 'new_search', 'source_blocked']),
+  "message": zod.string(),
+  "availableAt": zod.string().nullable()
+}).optional()
 })
 export const ListBailSearchesResponse = zod.array(ListBailSearchesResponseItem)
 
@@ -119,11 +216,23 @@ export const StartBailSearchResponse = zod.object({
   "evidence_acquisition": zod.string(),
   "qualifies": zod.boolean(),
   "ambiguous": zod.boolean(),
-  "error": zod.string().nullable()
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
-  "sourceNotice": zod.string()
+  "sourceNotice": zod.string(),
+  "stage": zod.enum(['finding_hearings', 'checking_documents', 'paused', 'complete']).optional(),
+  "recovery": zod.object({
+  "action": zod.enum(['none', 'resume', 'wait', 'evidence_needed', 'new_search', 'source_blocked']),
+  "message": zod.string(),
+  "availableAt": zod.string().nullable()
+}).optional()
 })
 
 
@@ -170,11 +279,23 @@ export const GetBailSearchStatusResponse = zod.object({
   "evidence_acquisition": zod.string(),
   "qualifies": zod.boolean(),
   "ambiguous": zod.boolean(),
-  "error": zod.string().nullable()
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
-  "sourceNotice": zod.string()
+  "sourceNotice": zod.string(),
+  "stage": zod.enum(['finding_hearings', 'checking_documents', 'paused', 'complete']).optional(),
+  "recovery": zod.object({
+  "action": zod.enum(['none', 'resume', 'wait', 'evidence_needed', 'new_search', 'source_blocked']),
+  "message": zod.string(),
+  "availableAt": zod.string().nullable()
+}).optional()
 })
 
 
@@ -230,16 +351,34 @@ export const ResumeBailSearchResponse = zod.object({
   "evidence_acquisition": zod.string(),
   "qualifies": zod.boolean(),
   "ambiguous": zod.boolean(),
-  "error": zod.string().nullable()
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
-  "sourceNotice": zod.string()
+  "sourceNotice": zod.string(),
+  "stage": zod.enum(['finding_hearings', 'checking_documents', 'paused', 'complete']).optional(),
+  "recovery": zod.object({
+  "action": zod.enum(['none', 'resume', 'wait', 'evidence_needed', 'new_search', 'source_blocked']),
+  "message": zod.string(),
+  "availableAt": zod.string().nullable()
+}).optional()
 })
 
 
 export const ExportBailSearchParams = zod.object({
   "searchId": zod.coerce.string().uuid()
+})
+
+export const exportBailSearchQuerySelectionDefault = `all`;
+
+export const ExportBailSearchQueryParams = zod.object({
+  "selection": zod.enum(['all', 'matches']).default(exportBailSearchQuerySelectionDefault)
 })
 
 export const ExportBailSearchResponse = zod.unknown()

@@ -26,4 +26,15 @@ export interface BailSearchResult {
   ambiguous: boolean;
   /** @nullable */
   error: string | null;
+  /** @nullable */
+  source_url?: string | null;
+  /** @nullable */
+  source_retrieved_at?: string | null;
+  save_available?: boolean;
+  /** @nullable */
+  save_reason?: string | null;
+  /** @nullable */
+  saved_record_id?: string | null;
+  /** @nullable */
+  review_status?: string | null;
 }

@@ -11,6 +11,7 @@ import Review from '@/pages/review';
 import Discovery from '@/pages/discovery';
 import Menu from '@/pages/menu';
 import BailSearch from '@/pages/BailSearch';
+import Feedback from '@/pages/feedback';
 import { ThemeToggle } from '@/components/shell';
 import { applyStoredTheme } from '@/lib/theme';
 import { WorkspaceAccessProvider, useWorkspaceAccess } from '@/lib/workspace-access';
@@ -59,6 +60,7 @@ const ReviewRoute = protect(Review);
 const DiscoveryRoute = protect(Discovery);
 const MenuRoute = protect(Menu);
 const BailSearchRoute = protect(BailSearch);
+const FeedbackRoute = protect(Feedback);
 
 function LegacySignInRoute() {
   return <Redirect to="/" />;
@@ -69,10 +71,11 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   useEffect(() => {
     const page = location === '/menu' ? 'Menu'
       : location === '/search' ? 'Search Bail'
-      : location === '/research' || location === '/candidates' ? 'Search saved observations'
+      : location === '/research' || location === '/candidates' ? (location === '/candidates' ? 'Saved dockets' : 'Search saved observations')
       : location === '/records/new' ? 'Enter source evidence'
       : location === '/review' ? 'Review source evidence'
-      : location === '/discovery' ? 'Live court discovery'
+      : location === '/discovery' ? 'Advanced court search'
+      : location === '/feedback' ? 'Volunteer feedback'
       : location === '/' ? 'Workspace access'
       : 'Page not found';
     const title = `${page} | Community Bail Research`;
@@ -105,6 +108,7 @@ function AppRoutes() {
           <Route path="/review" component={ReviewRoute} />
           <Route path="/discovery" component={DiscoveryRoute} />
           <Route path="/search" component={BailSearchRoute} />
+          <Route path="/feedback" component={FeedbackRoute} />
           <Route component={NotFound} />
         </Switch>
       </RoutedErrorBoundary>

@@ -447,7 +447,7 @@ export default function Discovery() {
   const pct = job && job.discovered > 0 ? Math.min(100, Math.round((job.processed / job.discovered) * 100)) : 0;
   return (
     <Shell>
-      <PageHead label="Search" title="Calendar search and docket evidence">
+      <PageHead label="Advanced court search" title="Calendar search and docket evidence">
         Search the Allegheny–05 Calendar Event scope for recorded monetary bail observations, open each docket at its source, or upload a PDF you downloaded. Results are provisional historical observations, not operative orders. Saving is optional and creates a pending observation for review. <Link href="/candidates" className="underline text-primary">Open saved candidates</Link>.
       </PageHead>
 

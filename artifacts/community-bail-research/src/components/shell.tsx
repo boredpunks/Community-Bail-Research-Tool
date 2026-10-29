@@ -45,12 +45,13 @@ function LockWorkspace() {
 
 const NAV = [
   { href: '/menu', label: 'Menu' },
-  { href: '/discovery', label: 'Search' },
-  { href: '/search', label: 'Search Bail' },
+  { href: '/search', label: 'Search bail' },
+  { href: '/discovery', label: 'Advanced court search' },
   { href: '/review', label: 'Review' },
-  { href: '/candidates', label: 'Candidates' },
+  { href: '/candidates', label: 'Saved dockets' },
   { href: '/records/new', label: 'Enter record' },
   { href: '/research', label: 'Saved records' },
+  { href: '/feedback', label: 'Feedback' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {

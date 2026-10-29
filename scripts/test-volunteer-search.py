@@ -33,6 +33,11 @@ def main():
             headers={"Origin": base}, timeout=10)
         check(response.status_code == 200, "Workspace session authenticated")
     a, b = sessions
+    readiness = a.get(prefix + "/readiness", timeout=10).json()
+    check(not readiness["liveAvailable"] and readiness["collectedDockets"] > 0, "Volunteer release reports a real collected-docket count and does not enable live collection")
+    denied_live = a.post(prefix + "/search", json={"startDate": "2026-10-29", "endDate": "2026-10-29",
+        "maxBail": 2000, "source": "live"}, headers={"Origin": base}, timeout=10)
+    check(denied_live.status_code == 409, "Direct live creation is rejected without court requests")
     response = a.post(prefix + "/search", json={"startDate": "2026-10-28",
         "endDate": "2026-10-29", "maxBail": 2000, "source": "saved"},
         headers={"Origin": base}, timeout=20)
@@ -54,7 +59,24 @@ def main():
     check(len(rows) == len(result["results"]), "CSV contains all database result rows")
     check(f'# Search incomplete: {str(result["incomplete"]).lower()}' in text, "CSV completeness metadata")
     print("RESULT:", result["status"], result["progress"], "qualifying:", sum(r["qualifies"] for r in result["results"]), flush=True)
-    if result["status"] == "paused":
+    matches_text = a.get(endpoint + "/export?selection=matches", timeout=10).text
+    matches = list(csv.DictReader(io.StringIO("\n".join(line for line in matches_text.splitlines() if not line.startswith("#")))))
+    check(len(matches) == sum(row["qualifies"] for row in result["results"]), "Matches-only export agrees with on-screen amount filter")
+    check(all("ambiguous" in row and "error" in row and "source_url" in row for row in rows), "CSV carries uncertainty and source context")
+    first = result["results"][0]
+    check(b.post(endpoint + "/results/" + first["id"] + "/save", json={"shareWithWorkspace": True},
+        headers={"Origin": base}, timeout=10).status_code == 403, "Other session cannot share search evidence")
+    check(a.post(endpoint + "/results/" + first["id"] + "/save", json={"shareWithWorkspace": False},
+        headers={"Origin": base}, timeout=10).status_code == 400, "Sharing requires explicit workspace consent")
+    for row in result["results"]:
+        if not row.get("save_available") and not row.get("saved_record_id"):
+            denied = a.post(endpoint + "/results/" + row["id"] + "/save", json={"shareWithWorkspace": True},
+                headers={"Origin": base}, timeout=10)
+            check(denied.status_code == 409, "Incomplete or unverified evidence cannot silently become an observation")
+            break
+    if result.get("recovery", {}).get("action") == "evidence_needed":
+        check(result["resumeToken"] is None, "Missing evidence does not expose a futile resume token")
+    if result["status"] == "paused" and result.get("resumeToken"):
         token = result["resumeToken"]
         resumed = a.post(endpoint + "/resume", json={"resumeToken": token}, headers={"Origin": base}, timeout=10)
         check(resumed.status_code == 200, "Paused search resumes explicitly")

@@ -1,19 +1,17 @@
-import { db, discoverySourceTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { calendarAdmission } from "../lib/research-operations";
+import { db, discoveryItemsTable } from "@workspace/db";
+import { inArray, sql } from "drizzle-orm";
 
 /** Admission is a runtime safety decision, not a claim of historical proof. */
-export async function calendarSearchReadiness() {
-  const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-  const block = await calendarAdmission(db, source);
+export async function calendarSearchReadiness(ownerIds: string[]) {
+  const [count] = await db.select({ value: sql<number>`count(distinct ${discoveryItemsTable.docketNumber})::integer` })
+    .from(discoveryItemsTable).where(inArray(discoveryItemsTable.ownerId, ownerIds));
   return {
     calendarVerified: false,
-    liveAvailable: !block,
+    liveAvailable: false,
     evidence: null,
-    reason: block
-      ? `Live search is currently paused: ${block}. Saved evidence remains available.`
-      : "Live searches may start under existing source safeguards. The cached six-docket proof did not verify live calendar or PDF access.",
-    scope: "Live: Bail Hearing, all supported offices, any room, today or later, at most seven days. Saved: existing workspace calendar evidence only.",
+    reason: "Live calendar discovery coming soon. This volunteer page searches collected calendar records and locally available evidence, not all court dockets.",
+    scope: "Collected workspace calendar records filtered by hearing date; documents may still be missing. The collected count is not the number with usable bail evidence.",
     authScope: "signed-in session",
+    collectedDockets: count?.value ?? 0,
   };
 }

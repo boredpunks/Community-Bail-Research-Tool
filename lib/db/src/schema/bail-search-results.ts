@@ -14,6 +14,10 @@ export interface BailDecisionEvidence {
 export const bailSearchResultsTable = pgTable("bail_search_results", {
   id: uuid("id").primaryKey().defaultRandom(),
   searchId: uuid("search_id").notNull().references(() => bailSearchesTable.id),
+  sourceItemId: uuid("source_item_id"),
+  sourceUrl: text("source_url"),
+  sourceRetrievedAt: timestamp("source_retrieved_at", { withTimezone: true }),
+  savedRecordId: uuid("saved_record_id"),
   docketNumber: text("docket_number").notNull(),
   hearingDate: date("hearing_date", { mode: "string" }).notNull(),
   office: text("office").notNull(),

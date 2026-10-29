@@ -14,4 +14,5 @@ export interface BailSearchReadiness {
   reason: string;
   scope: string;
   authScope: string;
+  collectedDockets: number;
 }

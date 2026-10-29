@@ -42,7 +42,31 @@ export interface BailSearchReadiness {
   reason: string;
   scope: string;
   authScope: string;
+  collectedDockets: number;
 }
+
+export interface VolunteerFeedbackInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  tryingToDo: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  obstacle: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  needed: string;
+}
+
+export type VolunteerFeedback = VolunteerFeedbackInput & {
+  id: string;
+  createdAt: string;
+};
 
 export interface BailSearchProgress {
   completed: number;
@@ -70,6 +94,17 @@ export interface BailSearchResult {
   ambiguous: boolean;
   /** @nullable */
   error: string | null;
+  /** @nullable */
+  source_url?: string | null;
+  /** @nullable */
+  source_retrieved_at?: string | null;
+  save_available?: boolean;
+  /** @nullable */
+  save_reason?: string | null;
+  /** @nullable */
+  saved_record_id?: string | null;
+  /** @nullable */
+  review_status?: string | null;
 }
 
 export type BailSearchStatus = typeof BailSearchStatus[keyof typeof BailSearchStatus];
@@ -80,6 +115,35 @@ export const BailSearchStatus = {
   paused: 'paused',
   complete: 'complete',
 } as const;
+
+export type BailSearchStage = typeof BailSearchStage[keyof typeof BailSearchStage];
+
+
+export const BailSearchStage = {
+  finding_hearings: 'finding_hearings',
+  checking_documents: 'checking_documents',
+  paused: 'paused',
+  complete: 'complete',
+} as const;
+
+export type BailSearchRecoveryAction = typeof BailSearchRecoveryAction[keyof typeof BailSearchRecoveryAction];
+
+
+export const BailSearchRecoveryAction = {
+  none: 'none',
+  resume: 'resume',
+  wait: 'wait',
+  evidence_needed: 'evidence_needed',
+  new_search: 'new_search',
+  source_blocked: 'source_blocked',
+} as const;
+
+export type BailSearchRecovery = {
+  action: BailSearchRecoveryAction;
+  message: string;
+  /** @nullable */
+  availableAt: string | null;
+};
 
 export interface BailSearch {
   searchId: string;
@@ -97,6 +161,8 @@ export interface BailSearch {
   createdAt: string;
   updatedAt: string;
   sourceNotice: string;
+  stage?: BailSearchStage;
+  recovery?: BailSearchRecovery;
 }
 
 export interface WorkspacePasswordInput {
@@ -817,6 +883,22 @@ export type TooManyRequestsResponse = ApiError;
  * Workspace password or session signing secret is not configured
  */
 export type UnavailableResponse = ApiError;
+
+export type SaveBailSearchResultBody = {
+  shareWithWorkspace: boolean;
+};
+
+export type ExportBailSearchParams = {
+selection?: ExportBailSearchSelection;
+};
+
+export type ExportBailSearchSelection = typeof ExportBailSearchSelection[keyof typeof ExportBailSearchSelection];
+
+
+export const ExportBailSearchSelection = {
+  all: 'all',
+  matches: 'matches',
+} as const;
 
 export type GetResearchOperations200Pacing = {[key: string]: number};
 

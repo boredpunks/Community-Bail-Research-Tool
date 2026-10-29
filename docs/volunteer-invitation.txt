@@ -1,0 +1,26 @@
+DRAFT — send only after the updated release is published and checked.
+
+To: print@rustbelt.info
+Subject: Try the Community Bail Research volunteer search
+
+The collected-evidence search is ready for volunteer feedback:
+https://community-bail-research-tool.replit.app/search
+
+Please ask your workspace coordinator for the shared password through a separate,
+trusted channel. The password is intentionally not included in this email.
+
+Choose hearing dates and a maximum recorded bail amount, inspect the evidence,
+and download all results or just records within your amount filter. Partial
+searches remain clearly marked and exportable. Eligible evidence can be explicitly
+saved into the shared workspace for review.
+
+Live calendar discovery is coming soon. This release searches collected dockets,
+not all court records. A matching amount does not confirm custody, eligibility,
+the applicable bail order, or the amount needed for release.
+
+After trying it, please tell us what you actually needed:
+https://community-bail-research-tool.replit.app/feedback
+
+What were you trying to do? What got in the way? What would help next?
+Feedback is shared within the workspace, so please leave out names, docket
+numbers, sensitive case information, passwords and contact details.

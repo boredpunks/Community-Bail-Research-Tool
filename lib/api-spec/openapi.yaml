@@ -15,6 +15,51 @@ tags:
   - name: workspace-access
     description: Shared password access to the research workspace
 paths:
+  /bail-search/feedback:
+    get:
+      operationId: listVolunteerFeedback
+      responses:
+        "200":
+          description: Feedback shared with this workspace, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VolunteerFeedback" }
+    post:
+      operationId: submitVolunteerFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VolunteerFeedbackInput" }
+      responses:
+        "201":
+          description: Feedback saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VolunteerFeedback" }
+  /bail-search/search/{searchId}/results/{resultId}/save:
+    parameters:
+      - { name: searchId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: resultId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: saveBailSearchResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shareWithWorkspace]
+              properties:
+                shareWithWorkspace: { type: boolean }
+      responses:
+        "200":
+          description: Result explicitly shared as a pending observation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearchResult" }
   /bail-search/readiness:
     get:
       operationId: getBailSearchReadiness
@@ -90,6 +135,10 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: exportBailSearch
+      parameters:
+        - name: selection
+          in: query
+          schema: { type: string, enum: [all, matches], default: all }
       responses:
         "200":
           description: All saved result rows, with completeness metadata
@@ -580,7 +629,7 @@ components:
         resumeToken: { type: string, minLength: 20, maxLength: 200 }
     BailSearchReadiness:
       type: object
-      required: [calendarVerified, liveAvailable, evidence, reason, scope, authScope]
+      required: [calendarVerified, liveAvailable, evidence, reason, scope, authScope, collectedDockets]
       properties:
         calendarVerified: { type: boolean }
         liveAvailable: { type: boolean }
@@ -588,6 +637,22 @@ components:
         reason: { type: string }
         scope: { type: string }
         authScope: { type: string }
+        collectedDockets: { type: integer }
+    VolunteerFeedbackInput:
+      type: object
+      required: [tryingToDo, obstacle, needed]
+      properties:
+        tryingToDo: { type: string, minLength: 1, maxLength: 2000 }
+        obstacle: { type: string, minLength: 1, maxLength: 2000 }
+        needed: { type: string, minLength: 1, maxLength: 2000 }
+    VolunteerFeedback:
+      allOf:
+        - { $ref: "#/components/schemas/VolunteerFeedbackInput" }
+        - type: object
+          required: [id, createdAt]
+          properties:
+            id: { type: string }
+            createdAt: { type: string }
     BailSearchProgress:
       type: object
       required: [completed, total, pending]
@@ -613,6 +678,12 @@ components:
         qualifies: { type: boolean }
         ambiguous: { type: boolean }
         error: { type: [string, "null"] }
+        source_url: { type: [string, "null"] }
+        source_retrieved_at: { type: [string, "null"] }
+        save_available: { type: boolean }
+        save_reason: { type: [string, "null"] }
+        saved_record_id: { type: [string, "null"] }
+        review_status: { type: [string, "null"] }
     BailSearch:
       type: object
       required: [searchId, status, criteria, progress, incomplete, reason, resumeToken, resumeAvailableAt, results, createdAt, updatedAt, sourceNotice]
@@ -631,6 +702,14 @@ components:
         createdAt: { type: string }
         updatedAt: { type: string }
         sourceNotice: { type: string }
+        stage: { type: string, enum: [finding_hearings, checking_documents, paused, complete] }
+        recovery:
+          type: object
+          required: [action, message, availableAt]
+          properties:
+            action: { type: string, enum: [none, resume, wait, evidence_needed, new_search, source_blocked] }
+            message: { type: string }
+            availableAt: { type: [string, "null"] }
     WorkspacePasswordInput:
       type: object
       properties:
