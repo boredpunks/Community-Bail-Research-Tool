@@ -42,3 +42,16 @@ proven and cancelling the separate reliability work.
 **How to apply:** Use actual source admission rules, not task status, to decide
 whether a submitted live search can run. Preserve partial results and explicit
 resume behavior without claiming live verification from cached evidence.
+
+For the volunteer onboarding release, show "Live calendar discovery coming soon —
+currently searching X collected dockets" with a real distinct collected-docket
+count. The volunteer form searches collected evidence only; this does not remove
+the separate Advanced court search or relax its safeguards.
+
+**Why:** The user explicitly added this notice to the publish-and-onboard step
+after approving the volunteer UX proposal.
+
+**How to apply:** Keep this release scope separate from older instructions about
+ordinary advanced research. Do not enable live collection from the volunteer form
+or substitute development counts for production evidence. Feedback is shared;
+search results remain session-private until explicitly saved to the workspace.
