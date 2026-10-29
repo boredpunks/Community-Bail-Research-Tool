@@ -28,6 +28,35 @@ another and explicitly requested a working source-action/PDF-upload fallback.
 
 **How to apply:** Finish authorized offline implementation and verification
 without asking whether to begin it. Do not commit personal PDF records.
+
+For the volunteer Bail Search, make live calendar search the default and keep
+collected workspace evidence as an explicit alternate mode. Do not describe live
+search as unavailable or “coming soon” when runtime readiness allows it; show the
+actual date, scope, quota and pacing limits instead.
+
+**Why:** The user said the live calendar-to-document search was already set up and
+confirmed working, and corrected the collected-only form and “coming soon” copy.
+
+**How to apply:** Route the ordinary volunteer form through the existing bounded
+calendar workflow and preserve source admission, pacing, pause and uncertainty
+safeguards. Do not issue real court requests just to test the interface.
+
+The user-defined volunteer workflow has exactly three menu entries: Search,
+Review, Candidates. Search is the existing live court search with very simple
+settings, a Search button beneath them, and raw unfiltered results below the
+button: row, docket, date, and bail amount when applicable. Launching a new
+search resets the displayed Search and Review results. Matching results appear
+immediately in Review, which contains only results from the last search with
+docket number, bail amount, and a source-PDF citation link. Only results explicitly
+marked “candidate” are saved under Candidates.
+
+**Why:** The user corrected adding unnecessary tabs that obscured the existing
+app and explicitly defined this simpler workflow.
+
+**How to apply:** Simplify the existing screens rather than adding parallel
+navigation or extra save-for-review steps. Keep automatic matching into Review
+separate from explicit persistence into Candidates. A display reset is not
+authorization to delete existing saved records.
 Report live outcomes separately from local/browser-mocked checks. Pacing
 defaults are not court requirements; preserve only stricter requirements
 actually supported by policy or observed server instructions.

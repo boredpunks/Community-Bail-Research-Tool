@@ -1,9 +1,9 @@
 # Volunteer access and first-use guide
 
 ## Release status
-This guide describes the collected-evidence volunteer release. Publish the verified
-main branch before circulating the invitation. A working existing production URL
-does not establish that these changes are already published.
+This guide describes the live-calendar and collected-evidence volunteer search.
+Publish the verified main branch before circulating the invitation. A working
+existing production URL does not establish that these changes are already published.
 
 ## Access
 Open https://community-bail-research-tool.replit.app/search .
@@ -13,11 +13,14 @@ The shared password does not create individual volunteer accounts.
 
 ## First search
 1. Enter the workspace. Search Bail is the starting page.
-2. Choose hearing dates and a maximum **recorded bail set**. These are not filing
-   dates, an amount payable, or a release-cost estimate.
-3. The notice reports the number of distinct collected dockets available to the
-   workspace. This is not the number with usable PDF evidence and is not a
-   countywide count. Live calendar discovery is coming soon.
+2. Live calendar search is the default. Choose a supported event and court office,
+   a hearing window of up to seven days starting today or later, and a maximum
+   **recorded bail set**. Dates are not filing dates; the amount is not an amount
+   payable or a release-cost estimate. Source limits or missing documents may pause
+   a run. Collected workspace evidence is also available as a separate mode.
+3. In collected-evidence mode, the notice reports the distinct collected dockets
+   available to the workspace. This is not the number with usable PDF evidence or
+   a countywide count.
 4. Search. Read the checked/pending counts and any incomplete-coverage warning.
    Missing evidence is not proof of no bail or zero bail.
 5. Review the decision date, category, page and quote. Open a source link only

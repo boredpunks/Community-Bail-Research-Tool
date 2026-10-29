@@ -19,6 +19,8 @@ export * from './bailReviewInput';
 export * from './bailReviewInputOrderInterpretation';
 export * from './bailSearch';
 export * from './bailSearchInput';
+export * from './bailSearchInputCourtOffice';
+export * from './bailSearchInputEventType';
 export * from './bailSearchInputSource';
 export * from './bailSearchProgress';
 export * from './bailSearchReadiness';

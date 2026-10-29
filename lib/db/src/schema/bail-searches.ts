@@ -7,6 +7,8 @@ export interface BailSearchCriteria {
   endDate: string;
   maxBail: number;
   source: "saved" | "live";
+  courtOffice?: string;
+  eventType?: string;
 }
 export interface BailSearchQueueItem {
   itemId: string;

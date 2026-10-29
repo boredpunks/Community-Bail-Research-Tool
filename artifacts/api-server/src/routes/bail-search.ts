@@ -10,6 +10,10 @@ import { easternToday } from "../lib/discovery";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
 import { resultsDeadline } from "../lib/discovery-safety";
+import { discoveryPolicy } from "../lib/discovery";
+import { launchDiscovery, newResearchCriteria } from "../lib/discovery-launch";
+
+class ActiveVolunteerSearchError extends Error {}
 
 const router = Router();
 router.use((req, res, next) => {
@@ -54,12 +58,71 @@ router.get("/search", async (_req, res) => {
 router.post("/search", async (req, res) => {
   const input = StartBailSearchBody.safeParse(req.body);
   if (!input.success) { res.status(400).json({ error: "Provide hearing dates, maximum bail, and an explicit source." }); return; }
-  if (input.data.source !== "saved") { res.status(409).json({ error: "Live calendar discovery is coming soon. Choose collected workspace evidence." }); return; }
   try {
     validateSearchDates(input.data);
   } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Invalid criteria." }); return; }
   const ownerId: string = res.locals.searchOwner;
   const { ownerIds } = getWorkspaceIdentity(res);
+  if (input.data.source === "live") {
+    const recordCap = discoveryPolicy.maxRecordCap;
+    let searchId: string | null = null;
+    let launched;
+    try {
+      const criteria = newResearchCriteria({
+        startDate: input.data.startDate,
+        endDate: input.data.endDate,
+        courtOffice: input.data.courtOffice ?? "ANY",
+        courtRoom: "ANY",
+        eventType: input.data.eventType ?? "Bail Hearing",
+        recordCap,
+        requestCap: discoveryPolicy.maxRequestCap,
+        matchTarget: recordCap,
+        matchFilters: {
+          monetaryUpperBoundCents: Math.round(input.data.maxBail * 100),
+          excludeShownPosted: false,
+          inclusiveMaximum: true,
+        },
+      });
+      launched = await launchDiscovery(criteria, getWorkspaceIdentity(res).ownerId, ownerIds, async (tx, job) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
+        const [running] = await tx.select().from(bailSearchesTable).where(and(
+          eq(bailSearchesTable.ownerId, ownerId), eq(bailSearchesTable.status, "running"),
+        ));
+        if (running) throw new ActiveVolunteerSearchError("A search is already running in this session.");
+        const [created] = await tx.insert(bailSearchesTable).values({
+          ownerId,
+          discoveryJobId: job.id,
+          criteria: input.data,
+          queue: [],
+          total: 0,
+          status: "running",
+          leaseExpiresAt: new Date(Date.now() + SEARCH_SLICE_MS),
+        }).returning();
+        searchId = created!.id;
+      });
+    } catch (error) {
+      if (error instanceof ActiveVolunteerSearchError) {
+        res.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof Error && /today or future|seven days|calendar criteria/i.test(error.message)) {
+        res.status(400).json({ error: "Live calendar searches accept today or future dates across at most seven days, with a supported event and office." });
+        return;
+      }
+      throw error;
+    }
+    if (!launched.payload) {
+      res.status(launched.status ?? 409).json({ error: launched.error ?? "The calendar search could not be started." });
+      return;
+    }
+    if (!searchId) {
+      res.status(409).json({ error: "The calendar search is already active. Select its existing results or try again after it stops." });
+      return;
+    }
+    const [current] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, searchId));
+    res.status(201).json(await searchResponse(current!));
+    return;
+  }
   let queue;
   try { queue = await savedQueue(input.data, ownerIds); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Choose a narrower hearing-date range." }); return; }

@@ -48,6 +48,30 @@ function date(value: string | null) {
   }).format(parsed);
 }
 
+function todayNewYork() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
+function addDays(value: string, days: number) {
+  const result = new Date(`${value}T00:00:00Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
+
+const LIVE_OFFICES = [
+  { value: 'ANY', label: 'Any supported office' },
+  { value: 'CP-05-02-Crim', label: 'Common Pleas criminal' },
+];
+const LIVE_EVENTS = [
+  'Formal Arraignment',
+  'Preliminary Hearing',
+  'Bail Hearing',
+  'Preliminary Arraignment',
+] as const;
+type LiveCalendarEvent = (typeof LIVE_EVENTS)[number];
+
 function safeSourceUrl(value: string | null | undefined) {
   if (!value) return null;
   try {
@@ -219,6 +243,9 @@ export default function BailSearch() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [maxBail, setMaxBail] = useState('2000');
+  const [source, setSource] = useState<'live' | 'saved'>('live');
+  const [courtOffice, setCourtOffice] = useState('ANY');
+  const [eventType, setEventType] = useState('Bail Hearing');
   const [formError, setFormError] = useState('');
   const [exportError, setExportError] = useState('');
   const [exporting, setExporting] = useState<'all' | 'matches' | 'visible' | null>(null);
@@ -325,6 +352,9 @@ export default function BailSearch() {
     setStartDate('');
     setEndDate('');
     setMaxBail('2000');
+    setSource('live');
+    setCourtOffice('ANY');
+    setEventType('Bail Hearing');
     setFormError('');
     setExportError('');
     setLastExport('');
@@ -336,6 +366,9 @@ export default function BailSearch() {
     setStartDate(run.criteria.startDate);
     setEndDate(run.criteria.endDate);
     setMaxBail(String(run.criteria.maxBail));
+    setSource(run.criteria.source);
+    setCourtOffice(run.criteria.courtOffice ?? 'ANY');
+    setEventType(run.criteria.eventType ?? 'Bail Hearing');
     setFormError('');
     document.getElementById('bail-search-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -346,10 +379,27 @@ export default function BailSearch() {
     const amount = maxBail.trim() ? Number(maxBail) : NaN;
     if (!startDate || !endDate) { setFormError('Choose both hearing dates.'); return; }
     if (endDate < startDate) { setFormError('The end hearing date must be on or after the start date.'); return; }
+    if (source === 'live') {
+      const today = todayNewYork();
+      if (startDate < today) { setFormError(`Live calendar searches start today or later (${today}).`); return; }
+      if (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`) > 6 * 86_400_000) {
+        setFormError('A live calendar search can cover at most seven days.'); return;
+      }
+      if (!readiness.data?.liveAvailable) {
+        setFormError(readiness.data?.reason ?? 'Live calendar availability has not been checked yet. Retry the source status.');
+        return;
+      }
+    }
     if (!maxBail.trim() || !Number.isFinite(amount) || amount < 0 || amount > 20_000_000) {
       setFormError('Enter a maximum bail set from $0 to $20,000,000.'); return;
     }
-    started.mutate({ data: { startDate, endDate, maxBail: amount, source: 'saved' } }, {
+    started.mutate({ data: {
+      startDate, endDate, maxBail: amount, source,
+      ...(source === 'live' ? {
+        courtOffice: courtOffice as 'ANY' | 'CP-05-02-Crim',
+        eventType: eventType as LiveCalendarEvent,
+      } : {}),
+    } }, {
       onSuccess: (result) => {
         queryClient.setQueryData(getGetBailSearchStatusQueryKey(result.searchId), result);
         queryClient.invalidateQueries({ queryKey: getListBailSearchesQueryKey() });
@@ -415,7 +465,7 @@ export default function BailSearch() {
   return (
     <Shell>
       <PageHead label="Volunteer search" title="Search bail evidence">
-        Search collected dockets by hearing date, inspect bail decisions, and export source-backed results. Finding a bail amount never means a person is eligible for release.
+        Search the live court calendar by hearing date and maximum bail set, then inspect and export source-backed results. Amount matches never establish release eligibility.
       </PageHead>
 
       <div className="bail-search-layout">
@@ -425,13 +475,26 @@ export default function BailSearch() {
               <div className="bail-source-mark" aria-hidden="true"><FileSearch size={21} /></div>
               <div>
                 <p className="bracket">Source</p>
-                <h2 id="source-heading" className="mono text-xl font-bold">Collected evidence only</h2>
+                <h2 id="source-heading" className="mono text-xl font-bold">
+                  {source === 'live' ? 'Live calendar search' : 'Collected evidence'}
+                </h2>
               </div>
             </div>
-            <p className="notice mt-3" role="status" data-testid="text-collected-dockets">
-              Live calendar discovery coming soon — currently searching {collectedText} collected dockets
-            </p>
-            <p className="hint mt-3">This search uses dockets already collected in the workspace. It makes no new court requests and is not live date-range coverage. A docket that is not collected will not appear. For experimental live collection, use <Link href="/discovery" className="underline" data-testid="link-advanced-search">Advanced court search</Link>.</p>
+            {source === 'live' ? (
+              <>
+                <p className="notice mt-3" role="status" data-testid="text-live-calendar-status">
+                  {readiness.isLoading ? 'Checking live calendar availability…' : readiness.data?.reason ?? 'Live calendar status is unavailable.'}
+                </p>
+                <p className="hint mt-3">This sends a bounded live calendar search for the selected event, office, and hearing window. The calendar or associated documents can pause independently; partial results are retained. Live searches start today or later, cover up to seven days, and use current workspace request limits and pacing.</p>
+              </>
+            ) : (
+              <>
+                <p className="notice mt-3" role="status" data-testid="text-collected-dockets">
+                  Searching {collectedText} collected dockets. This mode does not contact the live calendar.
+                </p>
+                <p className="hint mt-3">A docket that has not already been collected will not appear in this mode. The collected count is not a count of dockets with usable PDF evidence.</p>
+              </>
+            )}
             {readiness.isError ? (
               <div className="hint mt-3" role="status">Source details are temporarily unavailable. <button type="button" className="underline" onClick={() => readiness.refetch()} data-testid="button-retry-readiness">Retry</button></div>
             ) : readiness.data ? (
@@ -453,15 +516,47 @@ export default function BailSearch() {
               </div>
               <button type="button" className="btn" onClick={newSearch} data-testid="button-new-search">New search</button>
             </div>
+            <fieldset className="space-y-2" data-testid="fieldset-search-source">
+              <legend className="lbl">Evidence source</legend>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="search-source" value="live" checked={source === 'live'} onChange={() => setSource('live')} data-testid="radio-source-live" />
+                <span>Live court calendar</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="search-source" value="saved" checked={source === 'saved'} onChange={() => setSource('saved')} data-testid="radio-source-saved" />
+                <span>Collected workspace evidence</span>
+              </label>
+            </fieldset>
             <p className="hint">Dates refer to hearing dates. Maximum bail is a filter on the recorded bail set, not an estimated release cost or deposit. Each run is saved separately; starting a new one never overwrites earlier results.</p>
+            {source === 'live' ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="lbl">Court office</span>
+                  <select className="field" value={courtOffice} onChange={(event) => setCourtOffice(event.target.value)} data-testid="select-search-office">
+                    {LIVE_OFFICES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="lbl">Calendar event</span>
+                  <select className="field" value={eventType} onChange={(event) => setEventType(event.target.value)} data-testid="select-search-event">
+                    {LIVE_EVENTS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
+              </div>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="lbl">Hearing date from</span>
-                <input className="field" type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} data-testid="input-search-start-date" />
+                <input className="field" type="date" required min={source === 'live' ? todayNewYork() : undefined}
+                  max={source === 'live' ? addDays(startDate || todayNewYork(), 6) : undefined}
+                  value={startDate} onChange={(event) => setStartDate(event.target.value)} data-testid="input-search-start-date" />
               </label>
               <label className="block">
                 <span className="lbl">Hearing date through</span>
-                <input className="field" type="date" required value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} data-testid="input-search-end-date" />
+                <input className="field" type="date" required value={endDate}
+                  min={source === 'live' ? startDate || todayNewYork() : startDate || undefined}
+                  max={source === 'live' ? addDays(startDate || todayNewYork(), 6) : undefined}
+                  onChange={(event) => setEndDate(event.target.value)} data-testid="input-search-end-date" />
               </label>
             </div>
             <label className="block max-w-sm">
@@ -474,9 +569,9 @@ export default function BailSearch() {
             </label>
             {formError ? <p className="errbox" role="alert" data-testid="error-search-form">{formError}</p> : null}
             <button className="btn btn-primary" type="submit" disabled={started.isPending} data-testid="button-start-bail-search">
-              {started.isPending ? 'Starting search…' : 'Search bail'}
+              {started.isPending ? 'Starting search…' : source === 'live' ? 'Search live calendar' : 'Search collected evidence'}
             </button>
-            {started.isPending ? <p className="hint" role="status">Saving your search criteria…</p> : null}
+            {started.isPending ? <p className="hint" role="status">Starting your calendar or collected-evidence search…</p> : null}
           </form>
 
           <section className="panel" aria-labelledby="history-heading" data-testid="section-search-history">
@@ -503,7 +598,7 @@ export default function BailSearch() {
                   <li key={item.searchId}>
                     <button type="button" className={`bail-history-item ${searchId === item.searchId ? 'is-selected' : ''}`} onClick={() => selectSearch(item.searchId)} aria-current={searchId === item.searchId ? 'true' : undefined} data-testid={`button-select-search-${item.searchId}`}>
                       <span className="bail-history-date">{date(item.criteria.startDate)} – {date(item.criteria.endDate)}</span>
-                      <span className="bail-history-meta">{item.status}{item.progress.total > 0 && item.stage !== 'finding_hearings' ? ` · ${item.progress.completed}/${item.progress.total} checked` : ''} · max {money(item.criteria.maxBail)}</span>
+                      <span className="bail-history-meta">{item.status} · {item.criteria.source === 'live' ? `live ${item.criteria.eventType ?? 'calendar'} · ${item.criteria.courtOffice ?? 'any office'}` : 'collected evidence'}{item.progress.total > 0 && item.stage !== 'finding_hearings' ? ` · ${item.progress.completed}/${item.progress.total} checked` : ''} · max {money(item.criteria.maxBail)}</span>
                     </button>
                   </li>
                 ))}
@@ -531,7 +626,7 @@ export default function BailSearch() {
             ) : null}
             {run ? (
               <>
-                <p className="hint mt-3">Hearing dates {date(run.criteria.startDate)} through {date(run.criteria.endDate)} · amount filter {money(run.criteria.maxBail)} · {run.criteria.source === 'saved' ? 'collected' : run.criteria.source} evidence.</p>
+                <p className="hint mt-3">Hearing dates {date(run.criteria.startDate)} through {date(run.criteria.endDate)} · amount filter {money(run.criteria.maxBail)} · {run.criteria.source === 'saved' ? 'collected workspace evidence' : `live ${run.criteria.eventType ?? 'calendar'} · ${run.criteria.courtOffice ?? 'any office'}`}.</p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <button type="button" className="btn" onClick={editSearch} data-testid="button-edit-search">Edit this search</button>
                   <button type="button" className="btn" onClick={newSearch} data-testid="button-new-search-results">New search</button>

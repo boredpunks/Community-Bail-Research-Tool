@@ -117,7 +117,9 @@ export const ListBailSearchesResponseItem = zod.object({
   "startDate": zod.string().regex(listBailSearchesResponseCriteriaStartDateRegExp),
   "endDate": zod.string().regex(listBailSearchesResponseCriteriaEndDateRegExp),
   "maxBail": zod.number().min(listBailSearchesResponseCriteriaMaxBailMin).max(listBailSearchesResponseCriteriaMaxBailMax),
-  "source": zod.enum(['saved', 'live'])
+  "source": zod.enum(['saved', 'live']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim']).optional(),
+  "eventType": zod.enum(['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment']).optional()
 }),
   "progress": zod.object({
   "completed": zod.number().int(),
@@ -174,7 +176,9 @@ export const StartBailSearchBody = zod.object({
   "startDate": zod.string().regex(startBailSearchBodyStartDateRegExp),
   "endDate": zod.string().regex(startBailSearchBodyEndDateRegExp),
   "maxBail": zod.number().min(startBailSearchBodyMaxBailMin).max(startBailSearchBodyMaxBailMax),
-  "source": zod.enum(['saved', 'live'])
+  "source": zod.enum(['saved', 'live']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim']).optional(),
+  "eventType": zod.enum(['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment']).optional()
 })
 
 export const startBailSearchResponseCriteriaStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -191,7 +195,9 @@ export const StartBailSearchResponse = zod.object({
   "startDate": zod.string().regex(startBailSearchResponseCriteriaStartDateRegExp),
   "endDate": zod.string().regex(startBailSearchResponseCriteriaEndDateRegExp),
   "maxBail": zod.number().min(startBailSearchResponseCriteriaMaxBailMin).max(startBailSearchResponseCriteriaMaxBailMax),
-  "source": zod.enum(['saved', 'live'])
+  "source": zod.enum(['saved', 'live']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim']).optional(),
+  "eventType": zod.enum(['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment']).optional()
 }),
   "progress": zod.object({
   "completed": zod.number().int(),
@@ -254,7 +260,9 @@ export const GetBailSearchStatusResponse = zod.object({
   "startDate": zod.string().regex(getBailSearchStatusResponseCriteriaStartDateRegExp),
   "endDate": zod.string().regex(getBailSearchStatusResponseCriteriaEndDateRegExp),
   "maxBail": zod.number().min(getBailSearchStatusResponseCriteriaMaxBailMin).max(getBailSearchStatusResponseCriteriaMaxBailMax),
-  "source": zod.enum(['saved', 'live'])
+  "source": zod.enum(['saved', 'live']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim']).optional(),
+  "eventType": zod.enum(['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment']).optional()
 }),
   "progress": zod.object({
   "completed": zod.number().int(),
@@ -326,7 +334,9 @@ export const ResumeBailSearchResponse = zod.object({
   "startDate": zod.string().regex(resumeBailSearchResponseCriteriaStartDateRegExp),
   "endDate": zod.string().regex(resumeBailSearchResponseCriteriaEndDateRegExp),
   "maxBail": zod.number().min(resumeBailSearchResponseCriteriaMaxBailMin).max(resumeBailSearchResponseCriteriaMaxBailMax),
-  "source": zod.enum(['saved', 'live'])
+  "source": zod.enum(['saved', 'live']),
+  "courtOffice": zod.enum(['ANY', 'CP-05-02-Crim']).optional(),
+  "eventType": zod.enum(['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment']).optional()
 }),
   "progress": zod.object({
   "completed": zod.number().int(),

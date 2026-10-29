@@ -5,6 +5,8 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { BailSearchInputCourtOffice } from './bailSearchInputCourtOffice';
+import type { BailSearchInputEventType } from './bailSearchInputEventType';
 import type { BailSearchInputSource } from './bailSearchInputSource';
 
 export interface BailSearchInput {
@@ -18,4 +20,6 @@ export interface BailSearchInput {
      */
   maxBail: number;
   source: BailSearchInputSource;
+  courtOffice?: BailSearchInputCourtOffice;
+  eventType?: BailSearchInputEventType;
 }

@@ -34,10 +34,12 @@ def main():
         check(response.status_code == 200, "Workspace session authenticated")
     a, b = sessions
     readiness = a.get(prefix + "/readiness", timeout=10).json()
-    check(not readiness["liveAvailable"] and readiness["collectedDockets"] > 0, "Volunteer release reports a real collected-docket count and does not enable live collection")
-    denied_live = a.post(prefix + "/search", json={"startDate": "2026-10-29", "endDate": "2026-10-29",
-        "maxBail": 2000, "source": "live"}, headers={"Origin": base}, timeout=10)
-    check(denied_live.status_code == 409, "Direct live creation is rejected without court requests")
+    check(isinstance(readiness["liveAvailable"], bool) and readiness["collectedDockets"] > 0,
+        "Volunteer release reports live-source readiness and a real collected-docket count")
+    invalid_live = a.post(prefix + "/search", json={"startDate": "2026-10-29", "endDate": "2026-11-06",
+        "maxBail": 2000, "source": "live", "courtOffice": "ANY", "eventType": "Bail Hearing"},
+        headers={"Origin": base}, timeout=10)
+    check(invalid_live.status_code == 400, "Out-of-scope live dates are rejected before any court request")
     response = a.post(prefix + "/search", json={"startDate": "2026-10-28",
         "endDate": "2026-10-29", "maxBail": 2000, "source": "saved"},
         headers={"Origin": base}, timeout=20)

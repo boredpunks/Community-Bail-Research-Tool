@@ -13,6 +13,24 @@ export const BailSearchInputSource = {
   live: 'live',
 } as const;
 
+export type BailSearchInputCourtOffice = typeof BailSearchInputCourtOffice[keyof typeof BailSearchInputCourtOffice];
+
+
+export const BailSearchInputCourtOffice = {
+  ANY: 'ANY',
+  'CP-05-02-Crim': 'CP-05-02-Crim',
+} as const;
+
+export type BailSearchInputEventType = typeof BailSearchInputEventType[keyof typeof BailSearchInputEventType];
+
+
+export const BailSearchInputEventType = {
+  Formal_Arraignment: 'Formal Arraignment',
+  Preliminary_Hearing: 'Preliminary Hearing',
+  Bail_Hearing: 'Bail Hearing',
+  Preliminary_Arraignment: 'Preliminary Arraignment',
+} as const;
+
 export interface BailSearchInput {
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   startDate: string;
@@ -24,6 +42,8 @@ export interface BailSearchInput {
      */
   maxBail: number;
   source: BailSearchInputSource;
+  courtOffice?: BailSearchInputCourtOffice;
+  eventType?: BailSearchInputEventType;
 }
 
 export interface BailSearchResumeInput {

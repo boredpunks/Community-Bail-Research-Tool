@@ -630,6 +630,8 @@ components:
         endDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
         maxBail: { type: number, minimum: 0, maximum: 20000000 }
         source: { type: string, enum: [saved, live] }
+        courtOffice: { type: string, enum: [ANY, CP-05-02-Crim] }
+        eventType: { type: string, enum: [Formal Arraignment, Preliminary Hearing, Bail Hearing, Preliminary Arraignment] }
     BailSearchResumeInput:
       type: object
       required: [resumeToken]

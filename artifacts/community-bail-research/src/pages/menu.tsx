@@ -3,7 +3,7 @@ import { CageRoom } from '@/components/cage-room';
 import { ThemeToggle } from '@/components/shell';
 
 const PANELS = [
-  { href: '/search', n: '01', title: 'Search bail', id: 'search', text: 'Search collected dockets by hearing date and a recorded bail amount filter. Finding an amount never implies release eligibility.' },
+  { href: '/search', n: '01', title: 'Search bail', id: 'search', text: 'Search the live hearing calendar by dates and recorded bail amount, or search collected workspace evidence. A match never implies release eligibility.' },
   { href: '/review', n: '02', title: 'Review', id: 'review', text: 'Check saved observations against their sources.' },
   { href: '/candidates', n: '03', title: 'Saved dockets', id: 'saved-dockets', text: 'Observations you chose to save, with review status. Not recommendations.' },
 ];
