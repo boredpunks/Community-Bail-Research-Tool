@@ -24,3 +24,4 @@
 - [Intentional worker stops](worker-pause-barriers.md) — Pre-transmission denials and explicit pauses are job pauses, not source-validation failures; preserve real source blocks.
 - [Bail setting vs. posted security](bail-set-vs-posted.md) — Keep a bail decision separate from later cash or surety postings.
 - [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.
+- [Dependency type rebuilds](dependency-type-rebuilds.md) — Force composite declarations to rebuild after major type-library upgrades; incremental checks can conceal incompatibilities.

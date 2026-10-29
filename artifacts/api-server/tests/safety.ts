@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./schema-compatibility.test";
 import "./document-locations.test";
 import "./calendar-layout.test";
 import "./job-criteria.test";
