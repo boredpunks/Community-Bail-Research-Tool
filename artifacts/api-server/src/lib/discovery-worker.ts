@@ -33,6 +33,7 @@ import { researchMethod, validResearchCriteria } from "./research-scope";
 import { validSourceResponse, sourceResponseEvents } from "./document-response";
 import { resolveUjsRuntimeScript } from "./ujs-runtime-script";
 import { isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "./session-refresh-safety";
+import { publishCalendarRowsToSearch, publishVerifiedDocumentToSearch } from "../services/bail-search-worker";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -152,6 +153,7 @@ async function finishSingleDocumentProof(jobId: string, permitId: string, itemId
       jobId, ownerId: item!.ownerId, kind: "SINGLE_DOCUMENT_PROOF_COMPLETE",
       message: "One identity-checked PDF processed; bail evidence remains provisional pending human comparison. No other docket was requested; source-wide access remains unverified.",
     });
+    await publishVerifiedDocumentToSearch(jobId, itemId);
   }
 }
 
@@ -573,6 +575,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
             }).where(eq(discoveryJobsTable.id, job.id));
           }
         });
+        await publishCalendarRowsToSearch(job.id);
         if (exactSessionRefresh && refreshedFirstAccessCheck) {
           refreshCalendarValidated = true;
           refreshCalendarActive = false;

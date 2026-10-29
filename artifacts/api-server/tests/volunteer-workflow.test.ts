@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chooseRecovery } from "../src/services/bail-search-recovery";
 import { selectBailDecision, qualifiesMonetary, csvCell } from "../src/lib/bail-decision";
 import { validCachedConsultationChronology } from "../src/lib/discovery-candidates";
+import { resultDatesForItem } from "../src/services/bail-search-projection";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
   noJob: false, sourceBlocked: false, cooldown: null, now: new Date("2026-10-29T12:00:00Z") };
@@ -44,6 +45,19 @@ test("later denied or nonmonetary decision supersedes monetary", () => {
     assert.equal(decision.classification, classification);
     assert.equal(qualifiesMonetary(decision, 2000), false);
   }
+});
+test("calendar projection preserves the selected event and date range", () => {
+  const criteria = { startDate: "2026-10-29", endDate: "2026-10-31", maxBail: 2000,
+    source: "live" as const, eventType: "Formal Arraignment", courtOffice: "ANY" };
+  const item = { provenance: {
+    eventDate: "2026-10-29", eventType: "Formal Arraignment",
+    matchingEvents: [
+      { eventDate: "2026-10-29", eventType: "Formal Arraignment", eventTime: null },
+      { eventDate: "2026-10-30", eventType: "Bail Hearing", eventTime: null },
+      { eventDate: "2026-11-01", eventType: "Formal Arraignment", eventTime: null },
+    ],
+  } } as Parameters<typeof resultDatesForItem>[1];
+  assert.deepEqual(resultDatesForItem(criteria, item), ["2026-10-29"]);
 });
 test("empty evidence is unknown, never zero bail", () => {
   assert.equal(selectBailDecision([]).amount, null);

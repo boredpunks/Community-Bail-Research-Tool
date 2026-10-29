@@ -45,8 +45,11 @@ safeguards. Do not issue real court requests just to test the interface.
 The user-defined volunteer workflow has exactly three menu entries: Search,
 Review, Candidates. Search is the existing live court search with very simple
 settings, a Search button beneath them, and raw unfiltered results below the
-button: row, docket, date, and bail amount when applicable. Launching a new
-search resets the displayed Search and Review results. Matching results appear
+button: row, docket, date, and bail amount when applicable. Show every matching
+calendar docket as soon as discovery finishes, with its PDF check marked pending;
+fill in bail evidence as each verified PDF is processed. Calendar results must not
+wait for document retrieval. Launching a new search resets the displayed Search
+and Review results. Matching results appear
 immediately in Review, which contains only results from the last search with
 docket number, bail amount, and a source-PDF citation link. Only results explicitly
 marked “candidate” are saved under Candidates.

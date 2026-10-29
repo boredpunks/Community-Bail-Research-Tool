@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetBailSearchStatusQueryKey,
@@ -16,6 +17,12 @@ export function useLatestSearch() {
   });
   const latest = list.data?.[0];
   const searchId = latest?.searchId ?? '';
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (searchId && latest?.updatedAt) {
+      void queryClient.invalidateQueries({ queryKey: getGetBailSearchStatusQueryKey(searchId) });
+    }
+  }, [latest?.updatedAt, queryClient, searchId]);
   const status = useGetBailSearchStatus(searchId, {
     query: {
       queryKey: getGetBailSearchStatusQueryKey(searchId),
