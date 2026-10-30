@@ -33,14 +33,14 @@ Prioritize anticipating rate-limit failures through a shared scheduler, persiste
 
 **How to apply:** Treat initial pacing and quota values as proposed safeguards, not established court limits. Implementation approval does not authorize live verification requests or the larger research sample.
 
-For the UJS calendar pilot, vary response-completion pauses within a bounded 60–90-second range; the shared scheduler's higher adaptive delay always wins. Variation spreads request timing but does not bypass automation detection or authorize access.
+For UJS requests, use bounded 50–70-second pauses; the shared scheduler's higher adaptive delay always wins. This is an application setting, not a court-approved rate or guarantee.
 
-**Why:** The user asked about varied intervals after an integrated request returned an unvalidated form. The failure was not a rate-limit response, so timing variation must not be represented as its cause or remedy.
+**Why:** On 2026-10-30, the user requested a modest speedup and specified a 50–70-second range.
 
-**How to apply:** Keep one request in flight, keep the 60-second protected floor and rolling quotas, and stop on denial, challenge, throttle, validation, uncertainty, timeout, or latency barriers. Do not automatically retry.
+**How to apply:** Keep one request in flight and preserve rolling quotas, adaptive slowdowns, and stop conditions for denial, challenge, throttle, validation, uncertainty, timeout, or latency barriers. Do not automatically retry.
 
-A successful HTTP response and extracted document do not prove pacing compliance. Audit each transmitted request against the configured protected delay; never relax the validator to accept shorter per-path defaults.
+A successful HTTP response and extracted document do not prove pacing compliance. Audit each transmitted request against the current configured protected delay; per-path defaults must not bypass it.
 
-**Why:** A live run retrieved and extracted a docket but used sub-60-second request gaps, so the assessment correctly failed despite HTTP 200 responses.
+**Why:** A live run retrieved and extracted a docket but used gaps shorter than its configured minimum, so the assessment correctly failed despite HTTP 200 responses.
 
-**How to apply:** Stop after the failed attempt, preserve the source-wide state and evidence, restore the 60–90-second bounded delay before any future authorization, and do not repeat the source request without fresh approval.
+**How to apply:** Stop after a failed pace audit, preserve the source-wide state and evidence, restore the current 50–70-second range before any future authorization, and do not repeat the source request without fresh approval.

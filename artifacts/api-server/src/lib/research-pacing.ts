@@ -1,6 +1,6 @@
 /** Application defaults, not court-approved rates. No access or quota changes. */
-export const protectedMinimumSpacingMs = 60_000;
-export const pacingJitterRangeMs = 30_000;
+export const protectedMinimumSpacingMs = 50_000;
+export const pacingJitterRangeMs = 20_000;
 
 export function pacingConfig(env: Record<string, string | undefined>) {
   const value = (key: string, fallback: number, minimum = 250) => {

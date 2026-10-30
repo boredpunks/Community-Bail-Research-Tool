@@ -517,7 +517,7 @@ try {
   let waits = 0;
   const bPromise = reserve(second, {
     sleep: async (ms: number) => { if (!waits++) { entered(); await gate; } time += ms; },
-    randomJitterMs: () => 30_000,
+    randomJitterMs: () => 20_000,
   });
   await enteredWait;
   check((await store.select().from(requests)).length === 1);
@@ -531,7 +531,7 @@ try {
   const b = await bPromise;
   assert.ok(b.allow && b.requestId);
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
-  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 30_000);
+  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 20_000);
   await response(second, b.requestId);
 
   // Stop racing with a waiting grant: no post-stop request is reserved.

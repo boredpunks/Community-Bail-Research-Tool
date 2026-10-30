@@ -18,7 +18,7 @@ import { filingInspectionMethod } from "./filing-inspection";
 import { boundedEngineMethod, validBoundedEngineCriteria } from "./bounded-engine";
 import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from "./research-scope";
 import { calendarAdmission } from "./research-operations";
-import { effectiveAdaptiveSpacing, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
+import { effectiveAdaptiveSpacing, pacingJitterRangeMs, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria } from "./session-refresh-safety";
 import { canUseOrdinarySearchFirstPdfAccessCheck } from "./ordinary-search-access";
 
@@ -45,7 +45,7 @@ export async function reserveSourceRequest(
 ) {
   if (!allowedSourceRequest(url, method) || typeof url !== "string" || new URL(url).pathname !== requestPath
     || typeof permitId === "number") return { allow: false, reason: "REQUEST_NOT_PERMITTED" };
-  const jitterMs = context.randomJitterMs?.() ?? randomInt(0, 30_001);
+  const jitterMs = context.randomJitterMs?.() ?? randomInt(0, pacingJitterRangeMs + 1);
   while (!stopping()) {
     const decision = await (context.store ?? db).transaction(async (tx) => {
       const now = context.now?.() ?? new Date();
