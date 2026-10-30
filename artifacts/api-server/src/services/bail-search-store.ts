@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
-  db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoverySourceTable,
+  db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable,
   type BailSearchRow, type BailSearchResultRow, type BailSearchCriteria, type BailSearchQueueItem,
 } from "@workspace/db";
 import { csvCell } from "../lib/bail-decision";
@@ -89,10 +89,25 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
   const completed = rows.filter(row => !row.error).length;
   const { job, recovery } = await searchRecovery(search, rows.some(row => !!row.error));
   const stage = search.status === "running" ? search.criteria.source === "live" && !job?.calendarComplete ? "finding_hearings" : "checking_documents" : search.status;
+  const [currentRequest] = job ? await db.select({
+    method: discoveryRequestsTable.method,
+    path: discoveryRequestsTable.path,
+    startedAt: discoveryRequestsTable.startedAt,
+  }).from(discoveryRequestsTable).where(and(
+    eq(discoveryRequestsTable.jobId, job.id),
+    eq(discoveryRequestsTable.outcome, "IN_FLIGHT"),
+  )).limit(1) : [];
   return {
     searchId: search.id, status: search.status as "running" | "paused" | "complete",
     criteria: search.criteria,
-    progress: { completed, total: search.total, pending: Math.max(0, search.total - completed) },
+    progress: {
+      completed, total: search.total, pending: Math.max(0, search.total - completed),
+      sourceRequestsUsed: job?.requestsUsed ?? 0,
+      sourceRequestLimit: job?.criteria.requestCap ?? null,
+      ...(currentRequest ? { currentRequest: {
+        method: currentRequest.method, path: currentRequest.path, startedAt: currentRequest.startedAt.toISOString(),
+      } } : {}),
+    },
     incomplete: search.status !== "complete",
     reason: search.status === "running" && job ? job.message : search.reason,
     resumeToken: ["resume", "wait"].includes(recovery.action) ? resumeToken(search) : null,

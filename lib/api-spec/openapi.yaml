@@ -675,13 +675,23 @@ components:
           properties:
             id: { type: string }
             createdAt: { type: string }
+    BailSearchCurrentRequest:
+      type: object
+      required: [method, path, startedAt]
+      properties:
+        method: { type: string }
+        path: { type: string }
+        startedAt: { type: string, format: date-time }
     BailSearchProgress:
       type: object
-      required: [completed, total, pending]
+      required: [completed, total, pending, sourceRequestsUsed, sourceRequestLimit]
       properties:
         completed: { type: integer }
         total: { type: integer }
         pending: { type: integer }
+        sourceRequestsUsed: { type: integer }
+        sourceRequestLimit: { type: [integer, "null"] }
+        currentRequest: { $ref: "#/components/schemas/BailSearchCurrentRequest" }
     BailSearchResult:
       type: object
       required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, qualifies, ambiguous, error]

@@ -88,10 +88,20 @@ export type VolunteerFeedback = VolunteerFeedbackInput & {
   createdAt: string;
 };
 
+export interface BailSearchCurrentRequest {
+  method: string;
+  path: string;
+  startedAt: string;
+}
+
 export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
+  sourceRequestsUsed: number;
+  /** @nullable */
+  sourceRequestLimit: number | null;
+  currentRequest?: BailSearchCurrentRequest;
 }
 
 export interface BailSearchResult {

@@ -2,6 +2,7 @@
 - [Date-only response validation](date-only-response-validation.md) — Generated Zod date coercion can change calendar-date output; validate without replacing the response payload.
 - [Discovery-method choice](calendar-first-discovery.md) — Users choose filing dates or exact calendar events; never substitute methods, courts or dates after failure.
 - [Paced collection](paced-collection.md) — Support slow, resumable automation for useful research scale; a small access-check budget is not a permanent product limit.
+- [Live search progress](live-search-progress.md) — Separate court-request budget from validated docket progress; never treat unknown calendar totals as zero matches.
 - [Client-specific source proof](source-access-proof.md) — Prove calendar and PDF retrieval with the actual integrated clients; another client's success does not establish access.
 - [pnpm CLI arguments](pnpm-cli-arguments.md) — Pass script subcommands directly; an extra standalone separator is forwarded to the CLI in this workspace.
 - [Deferred pipeline options](deferred-pipeline-options.md) — Keep unused pipeline ideas ready for a later requested safeguard revision, without enabling them now.

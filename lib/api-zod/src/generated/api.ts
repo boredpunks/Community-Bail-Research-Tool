@@ -163,7 +163,14 @@ export const ListBailSearchesResponseItem = zod.object({
   "progress": zod.object({
   "completed": zod.int(),
   "total": zod.int(),
-  "pending": zod.int()
+  "pending": zod.int(),
+  "sourceRequestsUsed": zod.int(),
+  "sourceRequestLimit": zod.int().nullable(),
+  "currentRequest": zod.object({
+  "method": zod.string(),
+  "path": zod.string(),
+  "startedAt": zod.coerce.date()
+}).optional()
 }),
   "incomplete": zod.boolean(),
   "reason": zod.string().nullable(),
@@ -244,7 +251,14 @@ export const StartBailSearchResponse = zod.object({
   "progress": zod.object({
   "completed": zod.int(),
   "total": zod.int(),
-  "pending": zod.int()
+  "pending": zod.int(),
+  "sourceRequestsUsed": zod.int(),
+  "sourceRequestLimit": zod.int().nullable(),
+  "currentRequest": zod.object({
+  "method": zod.string(),
+  "path": zod.string(),
+  "startedAt": zod.coerce.date()
+}).optional()
 }),
   "incomplete": zod.boolean(),
   "reason": zod.string().nullable(),
@@ -312,7 +326,14 @@ export const GetBailSearchStatusResponse = zod.object({
   "progress": zod.object({
   "completed": zod.int(),
   "total": zod.int(),
-  "pending": zod.int()
+  "pending": zod.int(),
+  "sourceRequestsUsed": zod.int(),
+  "sourceRequestLimit": zod.int().nullable(),
+  "currentRequest": zod.object({
+  "method": zod.string(),
+  "path": zod.string(),
+  "startedAt": zod.coerce.date()
+}).optional()
 }),
   "incomplete": zod.boolean(),
   "reason": zod.string().nullable(),
@@ -389,7 +410,14 @@ export const ResumeBailSearchResponse = zod.object({
   "progress": zod.object({
   "completed": zod.int(),
   "total": zod.int(),
-  "pending": zod.int()
+  "pending": zod.int(),
+  "sourceRequestsUsed": zod.int(),
+  "sourceRequestLimit": zod.int().nullable(),
+  "currentRequest": zod.object({
+  "method": zod.string(),
+  "path": zod.string(),
+  "startedAt": zod.coerce.date()
+}).optional()
 }),
   "incomplete": zod.boolean(),
   "reason": zod.string().nullable(),

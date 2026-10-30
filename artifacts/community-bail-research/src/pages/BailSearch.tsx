@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useResumeBailSearch, useStartBailSearch } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
+import { BailSearchProgressPanel } from '@/components/bail-search-progress';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
 import { money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
@@ -99,11 +100,11 @@ export default function BailSearch() {
           <div className="mb-3 space-y-2">
             <p className="hint" data-testid="status-search">
               {run.status === 'running' ? 'Running' : run.status === 'paused' ? 'Paused' : 'Complete'}
-              {run.progress.total > 0 ? ` · ${run.progress.completed}/${run.progress.total} checked` : ''}
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
             {run.status === 'paused' && (recovery?.message || run.reason) ? <p className="notice" role="status" data-testid="text-recovery-message">{recovery?.message || run.reason}</p> : null}
-            {run.status === 'running' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}
+            {run.status === 'running' && run.criteria.source === 'live' ? <BailSearchProgressPanel search={run} /> : null}
+            {run.status === 'running' && run.criteria.source !== 'live' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}
             {canResume ? (
               <button type="button" className="btn" disabled={waiting || resume.isPending} data-testid="button-resume-search"
                 onClick={() => run.resumeToken && resume.mutate({ searchId: run.searchId, data: { resumeToken: run.resumeToken } }, { onSuccess: promote })}>
@@ -113,7 +114,9 @@ export default function BailSearch() {
             {resume.isError ? <p className="errbox" role="alert">Resume failed: {errMsg(resume.error)}</p> : null}
           </div>
         ) : null}
-        {run && !status.isLoading && !status.isError && rows.length === 0 ? <p className="hint">{run.status === 'running' ? 'Waiting for rows…' : run.incomplete ? 'No rows yet. This search is incomplete.' : 'No rows returned.'}</p> : null}
+        {run && !status.isLoading && !status.isError && rows.length === 0 && !(run.status === 'running' && run.criteria.source === 'live')
+          ? <p className="hint">{run.status === 'running' ? 'Waiting for rows…' : run.incomplete ? 'No rows yet. This search is incomplete.' : 'No rows returned.'}</p>
+          : null}
         {rows.length ? (
           <div className="bail-compare-scroll">
             <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-search-rows">

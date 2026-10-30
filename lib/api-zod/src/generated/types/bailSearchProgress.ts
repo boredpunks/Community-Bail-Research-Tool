@@ -5,9 +5,14 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { BailSearchCurrentRequest } from './bailSearchCurrentRequest';
 
 export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
+  sourceRequestsUsed: number;
+  /** @nullable */
+  sourceRequestLimit: number | null;
+  currentRequest?: BailSearchCurrentRequest;
 }
