@@ -542,6 +542,25 @@ try {
   check(!(await reserve(unverified)).allow);
   check((await store.select().from(requests)).length === 0);
 
+  // Ordinary Search remains usable after the current single slow response and
+  // row-level barrier. The barrier is preserved, pacing is faster, and no
+  // document access is granted by this calendar-only request.
+  await reset(false);
+  await store.update(sources).set({
+    blockedReason: "SOURCE_VALIDATION_BARRIER",
+    latencyWarning: "Slow response 1; conservative pacing retained. No automatic acceleration.",
+    slowResponseStreak: 1, adaptiveSpacingMs: 60_000, lastLatencyMs: 52_178,
+  });
+  const resumableCalendar = await createJob({ criteria: { ...criteria, resultVersion: 2 } });
+  const calendarGrant = await reserve(resumableCalendar, { randomJitterMs: () => 0 });
+  assert.ok(calendarGrant.allow && calendarGrant.requestId);
+  const [calendarRequest] = await store.select().from(requests).where(eq(requests.id, calendarGrant.requestId));
+  check(calendarRequest!.startedAt.getTime() === now0);
+  check(calendarRequest!.outcome === "IN_FLIGHT");
+  const [calendarSource] = await store.select().from(sources);
+  check(calendarSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
+  check(calendarSource!.accessVerifiedAt === null && calendarSource!.verifiedMethod === null);
+
   await reset();
   const first = await createJob(), second = await createJob();
   const a = await reserve(first);
@@ -552,7 +571,7 @@ try {
   let waits = 0;
   const bPromise = reserve(second, {
     sleep: async (ms: number) => { if (!waits++) { entered(); await gate; } time += ms; },
-    randomJitterMs: () => 20_000,
+    randomJitterMs: () => 10_000,
   });
   await enteredWait;
   check((await store.select().from(requests)).length === 1);
@@ -566,7 +585,7 @@ try {
   const b = await bPromise;
   assert.ok(b.allow && b.requestId);
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
-  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 20_000);
+  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 10_000);
   await response(second, b.requestId);
 
   // Document slot wait includes shared-scheduler delays but remains separate

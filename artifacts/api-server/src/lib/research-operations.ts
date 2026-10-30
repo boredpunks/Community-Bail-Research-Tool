@@ -12,8 +12,11 @@ const barriers = ["SOURCE_VALIDATION_BARRIER", "ACCESS_UNVERIFIED", "COLLECTION_
 export function calendarOperationBlock(source: Source | undefined, origins: Origin[], now = new Date()) {
   if (!source) return "SOURCE_STATE_UNAVAILABLE";
   if (source.pausedUntil && source.pausedUntil > now) return "SOURCE_COOLDOWN";
-  if (source.latencyWarning && source.blockedReason !== "RATE_LIMIT") return "LATENCY_WARNING";
   const reason = source.blockedReason;
+  // A single slow response raises an advisory and increases shared pacing.
+  // Only the scheduler's explicit sustained-deterioration stop blocks ordinary
+  // calendar work; do not turn the first warning into a source-wide lockout.
+  if (reason === "RESPONSE_DETERIORATION") return "LATENCY_WARNING";
   if (!reason || barriers.includes(reason)) return null;
   if (reason === "RATE_LIMIT" && source.pausedUntil && source.pausedUntil <= now) return null;
   if (reason === "HTTP_ERROR" && source.pausedUntil && source.pausedUntil <= now) return null;

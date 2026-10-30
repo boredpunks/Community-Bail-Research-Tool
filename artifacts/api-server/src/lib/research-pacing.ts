@@ -1,6 +1,6 @@
 /** Application defaults, not court-approved rates. No access or quota changes. */
-export const protectedMinimumSpacingMs = 50_000;
-export const pacingJitterRangeMs = 20_000;
+export const protectedMinimumSpacingMs = 30_000;
+export const pacingJitterRangeMs = 10_000;
 
 export function pacingConfig(env: Record<string, string | undefined>) {
   const value = (key: string, fallback: number, minimum = 250) => {
@@ -34,10 +34,10 @@ export function randomizedRequestSpacing(path: unknown, method: unknown, jitterM
 }
 
 export function effectiveAdaptiveSpacing(source: {
-  adaptiveSpacingMs: number; throttleCount?: number; slowResponseStreak?: number; latencyWarning?: string | null;
+  adaptiveSpacingMs: number; throttleCount?: number; slowResponseStreak?: number;
 }, base: number) {
-  // The old 60s schema default is not observed backoff. Actual deterioration
-  // and throttling retain their adaptive delay, regardless of new defaults.
-  return source.throttleCount || source.slowResponseStreak || source.latencyWarning
+  // The old 60s schema default and a single slow-response warning are not
+  // observed backoff. Repeated slowness and throttling retain adaptive delay.
+  return (source.throttleCount ?? 0) > 0 || (source.slowResponseStreak ?? 0) >= 3
     ? Math.max(base, source.adaptiveSpacingMs) : base;
 }

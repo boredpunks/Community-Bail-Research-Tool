@@ -33,14 +33,20 @@ Prioritize anticipating rate-limit failures through a shared scheduler, persiste
 
 **How to apply:** Treat initial pacing and quota values as proposed safeguards, not established court limits. Implementation approval does not authorize live verification requests or the larger research sample.
 
-For UJS requests, use bounded 50–70-second pauses; the shared scheduler's higher adaptive delay always wins. This is an application setting, not a court-approved rate or guarantee.
+For UJS requests, use bounded 30–40-second pauses; the shared scheduler's higher adaptive delay always wins. This is an application setting, not a court-approved rate or guarantee.
 
-**Why:** On 2026-10-30, the user requested a modest speedup and specified a 50–70-second range.
+**Why:** On 2026-10-30, the user asked to pick up the pace after a slow calendar response.
 
-**How to apply:** Keep one request in flight and preserve rolling quotas, adaptive slowdowns, and stop conditions for denial, challenge, throttle, validation, uncertainty, timeout, or latency barriers. Do not automatically retry.
+**How to apply:** Keep one request in flight and preserve rolling quotas, adaptive slowdowns, and stop conditions for denial, challenge, throttle, validation, uncertainty, timeout, or sustained latency deterioration. Do not automatically retry.
 
 A successful HTTP response and extracted document do not prove pacing compliance. Audit each transmitted request against the current configured protected delay; per-path defaults must not bypass it.
 
 **Why:** A live run retrieved and extracted a docket but used gaps shorter than its configured minimum, so the assessment correctly failed despite HTTP 200 responses.
 
 **How to apply:** Stop after a failed pace audit, preserve the source-wide state and evidence, restore the current 50–70-second range before any future authorization, and do not repeat the source request without fresh approval.
+
+A single slow-response warning is advisory for ordinary calendar searches when the scheduler has only increased adaptive spacing. Keep the slower shared pace; block only on an explicit sustained-deterioration stop or another real source barrier.
+
+**Why:** On October 30, 2026, a 52-second calendar response produced a first-warning advisory, but admission incorrectly treated the warning as a hard lockout despite the scheduler reserving that stop for sustained deterioration.
+
+**How to apply:** Do not use `latencyWarning` alone to disable ordinary calendar admission. Preserve `RESPONSE_DETERIORATION`, explicit cooldowns, quotas, access denials, challenges, and other actual stop reasons.

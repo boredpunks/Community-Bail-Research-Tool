@@ -66,6 +66,14 @@ assert.equal(calendarOperationBlock(source,[denial]),null);
 assert.equal(source.blockedReason,"ACCESS_DENIED"); // No relabel or clearance.
 assert.equal(calendarOperationBlock(
   {...source,blockedReason:"SOURCE_VALIDATION_BARRIER"},[]),null);
+assert.equal(calendarOperationBlock({
+  ...source, blockedReason:"SOURCE_VALIDATION_BARRIER",
+  latencyWarning:"Slow response 1; conservative pacing retained. No automatic acceleration.",
+},[]),null); // First slow response retains pacing without locking ordinary calendar use.
+assert.equal(calendarOperationBlock({
+  ...source, blockedReason:"RESPONSE_DETERIORATION",
+  latencyWarning:"Collection paused for assessment.",
+},[]),"LATENCY_WARNING"); // Sustained deterioration remains a hard stop.
 assert.equal(calendarOperationBlock(
   {...source,blockedReason:"COLLECTION_NOT_APPROVED"},[]),null);
 assert.equal(calendarOperationBlock(source,[]),"ACCESS_DENIED");
@@ -104,19 +112,23 @@ for(const path of ["/Report/MdjDocketSheet","/Report/CpDocketSheet"])
   assert.equal(calendarPreviewRequestAllowed(path,"GET"),false);
 assert.equal(calendarPreviewRequestAllowed("/CaseSearch","POST"),true);
 const pacing = pacingConfig({});
-assert.equal(pacing.navigationMs,50000);
-assert.equal(pacing.assetMs,50000);
-assert.equal(pacing.searchMs,50000);
-assert.equal(pacing.documentMs,50000);
+assert.equal(pacing.navigationMs,30000);
+assert.equal(pacing.assetMs,30000);
+assert.equal(pacing.searchMs,30000);
+assert.equal(pacing.documentMs,30000);
 assert.equal(pacingConfig({UJS_DOCUMENTED_MIN_SPACING_MS:"60000"}).assetMs,60000);
-assert.equal(pacingConfig({UJS_SPACING_MS:"4000"}).navigationMs,50000);
+assert.equal(pacingConfig({UJS_SPACING_MS:"4000"}).navigationMs,30000);
 assert.throws(()=>pacingConfig({UJS_ASSET_SPACING_MS:"0"}));
 assert.throws(()=>pacingConfig({UJS_DOCUMENT_SPACING_MS:"NaN"}));
 assert.equal(effectiveAdaptiveSpacing({adaptiveSpacingMs:60000,throttleCount:0,slowResponseStreak:0},1000),1000);
+assert.equal(effectiveAdaptiveSpacing({
+  adaptiveSpacingMs:60000,throttleCount:0,slowResponseStreak:1,latencyWarning:"slow",
+},30000),30000);
+assert.equal(effectiveAdaptiveSpacing({adaptiveSpacingMs:120000,slowResponseStreak:3},30000),120000);
 assert.equal(effectiveAdaptiveSpacing({adaptiveSpacingMs:120000,throttleCount:1},1000),120000);
-assert.equal(randomizedRequestSpacing("/resource/css/sitemain.min.css","GET",0),50000);
-assert.equal(randomizedRequestSpacing("/Report/CpDocketSheet","GET",20000),70000);
-assert.throws(()=>randomizedRequestSpacing("/CaseSearch","GET",20001));
+assert.equal(randomizedRequestSpacing("/resource/css/sitemain.min.css","GET",0),30000);
+assert.equal(randomizedRequestSpacing("/Report/CpDocketSheet","GET",10000),40000);
+assert.throws(()=>randomizedRequestSpacing("/CaseSearch","GET",10001));
 const now = new Date();
 assert.ok(throttleDeadline(now,900000,0,"3600").getTime() >= now.getTime()+3600000);
 const choice = makeCalendarPreviewCriteria({courtOffice:"ANY",courtRoom:"Room supplied by user",eventType:"ANY",startDate:"2026-10-19",endDate:"2026-10-19"},"2026-10-19");
