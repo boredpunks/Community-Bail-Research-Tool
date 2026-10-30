@@ -98,11 +98,32 @@ export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
+  calendarValidated: boolean;
+  documentsDiscovered: number;
+  documentRequestsAttempted: number;
+  documentsRetrieved: number;
+  documentsProcessed: number;
+  documentsWithEvidence: number;
   sourceRequestsUsed: number;
   /** @nullable */
   sourceRequestLimit: number | null;
   currentRequest?: BailSearchCurrentRequest;
 }
+
+export type BailSearchResultDocumentStatus = typeof BailSearchResultDocumentStatus[keyof typeof BailSearchResultDocumentStatus];
+
+
+export const BailSearchResultDocumentStatus = {
+  NOT_REQUESTED: 'NOT_REQUESTED',
+  REQUEST_IN_PROGRESS: 'REQUEST_IN_PROGRESS',
+  RETRIEVAL_FAILED: 'RETRIEVAL_FAILED',
+  RETRIEVED: 'RETRIEVED',
+  EXTRACTED: 'EXTRACTED',
+  NO_BAIL_SECTION: 'NO_BAIL_SECTION',
+  EXTRACTION_FAILED: 'EXTRACTION_FAILED',
+  IDENTITY_MISMATCH: 'IDENTITY_MISMATCH',
+  AMBIGUOUS: 'AMBIGUOUS',
+} as const;
 
 export interface BailSearchResult {
   id: string;
@@ -120,6 +141,7 @@ export interface BailSearchResult {
   evidence_page: number | null;
   evidence_quote: string;
   evidence_acquisition: string;
+  document_status: BailSearchResultDocumentStatus;
   qualifies: boolean;
   ambiguous: boolean;
   /** @nullable */

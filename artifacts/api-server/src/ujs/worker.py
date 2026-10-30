@@ -366,6 +366,12 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     last_completed_clock = clock.time()
                     if not acknowledgement.get("continue"):
                         stopped = True
+                        # A stop after a successful PDF response governs future
+                        # source traffic, not local processing of this body.
+                        # Return it to the caller so the docket is extracted and
+                        # persisted before the worker exits.
+                        if document_request and outcome == "OK":
+                            return response, body, started
                         await response.dispose()
                         raise SourceFailure("SOURCE_STOPPED", attempted=True)
                     if outcome != "OK":
@@ -1067,6 +1073,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 if not automatic_pdf_supported(item):
                     continue
                 response = None
+                retrieved = None
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
@@ -1086,9 +1093,9 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 except Exception as error:
                     if not stopped or isinstance(error, SourceFailure) and error.attempted:
                         emit("docket", docketNumber=item["docketNumber"],
-                             retrievedAt=None, entries=[], postedEntryState="UNKNOWN",
-                              excerpt=None, extractionOutcome="RETRIEVAL_FAILED" if stopped else "UNSUPPORTED_LAYOUT",
-                             detail="Retrieval or processing failed; no guessed evidence saved.")
+                             retrievedAt=retrieved, entries=[], postedEntryState="UNKNOWN",
+                              excerpt=None, extractionOutcome="RETRIEVAL_FAILED" if retrieved is None else "UNSUPPORTED_LAYOUT",
+                              detail="Retrieval or processing failed; no guessed evidence saved.")
                     if stopped:
                         break
                 # The parent persists the evidence and evaluates fixed matching

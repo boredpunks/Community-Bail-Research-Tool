@@ -5,6 +5,7 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { BailSearchResultDocumentStatus } from './bailSearchResultDocumentStatus';
 
 export interface BailSearchResult {
   id: string;
@@ -22,6 +23,7 @@ export interface BailSearchResult {
   evidence_page: number | null;
   evidence_quote: string;
   evidence_acquisition: string;
+  document_status: BailSearchResultDocumentStatus;
   qualifies: boolean;
   ambiguous: boolean;
   /** @nullable */

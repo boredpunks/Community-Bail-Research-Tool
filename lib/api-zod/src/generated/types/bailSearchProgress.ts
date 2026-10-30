@@ -11,6 +11,12 @@ export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
+  calendarValidated: boolean;
+  documentsDiscovered: number;
+  documentRequestsAttempted: number;
+  documentsRetrieved: number;
+  documentsProcessed: number;
+  documentsWithEvidence: number;
   sourceRequestsUsed: number;
   /** @nullable */
   sourceRequestLimit: number | null;

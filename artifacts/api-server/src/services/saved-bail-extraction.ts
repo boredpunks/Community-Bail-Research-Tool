@@ -12,6 +12,7 @@ export interface CachedBailExtraction {
 }
 
 export function savedEntries(provenance: DiscoveryProvenanceData): BailDecisionEvidence[] | null {
+  if (provenance.extractionOutcome === "MISSING_BAIL_SECTION") return [];
   if (provenance.extractionOutcome !== "EXTRACTED") return null;
   return provenance.entries.map(entry => {
     const percentage = entry.percentageCondition?.match(/(\d+(?:\.\d+)?)\s*%/);

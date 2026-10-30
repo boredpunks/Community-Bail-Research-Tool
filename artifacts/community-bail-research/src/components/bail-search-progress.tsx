@@ -19,7 +19,7 @@ function formatElapsed(startedAt: string, now: number) {
 export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
   const [now, setNow] = useState(() => Date.now());
   const currentRequest = search.progress.currentRequest;
-  const findingCalendar = search.stage !== 'checking_documents';
+  const findingCalendar = !search.progress.calendarValidated;
   const total = search.progress.total;
   const hasDocumentTotal = !findingCalendar && total > 0;
   const completed = hasDocumentTotal ? Math.min(search.progress.completed, total) : 0;
@@ -69,6 +69,10 @@ export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
         </p>
         <p className="hint">
           Dockets processed: <strong>{hasDocumentTotal ? `${completed} / ${total}` : 'not available until calendar validation'}</strong>
+        </p>
+        <p className="hint">
+          PDFs: <strong>{search.progress.documentsRetrieved} retrieved / {search.progress.documentsDiscovered} discovered</strong>
+          <span className="block text-xs">{search.progress.documentRequestsAttempted} PDF request attempt(s) · {search.progress.documentsProcessed} processed · {search.progress.documentsWithEvidence} with bail evidence</span>
         </p>
         {search.progress.sourceRequestLimit !== null ? (
           <p className="hint">

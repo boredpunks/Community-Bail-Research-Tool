@@ -22,3 +22,16 @@ explicit hourly or daily quota pauses when the user has authorized continuation.
 After clearing a false barrier, re-check access-proof state. Never recreate old
 verification fields manually; require fresh, method-specific proof and
 authorization before any new source request.
+
+A parent stop after a successful document response controls future source
+traffic, not local processing of the response already received. Extract and emit
+that document before the worker reaches its checkpoint.
+
+**Why:** A source-health stop can arrive after a PDF is successfully downloaded.
+Discarding that body loses work without improving the stop's protection against
+future requests.
+
+**How to apply:** Preserve the current response for local extraction and
+persistence, then honor the stop before any subsequent source transmission.
+Keep retrieval and extraction outcomes distinct; do not add retries or bypass
+the parent's request authorization.

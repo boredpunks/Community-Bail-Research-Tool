@@ -11,6 +11,25 @@ const LIVE_OFFICES = [
   { value: 'CP-05-02-Crim', label: 'Common Pleas criminal' },
 ] as const;
 const LIVE_EVENTS = ['Formal Arraignment', 'Preliminary Hearing', 'Bail Hearing', 'Preliminary Arraignment'] as const;
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
+  NOT_REQUESTED: 'Not requested — calendar row only',
+  REQUEST_IN_PROGRESS: 'PDF request in progress',
+  RETRIEVAL_FAILED: 'PDF retrieval failed',
+  RETRIEVED: 'PDF retrieved; processing pending',
+  EXTRACTED: 'Bail evidence extracted',
+  NO_BAIL_SECTION: 'PDF processed; no bail section found',
+  EXTRACTION_FAILED: 'PDF retrieved; evidence not validated',
+  IDENTITY_MISMATCH: 'PDF docket identity mismatch',
+  AMBIGUOUS: 'Bail evidence is ambiguous',
+};
+const ACQUISITION_LABELS: Record<string, string> = {
+  NOT_RETRIEVED: 'No PDF retrieved',
+  RETRIEVAL_FAILED: 'PDF retrieval failed',
+  RETRIEVED_NO_EVIDENCE: 'Retrieved; no verified evidence',
+  STORED_EXTRACTION: 'Stored PDF extraction',
+  CACHE: 'Local cached PDF extraction',
+  CACHE_UNAVAILABLE: 'Local cached PDF unavailable',
+};
 type Office = (typeof LIVE_OFFICES)[number]['value'];
 type LiveEvent = (typeof LIVE_EVENTS)[number];
 
@@ -103,7 +122,7 @@ export default function BailSearch() {
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
             {run.status === 'paused' && (recovery?.message || run.reason) ? <p className="notice" role="status" data-testid="text-recovery-message">{recovery?.message || run.reason}</p> : null}
-            {run.status === 'running' && run.criteria.source === 'live' ? <BailSearchProgressPanel search={run} /> : null}
+            {(run.status === 'running' || run.status === 'paused') && run.criteria.source === 'live' ? <BailSearchProgressPanel search={run} /> : null}
             {run.status === 'running' && run.criteria.source !== 'live' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}
             {canResume ? (
               <button type="button" className="btn" disabled={waiting || resume.isPending} data-testid="button-resume-search"
@@ -132,9 +151,10 @@ export default function BailSearch() {
                       <details data-testid={`details-search-evidence-${row.id}`}>
                         <summary className="cursor-pointer mono text-xs text-primary">Inspect</summary>
                         <div className="min-w-64 space-y-1 py-2">
+                          <p className="hint">Document status: {DOCUMENT_STATUS_LABELS[row.document_status] ?? 'Status unavailable'}</p>
                           <p className="hint">Evidence page: {row.evidence_page ?? 'Not recorded'}</p>
                           <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
-                          <p className="hint">Acquisition: {row.evidence_acquisition || 'Not recorded'}</p>
+                          <p className="hint">Acquisition: {ACQUISITION_LABELS[row.evidence_acquisition] ?? (row.evidence_acquisition || 'Not recorded')}</p>
                           <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
                           <p className="hint">Local document consultation: {row.source_consulted_at ? formatInstant(row.source_consulted_at) : 'Not recorded'}</p>
                           {row.source_pdf_sha256 ? <p className="hint break-all">Verified PDF SHA-256: {row.source_pdf_sha256}</p> : null}

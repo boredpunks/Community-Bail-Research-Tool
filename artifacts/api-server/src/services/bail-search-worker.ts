@@ -11,12 +11,21 @@ async function storeItem(search: BailSearchRow, queued: BailSearchQueueItem, cac
   const [item] = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id, queued.itemId));
   let error: string | null = null;
   let entries = item ? savedEntries(item.provenance) : null;
-  let acquisition = "STORED_EXTRACTION";
+  let acquisition = item?.provenance.extractionOutcome === "RETRIEVAL_FAILED" && !item.sourceRetrievedAt
+    ? "RETRIEVAL_FAILED"
+    : item?.sourceRetrievedAt ? "RETRIEVED_NO_EVIDENCE" : "NOT_RETRIEVED";
   let cacheEvidence: Awaited<ReturnType<typeof extractSavedBail>> | null = null;
   if (entries === null && cacheAllowed && item) {
     try { cacheEvidence = await extractSavedBail(item.docketNumber, item.sourceUrl); entries = cacheEvidence.entries; acquisition = "CACHE"; }
-    catch { error = "Evidence is not locally available or could not be validated. No new request was made."; }
-  } else if (entries === null) error = "Document evidence is pending or could not be extracted.";
+    catch { acquisition = "CACHE_UNAVAILABLE"; error = "Evidence is not locally available or could not be validated. No new request was made."; }
+  } else if (entries === null) {
+    error = item?.provenance.extractionOutcome === "RETRIEVAL_FAILED"
+      ? "PDF retrieval failed; no document evidence was captured."
+      : item?.sourceRetrievedAt
+        ? "PDF retrieved, but no validated bail evidence was produced."
+        : "PDF not retrieved; this row comes from the validated court calendar only.";
+  }
+  if (entries !== null && !cacheEvidence) acquisition = "STORED_EXTRACTION";
   const decision = selectBailDecision(entries ?? []);
   const values = {
     searchId: search.id, docketNumber: queued.docketNumber, hearingDate: queued.hearingDate,

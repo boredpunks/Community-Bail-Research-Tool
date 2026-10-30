@@ -282,7 +282,7 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("calendar_links_captured_at", shared_names)
         self.assertIn("calendar_links_captured_at", assigned_names)
 
-    async def run_document(self, *, allow=True, status=200, capture_this_run=True):
+    async def run_document(self, *, allow=True, status=200, capture_this_run=True, continue_after_response=None):
         import worker
         import calendar_document
         messages = []
@@ -292,10 +292,11 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
             if status == 200 else b"Unauthorized request")
         stdin = io.StringIO("\n".join(json.dumps(v) for v in (
             {"allow": allow, "requestId": "00000000-0000-0000-0000-000000000000"},
-            {"continue": status == 200}, {"continue": False},
+            {"continue": status == 200 if continue_after_response is None else continue_after_response},
+            {"continue": False},
         )) + "\n")
 
-        async def fetch(exact_url):
+        async def fetch(exact_url, **_options):
             self.assertTrue(exact_url == source_url, "Captured action changed")
             self.assertGreater(stdin.tell(), 0, "Transmission before parent grant")
             self.assertEqual(messages[-1]["kind"], "request")
@@ -330,6 +331,77 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
             next(v for v in messages if v["kind"] == "response")["linkCaptureToGetSeconds"], 0,
         )
 
+    async def test_successful_pdf_is_extracted_even_when_parent_stops_future_requests(self):
+        messages, response = await self.run_document(continue_after_response=False)
+        result = next(v for v in messages if v["kind"] == "docket")
+        self.assertEqual(result["extractionOutcome"], "EXTRACTED")
+        self.assertEqual(result["entries"][0]["amountCents"], 10000)
+        self.assertIsNotNone(result["retrievedAt"])
+        self.assertIsNone(response._body)
+        self.assertEqual(sum(v["kind"] == "request" for v in messages), 1)
+
+    async def test_each_success_is_emitted_before_a_later_request_is_denied(self):
+        import worker
+        from urllib.parse import parse_qs
+
+        documents = [
+            ("CP-02-CR-0005845-2026", "CpDocketSheet", "CpDocketSheet_1792451669525.pdf"),
+            ("MJ-05317-CR-0000264-2026", "MdjDocketSheet", "MdjDocketSheet_1792451676271.pdf"),
+            ("MJ-05310-NT-0000228-2026", "MdjDocketSheet", "MdjDocketSheet_(1)_1792451673387.pdf"),
+        ]
+        source_urls = {
+            docket: f"{ORIGIN}/Report/{path}?docketNumber={docket}&dnh=offline"
+            for docket, path, _ in documents
+        }
+        responses = {
+            docket: public_http.Response(
+                200, {"content-type": "application/pdf"},
+                (ROOT / "attached_assets" / filename).read_bytes(),
+            )
+            for docket, _, filename in documents[:2]
+        }
+        messages = []
+        protocol = [
+            {"allow": True, "requestId": "request-1"}, {"continue": True}, {"continue": True},
+            {"allow": True, "requestId": "request-2"}, {"continue": True}, {"continue": True},
+            {"allow": False, "reason": "SOURCE_BLOCKED"},
+        ]
+        stdin = io.StringIO("\n".join(json.dumps(value) for value in protocol) + "\n")
+
+        async def fetch(exact_url, **_options):
+            self.assertEqual(messages[-1]["kind"], "request")
+            docket = parse_qs(urlsplit(exact_url).query)["docketNumber"][0]
+            self.assertIn(docket, responses, "A denied third retrieval must not reach the downloader")
+            return responses[docket]
+
+        config = {
+            "criteria": {"courtOffice": "CP-05-02-Crim", "courtRoom": "ANY",
+                "eventType": "Bail Hearing", "startDate": "2026-10-20", "endDate": "2026-10-20",
+                "recordCap": 3, "requestCap": 10},
+            "calendarComplete": True,
+            "pendingItems": [{"docketNumber": docket, "sourceUrl": source_urls[docket]} for docket, _, _ in documents],
+            "remainingRecords": 3,
+        }
+        with patch.object(worker.sys, "stdin", stdin), \
+                patch.object(worker, "emit", lambda kind, **values: messages.append({"kind": kind, **values})), \
+                patch.object(worker.public_http, "download", side_effect=fetch) as download:
+            await worker.main(config, _test_calendar_links_captured_at=asyncio.get_running_loop().time())
+
+        dockets = [message for message in messages if message["kind"] == "docket"]
+        self.assertEqual([message["docketNumber"] for message in dockets],
+                         ["CP-02-CR-0005845-2026", "MJ-05317-CR-0000264-2026"])
+        self.assertTrue(all(message["extractionOutcome"] == "EXTRACTED" for message in dockets))
+        request_indexes = [i for i, message in enumerate(messages) if message["kind"] == "request"]
+        docket_indexes = [i for i, message in enumerate(messages) if message["kind"] == "docket"]
+        self.assertEqual(len(request_indexes), 3)
+        self.assertEqual(len(docket_indexes), 2)
+        self.assertLess(request_indexes[0], docket_indexes[0])
+        self.assertLess(docket_indexes[0], request_indexes[1])
+        self.assertLess(request_indexes[1], docket_indexes[1])
+        self.assertLess(docket_indexes[1], request_indexes[2])
+        self.assertEqual(download.await_count, 2)
+        self.assertTrue(all(response._body is None for response in responses.values()))
+
     async def test_pending_item_without_current_run_calendar_capture_stops_before_source_request(self):
         messages, _ = await self.run_document(capture_this_run=False)
         self.assertIn({"kind": "document_session_required"}, messages)
@@ -350,3 +422,4 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
     async def test_refused_grant_never_calls_downloader(self):
         messages, _ = await self.run_document(allow=False)
         self.assertFalse(any(v["kind"] == "response" for v in messages))
+        self.assertFalse(any(v["kind"] == "docket" for v in messages))

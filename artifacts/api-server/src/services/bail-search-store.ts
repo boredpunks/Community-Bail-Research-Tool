@@ -56,8 +56,8 @@ export function serializeSearchResult(row: BailSearchResultRow) {
     source_pdf_sha256: row.sourcePdfSha256,
   };
 }
-export async function enrichedResult(search: BailSearchRow, row: BailSearchResultRow) {
-  const { item: _item, entry: _entry, ...evidence } = await resultEvidence(search, row);
+export async function enrichedResult(search: BailSearchRow, row: BailSearchResultRow, knownRequestOutcome?: string | null) {
+  const { item: _item, entry: _entry, ...evidence } = await resultEvidence(search, row, knownRequestOutcome);
   return { ...serializeSearchResult(row), ...evidence };
 }
 export async function searchRecovery(search: BailSearchRow, missingEvidence: boolean) {
@@ -88,7 +88,46 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     .orderBy(asc(bailSearchResultsTable.hearingDate), asc(bailSearchResultsTable.docketNumber));
   const completed = rows.filter(row => !row.error).length;
   const { job, recovery } = await searchRecovery(search, rows.some(row => !!row.error));
-  const stage = search.status === "running" ? search.criteria.source === "live" && !job?.calendarComplete ? "finding_hearings" : "checking_documents" : search.status;
+  const stage = search.criteria.source === "live" && !job?.calendarComplete
+    ? search.status === "running" ? "finding_hearings" : search.status
+    : search.status === "running" || search.status === "paused" ? "checking_documents" : search.status;
+  const queueItemByKey = new Map(search.queue.map(item => [`${item.docketNumber}:${item.hearingDate}`, item]));
+  const documentItemIds = [...new Set(rows.flatMap(row => {
+    const id = row.sourceItemId ?? queueItemByKey.get(`${row.docketNumber}:${row.hearingDate}`)?.itemId;
+    return id ? [id] : [];
+  }))];
+  const documentItems = documentItemIds.length
+    ? await db.select({
+      id: discoveryItemsTable.id,
+      sourceRetrievedAt: discoveryItemsTable.sourceRetrievedAt,
+      extractionOutcome: sql<string>`${discoveryItemsTable.provenance}->>'extractionOutcome'`,
+      entries: sql<unknown[]>`${discoveryItemsTable.provenance}->'entries'`,
+    }).from(discoveryItemsTable).where(inArray(discoveryItemsTable.id, documentItemIds))
+    : [];
+  const documentRequests = job && documentItemIds.length
+    ? await db.select({
+      itemId: discoveryRequestsTable.itemId,
+      outcome: discoveryRequestsTable.outcome,
+      startedAt: discoveryRequestsTable.startedAt,
+    }).from(discoveryRequestsTable).where(and(
+      eq(discoveryRequestsTable.jobId, job.id),
+      inArray(discoveryRequestsTable.itemId, documentItemIds),
+      inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+    )).orderBy(desc(discoveryRequestsTable.startedAt))
+    : [];
+  const latestDocumentOutcomeByItem = new Map<string, string>();
+  for (const request of documentRequests) {
+    if (request.itemId && !latestDocumentOutcomeByItem.has(request.itemId)) {
+      latestDocumentOutcomeByItem.set(request.itemId, request.outcome);
+    }
+  }
+  const itemIdByResult = (row: BailSearchResultRow) => row.sourceItemId
+    ?? queueItemByKey.get(`${row.docketNumber}:${row.hearingDate}`)?.itemId;
+  const retrievedItemIds = new Set(documentRequests.flatMap(request => request.itemId && request.outcome === "OK" ? [request.itemId] : []));
+  for (const item of documentItems) if (item.sourceRetrievedAt) retrievedItemIds.add(item.id);
+  const documentsProcessed = documentItems.filter(item => !!item.sourceRetrievedAt && item.extractionOutcome !== "UNPROCESSED").length;
+  const documentsWithEvidence = documentItems.filter(item => item.extractionOutcome === "EXTRACTED"
+    && Array.isArray(item.entries) && item.entries.length > 0).length;
   const [currentRequest] = job ? await db.select({
     method: discoveryRequestsTable.method,
     path: discoveryRequestsTable.path,
@@ -102,6 +141,12 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     criteria: search.criteria,
     progress: {
       completed, total: search.total, pending: Math.max(0, search.total - completed),
+      calendarValidated: !!job?.calendarComplete,
+      documentsDiscovered: documentItemIds.length,
+      documentRequestsAttempted: documentRequests.length,
+      documentsRetrieved: retrievedItemIds.size,
+      documentsProcessed,
+      documentsWithEvidence,
       sourceRequestsUsed: job?.requestsUsed ?? 0,
       sourceRequestLimit: job?.criteria.requestCap ?? null,
       ...(currentRequest ? { currentRequest: {
@@ -112,7 +157,10 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     reason: search.status === "running" && job ? job.message : search.reason,
     resumeToken: ["resume", "wait"].includes(recovery.action) ? resumeToken(search) : null,
     resumeAvailableAt: recovery.availableAt,
-    results: includeResults ? await Promise.all(rows.map(row => enrichedResult(search, row))) : [],
+    results: includeResults ? await Promise.all(rows.map(row => {
+      const itemId = itemIdByResult(row);
+      return enrichedResult(search, row, itemId ? latestDocumentOutcomeByItem.get(itemId) ?? null : null);
+    })) : [],
     createdAt: search.createdAt.toISOString(), updatedAt: search.updatedAt.toISOString(),
     sourceNotice: sourceNotice(search.criteria.source),
     stage, recovery,

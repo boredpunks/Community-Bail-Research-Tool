@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
-  db, discoveryItemsTable, bailRecordsTable,
+  db, discoveryItemsTable, discoveryRequestsTable, bailRecordsTable,
   type BailDecisionEvidence, type BailSearchRow, type BailSearchResultRow,
   type DiscoveryEntryData, type DiscoveryItemRow,
 } from "@workspace/db";
@@ -14,6 +14,33 @@ export function safeDocketLink(url: string | null, docket: string) {
   try {
     return url && allowedSourceRequest(url, "GET") && new URL(url).searchParams.get("docketNumber") === docket ? url : null;
   } catch { return null; }
+}
+
+export type BailSearchDocumentStatus =
+  | "NOT_REQUESTED"
+  | "REQUEST_IN_PROGRESS"
+  | "RETRIEVAL_FAILED"
+  | "RETRIEVED"
+  | "EXTRACTED"
+  | "NO_BAIL_SECTION"
+  | "EXTRACTION_FAILED"
+  | "IDENTITY_MISMATCH"
+  | "AMBIGUOUS";
+
+export function bailSearchDocumentStatus(
+  extractionOutcome: string | null | undefined,
+  retrievedAt: Date | null | undefined,
+  requestOutcome: string | null | undefined,
+): BailSearchDocumentStatus {
+  if (extractionOutcome === "EXTRACTED" && retrievedAt) return "EXTRACTED";
+  if (extractionOutcome === "MISSING_BAIL_SECTION" && retrievedAt) return "NO_BAIL_SECTION";
+  if (extractionOutcome === "IDENTITY_MISMATCH" && retrievedAt) return "IDENTITY_MISMATCH";
+  if (extractionOutcome === "AMBIGUOUS_FINANCIAL_ASSOCIATION" && retrievedAt) return "AMBIGUOUS";
+  if (retrievedAt && extractionOutcome !== "UNPROCESSED") return "EXTRACTION_FAILED";
+  if (requestOutcome === "IN_FLIGHT") return "REQUEST_IN_PROGRESS";
+  if (requestOutcome && requestOutcome !== "OK") return "RETRIEVAL_FAILED";
+  if (retrievedAt || requestOutcome === "OK") return "RETRIEVED";
+  return extractionOutcome === "RETRIEVAL_FAILED" ? "RETRIEVAL_FAILED" : "NOT_REQUESTED";
 }
 
 const categoryByClassification: Record<string, DiscoveryEntryData["bailCategory"]> = {
@@ -100,9 +127,17 @@ function cachedItem(item: DiscoveryItemRow, row: BailSearchResultRow): { item: D
   };
 }
 
-export async function resultEvidence(search: BailSearchRow, row: BailSearchResultRow) {
+export async function resultEvidence(search: BailSearchRow, row: BailSearchResultRow, knownRequestOutcome?: string | null) {
   const id = row.sourceItemId ?? search.queue.find(item => item.docketNumber === row.docketNumber && item.hearingDate === row.hearingDate)?.itemId;
   const [item] = id ? await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id, id)) : [];
+  const [documentRequest] = knownRequestOutcome !== undefined ? [{ outcome: knownRequestOutcome }]
+    : id && search.discoveryJobId ? await db.select({
+    outcome: discoveryRequestsTable.outcome,
+  }).from(discoveryRequestsTable).where(and(
+    eq(discoveryRequestsTable.jobId, search.discoveryJobId),
+    eq(discoveryRequestsTable.itemId, id),
+    inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
+  )).orderBy(desc(discoveryRequestsTable.startedAt)).limit(1) : [];
   const [saved] = row.savedRecordId ? await db.select().from(bailRecordsTable).where(eq(bailRecordsTable.id, row.savedRecordId)) : [];
   const source = safeDocketLink(row.sourceUrl ?? item?.sourceUrl ?? null, row.docketNumber);
   let reason: string | null = null;
@@ -138,6 +173,9 @@ export async function resultEvidence(search: BailSearchRow, row: BailSearchResul
     }
   }
   return {
+    document_status: row.evidenceAcquisition === "CACHE"
+      ? row.history.length ? "EXTRACTED" : "NO_BAIL_SECTION"
+      : bailSearchDocumentStatus(item?.provenance.extractionOutcome, row.sourceRetrievedAt ?? item?.sourceRetrievedAt, documentRequest?.outcome),
     source_url: source,
     source_retrieved_at: (row.sourceRetrievedAt ?? item?.sourceRetrievedAt)?.toISOString() ?? null,
     source_consulted_at: (row.sourceConsultedAt ?? row.sourceRetrievedAt ?? item?.sourceRetrievedAt)?.toISOString() ?? null,

@@ -684,17 +684,23 @@ components:
         startedAt: { type: string, format: date-time }
     BailSearchProgress:
       type: object
-      required: [completed, total, pending, sourceRequestsUsed, sourceRequestLimit]
+      required: [completed, total, pending, calendarValidated, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit]
       properties:
         completed: { type: integer }
         total: { type: integer }
         pending: { type: integer }
+        calendarValidated: { type: boolean }
+        documentsDiscovered: { type: integer }
+        documentRequestsAttempted: { type: integer }
+        documentsRetrieved: { type: integer }
+        documentsProcessed: { type: integer }
+        documentsWithEvidence: { type: integer }
         sourceRequestsUsed: { type: integer }
         sourceRequestLimit: { type: [integer, "null"] }
         currentRequest: { $ref: "#/components/schemas/BailSearchCurrentRequest" }
     BailSearchResult:
       type: object
-      required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, qualifies, ambiguous, error]
+      required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, document_status, qualifies, ambiguous, error]
       properties:
         id: { type: string }
         docket_number: { type: string }
@@ -707,6 +713,7 @@ components:
         evidence_page: { type: [integer, "null"] }
         evidence_quote: { type: string }
         evidence_acquisition: { type: string }
+        document_status: { type: string, enum: [NOT_REQUESTED, REQUEST_IN_PROGRESS, RETRIEVAL_FAILED, RETRIEVED, EXTRACTED, NO_BAIL_SECTION, EXTRACTION_FAILED, IDENTITY_MISMATCH, AMBIGUOUS] }
         qualifies: { type: boolean }
         ambiguous: { type: boolean }
         error: { type: [string, "null"] }

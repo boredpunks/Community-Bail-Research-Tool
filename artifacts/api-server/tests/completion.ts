@@ -10,6 +10,7 @@ import { newResearchCriteria, criteriaIdentity } from "../src/lib/discovery-laun
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import { observationValues } from "../src/lib/discovery-candidates";
 import { createWorkspaceSession, hasValidWorkspaceSession } from "../src/middlewares/researchAuth";
+import { bailSearchDocumentStatus } from "../src/services/bail-search-evidence";
 import { eq } from "drizzle-orm";
 
 class IntentionalRollback extends Error {}
@@ -25,6 +26,14 @@ assert.equal(criteria.resultVersion, 2);
 assert.equal(criteria.matchFilters?.inclusiveMaximum, true);
 assert.equal(criteriaIdentity(criteria), criteriaIdentity(Object.fromEntries(Object.entries(criteria).reverse())));
 assert.notEqual(criteriaIdentity(criteria), criteriaIdentity({...criteria, matchFilters: {...criteria.matchFilters, monetaryUpperBoundCents: 9999}}));
+assert.equal(bailSearchDocumentStatus("UNPROCESSED", null, null), "NOT_REQUESTED");
+assert.equal(bailSearchDocumentStatus("UNPROCESSED", null, "IN_FLIGHT"), "REQUEST_IN_PROGRESS");
+assert.equal(bailSearchDocumentStatus("RETRIEVAL_FAILED", null, "ACCESS_DENIED"), "RETRIEVAL_FAILED");
+assert.equal(bailSearchDocumentStatus("UNPROCESSED", now, "OK"), "RETRIEVED");
+assert.equal(bailSearchDocumentStatus("EXTRACTED", now, "OK"), "EXTRACTED");
+assert.equal(bailSearchDocumentStatus("MISSING_BAIL_SECTION", now, "OK"), "NO_BAIL_SECTION");
+assert.equal(bailSearchDocumentStatus("UNSUPPORTED_LAYOUT", now, "OK"), "EXTRACTION_FAILED");
+assert.equal(bailSearchDocumentStatus("IDENTITY_MISMATCH", now, "OK"), "IDENTITY_MISMATCH");
 for (const bad of [{...input, startDate: "2026-02-30"}, {...input, matchTarget: 2},
   {...input, recordCap: 201}, {...input, eventType: "Not an observed event"},
   {...input, matchFilters: {monetaryUpperBoundCents: -1}}]) assert.throws(() => newResearchCriteria(bad));
