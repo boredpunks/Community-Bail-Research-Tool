@@ -127,6 +127,18 @@ function cachedItem(item: DiscoveryItemRow, row: BailSearchResultRow): { item: D
   };
 }
 
+export function resultDocumentTimings(
+  timings: DiscoveryItemRow["provenance"]["documentTimings"],
+  request?: { outcome: string; durationMs: number | null } | null,
+) {
+  return {
+    slot_wait_ms: timings?.slotWaitMs ?? null,
+    retrieval_ms: request?.outcome === "OK" ? request.durationMs : null,
+    extraction_ms: timings?.extractionMs ?? null,
+    persistence_ms: timings?.persistenceMs ?? null,
+  };
+}
+
 export async function resultEvidence(search: BailSearchRow, row: BailSearchResultRow,
   knownDocumentRequest?: { outcome: string; durationMs: number | null } | null) {
   const id = row.sourceItemId ?? search.queue.find(item => item.docketNumber === row.docketNumber && item.hearingDate === row.hearingDate)?.itemId;
@@ -182,12 +194,7 @@ export async function resultEvidence(search: BailSearchRow, row: BailSearchResul
     source_retrieved_at: (row.sourceRetrievedAt ?? item?.sourceRetrievedAt)?.toISOString() ?? null,
     source_consulted_at: (row.sourceConsultedAt ?? row.sourceRetrievedAt ?? item?.sourceRetrievedAt)?.toISOString() ?? null,
     source_pdf_sha256: row.sourcePdfSha256 ?? null,
-    document_timings: {
-      slot_wait_ms: item?.provenance.documentTimings?.slotWaitMs ?? null,
-      retrieval_ms: documentRequest?.outcome === "OK" ? documentRequest.durationMs : null,
-      extraction_ms: item?.provenance.documentTimings?.extractionMs ?? null,
-      persistence_ms: item?.provenance.documentTimings?.persistenceMs ?? null,
-    },
+    document_timings: resultDocumentTimings(item?.provenance.documentTimings, documentRequest),
     save_available: !saved && !reason,
     save_reason: saved ? "Already shared with the workspace." : reason,
     saved_record_id: saved?.id ?? null, review_status: saved?.reviewStatus ?? null,

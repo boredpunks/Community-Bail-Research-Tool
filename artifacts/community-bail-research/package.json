@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:discovery-retention": "tsx tests/discovery-retention.test.ts",
     "test:calendar-preview": "tsx tests/calendar-preview.test.ts",
-    "test:source-readiness": "tsx tests/source-readiness.test.ts"
+    "test:source-readiness": "tsx tests/source-readiness.test.ts",
+    "test:document-timings": "tsx tests/document-timings.test.ts"
   },
   "devDependencies": {
     "@workspace/bail-research": "workspace:*",

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useResumeBailSearch, useStartBailSearch } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { BailSearchProgressPanel } from '@/components/bail-search-progress';
+import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
 import { money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
@@ -32,11 +33,6 @@ const ACQUISITION_LABELS: Record<string, string> = {
 };
 type Office = (typeof LIVE_OFFICES)[number]['value'];
 type LiveEvent = (typeof LIVE_EVENTS)[number];
-
-function formatDuration(milliseconds: number | null | undefined) {
-  if (milliseconds == null) return 'Not recorded';
-  return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
-}
 
 function todayNewYork() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -162,16 +158,7 @@ export default function BailSearch() {
                           <p className="hint">Acquisition: {ACQUISITION_LABELS[row.evidence_acquisition] ?? (row.evidence_acquisition || 'Not recorded')}</p>
                           <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
                           <p className="hint">Local document consultation: {row.source_consulted_at ? formatInstant(row.source_consulted_at) : 'Not recorded'}</p>
-                          {row.document_timings && (row.document_timings.slot_wait_ms !== null
-                            || row.document_timings.retrieval_ms !== null
-                            || row.document_timings.extraction_ms !== null || row.document_timings.persistence_ms !== null) ? (
-                            <p className="hint">
-                              PDF timing: slot wait {formatDuration(row.document_timings.slot_wait_ms)}
-                              {' · '}request/response {formatDuration(row.document_timings.retrieval_ms)}
-                              {' · '}local extraction {formatDuration(row.document_timings.extraction_ms)}
-                              {' · '}evidence save {formatDuration(row.document_timings.persistence_ms)}
-                            </p>
-                          ) : null}
+                          <DocumentTimingDetails timings={row.document_timings} />
                           {row.source_pdf_sha256 ? <p className="hint break-all">Verified PDF SHA-256: {row.source_pdf_sha256}</p> : null}
                           {safeSourceUrl(row.source_url) ? (
                             <a href={safeSourceUrl(row.source_url)!} target="_blank" rel="noopener noreferrer" className="navlink">

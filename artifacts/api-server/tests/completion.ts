@@ -4,13 +4,14 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { db, pool, discoveryJobsTable, discoveryItemsTable, bailRecordsTable } from "@workspace/db";
-import { GetDiscoveryJobResponse } from "@workspace/api-zod";
+import { GetBailSearchStatusResponse, GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { projectQualifyingRows } from "@workspace/bail-research";
 import { newResearchCriteria, criteriaIdentity } from "../src/lib/discovery-launch";
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import { observationValues } from "../src/lib/discovery-candidates";
 import { createWorkspaceSession, hasValidWorkspaceSession } from "../src/middlewares/researchAuth";
-import { bailSearchDocumentStatus } from "../src/services/bail-search-evidence";
+import { bailSearchDocumentStatus, resultDocumentTimings } from "../src/services/bail-search-evidence";
+import { latestDocumentRequestByItem } from "../src/services/bail-search-store";
 import { eq } from "drizzle-orm";
 
 class IntentionalRollback extends Error {}
@@ -34,6 +35,61 @@ assert.equal(bailSearchDocumentStatus("EXTRACTED", now, "OK"), "EXTRACTED");
 assert.equal(bailSearchDocumentStatus("MISSING_BAIL_SECTION", now, "OK"), "NO_BAIL_SECTION");
 assert.equal(bailSearchDocumentStatus("UNSUPPORTED_LAYOUT", now, "OK"), "EXTRACTION_FAILED");
 assert.equal(bailSearchDocumentStatus("IDENTITY_MISMATCH", now, "OK"), "IDENTITY_MISMATCH");
+const pdfRequests = latestDocumentRequestByItem([
+  { itemId: "item-1", path: "/Calendar/Search", outcome: "OK", durationMs: 91_000, startedAt: new Date("2026-10-30T12:04:00Z") },
+  { itemId: "item-1", path: "/Report/CpDocketSheet", outcome: "OK", durationMs: 2_100, startedAt: new Date("2026-10-30T12:02:00Z") },
+  { itemId: "item-1", path: "/Report/MdjDocketSheet", outcome: "OK", durationMs: 4_321, startedAt: new Date("2026-10-30T12:03:00Z") },
+  { itemId: "item-2", path: "/Report/CpDocketSheet", outcome: "OK", durationMs: 999, startedAt: new Date("2026-10-30T12:05:00Z") },
+]);
+assert.deepEqual(pdfRequests.get("item-1"), { outcome: "OK", durationMs: 4_321 },
+  "Retrieval timing must use the latest matching PDF request, never the calendar request.");
+const documentTimings = resultDocumentTimings(
+  { slotWaitMs: 75, extractionMs: 1_234, persistenceMs: 56 },
+  pdfRequests.get("item-1"),
+);
+assert.deepEqual(documentTimings, {
+  slot_wait_ms: 75, retrieval_ms: 4_321, extraction_ms: 1_234, persistence_ms: 56,
+});
+const legacyDocumentTimings = resultDocumentTimings(undefined, null);
+assert.deepEqual(legacyDocumentTimings, {
+  slot_wait_ms: null, retrieval_ms: null, extraction_ms: null, persistence_ms: null,
+});
+const timingResponse = {
+  searchId: "timing-regression", status: "complete",
+  criteria: { startDate: "2026-10-30", endDate: "2026-10-30", maxBail: 1_000, source: "live" },
+  progress: {
+    completed: 1, total: 1, pending: 0, calendarValidated: true,
+    documentsDiscovered: 1, documentRequestsAttempted: 1, documentsRetrieved: 1,
+    documentsProcessed: 1, documentsWithEvidence: 1, sourceRequestsUsed: 2, sourceRequestLimit: 10,
+  },
+  incomplete: false, reason: null, resumeToken: null, resumeAvailableAt: null,
+  results: [{
+    id: "result-1", docket_number: "CP-01-CR-0000001-2026", hearing_date: "2026-10-30",
+    decision_date: "2026-10-30", office: "Test court", bail_amount: 1_000, percentage: null,
+    classification: "monetary", evidence_page: 1, evidence_quote: "Fixture quote",
+    evidence_acquisition: "STORED_EXTRACTION", document_status: "EXTRACTED",
+    qualifies: true, ambiguous: false, error: null, source_url: null, source_retrieved_at: null,
+    source_consulted_at: null, source_pdf_sha256: null, document_timings: documentTimings,
+    save_available: false, save_reason: null, saved_record_id: null, review_status: null,
+  }],
+  createdAt: now.toISOString(), updatedAt: now.toISOString(), sourceNotice: "Offline test",
+  stage: "complete", recovery: { action: "none", message: "", availableAt: null },
+};
+const parsedTimingResponse = GetBailSearchStatusResponse.parse(timingResponse);
+assert.deepEqual(parsedTimingResponse.results[0]!.document_timings, documentTimings,
+  "The API response schema must preserve each timing independently.");
+const parsedLegacyResponse = GetBailSearchStatusResponse.parse({
+  ...timingResponse,
+  results: [{ ...timingResponse.results[0], document_timings: legacyDocumentTimings }],
+});
+assert.deepEqual(parsedLegacyResponse.results[0]!.document_timings, legacyDocumentTimings,
+  "Legacy results without recorded timing values remain valid and contain no invented durations.");
+const omittedLegacyResponse = GetBailSearchStatusResponse.parse({
+  ...timingResponse,
+  results: [{ ...timingResponse.results[0], document_timings: undefined }],
+});
+assert.equal(omittedLegacyResponse.results[0]!.document_timings, undefined,
+  "Legacy responses without timing metadata remain valid.");
 for (const bad of [{...input, startDate: "2026-02-30"}, {...input, matchTarget: 2},
   {...input, recordCap: 201}, {...input, eventType: "Not an observed event"},
   {...input, matchFilters: {monetaryUpperBoundCents: -1}}]) assert.throws(() => newResearchCriteria(bad));

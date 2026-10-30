@@ -43,6 +43,25 @@ export function validateSearchDates(criteria: BailSearchCriteria) {
     throw new Error("Use valid hearing dates in order, at most one year apart, and a maximum with at most two decimal places.");
   }
 }
+
+const PDF_REQUEST_PATHS = new Set(["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]);
+type DocumentRequestTimingRow = {
+  itemId: string | null;
+  path: string;
+  outcome: string;
+  durationMs: number | null;
+  startedAt: Date;
+};
+
+export function latestDocumentRequestByItem(requests: readonly DocumentRequestTimingRow[]) {
+  const latest = new Map<string, { outcome: string; durationMs: number | null }>();
+  for (const request of [...requests].sort((left, right) => right.startedAt.getTime() - left.startedAt.getTime())) {
+    if (!request.itemId || !PDF_REQUEST_PATHS.has(request.path) || latest.has(request.itemId)) continue;
+    latest.set(request.itemId, { outcome: request.outcome, durationMs: request.durationMs });
+  }
+  return latest;
+}
+
 export function serializeSearchResult(row: BailSearchResultRow) {
   return {
     id: row.id, docket_number: row.docketNumber, hearing_date: row.hearingDate,
@@ -108,6 +127,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
   const documentRequests = job && documentItemIds.length
     ? await db.select({
       itemId: discoveryRequestsTable.itemId,
+      path: discoveryRequestsTable.path,
       outcome: discoveryRequestsTable.outcome,
       startedAt: discoveryRequestsTable.startedAt,
       durationMs: discoveryRequestsTable.durationMs,
@@ -117,12 +137,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
       inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
     )).orderBy(desc(discoveryRequestsTable.startedAt))
     : [];
-  const latestDocumentRequestByItem = new Map<string, { outcome: string; durationMs: number | null }>();
-  for (const request of documentRequests) {
-    if (request.itemId && !latestDocumentRequestByItem.has(request.itemId)) {
-      latestDocumentRequestByItem.set(request.itemId, { outcome: request.outcome, durationMs: request.durationMs });
-    }
-  }
+  const latestRequestsByItem = latestDocumentRequestByItem(documentRequests);
   const itemIdByResult = (row: BailSearchResultRow) => row.sourceItemId
     ?? queueItemByKey.get(`${row.docketNumber}:${row.hearingDate}`)?.itemId;
   const retrievedItemIds = new Set(documentRequests.flatMap(request => request.itemId && request.outcome === "OK" ? [request.itemId] : []));
@@ -161,7 +176,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     resumeAvailableAt: recovery.availableAt,
     results: includeResults ? await Promise.all(rows.map(row => {
       const itemId = itemIdByResult(row);
-      return enrichedResult(search, row, itemId ? latestDocumentRequestByItem.get(itemId) ?? null : null);
+      return enrichedResult(search, row, itemId ? latestRequestsByItem.get(itemId) ?? null : null);
     })) : [],
     createdAt: search.createdAt.toISOString(), updatedAt: search.updatedAt.toISOString(),
     sourceNotice: sourceNotice(search.criteria.source),
