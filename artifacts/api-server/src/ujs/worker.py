@@ -169,6 +169,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
     response_inspection_attempted = False
     response_parser_attempted = False
     response_parser_outcome = "NOT_RUN"
+    response_rejected_row_count = 0
     calendar_explicit_empty = False
     response_result_validation = {
         "outcome": "NOT_RUN", "observedRows": 0, "validatedRows": 0,
@@ -725,6 +726,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
         async def validate_loaded_response():
             nonlocal calendar_links_captured_at
             nonlocal response_parser_attempted, response_parser_outcome, response_result_validation
+            nonlocal response_rejected_row_count
             nonlocal items, calendar_has_remote_pagination, calendar_validated_headers, calendar_traversal
             nonlocal calendar_explicit_empty
             nonlocal calendar_result_limit_warning
@@ -761,6 +763,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     parser.reject_structure("SOURCE_STRUCTURE_MISMATCH")
                     raise ValueError("CALENDAR_STRUCTURE_MISMATCH")
                 parsed_items = parser.validated(criteria)
+                response_rejected_row_count = parser.row_rejection_count
                 calendar_links_captured_at = asyncio.get_running_loop().time()
             except Exception as error:
                 response_parser_outcome = parser_outcome(error)
@@ -775,20 +778,31 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 items = []
             else:
                 calendar_explicit_empty = parser.explicit_empty_state
+                partial_rows = parser.row_rejection_count > 0
                 response_parser_outcome = (
-                    "CANDIDATE_NONEMPTY" if parsed_items
+                    "CANDIDATE_PARTIAL" if parsed_items and partial_rows
+                    else "CANDIDATE_NONEMPTY" if parsed_items
+                    else "ROW_REJECTIONS_ONLY" if partial_rows
                     else "EXPLICIT_EMPTY_RESULT" if calendar_explicit_empty
                     else "NO_EMPTY_PROOF"
                 )
                 response_result_validation = {
-                    "outcome": "VALIDATED_NONEMPTY" if parsed_items
+                    "outcome": "VALIDATED_PARTIAL" if parsed_items and partial_rows
+                    else "VALIDATED_NONEMPTY" if parsed_items
+                    else "ROW_REJECTIONS_ONLY" if partial_rows
                     else "VALIDATED_EMPTY" if calendar_explicit_empty else "EMPTY_NOT_PROVEN",
                     "observedRows": response_structure["dataRowCount"],
                     "validatedRows": parser.validated_row_count,
                     "validatedDockets": len(parsed_items),
-                    "documentLinks": "ALL_VALID" if parsed_items else "NO_ROWS",
-                    "scope": "ALL_ROWS_MATCH" if parser.scope_validated else "NO_ROWS",
-                    "dates": "ALL_WITHIN_REQUEST" if parser.dates_validated else "NO_ROWS",
+                    "documentLinks": "PARTIAL_REJECTED" if parsed_items and partial_rows
+                    else "ALL_VALID" if parsed_items
+                    else "REJECTED" if partial_rows else "NO_ROWS",
+                    "scope": "PARTIAL_REJECTED" if parsed_items and partial_rows
+                    else "ALL_ROWS_MATCH" if parser.scope_validated
+                    else "REJECTED" if partial_rows else "NO_ROWS",
+                    "dates": "PARTIAL_REJECTED" if parsed_items and partial_rows
+                    else "ALL_WITHIN_REQUEST" if parser.dates_validated
+                    else "REJECTED" if partial_rows else "NO_ROWS",
                     "explicitEmptyResult": "SOURCE_STATUS_MARKER" if calendar_explicit_empty else "NOT_CAPTURED",
                 }
                 if parsed_items or calendar_explicit_empty:
@@ -847,9 +861,11 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 return "BLOCKED_CONSOLE"
             if response_result_validation["outcome"] == "VALIDATED_EMPTY":
                 return "VALIDATED_EMPTY"
-            if response_result_validation["outcome"] != "VALIDATED_NONEMPTY":
+            if response_result_validation["outcome"] in ("VALIDATED_NONEMPTY", "VALIDATED_PARTIAL"):
+                return "ELIGIBLE"
+            if response_result_validation["outcome"] != "ROW_REJECTIONS_ONLY":
                 return "BLOCKED_RESULT"
-            return "ELIGIBLE"
+            return "BLOCKED_RESULT"
 
         def response_diagnostic():
             nonlocal response_diagnostic_emitted
@@ -867,7 +883,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             transport = response_transport_status()
             console = response_console_status()
             eligibility = response_eligibility(transport, console)
-            emit("calendar_response_diagnostic", version=4, phase="RESULT",
+            emit("calendar_response_diagnostic", version=5, phase="RESULT",
                  submissionObserved=calendar_post_observed, responseCompleted=calendar_post_completed,
                  inspectionStatus=response_inspection_status, structure=response_structure,
                  parserAttempted=response_parser_attempted, parserOutcome=response_parser_outcome,
@@ -1026,6 +1042,10 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 eligibility = response_eligibility(
                     response_transport_status(), response_console_status())
                 if eligibility not in ("ELIGIBLE", "VALIDATED_EMPTY"):
+                    if (eligibility == "BLOCKED_RESULT"
+                            and response_parser_outcome == "ROW_REJECTIONS_ONLY"):
+                        emit("pause", code="ROW_VALIDATION_ONLY", attempted=True)
+                        return
                     emit("calendar_state", state="RESULTS_NOT_VALIDATED",
                          formVisible=await calendar_search_button_visible(page))
                     items = []
@@ -1054,7 +1074,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 emit("calendar", rows=items, retrievedAt=calendar_time,
                      traversal=calendar_traversal,
                      paginationComplete=not calendar_has_remote_pagination
-                     and not calendar_result_limit_warning and len(items) < 500,
+                      and not calendar_result_limit_warning and len(items) < 500
+                      and response_rejected_row_count == 0,
                      resultCapReached=calendar_result_limit_warning or len(items) >= 500, blockedAssets=blocked,
                      **({"columnHeaders": calendar_validated_headers}
                         if calendar_preview_only else {}))

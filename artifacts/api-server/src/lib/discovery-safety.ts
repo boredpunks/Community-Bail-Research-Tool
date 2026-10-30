@@ -94,7 +94,9 @@ export function validAccountingMessage(message: Record<string, unknown>) {
 
 export function validParentDeniedPause(message: Record<string, unknown>) {
   return Object.keys(message).every((key) => ["kind", "code", "attempted"].includes(key))
-    && message.kind === "pause" && message.code === "PARENT_DENIED" && message.attempted === false;
+    && message.kind === "pause"
+    && (message.code === "PARENT_DENIED" && message.attempted === false
+      || message.code === "ROW_VALIDATION_ONLY" && message.attempted === true);
 }
 
 // Numerical predicates can be checked offline without inventing case evidence.

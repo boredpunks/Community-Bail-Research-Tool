@@ -57,7 +57,7 @@ class ContractObservation(unittest.TestCase):
         self.assertEqual(calendar_result_state(True, rows, parser.explicit_empty_state),
                          "EMPTY_RESULTS_VALIDATED")
 
-    def test_unknown_or_mixed_presentation_rows_are_not_silently_skipped(self):
+    def test_unknown_or_mixed_presentation_rows_are_skipped_without_empty_proof(self):
         headers = ["Column"] * 19
         for index, label in {
             2: "Docket Number", 3: "Court Type", 6: "Filing Date",
@@ -79,6 +79,6 @@ class ContractObservation(unittest.TestCase):
         ):
             parser = CalendarResults()
             parser.feed(prefix + rows + "</table>")
-            with self.assertRaises(ValueError):
-                parser.validated(criteria)
+            self.assertEqual(parser.validated(criteria), [])
+            self.assertGreater(parser.row_rejection_count, 0)
             self.assertFalse(parser.explicit_empty_state)

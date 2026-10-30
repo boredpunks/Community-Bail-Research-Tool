@@ -319,6 +319,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   let explicitEmptyDiagnosticSeen = false;
   let calendarLayoutSeen = false;
   let calendarResponseDiagnosticSeen = false;
+  let rejectedCalendarRows = 0;
   let refreshCalendarActive = exactSessionRefresh;
   let refreshCalendarValidated = false;
   let refreshMismatch = false;
@@ -527,10 +528,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           outcome: string; observedRows: number; validatedRows: number; validatedDockets: number;
           documentLinks: string; scope: string; dates: string; explicitEmptyResult: string;
         };
+        if (["VALIDATED_PARTIAL", "ROW_REJECTIONS_ONLY"].includes(result.outcome))
+          rejectedCalendarRows = Math.max(0, result.observedRows - result.validatedRows);
         await discoveryEvent(job, "CALENDAR_RESULT_REVIEW", [
           `Transport/resource integrity: ${transport.status}; required assets loaded=${transport.requiredAssetsLoaded}; request failure observed=${transport.requestFailureObserved}; requests blocked during read-only inspection=${transport.blockedDuringInspection}.`,
           `Console/runtime diagnostics: ${console.status}; unclassified console errors=${console.consoleErrors}; runtime exceptions=${console.runtimeExceptions}; proven optional aborts=${console.provenOptionalErrors}.`,
-          `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
+          `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; row-level rejects=${rejectedCalendarRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
       } else if (message.kind === "calendar_layout") {
@@ -753,7 +756,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         finished = true;
       } else if (message.kind === "pause") {
         if (!validParentDeniedPause(message)) throw new Error("Invalid parent-denied pause message");
-        if (job.assessmentId) {
+        if (message.code === "ROW_VALIDATION_ONLY") {
+          const rejectedRows = Math.max(1, rejectedCalendarRows);
+          const detail = `Calendar response had ${rejectedRows} row-level rejection(s) and no validated rows. No empty-result claim and no source-wide validation barrier were added.`;
+          await discoveryEvent(job, "CALENDAR_ROWS_REJECTED", detail);
+          await pause(job, detail);
+        } else if (job.assessmentId) {
           await validationStop("SOURCE_VALIDATION_BARRIER");
           await pause(job, "Source barrier: assessment request denied before transmission. Permit and source state require review.");
         } else {
@@ -781,13 +789,13 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           : inspectionOnly
           ? "Public form metadata inspected without invoking form submission. No Search click, POST, results, or PDFs. Not an empty search or access proof; source pause unchanged."
           : current.criteria.calendarPreviewOnly
-          ? `Calendar-only preview complete: ${counts.discovered} source-linked row(s) retained. No docket PDFs were requested, no bail evidence was extracted, and this preview cannot be resumed or saved as a candidate.`
+          ? `Calendar-only preview complete: ${counts.discovered} validated source-linked row(s) retained.${rejectedCalendarRows ? ` ${rejectedCalendarRows} nonconforming row(s) were excluded; coverage is partial.` : ""} No docket PDFs were requested, no bail evidence was extracted, and this preview cannot be resumed or saved as a candidate.`
           : counts.targetReached
           ? `Matching target reached (${counts.matching}/${current.criteria.matchTarget}). Remaining discovered dockets were not downloaded.`
           : counts.unprocessed > 0
           ? "Explicit record cap reached. Partial docket processing; unprocessed rows remain visible."
           : counts.discovered === 0 ? "Validated result table contained no docket rows. This is a completed empty search, not a returned form."
-            : `Returned calendar results exhausted. ${counts.matching} matching docket(s)${current.criteria.matchTarget ? ` of ${current.criteria.matchTarget} requested` : ""}. No date-range expansion; ${current.paginationComplete ? "no remote pagination detected" : "remote pagination/coverage remains incomplete"}. Evidence remains unreviewed; custody unknown.`;
+            : `Returned calendar results exhausted. ${counts.matching} matching docket(s)${current.criteria.matchTarget ? ` of ${current.criteria.matchTarget} requested` : ""}. No date-range expansion; ${current.paginationComplete ? "no remote pagination detected" : "remote pagination/coverage remains incomplete"}. ${rejectedCalendarRows ? `${rejectedCalendarRows} nonconforming row(s) were excluded; retained results are partial.` : ""} Evidence remains unreviewed; custody unknown.`;
         await db.update(discoveryJobsTable).set({ status: "COMPLETED", message, updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "RUNNING")));
         await discoveryEvent(job, "FINISHED", message);
       } else await pause(job, `Worker stopped before completion (exit ${code}; ${stderrBytes} diagnostic bytes). No automatic retry; partial results retained.`);

@@ -2,7 +2,7 @@ const categories = ["JAVASCRIPT_EXCEPTION", "REQUIRED_RESOURCE_FAILURE",
   "BLOCKED_OPTIONAL_RESOURCE_ERROR", "OTHER_CONSOLE_ERROR", "UNKNOWN_OR_UNSAFE"];
 const aliases = ["MAIN_DOCUMENT", "MAIN_SCRIPT", "MAIN_STYLESHEET", "BLOCKED_OPTIONAL", "OTHER", "UNKNOWN"];
 const signals = ["RESOURCE_ABORT", "RESOURCE_LOAD_ERROR", "CONSOLE_ERROR", "UNCLASSIFIED", "SCRIPT_EXCEPTION", "REQUEST_FAILED"];
-const outcomes = ["NOT_RUN", "CANDIDATE_NONEMPTY", "NO_EMPTY_PROOF", "MISSING_TABLE",
+const outcomes = ["NOT_RUN", "CANDIDATE_NONEMPTY", "CANDIDATE_PARTIAL", "ROW_REJECTIONS_ONLY", "NO_EMPTY_PROOF", "MISSING_TABLE",
   "EXPLICIT_EMPTY_RESULT", "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED",
   "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
 const gates = ["NONE", "SOURCE_STOPPED", "CALENDAR_REQUIRED_RESOURCE_BLOCKED",
@@ -20,7 +20,7 @@ const transportStatuses = ["RESPONSE_INCOMPLETE", "SOURCE_STOPPED", "REQUIRED_RE
   "REQUIRED_ASSET_MISSING", "UNCLASSIFIED_REQUEST_FAILURE", "DIAGNOSTIC_OVERFLOW", "COMPLETE"];
 const consoleStatuses = ["CLEAN", "PROVEN_OPTIONAL_ONLY", "UNCLASSIFIED_CONSOLE_ERRORS",
   "RUNTIME_EXCEPTIONS", "MIXED"];
-const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "VALIDATED_EMPTY", "EMPTY_NOT_PROVEN", "MISSING_TABLE",
+const resultOutcomes = ["NOT_RUN", "VALIDATED_NONEMPTY", "VALIDATED_PARTIAL", "ROW_REJECTIONS_ONLY", "VALIDATED_EMPTY", "EMPTY_NOT_PROVEN", "MISSING_TABLE",
   "UNSUPPORTED_LAYOUT", "IDENTITY_OR_SCOPE_REJECTED", "LINK_REJECTED", "DATE_REJECTED", "PARSER_ERROR"];
 const eligibilityStates = ["BLOCKED_INTEGRITY", "BLOCKED_CRITERIA", "BLOCKED_TRANSPORT",
   "BLOCKED_CONSOLE", "BLOCKED_RESULT", "ELIGIBLE", "VALIDATED_EMPTY"];
@@ -62,7 +62,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     "transportIntegrity", "consoleDiagnostics", "resultValidation", "documentEligibility", "stopGate",
     "classifications", "classificationOverflow", "blockedDuringInspection", "eventSequence", "milestones",
     "lifecycle"])
-    || m.kind !== "calendar_response_diagnostic" || m.version !== 4 || m.phase !== "RESULT"
+    || m.kind !== "calendar_response_diagnostic" || typeof m.version !== "number"
+    || ![4, 5].includes(m.version) || m.phase !== "RESULT"
     || !["submissionObserved", "responseCompleted", "parserAttempted", "classificationOverflow"]
       .every(k => typeof m[k] === "boolean")
     || !count(m.blockedDuringInspection, 10_000) || !count(m.eventSequence, 10_000)
@@ -125,7 +126,7 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     || m.inspectionStatus === "OBSERVED" && !marks.has("INSPECTION")
     || m.inspectionStatus === "OBSERVED" && !lifecycle.readOnlyInspection
     || marks.has("PARSER_ACCEPTED") && (marks.has("PARSER_REJECTED")
-      || !["CANDIDATE_NONEMPTY", "EXPLICIT_EMPTY_RESULT"].includes(String(m.parserOutcome)))) return false;
+      || !["CANDIDATE_NONEMPTY", "CANDIDATE_PARTIAL", "EXPLICIT_EMPTY_RESULT"].includes(String(m.parserOutcome)))) return false;
   if (m.responseCompleted && !m.submissionObserved
     || m.parserAttempted !== (m.parserOutcome !== "NOT_RUN")
     || m.parserAttempted && (!m.responseCompleted || m.inspectionStatus !== "OBSERVED")) return false;
@@ -163,9 +164,9 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     || !count(result.observedRows, 5000) || !count(result.validatedRows, 5000)
     || !count(result.validatedDockets, 5000)
     || Number(result.validatedRows) > Number(result.observedRows)
-    || !oneOf(result.documentLinks, ["NOT_CHECKED", "NO_ROWS", "ALL_VALID", "REJECTED"])
-    || !oneOf(result.scope, ["NOT_CHECKED", "NO_ROWS", "ALL_ROWS_MATCH", "REJECTED"])
-    || !oneOf(result.dates, ["NOT_CHECKED", "NO_ROWS", "ALL_WITHIN_REQUEST", "REJECTED"])
+    || !oneOf(result.documentLinks, ["NOT_CHECKED", "NO_ROWS", "ALL_VALID", "PARTIAL_REJECTED", "REJECTED"])
+    || !oneOf(result.scope, ["NOT_CHECKED", "NO_ROWS", "ALL_ROWS_MATCH", "PARTIAL_REJECTED", "REJECTED"])
+    || !oneOf(result.dates, ["NOT_CHECKED", "NO_ROWS", "ALL_WITHIN_REQUEST", "PARTIAL_REJECTED", "REJECTED"])
     || !oneOf(result.explicitEmptyResult, ["NOT_CAPTURED", "SOURCE_STATUS_MARKER"])
     || !oneOf(m.criteriaValidation, [
       "NOT_VERIFIED", "PRE_SUBMISSION_FORMDATA_MATCHED", "INTERCEPTED_POST_BODY_MATCHED"])
@@ -177,6 +178,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   const validatedDockets = Number(result.validatedDockets);
   const observedRows = Number(result.observedRows);
   const structureRows = object(m.structure) ? Number(m.structure.dataRowCount) : -1;
+  if (m.version !== 5 && ["VALIDATED_PARTIAL", "ROW_REJECTIONS_ONLY"].includes(String(result.outcome)))
+    return false;
   if ((console.status === "CLEAN" && (runtime || consoleErrors || optionalErrors))
     || (console.status === "PROVEN_OPTIONAL_ONLY" && (!optionalErrors || runtime || consoleErrors))
     || (console.status === "UNCLASSIFIED_CONSOLE_ERRORS" && (!consoleErrors || runtime))
@@ -186,10 +189,34 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
     if (result.outcome === "NOT_RUN"
       || observedRows !== (m.inspectionStatus === "OBSERVED" ? structureRows : -1))
       return false;
+    if (m.parserOutcome === "CANDIDATE_PARTIAL" && result.outcome !== "VALIDATED_PARTIAL") return false;
+    if (m.parserOutcome === "ROW_REJECTIONS_ONLY" && result.outcome !== "ROW_REJECTIONS_ONLY") return false;
     if (result.outcome === "VALIDATED_NONEMPTY"
       && (m.parserOutcome !== "CANDIDATE_NONEMPTY" || validatedRows < 1
-        || validatedDockets < 1 || result.documentLinks !== "ALL_VALID"
+        || validatedRows !== observedRows || validatedDockets < 1 || result.documentLinks !== "ALL_VALID"
         || result.scope !== "ALL_ROWS_MATCH" || result.dates !== "ALL_WITHIN_REQUEST"))
+      return false;
+    if (result.outcome === "VALIDATED_PARTIAL"
+      && (m.parserOutcome !== "CANDIDATE_PARTIAL" || validatedRows < 1
+        || validatedRows >= observedRows || validatedDockets < 1
+        || result.documentLinks !== "PARTIAL_REJECTED"
+        || result.scope !== "PARTIAL_REJECTED" || result.dates !== "PARTIAL_REJECTED"))
+      return false;
+    if (result.outcome === "ROW_REJECTIONS_ONLY"
+      && (m.parserOutcome !== "ROW_REJECTIONS_ONLY" || observedRows < 1
+        || validatedRows !== 0 || validatedDockets !== 0
+        || result.documentLinks !== "REJECTED" || result.scope !== "REJECTED"
+        || result.dates !== "REJECTED" || result.explicitEmptyResult !== "NOT_CAPTURED"))
+      return false;
+    if (result.outcome === "ROW_REJECTIONS_ONLY"
+      && (!m.responseCompleted || !m.parserAttempted
+        || m.criteriaValidation !== "INTERCEPTED_POST_BODY_MATCHED"
+        || transport.status !== "COMPLETE" || !transport.requiredAssetsLoaded
+        || transport.requestFailureObserved || m.classificationOverflow
+        || !["CLEAN", "PROVEN_OPTIONAL_ONLY"].includes(String(console.status))
+        || runtime || consoleErrors || m.documentEligibility !== "BLOCKED_RESULT"
+        || !object(m.structure) || m.structure.resultTableCount !== 1
+        || m.structure.expectedHeaders !== true || m.structure.countsCapped !== false))
       return false;
     if (result.outcome === "EMPTY_NOT_PROVEN"
       && (m.parserOutcome !== "NO_EMPTY_PROOF" || observedRows !== 0
@@ -224,7 +251,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
       || transport.status !== "COMPLETE" || !transport.requiredAssetsLoaded
       || transport.requestFailureObserved || m.classificationOverflow
       || !["CLEAN", "PROVEN_OPTIONAL_ONLY"].includes(String(console.status))
-      || runtime || consoleErrors || result.outcome !== "VALIDATED_NONEMPTY"
+      || runtime || consoleErrors
+      || !["VALIDATED_NONEMPTY", "VALIDATED_PARTIAL"].includes(String(result.outcome))
       || validatedRows < 1)) return false;
   if (m.documentEligibility === "VALIDATED_EMPTY"
     && (!m.responseCompleted || !m.parserAttempted
@@ -242,8 +270,8 @@ export function validCalendarResponseDiagnostic(m: Record<string, unknown>) {
   if (m.documentEligibility !== "ELIGIBLE"
     && m.documentEligibility === "BLOCKED_CRITERIA"
     && m.criteriaValidation === "INTERCEPTED_POST_BODY_MATCHED") return false;
-  if (m.documentEligibility !== "ELIGIBLE"
-    && m.documentEligibility === "BLOCKED_RESULT" && result.outcome === "VALIDATED_NONEMPTY") return false;
+  if (m.documentEligibility === "BLOCKED_RESULT"
+    && ["VALIDATED_NONEMPTY", "VALIDATED_PARTIAL", "VALIDATED_EMPTY"].includes(String(result.outcome))) return false;
   if (m.documentEligibility === "BLOCKED_RESULT" && result.outcome === "VALIDATED_EMPTY") return false;
   if (transport.status === "COMPLETE"
     && (!m.responseCompleted || !transport.requiredAssetsLoaded || transport.requestFailureObserved))

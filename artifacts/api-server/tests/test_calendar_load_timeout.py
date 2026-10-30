@@ -123,6 +123,11 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             '<table id="caseSearchResultGrid"><thead><tr>'
             + ''.join('<th>' + text + '</th>' for text in headers)
             + '</tr></thead><tbody></tbody></table>')
+        if post_case == "single_invalid_row":
+            results = results.replace(
+                "<tbody></tbody>",
+                "<tbody><tr>" + "<td></td>" * 18 + "</tr></tbody>",
+            )
         if large_page:
             # Only explicit empty/status structures, never synthetic cases.
             from test_calendar_response_size import PADDING, empty_grid
@@ -337,6 +342,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         observations = {
             "network": network, "timeouts": timeouts, "parserReached": bool(parsed),
             "states": states, "barriers": barriers,
+            "pauses": [row for row in messages if row["kind"] == "pause"],
             "formDiagnostics": [row for row in messages if row["kind"] == "calendar_form_diagnostic"],
             "requestGrants": sum(row["kind"] == "request" for row in messages),
             "responseAccounts": sum(row["kind"] == "response" for row in messages),
@@ -357,7 +363,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 for row in observations["responseDiagnostics"]:
                     output.write(json.dumps(row) + "\n")
         for row in observations["responseDiagnostics"]:
-            self.assertEqual(row["version"], 4)
+            self.assertEqual(row["version"], 5)
             serialized = json.dumps(row)
             for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
                 self.assertNotIn(private, serialized)
@@ -603,6 +609,20 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(o["parserReached"])
         self.assertFalse(d["structure"]["expectedHeaders"])
         self.assertEqual(d["parserOutcome"], "UNSUPPORTED_LAYOUT")
+        self.assertFalse(o["checkpointEmitted"])
+
+    async def test_single_invalid_row_does_not_add_a_source_wide_barrier(self):
+        o = await self.run_fixture(post_case="single_invalid_row")
+        d = o["responseDiagnostics"][-1]
+        self.assertEqual(d["parserOutcome"], "ROW_REJECTIONS_ONLY")
+        self.assertEqual(d["resultValidation"]["outcome"], "ROW_REJECTIONS_ONLY")
+        self.assertEqual(d["resultValidation"]["observedRows"], 1)
+        self.assertEqual(d["resultValidation"]["validatedRows"], 0)
+        self.assertEqual(d["documentEligibility"], "BLOCKED_RESULT")
+        self.assertEqual(o["pauses"], [
+            {"kind": "pause", "code": "ROW_VALIDATION_ONLY", "attempted": True},
+        ])
+        self.assertEqual(o["barriers"], [])
         self.assertFalse(o["checkpointEmitted"])
 
     async def test_search_reaches_parser_without_repeated_asset_network_calls(self):

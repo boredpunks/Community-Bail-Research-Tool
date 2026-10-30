@@ -266,6 +266,34 @@ try {
   check(validCalendarResponseDiagnostic({ ...validatedEmptyDiagnostic,
     structure: { ...validatedEmptyDiagnostic.structure, searchButtonCount: 0, searchFormPresent: false },
   }));
+  const partiallyValidatedDiagnostic = {
+    ...validatedEmptyDiagnostic,
+    version: 5,
+    parserOutcome: "CANDIDATE_PARTIAL",
+    structure: { ...validatedEmptyDiagnostic.structure, dataRowCount: 2, documentLinkCount: 1 },
+    resultValidation: {
+      ...validatedEmptyDiagnostic.resultValidation,
+      outcome: "VALIDATED_PARTIAL", observedRows: 2, validatedRows: 1, validatedDockets: 1,
+      documentLinks: "PARTIAL_REJECTED", scope: "PARTIAL_REJECTED",
+      dates: "PARTIAL_REJECTED", explicitEmptyResult: "NOT_CAPTURED",
+    },
+    documentEligibility: "ELIGIBLE",
+  };
+  check(validCalendarResponseDiagnostic(partiallyValidatedDiagnostic));
+  const rejectedRowsOnlyDiagnostic = {
+    ...partiallyValidatedDiagnostic,
+    parserOutcome: "ROW_REJECTIONS_ONLY",
+    milestones: partiallyValidatedDiagnostic.milestones.map((mark) =>
+      mark.name === "PARSER_ACCEPTED" ? { ...mark, name: "PARSER_REJECTED" } : mark),
+    structure: { ...partiallyValidatedDiagnostic.structure, dataRowCount: 1, documentLinkCount: 0 },
+    resultValidation: {
+      ...partiallyValidatedDiagnostic.resultValidation,
+      outcome: "ROW_REJECTIONS_ONLY", observedRows: 1, validatedRows: 0, validatedDockets: 0,
+      documentLinks: "REJECTED", scope: "REJECTED", dates: "REJECTED",
+    },
+    documentEligibility: "BLOCKED_RESULT",
+  };
+  check(validCalendarResponseDiagnostic(rejectedRowsOnlyDiagnostic));
   const explicitEmptyLayout = {
     kind: "calendar_layout", version: 1, resultTables: 1, headerRows: 1, nonHeaderRows: 1,
     presentationRows: 1, recognizedDocumentLinks: 0, overflow: false, malformed: false,
@@ -461,7 +489,9 @@ try {
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, verifiedMethod: "DIFFERENT_CLIENT" }) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null, collectionApprovedAt: null }) === null);
   check(validParentDeniedPause({ kind: "pause", code: "PARENT_DENIED", attempted: false }));
+  check(validParentDeniedPause({ kind: "pause", code: "ROW_VALIDATION_ONLY", attempted: true }));
   check(!validParentDeniedPause({ kind: "pause", code: "PARENT_DENIED", attempted: true }));
+  check(!validParentDeniedPause({ kind: "pause", code: "ROW_VALIDATION_ONLY", attempted: false }));
   check(!validParentDeniedPause({ kind: "barrier", code: "PARENT_DENIED", attempted: false }));
   check(collectionBlock({ ...approved, blockedReason: "ACCESS_DENIED", pausedUntil: new Date(0) }) === "ACCESS_DENIED");
   check(allowedSourceRequest(requestUrl, "GET"));

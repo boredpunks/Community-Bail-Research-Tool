@@ -111,21 +111,28 @@ class CalendarParserStructureTests(unittest.TestCase):
         summary = parser.layout_summary()
         self.assertEqual(summary["presentationRows"], 1)
         self.assertEqual(summary["nonHeaderRows"], 1)
-        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
-            parser.validated(self.criteria)
+        self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
 
-    def test_invalid_row_stays_rejected(self):
+    def test_invalid_row_is_isolated_without_claiming_empty(self):
         markup = self.grid.replace("</table>", "<tr>" + "<td></td>" * 18 + "</tr></table>")
         parser = self.parse(markup)
-        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
-            parser.validated(self.criteria)
+        rows = parser.validated(self.criteria)
+        self.assertEqual(rows, [])
+        self.assertEqual(parser.validated_row_count, 0)
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
+        self.assertEqual(calendar_result_state(True, rows, parser.explicit_empty_state),
+                         "RESULTS_NOT_VALIDATED")
 
     def test_distinct_document_links_cannot_overwrite_each_other(self):
         row = ('<tr><td><a href="/Report/CpDocketSheet?docketNumber=invalid-one"></a>'
                '<a href="/Report/CpDocketSheet?docketNumber=invalid-two"></a></td></tr>')
         parser = self.parse(self.grid.replace("</table>", row + "</table>"))
-        with self.assertRaisesRegex(ValueError, "^CALENDAR_DOCUMENT_LINK_MISSING$"):
-            parser.validated(self.criteria)
+        self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
 
     def test_summary_has_no_source_text_or_urls(self):
         row = ('<tr><td colspan="18">private-fixture-marker'
