@@ -721,6 +721,13 @@ components:
         source_retrieved_at: { type: [string, "null"] }
         source_consulted_at: { type: [string, "null"] }
         source_pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+        document_timings:
+          type: object
+          required: [retrieval_ms, extraction_ms, persistence_ms]
+          properties:
+            retrieval_ms: { type: [integer, "null"] }
+            extraction_ms: { type: [integer, "null"] }
+            persistence_ms: { type: [integer, "null"] }
         save_available: { type: boolean }
         save_reason: { type: [string, "null"] }
         saved_record_id: { type: [string, "null"] }

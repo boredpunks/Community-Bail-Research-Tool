@@ -125,6 +125,15 @@ export const BailSearchResultDocumentStatus = {
   AMBIGUOUS: 'AMBIGUOUS',
 } as const;
 
+export type BailSearchResultDocumentTimings = {
+  /** @nullable */
+  retrieval_ms: number | null;
+  /** @nullable */
+  extraction_ms: number | null;
+  /** @nullable */
+  persistence_ms: number | null;
+};
+
 export interface BailSearchResult {
   id: string;
   docket_number: string;
@@ -157,6 +166,7 @@ export interface BailSearchResult {
      * @pattern ^[a-f0-9]{64}$
      */
   source_pdf_sha256?: string | null;
+  document_timings?: BailSearchResultDocumentTimings;
   save_available?: boolean;
   /** @nullable */
   save_reason?: string | null;

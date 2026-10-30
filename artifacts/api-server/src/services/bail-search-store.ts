@@ -56,8 +56,9 @@ export function serializeSearchResult(row: BailSearchResultRow) {
     source_pdf_sha256: row.sourcePdfSha256,
   };
 }
-export async function enrichedResult(search: BailSearchRow, row: BailSearchResultRow, knownRequestOutcome?: string | null) {
-  const { item: _item, entry: _entry, ...evidence } = await resultEvidence(search, row, knownRequestOutcome);
+export async function enrichedResult(search: BailSearchRow, row: BailSearchResultRow,
+  knownDocumentRequest?: { outcome: string; durationMs: number | null } | null) {
+  const { item: _item, entry: _entry, ...evidence } = await resultEvidence(search, row, knownDocumentRequest);
   return { ...serializeSearchResult(row), ...evidence };
 }
 export async function searchRecovery(search: BailSearchRow, missingEvidence: boolean) {
@@ -109,16 +110,17 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
       itemId: discoveryRequestsTable.itemId,
       outcome: discoveryRequestsTable.outcome,
       startedAt: discoveryRequestsTable.startedAt,
+      durationMs: discoveryRequestsTable.durationMs,
     }).from(discoveryRequestsTable).where(and(
       eq(discoveryRequestsTable.jobId, job.id),
       inArray(discoveryRequestsTable.itemId, documentItemIds),
       inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
     )).orderBy(desc(discoveryRequestsTable.startedAt))
     : [];
-  const latestDocumentOutcomeByItem = new Map<string, string>();
+  const latestDocumentRequestByItem = new Map<string, { outcome: string; durationMs: number | null }>();
   for (const request of documentRequests) {
-    if (request.itemId && !latestDocumentOutcomeByItem.has(request.itemId)) {
-      latestDocumentOutcomeByItem.set(request.itemId, request.outcome);
+    if (request.itemId && !latestDocumentRequestByItem.has(request.itemId)) {
+      latestDocumentRequestByItem.set(request.itemId, { outcome: request.outcome, durationMs: request.durationMs });
     }
   }
   const itemIdByResult = (row: BailSearchResultRow) => row.sourceItemId
@@ -159,7 +161,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     resumeAvailableAt: recovery.availableAt,
     results: includeResults ? await Promise.all(rows.map(row => {
       const itemId = itemIdByResult(row);
-      return enrichedResult(search, row, itemId ? latestDocumentOutcomeByItem.get(itemId) ?? null : null);
+      return enrichedResult(search, row, itemId ? latestDocumentRequestByItem.get(itemId) ?? null : null);
     })) : [],
     createdAt: search.createdAt.toISOString(), updatedAt: search.updatedAt.toISOString(),
     sourceNotice: sourceNotice(search.criteria.source),

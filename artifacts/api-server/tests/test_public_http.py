@@ -326,6 +326,7 @@ class NormalWorkerDocumentTests(unittest.IsolatedAsyncioTestCase):
         result = next(v for v in messages if v["kind"] == "docket")
         self.assertEqual(result["entries"][0]["amountCents"], 10000)
         self.assertEqual(result["extractionOutcome"], "EXTRACTED")
+        self.assertGreaterEqual(result["extractionMs"], 0)
         self.assertIsNone(response._body)
         self.assertGreaterEqual(
             next(v for v in messages if v["kind"] == "response")["linkCaptureToGetSeconds"], 0,

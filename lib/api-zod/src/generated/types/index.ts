@@ -29,6 +29,7 @@ export * from './bailSearchRecovery';
 export * from './bailSearchRecoveryAction';
 export * from './bailSearchResult';
 export * from './bailSearchResultDocumentStatus';
+export * from './bailSearchResultDocumentTimings';
 export * from './bailSearchResumeInput';
 export * from './bailSearchStage';
 export * from './bailSearchStatus';

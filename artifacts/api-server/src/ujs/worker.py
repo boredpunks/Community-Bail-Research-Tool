@@ -10,6 +10,7 @@ import random
 import re
 import shutil
 import sys
+import time
 from urllib.parse import urlsplit, parse_qs, parse_qsl
 
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout
@@ -1074,6 +1075,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     continue
                 response = None
                 retrieved = None
+                extraction_ms = None
                 try:
                     response, body, retrieved = await retrieve(
                         item["sourceUrl"], "GET",
@@ -1085,8 +1087,13 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                         link_captured_at=calendar_links_captured_at,
                     )
                     try:
-                        result = extract_bail(body, item["docketNumber"])
-                        emit("docket", docketNumber=item["docketNumber"], retrievedAt=retrieved, **result)
+                        extraction_started = time.perf_counter()
+                        try:
+                            result = extract_bail(body, item["docketNumber"])
+                        finally:
+                            extraction_ms = max(0, round((time.perf_counter() - extraction_started) * 1000))
+                        emit("docket", docketNumber=item["docketNumber"], retrievedAt=retrieved,
+                             extractionMs=extraction_ms, **result)
                     finally:
                         del body
                         await response.dispose()
@@ -1095,7 +1102,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                         emit("docket", docketNumber=item["docketNumber"],
                              retrievedAt=retrieved, entries=[], postedEntryState="UNKNOWN",
                               excerpt=None, extractionOutcome="RETRIEVAL_FAILED" if retrieved is None else "UNSUPPORTED_LAYOUT",
-                              detail="Retrieval or processing failed; no guessed evidence saved.")
+                              detail="Retrieval or processing failed; no guessed evidence saved.",
+                             extractionMs=extraction_ms)
                     if stopped:
                         break
                 # The parent persists the evidence and evaluates fixed matching

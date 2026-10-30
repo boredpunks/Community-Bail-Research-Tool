@@ -56,6 +56,10 @@ export interface DiscoveryProvenanceData {
   documentAcquisition?: "AUTOMATED" | "MANUAL_UPLOAD" | "CACHED_PDF";
   documentConsultedAt?: string;
   originalDocumentRetrievedAt?: string | null;
+  documentTimings?: {
+    extractionMs?: number | null;
+    persistenceMs?: number | null;
+  };
 }
 
 export const discoveryJobsTable = pgTable("discovery_jobs", {

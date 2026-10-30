@@ -685,22 +685,34 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         if (!(message.retrievedAt === null || typeof message.retrievedAt === "string" && Number.isFinite(Date.parse(message.retrievedAt)))
           || !(message.excerpt === null || typeof message.excerpt === "string" && message.excerpt.length <= 200_000)
           || !(message.detail === null || typeof message.detail === "string" && message.detail.length <= 10_000)
+          || !(message.extractionMs === null || Number.isSafeInteger(message.extractionMs)
+            && Number(message.extractionMs) >= 0 && Number(message.extractionMs) <= 3_600_000)
           || (message.entries as DiscoveryEntryData[]).length > 1000
           || (message.entries as DiscoveryEntryData[]).some((entry) => entry.orderDate !== null && !actualDate(entry.orderDate)
             || entry.amountCents !== null && (!Number.isSafeInteger(entry.amountCents) || entry.amountCents < 0 || entry.amountCents > 2_147_483_647))) throw new Error("Invalid extraction payload");
         if (outcome === "EXTRACTED" && (!(message.entries as unknown[]).length || !message.excerpt || !message.retrievedAt)
           || outcome === "MISSING_BAIL_SECTION" && ((message.entries as unknown[]).length || !message.detail || !message.retrievedAt)) throw new Error("Extraction evidence is incomplete");
+        const updatedProvenance = {
+          ...item.provenance,
+          ...locations,
+          extractionOutcome: outcome as typeof item.provenance.extractionOutcome,
+          postedEntryState: message.postedEntryState as typeof item.provenance.postedEntryState,
+          entries: message.entries as DiscoveryEntryData[],
+          ...(message.pdfEvents ? {pdfEvents: message.pdfEvents as import("@workspace/db").DiscoveryProvenanceData["pdfEvents"]} : {}),
+          documentTimings: {
+            extractionMs: message.extractionMs as number | null,
+          },
+        };
+        const persistenceStartedAt = performance.now();
         await db.update(discoveryItemsTable).set({
           sourceRetrievedAt: typeof message.retrievedAt === "string" ? new Date(message.retrievedAt) : null,
           excerpt: typeof message.excerpt === "string" ? message.excerpt : null,
           detail: typeof message.detail === "string" ? message.detail : null,
-          provenance: { ...item.provenance,
-            ...locations,
-            extractionOutcome: outcome as typeof item.provenance.extractionOutcome,
-            postedEntryState: message.postedEntryState as typeof item.provenance.postedEntryState,
-            entries: message.entries as DiscoveryEntryData[],
-            ...(message.pdfEvents ? {pdfEvents: message.pdfEvents as import("@workspace/db").DiscoveryProvenanceData["pdfEvents"]} : {}),
-          },
+          provenance: updatedProvenance,
+        }).where(eq(discoveryItemsTable.id, item.id));
+        const persistenceMs = Math.max(0, Math.round(performance.now() - persistenceStartedAt));
+        await db.update(discoveryItemsTable).set({
+          provenance: { ...updatedProvenance, documentTimings: { ...updatedProvenance.documentTimings, persistenceMs } },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
         if (["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome))
