@@ -700,6 +700,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           entries: message.entries as DiscoveryEntryData[],
           ...(message.pdfEvents ? {pdfEvents: message.pdfEvents as import("@workspace/db").DiscoveryProvenanceData["pdfEvents"]} : {}),
           documentTimings: {
+            ...item.provenance.documentTimings,
             extractionMs: message.extractionMs as number | null,
           },
         };

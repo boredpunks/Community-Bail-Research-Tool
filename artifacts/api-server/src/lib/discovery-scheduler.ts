@@ -27,6 +27,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export type SchedulerTestContext = {
   store?: typeof db; now?: () => Date; sleep?: (ms: number) => Promise<void>;
   randomJitterMs?: () => number;
+  monotonicNowMs?: () => number;
 };
 export type RequestReservationAuthorization = {
   authorizedSessionRefreshJobId?: string;
@@ -45,6 +46,8 @@ export async function reserveSourceRequest(
 ) {
   if (!allowedSourceRequest(url, method) || typeof url !== "string" || new URL(url).pathname !== requestPath
     || typeof permitId === "number") return { allow: false, reason: "REQUEST_NOT_PERMITTED" };
+  const isDocumentRequest = requestPath === "/Report/CpDocketSheet" || requestPath === "/Report/MdjDocketSheet";
+  const slotWaitStartedAt = isDocumentRequest ? (context.monotonicNowMs?.() ?? performance.now()) : null;
   const jitterMs = context.randomJitterMs?.() ?? randomInt(0, pacingJitterRangeMs + 1);
   while (!stopping()) {
     const decision = await (context.store ?? db).transaction(async (tx) => {
@@ -387,6 +390,18 @@ export async function reserveSourceRequest(
       const [request] = await tx.insert(discoveryRequestsTable).values({
         jobId: current.id, ownerId: current.ownerId, sourceId, path: String(requestPath), method: String(method), resourceKey, itemId, startedAt: now,
       }).returning();
+      if (isDocumentRequest && itemId && slotWaitStartedAt !== null) {
+        const slotWaitMs = Math.min(2_147_483_647,
+          Math.max(0, Math.round((context.monotonicNowMs?.() ?? performance.now()) - slotWaitStartedAt)));
+        const [document] = await tx.select({ provenance: discoveryItemsTable.provenance })
+          .from(discoveryItemsTable).where(eq(discoveryItemsTable.id, itemId)).for("update");
+        if (document) await tx.update(discoveryItemsTable).set({
+          provenance: {
+            ...document.provenance,
+            documentTimings: { ...document.provenance.documentTimings, slotWaitMs },
+          },
+        }).where(eq(discoveryItemsTable.id, itemId));
+      }
       await tx.update(discoverySourceTable).set({
         activeRequestId: request!.id, lastRequestAt: now,
         ...(!current.assessmentId && ["RATE_LIMIT", "HTTP_ERROR"].includes(source.blockedReason ?? "")

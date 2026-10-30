@@ -127,6 +127,8 @@ export const BailSearchResultDocumentStatus = {
 
 export type BailSearchResultDocumentTimings = {
   /** @nullable */
+  slot_wait_ms: number | null;
+  /** @nullable */
   retrieval_ms: number | null;
   /** @nullable */
   extraction_ms: number | null;

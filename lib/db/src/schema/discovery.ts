@@ -57,6 +57,7 @@ export interface DiscoveryProvenanceData {
   documentConsultedAt?: string;
   originalDocumentRetrievedAt?: string | null;
   documentTimings?: {
+    slotWaitMs?: number | null;
     extractionMs?: number | null;
     persistenceMs?: number | null;
   };

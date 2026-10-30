@@ -162,10 +162,12 @@ export default function BailSearch() {
                           <p className="hint">Acquisition: {ACQUISITION_LABELS[row.evidence_acquisition] ?? (row.evidence_acquisition || 'Not recorded')}</p>
                           <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
                           <p className="hint">Local document consultation: {row.source_consulted_at ? formatInstant(row.source_consulted_at) : 'Not recorded'}</p>
-                          {row.document_timings && (row.document_timings.retrieval_ms !== null
+                          {row.document_timings && (row.document_timings.slot_wait_ms !== null
+                            || row.document_timings.retrieval_ms !== null
                             || row.document_timings.extraction_ms !== null || row.document_timings.persistence_ms !== null) ? (
                             <p className="hint">
-                              PDF timing: request/response {formatDuration(row.document_timings.retrieval_ms)}
+                              PDF timing: slot wait {formatDuration(row.document_timings.slot_wait_ms)}
+                              {' · '}request/response {formatDuration(row.document_timings.retrieval_ms)}
                               {' · '}local extraction {formatDuration(row.document_timings.extraction_ms)}
                               {' · '}evidence save {formatDuration(row.document_timings.persistence_ms)}
                             </p>

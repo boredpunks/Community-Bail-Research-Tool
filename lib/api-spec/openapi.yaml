@@ -723,8 +723,9 @@ components:
         source_pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
         document_timings:
           type: object
-          required: [retrieval_ms, extraction_ms, persistence_ms]
+          required: [slot_wait_ms, retrieval_ms, extraction_ms, persistence_ms]
           properties:
+            slot_wait_ms: { type: [integer, "null"] }
             retrieval_ms: { type: [integer, "null"] }
             extraction_ms: { type: [integer, "null"] }
             persistence_ms: { type: [integer, "null"] }

@@ -155,20 +155,25 @@ check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture,
   criteria: { ...ordinaryAccessCheckFixture.criteria, calendarPreviewOnly: true } }));
 const now0 = Date.parse("2026-10-06T16:00:00Z");
 let time = now0;
+let monotonicTime = 0;
 const approved = { id: "UJS", accessVerifiedAt: new Date(now0), verifiedMethod: integratedSourceMethod, collectionApprovedAt: new Date(now0) };
 const criteria = { courtOffice: "CP-05-02-Crim", eventType: "Bail Hearing", startDate: "2026-10-06", endDate: "2026-10-06", recordCap: 1, requestCap: 12, matchTarget: 1 } as const;
 const requestUrl = "https://ujsportal.pacourts.us/CaseSearch";
 const PgPool = pool.constructor as new (options: object) => typeof pool;
 const isolatedPool = new PgPool({ ...pool.options, options: `-c search_path=${namespace}` });
 const store = drizzle(isolatedPool, { schema }) as typeof db;
-const context = { store, now: () => new Date(time), sleep: async (ms: number) => { time += ms; } };
+const context = {
+  store, now: () => new Date(time), sleep: async (ms: number) => { time += ms; monotonicTime += ms; },
+  monotonicNowMs: () => monotonicTime,
+};
 const createJob = async (extra = {}) => (await store.insert(jobs).values({ ownerId: "OFFLINE_PROTOCOL", criteria, status: "RUNNING", ...extra }).returning())[0]!;
 const reserve = (job: typeof jobs.$inferSelect, extra = {}) => reserveSourceRequest(job, "/CaseSearch", "GET", undefined, requestUrl, () => false, { ...context, ...extra });
 const response = (job: typeof jobs.$inferSelect, id: string, outcome = "OK", status: number | null = 200, retryAfter: string | null = null) =>
   accountSourceResponse(job, { requestId: id, outcome, status, retryAfter }, context);
 async function reset(verify = true) {
-  await isolatedPool.query("TRUNCATE discovery_events, discovery_requests, discovery_assessments, discovery_jobs, discovery_source_control");
+  await isolatedPool.query("TRUNCATE discovery_items, discovery_events, discovery_requests, discovery_assessments, discovery_jobs, discovery_source_control");
   time = now0;
+  monotonicTime = 0;
   await store.insert(sources).values(verify ? approved : { id: "UJS" });
 }
 
@@ -533,6 +538,51 @@ try {
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
   check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 20_000);
   await response(second, b.requestId);
+
+  // Document slot wait includes shared-scheduler delays but remains separate
+  // from the request/response duration recorded after transmission.
+  await reset();
+  const blockerJob = await createJob();
+  const documentJob = await createJob({ calendarComplete: true });
+  const pdfUrl = "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0006336-2026&dnh=offline-fixture";
+  const [documentItem] = await store.insert(schema.discoveryItemsTable).values({
+    jobId: documentJob.id, ownerId: documentJob.ownerId, docketNumber: "CP-02-CR-0006336-2026",
+    position: 0, sourceUrl: pdfUrl,
+    provenance: {
+      calendarUrl: requestUrl, calendarRetrievedAt: new Date(time).toISOString(),
+      courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS",
+      eventType: "Bail Hearing", eventDate: "2026-10-06", filingDate: null,
+      extractionOutcome: "UNPROCESSED", postedEntryState: "UNKNOWN", entries: [],
+    },
+  }).returning();
+  const blockerGrant = await reserve(blockerJob);
+  assert.ok(blockerGrant.allow && blockerGrant.requestId);
+  let blockerAccounted = false;
+  const pdfGrant = await reserveSourceRequest(
+    documentJob, "/Report/CpDocketSheet", "GET", undefined, pdfUrl, () => false, {
+      ...context,
+      randomJitterMs: () => 0,
+      sleep: async (ms: number) => {
+        if (!blockerAccounted) {
+          check(await response(blockerJob, blockerGrant.requestId));
+          blockerAccounted = true;
+        }
+        time += ms;
+        monotonicTime += ms;
+      },
+    },
+  );
+  assert.ok(pdfGrant.allow && pdfGrant.requestId);
+  const [waitingDocument] = await store.select().from(schema.discoveryItemsTable)
+    .where(eq(schema.discoveryItemsTable.id, documentItem!.id));
+  const slotWaitMs = waitingDocument!.provenance.documentTimings?.slotWaitMs;
+  check(typeof slotWaitMs === "number" && slotWaitMs >= discoveryPolicy.spacingMs);
+  time += 2_500;
+  monotonicTime += 2_500;
+  check(await response(documentJob, pdfGrant.requestId));
+  const [pdfRequest] = await store.select().from(requests).where(eq(requests.id, pdfGrant.requestId));
+  check(pdfRequest!.durationMs === 2_500);
+  check(slotWaitMs! > pdfRequest!.durationMs!);
 
   // Stop racing with a waiting grant: no post-stop request is reserved.
   await reset();

@@ -92,6 +92,7 @@ export const SaveBailSearchResultResponse = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(saveBailSearchResultResponseSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()
@@ -130,6 +131,7 @@ export const ListBailSearchCandidatesResponseItem = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(listBailSearchCandidatesResponseSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()
@@ -215,6 +217,7 @@ export const ListBailSearchesResponseItem = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(listBailSearchesResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()
@@ -315,6 +318,7 @@ export const StartBailSearchResponse = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(startBailSearchResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()
@@ -402,6 +406,7 @@ export const GetBailSearchStatusResponse = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(getBailSearchStatusResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()
@@ -498,6 +503,7 @@ export const ResumeBailSearchResponse = zod.object({
   "source_consulted_at": zod.string().nullish(),
   "source_pdf_sha256": zod.string().regex(resumeBailSearchResponseResultsItemSourcePdfSha256RegExp).nullish(),
   "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
   "retrieval_ms": zod.int().nullable(),
   "extraction_ms": zod.int().nullable(),
   "persistence_ms": zod.int().nullable()

@@ -183,6 +183,7 @@ export async function resultEvidence(search: BailSearchRow, row: BailSearchResul
     source_consulted_at: (row.sourceConsultedAt ?? row.sourceRetrievedAt ?? item?.sourceRetrievedAt)?.toISOString() ?? null,
     source_pdf_sha256: row.sourcePdfSha256 ?? null,
     document_timings: {
+      slot_wait_ms: item?.provenance.documentTimings?.slotWaitMs ?? null,
       retrieval_ms: documentRequest?.outcome === "OK" ? documentRequest.durationMs : null,
       extraction_ms: item?.provenance.documentTimings?.extractionMs ?? null,
       persistence_ms: item?.provenance.documentTimings?.persistenceMs ?? null,
