@@ -9,29 +9,32 @@ import {
   type BailSearch,
   type BailSearchResult,
 } from '@workspace/api-client-react';
+import { chooseDisplayedSearchId } from '@/lib/search-history';
 
-/** Latest session search, shared across pages via the query cache. */
-export function useLatestSearch() {
+/** Latest useful search, with older evidence retained when the newest is empty. */
+export function useLatestSearch(requestedSearchId?: string) {
   const list = useListBailSearches({
     query: { queryKey: getListBailSearchesQueryKey(), refetchInterval: 8000, refetchOnWindowFocus: true },
   });
-  const latest = list.data?.[0];
-  const searchId = latest?.searchId ?? '';
+  const searches = list.data ?? [];
+  const latest = searches[0];
+  const searchId = chooseDisplayedSearchId(searches, requestedSearchId);
+  const selected = searches.find((item) => item.searchId === searchId);
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (searchId && latest?.updatedAt) {
+    if (searchId && selected?.updatedAt) {
       void queryClient.invalidateQueries({ queryKey: getGetBailSearchStatusQueryKey(searchId) });
     }
-  }, [latest?.updatedAt, queryClient, searchId]);
+  }, [queryClient, searchId, selected?.updatedAt]);
   const status = useGetBailSearchStatus(searchId, {
     query: {
       queryKey: getGetBailSearchStatusQueryKey(searchId),
       enabled: !!searchId,
-      refetchInterval: (query) => ((query.state.data as BailSearch | undefined)?.status === 'running' || latest?.status === 'running' ? 2000 : false),
+      refetchInterval: (query) => ((query.state.data as BailSearch | undefined)?.status === 'running' || selected?.status === 'running' ? 2000 : false),
     },
   });
-  const run: BailSearch | undefined = status.data?.searchId === searchId ? status.data : latest;
-  return { list, status, run, searchId };
+  const run: BailSearch | undefined = status.data?.searchId === searchId ? status.data : selected;
+  return { list, status, run, latest, searchId };
 }
 
 /** Put a freshly launched/resumed search at the top of the cached list. */

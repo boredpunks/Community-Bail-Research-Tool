@@ -38,7 +38,8 @@ function todayNewYork() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 export default function BailSearch() {
-  const { run, status } = useLatestSearch();
+  const [selectedSearchId, setSelectedSearchId] = useState('');
+  const { run, status, list, latest, searchId } = useLatestSearch(selectedSearchId);
   const promote = usePromoteSearch();
   const started = useStartBailSearch();
   const resume = useResumeBailSearch();
@@ -60,7 +61,10 @@ export default function BailSearch() {
     if (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`) > 6 * 86_400_000) return setFormError('A search can cover at most seven days.');
     if (!Number.isFinite(amount) || amount < 0 || amount > 20_000_000) return setFormError('Enter a maximum bail from $0 to $20,000,000.');
     started.mutate({ data: { startDate, endDate, maxBail: amount, source: 'live', courtOffice, eventType } }, {
-      onSuccess: (result) => promote(result),
+      onSuccess: (result) => {
+        setSelectedSearchId(result.searchId);
+        promote(result);
+      },
       onError: (error) => setFormError(`Search not started. Previous results are unchanged. ${errMsg(error)}`),
     });
   }
@@ -114,8 +118,28 @@ export default function BailSearch() {
       </form>
 
       <section className="mt-8" aria-label="Results" data-testid="section-search-results">
-        {status.isLoading ? <p className="hint" role="status">Loading latest results…</p> : null}
+        {status.isLoading ? <p className="hint" role="status">Loading saved search results…</p> : null}
         {status.isError ? <p className="errbox" role="alert">Status unavailable. {errMsg(status.error)} <button className="btn" type="button" onClick={() => status.refetch()}>Retry</button></p> : null}
+        {(list.data?.length ?? 0) > 1 && searchId ? (
+          <div className="panel max-w-2xl mb-3">
+            <label className="block">
+              <span className="lbl">Results from</span>
+              <select className="field" value={searchId}
+                onChange={(event) => setSelectedSearchId(event.target.value)} data-testid="select-search-history">
+                {list.data!.map((search) => (
+                  <option key={search.searchId} value={search.searchId}>
+                    {search.criteria.source === 'live' ? 'Live' : 'Saved'} · {shortDate(search.criteria.startDate)}–{shortDate(search.criteria.endDate)} · {search.status} · {search.progress.documentsProcessed} PDFs processed
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
+        {latest && run && latest.searchId !== run.searchId ? (
+          <p className="hint mb-3" role="status" data-testid="text-earlier-search-selected">
+            Showing saved results from an earlier search. The newest search is {latest.status}; select it above to view its progress.
+          </p>
+        ) : null}
         {run ? (
           <div className="mb-3 space-y-2">
             <p className="hint" data-testid="status-search">
@@ -127,7 +151,10 @@ export default function BailSearch() {
             {run.status === 'running' && run.criteria.source !== 'live' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}
             {canResume ? (
               <button type="button" className="btn" disabled={waiting || resume.isPending} data-testid="button-resume-search"
-                onClick={() => run.resumeToken && resume.mutate({ searchId: run.searchId, data: { resumeToken: run.resumeToken } }, { onSuccess: promote })}>
+                onClick={() => run.resumeToken && resume.mutate({ searchId: run.searchId, data: { resumeToken: run.resumeToken } }, { onSuccess: (result) => {
+                  setSelectedSearchId(result.searchId);
+                  promote(result);
+                } })}>
                 {resume.isPending ? 'Resuming…' : waiting ? 'Resume available soon' : 'Resume'}
               </button>
             ) : null}
