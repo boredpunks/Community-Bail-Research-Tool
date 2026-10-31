@@ -348,30 +348,8 @@ class CalendarResults(HTMLParser):
         }
         for cells, link in self.rows:
             try:
-                if len(cells) < 18:
-                    raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
-                if not link:
-                    raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
-                docket = cells[2].strip()
-                event_type = cells[14].strip()
-                court_type = result_court_type(cells[3].strip(), docket)
-                office = re.sub(r"\s+", "", cells[10].strip())
-                exact_link = exact_docket_link(link, docket)
-                if (not DOCKET.fullmatch(docket) or not exact_link
-                        or cells[9].strip() != "Allegheny"
-                        or criteria.get("courtOffice") not in (None, "", "ANY")
-                        and office != criteria["courtOffice"]
-                        or not event_type
-                        or event_type_filter not in (None, "", "ANY") and event_type != event_type_filter):
-                    raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
-                date_fields = calendar_date_fields(cells, criteria)
-                time_columns = [i for i, header in enumerate(self.headers)
-                                if header.strip().casefold() in ("start time", "event time", "time")]
-                time_text = (cells[time_columns[0]].strip() if len(time_columns) == 1 else
-                             cells[16].strip()[10:].strip())
-                time_match = re.fullmatch(r"\d{1,2}:\d{2}\s*[ap]m", time_text, re.I)
-                event = {"eventDate": date_fields["eventDate"], "eventType": event_type,
-                         "eventTime": time_text.lower() if time_match else None}
+                row = self._validate_calendar_event_row(
+                    cells, link, criteria, event_type_filter)
             except ValueError as error:
                 if str(error) not in row_rejection_errors:
                     raise
@@ -380,26 +358,56 @@ class CalendarResults(HTMLParser):
             self.validated_row_count += 1
             self.scope_validated = True
             self.dates_validated = True
+            docket = row["docketNumber"]
+            event = row["matchingEvents"][0]
             if docket in seen:
                 existing = seen[docket]
                 if event not in existing["matchingEvents"]:
                     existing["matchingEvents"].append(event)
                 continue
-            row = {
-                "docketNumber": docket, "position": len(result),
-                "sourceUrl": exact_link,
-                "courtType": court_type,
-                "courtOffice": office,
-                **date_fields,
-                "eventType": event_type,
-                "matchingEvents": [event],
-            }
+            row["position"] = len(result)
             seen[docket] = row
             result.append(row)
         # Emit only allowlisted public label prefixes, never arbitrary header
         # text or any cell values, as preview audit metadata.
         self.validated_column_headers = list(CALENDAR_AUDIT_HEADERS)
         return result
+
+    def _validate_calendar_event_row(self, cells, link, criteria, event_type_filter):
+        """Validate one event row and return its normalized, source-linked item."""
+        if len(cells) < 18:
+            raise ValueError("UNSUPPORTED_CALENDAR_LAYOUT")
+        if not link:
+            raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
+        docket = cells[2].strip()
+        event_type = cells[14].strip()
+        court_type = result_court_type(cells[3].strip(), docket)
+        office = re.sub(r"\s+", "", cells[10].strip())
+        exact_link = exact_docket_link(link, docket)
+        if (not DOCKET.fullmatch(docket) or not exact_link
+                or cells[9].strip() != "Allegheny"
+                or criteria.get("courtOffice") not in (None, "", "ANY")
+                and office != criteria["courtOffice"]
+                or not event_type
+                or event_type_filter not in (None, "", "ANY") and event_type != event_type_filter):
+            raise ValueError("CALENDAR_IDENTITY_OR_COVERAGE_CONFLICT")
+        date_fields = calendar_date_fields(cells, criteria)
+        time_columns = [i for i, header in enumerate(self.headers)
+                        if header.strip().casefold() in ("start time", "event time", "time")]
+        time_text = (cells[time_columns[0]].strip() if len(time_columns) == 1 else
+                     cells[16].strip()[10:].strip())
+        time_match = re.fullmatch(r"\d{1,2}:\d{2}\s*[ap]m", time_text, re.I)
+        event = {"eventDate": date_fields["eventDate"], "eventType": event_type,
+                 "eventTime": time_text.lower() if time_match else None}
+        return {
+            "docketNumber": docket,
+            "sourceUrl": exact_link,
+            "courtType": court_type,
+            "courtOffice": office,
+            **date_fields,
+            "eventType": event_type,
+            "matchingEvents": [event],
+        }
 
     def _validated_case_information(self, criteria, columns):
         if not (criteria.get("courtOffice") == "ANY"

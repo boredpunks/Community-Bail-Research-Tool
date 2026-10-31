@@ -147,10 +147,14 @@ class StructuralReasons(unittest.TestCase):
         self.assertIn("HEADER_ROW_COUNT", self.reasons(parse(header=HEADER * 2)))
         self.assertIn("UNCLOSED_RESULT_CONTENT", self.reasons(parse(closing="")))
         self.assertIn("UNSUPPORTED_EVENT_HEADERS", self.reasons(parse(header="<tr><th></th></tr>")))
-        self.assertIn("DOCUMENT_ACTION_MISSING", self.reasons(parse("<tr><td></td></tr>")))
-        # Link mechanics only, not a source case row.
+        missing_action = parse("<tr><td></td></tr>")
+        self.assertEqual(missing_action.validated({}), [])
+        self.assertEqual(missing_action.row_rejection_count, 1)
+        # A short row is isolated from other results rather than rejecting the
+        # whole table; link mechanics only, not a source case row.
         short = parse(action_row(SHEET).replace("<td></td>", "", 5))
-        self.assertIn("ROW_TOO_SHORT", self.reasons(short))
+        self.assertEqual(short.validated({}), [])
+        self.assertEqual(short.row_rejection_count, 1)
 
     def test_reason_and_count_bounds(self):
         parser = parse(('<tr><td colspan="invalid"></td></tr>') * 10)

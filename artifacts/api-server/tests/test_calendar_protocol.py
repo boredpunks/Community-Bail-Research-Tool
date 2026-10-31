@@ -111,8 +111,9 @@ class CalendarStructureTests(unittest.TestCase):
         # Empty malformed cells, explicitly not a docket or case record.
         parser.feed(self.html.replace("<tbody></tbody>",
             "<tbody><tr>" + "<td></td>" * 18 + "</tr></tbody>"))
-        with self.assertRaisesRegex(ValueError, "CALENDAR_DOCUMENT_LINK_MISSING"):
-            parser.validated(self.criteria)
+        self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
 
     def test_malformed_link_is_not_a_case_record(self):
         # Deliberately invalid sentinel; this fixture does not describe a case.
@@ -124,8 +125,9 @@ class CalendarStructureTests(unittest.TestCase):
                                  + "</tr></tbody>")
         parser = CalendarResults()
         parser.feed(html)
-        with self.assertRaisesRegex(ValueError, "CALENDAR_DOCUMENT_LINK_MISSING"):
-            parser.validated(self.criteria)
+        self.assertEqual(parser.validated(self.criteria), [])
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
 
 
 class PacingTests(unittest.TestCase):

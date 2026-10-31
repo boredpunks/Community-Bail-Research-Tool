@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 from evidence import CalendarResults, calendar_result_state, label_court_type
@@ -125,6 +126,41 @@ class CalendarParserStructureTests(unittest.TestCase):
         self.assertFalse(parser.explicit_empty_state)
         self.assertEqual(calendar_result_state(True, rows, parser.explicit_empty_state),
                          "RESULTS_NOT_VALIDATED")
+
+    def test_mixed_row_validation_keeps_accepted_candidate_without_case_facts(self):
+        def validate_test_row(parser, cells, link, criteria, event_type_filter):
+            if cells[0] == "accepted parser-test marker":
+                return {
+                    "docketNumber": None,
+                    "sourceUrl": None,
+                    "courtType": "TEST_ONLY",
+                    "courtOffice": "TEST_ONLY",
+                    "eventDate": None,
+                    "filingDate": None,
+                    "eventType": "TEST_ONLY",
+                    "matchingEvents": [{"eventDate": None, "eventType": "TEST_ONLY",
+                                        "eventTime": None}],
+                }
+            raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
+
+        def row(marker):
+            cells = [marker] + [""] * 17
+            return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+
+        parser = self.parse(self.grid.replace(
+            "</table>", row("accepted parser-test marker")
+            + row("rejected parser-test marker") + "</table>"))
+        with patch.object(CalendarResults, "_validate_calendar_event_row", validate_test_row):
+            rows = parser.validated(self.criteria)
+
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["docketNumber"])
+        self.assertEqual(rows[0]["position"], 0)
+        self.assertEqual(parser.validated_row_count, 1)
+        self.assertEqual(parser.row_rejection_count, 1)
+        self.assertFalse(parser.explicit_empty_state)
+        self.assertEqual(calendar_result_state(True, rows, parser.explicit_empty_state),
+                         "RESULTS_VALIDATED")
 
     def test_distinct_document_links_cannot_overwrite_each_other(self):
         row = ('<tr><td><a href="/Report/CpDocketSheet?docketNumber=invalid-one"></a>'

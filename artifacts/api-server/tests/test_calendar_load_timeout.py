@@ -123,7 +123,17 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             '<table id="caseSearchResultGrid"><thead><tr>'
             + ''.join('<th>' + text + '</th>' for text in headers)
             + '</tr></thead><tbody></tbody></table>')
-        if post_case == "single_invalid_row":
+        if post_case == "mixed_row_partial":
+            def result_row(marker):
+                cells = [marker] + [""] * 17
+                return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+
+            results = results.replace(
+                "<tbody></tbody>",
+                "<tbody>" + result_row("accepted parser-test marker")
+                + result_row("rejected parser-test marker") + "</tbody>",
+            )
+        elif post_case == "single_invalid_row":
             results = results.replace(
                 "<tbody></tbody>",
                 "<tbody><tr>" + "<td></td>" * 18 + "</tr></tbody>",
@@ -257,6 +267,23 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                 html = html.replace("</table>", "<tr><td></td></tr></table>")
             return original_feed(parser, html)
 
+        def validate_mixed_test_row(parser, cells, link, criteria, event_type_filter):
+            # This opaque parser seam tests retention/reporting, not a court
+            # record. It deliberately contains no docket, URL, or case facts.
+            if cells[0] == "accepted parser-test marker":
+                return {
+                    "docketNumber": None,
+                    "sourceUrl": None,
+                    "courtType": "TEST_ONLY",
+                    "courtOffice": "TEST_ONLY",
+                    "eventDate": None,
+                    "filingDate": None,
+                    "eventType": "TEST_ONLY",
+                    "matchingEvents": [{"eventDate": None, "eventType": "TEST_ONLY",
+                                        "eventTime": None}],
+                }
+            raise ValueError("CALENDAR_DOCUMENT_LINK_MISSING")
+
         async def observe_field_count(page):
             # Fixture-only comparison proves the old whole-form equality would
             # reject this otherwise valid dependent-control replacement.
@@ -323,6 +350,9 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                                                 100 if missing_grid or post_case == "returned_form" else 4_000 if changed_version or post_case == "required_script" else 1_000))
                 stack.enter_context(patch.object(worker, "submit_calendar_search", observe_submit))
                 stack.enter_context(patch.object(CalendarResults, "feed", observe_feed))
+                if post_case == "mixed_row_partial":
+                    stack.enter_context(patch.object(
+                        CalendarResults, "_validate_calendar_event_row", validate_mixed_test_row))
                 stack.enter_context(patch.object(Response, "finished",
                                                 side_effect=AssertionError("Use the public requestfinished waiter")))
                 document_open = stack.enter_context(patch.object(
@@ -624,6 +654,25 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertEqual(o["barriers"], [])
         self.assertFalse(o["checkpointEmitted"])
+
+    async def test_mixed_rows_keep_valid_candidate_and_report_partial_coverage(self):
+        o = await self.run_fixture(post_case="mixed_row_partial")
+        d = o["responseDiagnostics"][-1]
+        validation = d["resultValidation"]
+        self.assertEqual(d["parserOutcome"], "CANDIDATE_PARTIAL")
+        self.assertEqual(validation["outcome"], "VALIDATED_PARTIAL")
+        self.assertEqual(validation["observedRows"], 2)
+        self.assertEqual(validation["validatedRows"], 1)
+        self.assertEqual(validation["observedRows"] - validation["validatedRows"], 1)
+        self.assertEqual(validation["validatedDockets"], 1)
+        self.assertEqual(d["documentEligibility"], "ELIGIBLE")
+        self.assertEqual(d["stopGate"], "NONE")
+        self.assertEqual(o["barriers"], [])
+        self.assertIn("RESULTS_VALIDATED", o["states"])
+        self.assertEqual(len(o["calendars"]), 1)
+        self.assertEqual(len(o["calendars"][0]["rows"]), 1)
+        self.assertIsNone(o["calendars"][0]["rows"][0]["docketNumber"])
+        self.assertFalse(o["calendars"][0]["paginationComplete"])
 
     async def test_search_reaches_parser_without_repeated_asset_network_calls(self):
         observed = await self.run_fixture()
