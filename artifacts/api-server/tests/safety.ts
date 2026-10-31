@@ -137,7 +137,7 @@ const ordinaryAccessCheckFixture = {
   requestPath: "/Report/CpDocketSheet", method: "GET",
   block: "ACCESS_UNVERIFIED", sourceBlockedReason: null,
   accessVerifiedAt: null, verifiedMethod: null, pausedUntil: null,
-  activeRequestId: null, latencyWarning: null, jobStatus: "RUNNING",
+  activeRequestId: null, jobStatus: "RUNNING",
   calendarComplete: true, assessmentId: null,
   criteria: { ...sessionRefreshCriteria, courtOffice: "ANY", eventType: "Bail Hearing",
     endDate: "2026-10-31" },
@@ -145,6 +145,11 @@ const ordinaryAccessCheckFixture = {
   priorPdfRequests: 0, priorSearchPosts: 1,
 };
 check(canUseOrdinarySearchFirstPdfAccessCheck(ordinaryAccessCheckFixture));
+check(canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture,
+  block: "ACCESS_UNVERIFIED",
+  sourceBlockedReason: "SOURCE_VALIDATION_BARRIER",
+}));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorPdfRequests: 1 }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 2 }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, liveSearchLinked: false }));
@@ -413,7 +418,7 @@ try {
   // A disposable schema cloned WITHOUT source data. Separate pool connections
   // exercise real PostgreSQL row locking and the one-in-flight unique index.
   await pool.query(`CREATE SCHEMA ${namespace}`);
-  for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_records"]) {
+  for (const name of ["discovery_jobs", "discovery_requests", "discovery_events", "discovery_source_control", "discovery_assessments", "discovery_items", "bail_searches", "bail_records"]) {
     await pool.query(`CREATE TABLE ${namespace}.${name} (LIKE public.${name} INCLUDING ALL)`);
   }
   await boundedLaunchChecks(store, {
@@ -560,6 +565,60 @@ try {
   const [calendarSource] = await store.select().from(sources);
   check(calendarSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
   check(calendarSource!.accessVerifiedAt === null && calendarSource!.verifiedMethod === null);
+
+  // A user-initiated live search may clear an existing validation barrier only
+  // when it reaches the strict, one-use first-PDF verification gate.
+  await reset(false);
+  const ordinaryPdfCriteria = {
+    ...criteria, resultVersion: 2 as const, courtOffice: "ANY", eventType: "Bail Hearing",
+    startDate: "2026-10-06", endDate: "2026-10-06", recordCap: 1, requestCap: 12, matchTarget: 1,
+  };
+  const ordinaryPdfJob = await createJob({ criteria: ordinaryPdfCriteria, calendarComplete: true });
+  const ordinaryPdfUrl = "https://ujsportal.pacourts.us/Report/CpDocketSheet?docketNumber=CP-02-CR-0006336-2026&dnh=offline-fixture";
+  const [ordinaryPdfItem] = await store.insert(schema.discoveryItemsTable).values({
+    jobId: ordinaryPdfJob.id, ownerId: ordinaryPdfJob.ownerId, docketNumber: "CP-02-CR-0006336-2026",
+    position: 0, sourceUrl: ordinaryPdfUrl,
+    provenance: {
+      calendarUrl: requestUrl, calendarRetrievedAt: new Date(time).toISOString(),
+      courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS",
+      eventType: "Bail Hearing", eventDate: "2026-10-06", filingDate: null,
+      extractionOutcome: "UNPROCESSED", postedEntryState: "UNKNOWN", entries: [],
+    },
+  }).returning();
+  await store.insert(schema.bailSearchesTable).values({
+    ownerId: ordinaryPdfJob.ownerId, discoveryJobId: ordinaryPdfJob.id,
+    criteria: { startDate: "2026-10-06", endDate: "2026-10-06", maxBail: 2000, source: "live" },
+    status: "running",
+  });
+  await store.insert(requests).values({
+    jobId: ordinaryPdfJob.id, ownerId: ordinaryPdfJob.ownerId, sourceId: "UJS",
+    path: "/CaseSearch", method: "POST", outcome: "OK", statusCode: 200,
+    startedAt: new Date(time - 60_000), completedAt: new Date(time - 30_000),
+    durationMs: 30_000, resourceKey: "ordinary-search-post",
+  });
+  await store.update(sources).set({
+    blockedReason: "SOURCE_VALIDATION_BARRIER",
+    latencyWarning: "Slow response 1; conservative pacing retained. No automatic acceleration.",
+    slowResponseStreak: 1, adaptiveSpacingMs: 60_000, lastLatencyMs: 52_178,
+  });
+  const ordinaryPdfGrant = await reserveSourceRequest(
+    ordinaryPdfJob, "/Report/CpDocketSheet", "GET", undefined, ordinaryPdfUrl, () => false,
+    { ...context, randomJitterMs: () => 0 },
+    {
+      authorizedOrdinarySearchJobId: ordinaryPdfJob.id,
+      ordinarySearchFirstPdfAccessCheck: {
+        itemId: ordinaryPdfItem!.id, docketNumber: ordinaryPdfItem!.docketNumber, url: ordinaryPdfUrl,
+      },
+    },
+  );
+  assert.ok(ordinaryPdfGrant.allow && "requestId" in ordinaryPdfGrant
+    && ordinaryPdfGrant.firstPdfAccessCheckAuthorized, JSON.stringify(ordinaryPdfGrant));
+  const [recoveredSource] = await store.select().from(sources);
+  check(recoveredSource!.blockedReason === null);
+  check(recoveredSource!.accessVerifiedAt === null && recoveredSource!.verifiedMethod === null);
+  check(recoveredSource!.latencyWarning !== null);
+  const [barrierAudit] = await store.select().from(events).where(eq(events.kind, "SOURCE_BARRIER_CLEARED"));
+  check(!!barrierAudit && barrierAudit!.jobId === ordinaryPdfJob.id);
 
   await reset();
   const first = await createJob(), second = await createJob();

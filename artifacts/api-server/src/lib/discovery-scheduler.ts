@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { randomInt } from "node:crypto";
-import { db, bailSearchesTable, discoveryAssessmentsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
+import { db, bailSearchesTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import {
   allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed,
@@ -171,7 +171,12 @@ export async function reserveSourceRequest(
           && calendarPreviewRequestAllowed(requestPath, method);
         const block = current.criteria.calendarPreviewOnly || independentCalendar
           ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
-        collectionBlockReason = block;
+        const ordinaryPdfBarrierRecovery = block === "SOURCE_VALIDATION_BARRIER"
+          && authorization.authorizedOrdinarySearchJobId === current.id
+          && !!authorization.ordinarySearchFirstPdfAccessCheck
+          && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(requestPath))
+          && method === "GET";
+        collectionBlockReason = ordinaryPdfBarrierRecovery ? "ACCESS_UNVERIFIED" : block;
         if (block === "ACCESS_UNVERIFIED" && authorization.firstPdfAccessCheck
           && authorization.authorizedSessionRefreshJobId === current.id) {
           const [candidate] = await tx.select().from(discoveryItemsTable).where(and(
@@ -250,13 +255,12 @@ export async function reserveSourceRequest(
             expectedUrl: authorization.ordinarySearchFirstPdfAccessCheck.url,
             requestPath: String(requestPath),
             method: String(method),
-            block,
+            block: collectionBlockReason,
             sourceBlockedReason: source.blockedReason,
             accessVerifiedAt: source.accessVerifiedAt,
             verifiedMethod: source.verifiedMethod,
             pausedUntil: source.pausedUntil,
             activeRequestId: source.activeRequestId,
-            latencyWarning: source.latencyWarning,
             jobStatus: current.status,
             calendarComplete: current.calendarComplete,
             assessmentId: current.assessmentId,
@@ -390,6 +394,21 @@ export async function reserveSourceRequest(
       const [request] = await tx.insert(discoveryRequestsTable).values({
         jobId: current.id, ownerId: current.ownerId, sourceId, path: String(requestPath), method: String(method), resourceKey, itemId, startedAt: now,
       }).returning();
+      if (ordinarySearchAccessCheckAllowed && source.blockedReason === "SOURCE_VALIDATION_BARRIER") {
+        await tx.insert(discoveryEventsTable).values({
+          jobId: current.id,
+          ownerId: current.ownerId,
+          kind: "SOURCE_BARRIER_CLEARED",
+          message: JSON.stringify({
+            timestamp: now.toISOString(),
+            previousBlockedReason: "SOURCE_VALIDATION_BARRIER",
+            reason: "User-initiated Search reached its one-use first-PDF access check after validated calendar results; only this validation barrier was cleared.",
+            operator: current.ownerId,
+          }),
+        });
+        await tx.update(discoverySourceTable).set({ blockedReason: null })
+          .where(eq(discoverySourceTable.id, sourceId));
+      }
       if (isDocumentRequest && itemId && slotWaitStartedAt !== null) {
         const slotWaitMs = Math.min(2_147_483_647,
           Math.max(0, Math.round((context.monotonicNowMs?.() ?? performance.now()) - slotWaitStartedAt)));

@@ -142,7 +142,7 @@ async function establishOrdinarySearchAccessProof(job: DiscoveryJobRow, requestI
       || current.assessmentId !== null || current.criteria.resultVersion !== 2
       || current.criteria.calendarPreviewOnly === true || !current.calendarComplete || !request || !item
       || source.blockedReason !== null || source.pausedUntil !== null || source.activeRequestId !== null
-      || source.latencyWarning !== null || source.accessVerifiedAt !== null || source.verifiedMethod !== null
+      || source.accessVerifiedAt !== null || source.verifiedMethod !== null
       || !item.sourceRetrievedAt || !item.provenance.documentSha256
       || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome))
       return false;

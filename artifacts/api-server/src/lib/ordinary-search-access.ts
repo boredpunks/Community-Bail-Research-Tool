@@ -21,7 +21,6 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
   verifiedMethod: string | null;
   pausedUntil: Date | null;
   activeRequestId: string | null;
-  latencyWarning: string | null;
   jobStatus: string;
   calendarComplete: boolean;
   assessmentId: string | null;
@@ -33,6 +32,8 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
   priorSearchPosts: number;
 }): boolean {
   const criteria = isRecord(input.criteria) ? input.criteria : null;
+  // Latency warnings are advisory; hard stops are represented by the source
+  // block, cooldown, or active-request fields checked below.
   return input.jobId === input.expectedJobId
     && input.itemId === input.expectedItemId
     && input.docketNumber === input.expectedDocketNumber
@@ -40,12 +41,11 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
     && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(input.requestPath)
     && input.method === "GET"
     && input.block === "ACCESS_UNVERIFIED"
-    && input.sourceBlockedReason === null
+    && (input.sourceBlockedReason === null || input.sourceBlockedReason === "SOURCE_VALIDATION_BARRIER")
     && input.accessVerifiedAt === null
     && input.verifiedMethod === null
     && input.pausedUntil === null
     && input.activeRequestId === null
-    && input.latencyWarning === null
     && input.jobStatus === "RUNNING"
     && input.calendarComplete
     && input.assessmentId === null
