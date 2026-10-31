@@ -11,10 +11,11 @@ function Citation({ row }: { row: BailSearchResult }) {
   return <a href={url} target="_blank" rel="noopener noreferrer" className="navlink" data-testid={`link-pdf-${row.id}`}>PDF, {page}</a>;
 }
 
-function CandidateAction({ row, searchId }: { row: BailSearchResult; searchId: string }) {
+function CandidateAction({ row, searchId, canManage }: { row: BailSearchResult; searchId: string; canManage: boolean }) {
   const after = useAfterCandidateSave(searchId);
   const save = useSaveBailSearchResult({ mutation: { onSuccess: after } });
   if (row.saved_record_id) return <span className="tag text-primary" data-testid={`status-candidate-${row.id}`}>Candidate · shared</span>;
+  if (!canManage) return <span className="hint" data-testid={`text-readonly-result-${row.id}`}>View only · created by another session</span>;
   if (row.save_available !== true) return <span className="hint" data-testid={`text-save-unavailable-${row.id}`}>Cannot save{row.save_reason ? `: ${row.save_reason}` : ''}</span>;
   return (
     <div>
@@ -33,7 +34,9 @@ export default function LatestReview() {
   return (
     <Shell>
       <PageHead label="Review" title="Latest search matches">
-        Candidate saves the row to the shared workspace, visible to everyone with the password.
+        {run?.canManage
+          ? 'Candidate saves the row to the shared workspace, visible to everyone with the password.'
+          : 'Earlier searches are visible to everyone with the password; only their creating session can save or resume them.'}
       </PageHead>
       {list.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
       {list.isError ? <p className="errbox" role="alert">Could not load. <button type="button" className="btn ml-2" onClick={() => list.refetch()}>Retry</button></p> : null}
@@ -51,7 +54,7 @@ export default function LatestReview() {
                   <th className="mono break-all">{row.docket_number}</th>
                   <td className="mono">{money(row.bail_amount)}</td>
                   <td><Citation row={row} /></td>
-                  <td><CandidateAction row={row} searchId={run.searchId} /></td>
+                  <td><CandidateAction row={row} searchId={run.searchId} canManage={run.canManage} /></td>
                 </tr>
               ))}
             </tbody>

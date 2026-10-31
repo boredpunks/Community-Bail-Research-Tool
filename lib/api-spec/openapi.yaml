@@ -60,6 +60,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BailSearchResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /bail-search/candidates:
     get:
       operationId: listBailSearchCandidates
@@ -86,7 +87,7 @@ paths:
       operationId: listBailSearches
       responses:
         "200":
-          description: Searches belonging to this signed-in session
+          description: Recent searches available to anyone with workspace access; actions remain session-owned
           content:
             application/json:
               schema:
@@ -116,7 +117,7 @@ paths:
       operationId: getBailSearchStatus
       responses:
         "200":
-          description: Durable progress and actual evidence rows
+          description: Durable progress and actual evidence rows; workspace members can view searches, while actions remain session-owned
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BailSearch" }
@@ -139,6 +140,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BailSearch" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /bail-search/search/{searchId}/export:
     parameters:
       - name: searchId
@@ -735,7 +737,7 @@ components:
         review_status: { type: [string, "null"] }
     BailSearch:
       type: object
-      required: [searchId, status, criteria, progress, incomplete, reason, resumeToken, resumeAvailableAt, results, createdAt, updatedAt, sourceNotice]
+      required: [searchId, status, criteria, progress, incomplete, reason, resumeToken, resumeAvailableAt, canManage, results, createdAt, updatedAt, sourceNotice]
       properties:
         searchId: { type: string }
         status: { type: string, enum: [running, paused, complete] }
@@ -745,6 +747,7 @@ components:
         reason: { type: [string, "null"] }
         resumeToken: { type: [string, "null"] }
         resumeAvailableAt: { type: [string, "null"] }
+        canManage: { type: boolean, description: True only in the session that created this search; viewers can still read its results. }
         results:
           type: array
           items: { $ref: "#/components/schemas/BailSearchResult" }

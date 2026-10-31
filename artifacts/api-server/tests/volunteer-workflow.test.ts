@@ -4,6 +4,7 @@ import { chooseRecovery } from "../src/services/bail-search-recovery";
 import { selectBailDecision, qualifiesMonetary, csvCell } from "../src/lib/bail-decision";
 import { validCachedConsultationChronology } from "../src/lib/discovery-candidates";
 import { resultDatesForItem } from "../src/services/bail-search-projection";
+import { withSearchViewerAccess } from "../src/services/bail-search-access";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
   noJob: false, sourceBlocked: false, cooldown: null, now: new Date("2026-10-29T12:00:00Z") };
@@ -74,4 +75,16 @@ test("cached consultation chronology cannot precede calendar or known retrieval"
   assert.equal(validCachedConsultationChronology(new Date("2026-10-28T10:30:00.000Z"), calendar, original), false);
   assert.equal(validCachedConsultationChronology(new Date("2026-10-28T09:59:00.000Z"), calendar, null), false);
   assert.equal(validCachedConsultationChronology(new Date(Date.now() + 10 * 60_000), calendar, null), false);
+});
+test("workspace viewers can read earlier searches without creator-only controls", () => {
+  const response = { searchId: "search-id", resumeToken: "resume-token" };
+  assert.deepEqual(withSearchViewerAccess(response, "owner-a", "owner-a"), {
+    ...response,
+    canManage: true,
+  });
+  assert.deepEqual(withSearchViewerAccess(response, "owner-a", "owner-b"), {
+    searchId: "search-id",
+    resumeToken: null,
+    canManage: false,
+  });
 });

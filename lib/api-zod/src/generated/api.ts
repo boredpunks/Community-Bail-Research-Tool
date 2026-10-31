@@ -196,6 +196,7 @@ export const ListBailSearchesResponseItem = zod.object({
   "reason": zod.string().nullable(),
   "resumeToken": zod.string().nullable(),
   "resumeAvailableAt": zod.string().nullable(),
+  "canManage": zod.boolean().describe('True only in the session that created this search; viewers can still read its results.'),
   "results": zod.array(zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
@@ -297,6 +298,7 @@ export const StartBailSearchResponse = zod.object({
   "reason": zod.string().nullable(),
   "resumeToken": zod.string().nullable(),
   "resumeAvailableAt": zod.string().nullable(),
+  "canManage": zod.boolean().describe('True only in the session that created this search; viewers can still read its results.'),
   "results": zod.array(zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
@@ -385,6 +387,7 @@ export const GetBailSearchStatusResponse = zod.object({
   "reason": zod.string().nullable(),
   "resumeToken": zod.string().nullable(),
   "resumeAvailableAt": zod.string().nullable(),
+  "canManage": zod.boolean().describe('True only in the session that created this search; viewers can still read its results.'),
   "results": zod.array(zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
@@ -482,6 +485,7 @@ export const ResumeBailSearchResponse = zod.object({
   "reason": zod.string().nullable(),
   "resumeToken": zod.string().nullable(),
   "resumeAvailableAt": zod.string().nullable(),
+  "canManage": zod.boolean().describe('True only in the session that created this search; viewers can still read its results.'),
   "results": zod.array(zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),

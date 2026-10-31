@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, discoverySourceTable, volunteerFeedbackTable } from "@workspace/db";
-import { StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody, SaveBailSearchResultBody, SaveBailSearchResultParams, ExportBailSearchQueryParams } from "@workspace/api-zod";
+import {
+  StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
+  SaveBailSearchResultBody, SaveBailSearchResultParams, ExportBailSearchQueryParams,
+  ListBailSearchesResponse, StartBailSearchResponse, GetBailSearchStatusResponse, ResumeBailSearchResponse,
+} from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
 import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, searchRecovery, enrichedResult, validResumeToken, validateSearchDates } from "../services/bail-search-store";
@@ -12,8 +16,18 @@ import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-so
 import { resultsDeadline } from "../lib/discovery-safety";
 import { discoveryPolicy } from "../lib/discovery";
 import { launchDiscovery, newResearchCriteria } from "../lib/discovery-launch";
+import { canManageSearch, withSearchViewerAccess } from "../services/bail-search-access";
 
 class ActiveVolunteerSearchError extends Error {}
+
+async function searchResponseForViewer(
+  search: typeof bailSearchesTable.$inferSelect,
+  viewerOwnerId: string,
+  includeResults = true,
+) {
+  const response = await searchResponse(search, includeResults);
+  return withSearchViewerAccess(response, search.ownerId, viewerOwnerId);
+}
 
 const router = Router();
 router.use((req, res, next) => {
@@ -80,9 +94,10 @@ router.post("/feedback", async (req, res) => {
   res.status(201).json({ ...row, createdAt: createdAt.toISOString() });
 });
 router.get("/search", async (_req, res) => {
-  const rows = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.ownerId, res.locals.searchOwner))
+  const rows = await db.select().from(bailSearchesTable)
     .orderBy(desc(bailSearchesTable.createdAt)).limit(20);
-  res.json(await Promise.all(rows.map(row => searchResponse(row, false))));
+  const searches = await Promise.all(rows.map(row => searchResponseForViewer(row, res.locals.searchOwner, false)));
+  res.json(ListBailSearchesResponse.parse(searches));
 });
 router.post("/search", async (req, res) => {
   const input = StartBailSearchBody.safeParse(req.body);
@@ -162,7 +177,7 @@ router.post("/search", async (req, res) => {
       return;
     }
     const [current] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, searchId));
-    res.status(201).json(await searchResponse(current!));
+    res.status(201).json(StartBailSearchResponse.parse(await searchResponseForViewer(current!, ownerId)));
     return;
   }
   let queue;
@@ -181,18 +196,20 @@ router.post("/search", async (req, res) => {
   });
   if (!search) { res.status(409).json({ error: "A search is already running in this session." }); return; }
   const [current] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, search.id));
-  res.status(201).json(await searchResponse(current!));
+  res.status(201).json(StartBailSearchResponse.parse(await searchResponseForViewer(current!, ownerId)));
 });
 router.use("/search/:searchId", async (req, res, next) => {
   const params = GetBailSearchStatusParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: "Invalid search ID." }); return; }
   const [search] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, params.data.searchId));
   if (!search) { res.status(404).json({ error: "Search not found." }); return; }
-  if (search.ownerId !== res.locals.searchOwner) { res.status(403).json({ error: "This search belongs to a different signed-in session." }); return; }
+  res.locals.canManageSearch = canManageSearch(search.ownerId, res.locals.searchOwner);
   res.locals.search = search;
   next();
 });
-router.get("/search/:searchId/status", async (_req, res) => { res.json(await searchResponse(res.locals.search)); });
+router.get("/search/:searchId/status", async (_req, res) => {
+  res.json(GetBailSearchStatusResponse.parse(await searchResponseForViewer(res.locals.search, res.locals.searchOwner)));
+});
 router.get("/search/:searchId/export", async (_req, res) => {
   const query = ExportBailSearchQueryParams.safeParse(_req.query);
   if (!query.success) { res.status(400).json({ error: "Choose all records, amount-filter matches, or visible records." }); return; }
@@ -203,6 +220,10 @@ router.get("/search/:searchId/export", async (_req, res) => {
     .send(await exportSearchCsv(res.locals.search, query.data.selection, query.data.office, query.data.officeMode));
 });
 router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
+  if (!res.locals.canManageSearch) {
+    res.status(403).json({ error: "Only the session that created this search can save its results." });
+    return;
+  }
   const params = SaveBailSearchResultParams.safeParse(req.params);
   const input = SaveBailSearchResultBody.safeParse(req.body);
   if (!params.success || !input.success || input.data.shareWithWorkspace !== true) {
@@ -223,6 +244,10 @@ router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
   res.json(await enrichedResult(res.locals.search, updated!));
 });
 router.post("/search/:searchId/resume", async (req, res) => {
+  if (!res.locals.canManageSearch) {
+    res.status(403).json({ error: "Only the session that created this search can resume it." });
+    return;
+  }
   const input = ResumeBailSearchBody.safeParse(req.body);
   const prior = res.locals.search as typeof bailSearchesTable.$inferSelect;
   if (!input.success || !validResumeToken(prior, input.data.resumeToken)) { res.status(403).json({ error: "Invalid or expired resume token." }); return; }
@@ -254,6 +279,6 @@ router.post("/search/:searchId/resume", async (req, res) => {
   });
   if (result) { res.status(409).json({ error: result }); return; }
   const [updated] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, prior.id));
-  res.json(await searchResponse(updated!));
+  res.json(ResumeBailSearchResponse.parse(await searchResponseForViewer(updated!, prior.ownerId)));
 });
 export default router;

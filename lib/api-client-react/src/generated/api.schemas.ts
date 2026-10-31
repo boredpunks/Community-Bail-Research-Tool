@@ -228,6 +228,8 @@ export interface BailSearch {
   resumeToken: string | null;
   /** @nullable */
   resumeAvailableAt: string | null;
+  /** True only in the session that created this search; viewers can still read its results. */
+  canManage: boolean;
   results: BailSearchResult[];
   createdAt: string;
   updatedAt: string;

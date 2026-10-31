@@ -286,7 +286,7 @@ return customFetch<BailSearchResult>(getSaveBailSearchResultUrl(searchId,resultI
 
 export const getSaveBailSearchResultMutationKey = () => ['saveBailSearchResult'] as const;
 
-export const getSaveBailSearchResultMutationOptions = <TError = ErrorType<unknown>,
+export const getSaveBailSearchResultMutationOptions = <TError = ErrorType<ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext> => {
 
@@ -315,10 +315,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SaveBailSearchResultMutationResult = NonNullable<Awaited<ReturnType<typeof saveBailSearchResult>>>
     export type SaveBailSearchResultMutationBody = BodyType<SaveBailSearchResultBody>
-    export type SaveBailSearchResultMutationError = ErrorType<unknown>
+    export type SaveBailSearchResultMutationError = ErrorType<ForbiddenResponse>
     export type SaveBailSearchResultMutationVariables = {searchId: string;resultId: string;data: BodyType<SaveBailSearchResultBody>}
 
-    export const useSaveBailSearchResult = <TError = ErrorType<unknown>,
+    export const useSaveBailSearchResult = <TError = ErrorType<ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBailSearchResult>>, TError,SaveBailSearchResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof saveBailSearchResult>>,
@@ -741,7 +741,7 @@ return customFetch<BailSearch>(getResumeBailSearchUrl(searchId),
 
 export const getResumeBailSearchMutationKey = () => ['resumeBailSearch'] as const;
 
-export const getResumeBailSearchMutationOptions = <TError = ErrorType<unknown>,
+export const getResumeBailSearchMutationOptions = <TError = ErrorType<ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeBailSearch>>, TError,ResumeBailSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof resumeBailSearch>>, TError,ResumeBailSearchMutationVariables, TContext> => {
 
@@ -770,10 +770,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ResumeBailSearchMutationResult = NonNullable<Awaited<ReturnType<typeof resumeBailSearch>>>
     export type ResumeBailSearchMutationBody = BodyType<BailSearchResumeInput>
-    export type ResumeBailSearchMutationError = ErrorType<unknown>
+    export type ResumeBailSearchMutationError = ErrorType<ForbiddenResponse>
     export type ResumeBailSearchMutationVariables = {searchId: string;data: BodyType<BailSearchResumeInput>}
 
-    export const useResumeBailSearch = <TError = ErrorType<unknown>,
+    export const useResumeBailSearch = <TError = ErrorType<ForbiddenResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeBailSearch>>, TError,ResumeBailSearchMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof resumeBailSearch>>,

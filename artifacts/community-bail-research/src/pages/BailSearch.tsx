@@ -146,6 +146,7 @@ export default function BailSearch() {
               {run.status === 'running' ? 'Running' : run.status === 'paused' ? 'Paused' : 'Complete'}
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
+            {!run.canManage ? <p className="hint" data-testid="text-search-readonly">View-only search. Only its creating session can resume or save results.</p> : null}
             {run.status === 'paused' && (recovery?.message || run.reason) ? <p className="notice" role="status" data-testid="text-recovery-message">{recovery?.message || run.reason}</p> : null}
             {(run.status === 'running' || run.status === 'paused') && run.criteria.source === 'live' ? <BailSearchProgressPanel search={run} /> : null}
             {run.status === 'running' && run.criteria.source !== 'live' && run.reason ? <p className="hint" role="status">{run.reason}</p> : null}

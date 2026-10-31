@@ -62,7 +62,7 @@ const timingResponse = {
     documentsDiscovered: 1, documentRequestsAttempted: 1, documentsRetrieved: 1,
     documentsProcessed: 1, documentsWithEvidence: 1, sourceRequestsUsed: 2, sourceRequestLimit: 10,
   },
-  incomplete: false, reason: null, resumeToken: null, resumeAvailableAt: null,
+  incomplete: false, reason: null, resumeToken: null, resumeAvailableAt: null, canManage: true,
   results: [{
     id: "result-1", docket_number: "CP-01-CR-0000001-2026", hearing_date: "2026-10-30",
     decision_date: "2026-10-30", office: "Test court", bail_amount: 1_000, percentage: null,
