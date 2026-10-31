@@ -137,7 +137,7 @@ const ordinaryAccessCheckFixture = {
   requestPath: "/Report/CpDocketSheet", method: "GET",
   block: "ACCESS_UNVERIFIED", sourceBlockedReason: null,
   accessVerifiedAt: null, verifiedMethod: null, pausedUntil: null,
-  activeRequestId: null, jobStatus: "RUNNING",
+  activeRequestId: null, latencyWarning: null, jobStatus: "RUNNING",
   calendarComplete: true, assessmentId: null,
   criteria: { ...sessionRefreshCriteria, courtOffice: "ANY", eventType: "Bail Hearing",
     endDate: "2026-10-31" },
@@ -145,10 +145,13 @@ const ordinaryAccessCheckFixture = {
   priorPdfRequests: 0, priorSearchPosts: 1,
 };
 check(canUseOrdinarySearchFirstPdfAccessCheck(ordinaryAccessCheckFixture));
-check(canUseOrdinarySearchFirstPdfAccessCheck({
+check(!canUseOrdinarySearchFirstPdfAccessCheck({
   ...ordinaryAccessCheckFixture,
-  block: "ACCESS_UNVERIFIED",
   sourceBlockedReason: "SOURCE_VALIDATION_BARRIER",
+}));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture,
+  latencyWarning: "Slow response 1; conservative pacing retained.",
 }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorPdfRequests: 1 }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 2 }));
@@ -535,6 +538,10 @@ try {
   check(responseHealth({ adaptiveSpacingMs: 60_000, slowResponseStreak: 2 }, 30_000, [30_000, 30_000], 60_000).adaptiveSpacingMs === 120_000);
   check(responseHealth({ adaptiveSpacingMs: 120_000, slowResponseStreak: 5 }, 30_000, [1000], 60_000).blockedReason === "RESPONSE_DETERIORATION");
   check(responseHealth({ adaptiveSpacingMs: 120_000, slowResponseStreak: 3 }, 1000, [1000], 60_000).adaptiveSpacingMs === 120_000);
+  check(responseHealth({
+    adaptiveSpacingMs: 60_000, slowResponseStreak: 1,
+    latencyWarning: "Slow response 1; conservative pacing retained.",
+  }, 1000, [1000], 60_000).latencyWarning === "Slow response 1; conservative pacing retained.");
   check(qualifyingMonetaryTotal("MONETARY", "TOTAL_BAIL", 500_000, 500_000, true));
   check(!qualifyingMonetaryTotal("MONETARY", "TOTAL_BAIL", 500_000, 500_000, false));
   check(!qualifyingMonetaryTotal("UNSECURED", "UNSECURED_AMOUNT", 500_000, 500_000, true));
@@ -566,8 +573,8 @@ try {
   check(calendarSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
   check(calendarSource!.accessVerifiedAt === null && calendarSource!.verifiedMethod === null);
 
-  // A user-initiated live search may clear an existing validation barrier only
-  // when it reaches the strict, one-use first-PDF verification gate.
+  // A user-initiated search cannot clear the retained barrier or latency
+  // warning by reaching the first-PDF access-check gate.
   await reset(false);
   const ordinaryPdfCriteria = {
     ...criteria, resultVersion: 2 as const, courtOffice: "ANY", eventType: "Bail Hearing",
@@ -611,14 +618,14 @@ try {
       },
     },
   );
-  assert.ok(ordinaryPdfGrant.allow && "requestId" in ordinaryPdfGrant
-    && ordinaryPdfGrant.firstPdfAccessCheckAuthorized, JSON.stringify(ordinaryPdfGrant));
+  check(!ordinaryPdfGrant.allow);
   const [recoveredSource] = await store.select().from(sources);
-  check(recoveredSource!.blockedReason === null);
+  check(recoveredSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
   check(recoveredSource!.accessVerifiedAt === null && recoveredSource!.verifiedMethod === null);
-  check(recoveredSource!.latencyWarning !== null);
+  check(recoveredSource!.latencyWarning === "Slow response 1; conservative pacing retained. No automatic acceleration.");
   const [barrierAudit] = await store.select().from(events).where(eq(events.kind, "SOURCE_BARRIER_CLEARED"));
-  check(!!barrierAudit && barrierAudit!.jobId === ordinaryPdfJob.id);
+  check(!barrierAudit);
+  check((await store.select().from(requests)).length === 1);
 
   await reset();
   const first = await createJob(), second = await createJob();

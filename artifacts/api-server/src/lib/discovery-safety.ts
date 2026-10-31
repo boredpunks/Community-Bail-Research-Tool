@@ -132,7 +132,11 @@ export function throttleDeadline(now: Date, minimumMs: number, previousThrottles
   return new Date(deadline);
 }
 
-export function responseHealth(source: { adaptiveSpacingMs: number; slowResponseStreak: number }, durationMs: number, recentOkDurations: number[], baseMs: number) {
+export function responseHealth(source: {
+  adaptiveSpacingMs: number;
+  slowResponseStreak: number;
+  latencyWarning?: string | null;
+}, durationMs: number, recentOkDurations: number[], baseMs: number) {
   // Do not let a run of already-slow responses become the new "healthy"
   // baseline and silently suppress deterioration detection.
   const ordered = recentOkDurations.filter((ms) => ms >= 0 && ms < 20_000).sort((a, b) => a - b);
@@ -143,7 +147,11 @@ export function responseHealth(source: { adaptiveSpacingMs: number; slowResponse
   return {
     slowResponseStreak: streak,
     adaptiveSpacingMs: streak === 3 || streak === 6 ? Math.min(3_600_000, spacing * 2) : spacing,
-    latencyWarning: slow ? `Slow response ${streak}; conservative pacing retained. ${streak >= 6 ? "Collection paused for assessment." : "No automatic acceleration."}` : null,
+    // A healthy response does not erase a retained latency incident; response
+    // accounting is not an operator recovery path.
+    latencyWarning: slow
+      ? `Slow response ${streak}; conservative pacing retained. ${streak >= 6 ? "Collection paused for assessment." : "No automatic acceleration."}`
+      : source.latencyWarning ?? null,
     blockedReason: streak >= 6 ? "RESPONSE_DETERIORATION" : null,
   };
 }
