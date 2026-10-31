@@ -20,7 +20,7 @@ import { researchMethod, proofMethod, proofUrls, validResearchCriteria } from ".
 import { calendarAdmission } from "./research-operations";
 import { effectiveAdaptiveSpacing, pacingJitterRangeMs, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria } from "./session-refresh-safety";
-import { canUseOrdinarySearchFirstPdfAccessCheck } from "./ordinary-search-access";
+import { canUseOrdinarySearchFirstPdfAccessCheck, isOrdinarySearchPdfCandidate } from "./ordinary-search-access";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,11 +217,12 @@ export async function reserveSourceRequest(
         }
         if (collectionBlockReason === "ACCESS_UNVERIFIED" && authorization.ordinarySearchFirstPdfAccessCheck
           && authorization.authorizedOrdinarySearchJobId === current.id) {
+          // The search is owned by its browser session; the linked job is
+          // workspace-owned. Their identities are intentionally different.
           const linkedSearches = await tx.select({ criteria: bailSearchesTable.criteria })
             .from(bailSearchesTable)
             .where(and(
               eq(bailSearchesTable.discoveryJobId, current.id),
-              eq(bailSearchesTable.ownerId, current.ownerId),
               eq(bailSearchesTable.status, "running"),
             ))
             .limit(1);
@@ -231,7 +232,7 @@ export async function reserveSourceRequest(
           ));
           const ordered = await tx.select().from(discoveryItemsTable)
             .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
-          const firstPending = ordered.find(item => item.provenance.extractionOutcome === "UNPROCESSED");
+          const firstPending = ordered.find(isOrdinarySearchPdfCandidate);
           const previousPdfs = await tx.select({ id: discoveryRequestsTable.id }).from(discoveryRequestsTable)
             .where(and(
               eq(discoveryRequestsTable.jobId, current.id),
@@ -271,6 +272,7 @@ export async function reserveSourceRequest(
               || candidate?.provenance.courtType === "COMMON_PLEAS",
             priorPdfRequests: previousPdfs.length,
             priorSearchPosts: previousSearches.length,
+            now,
           });
         }
         if (block && !firstPdfAccessCheckAllowed && !ordinarySearchAccessCheckAllowed) return deny(block);
@@ -369,7 +371,7 @@ export async function reserveSourceRequest(
             return deny("ORDINARY_SEARCH_FIRST_PDF_SCOPE_MISMATCH");
           const ordered = await tx.select().from(discoveryItemsTable)
             .where(eq(discoveryItemsTable.jobId, current.id)).orderBy(asc(discoveryItemsTable.position));
-          const next = ordered.find(candidate => candidate.provenance.extractionOutcome === "UNPROCESSED");
+          const next = ordered.find(isOrdinarySearchPdfCandidate);
           if (next?.id !== item.id) return deny("ORDINARY_SEARCH_FIRST_PDF_ORDER_MISMATCH");
         }
         if (!proofPermit && !singleDocumentProofPermit

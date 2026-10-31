@@ -17,6 +17,7 @@ import { resultsDeadline } from "../lib/discovery-safety";
 import { discoveryPolicy } from "../lib/discovery";
 import { launchDiscovery, newResearchCriteria } from "../lib/discovery-launch";
 import { canManageSearch, withSearchViewerAccess } from "../services/bail-search-access";
+import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 
 class ActiveVolunteerSearchError extends Error {}
 
@@ -269,7 +270,9 @@ router.post("/search/:searchId/resume", async (req, res) => {
         || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())
         || (!job.calendarComplete && job.criteria.startDate < easternToday())
         || job.requestsUsed >= job.criteria.requestCap) return "Original source scope or budget cannot resume. Start a new eligible search.";
-      const block = !job.calendarComplete ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
+      let block = !job.calendarComplete ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
+      if (["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
+        && await canAutomaticallyCheckOrdinaryPdfAccess(job, source, { store: tx })) block = null;
       if (block) return `Source remains paused: ${block}.`;
       await tx.update(discoveryJobsTable).set({ status: "QUEUED", updatedAt: new Date() }).where(eq(discoveryJobsTable.id, job.id));
     }

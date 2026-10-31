@@ -3,6 +3,18 @@ name: Ordinary user-driven research
 description: The current user direction supersedes pilot-only approval and fixed-scope restrictions for ordinary authenticated research.
 ---
 
+Remove application-imposed pauses before completing PDF text extraction.
+Ordinary Search authorizes automatic calendar-to-PDF retrieval, extraction and
+persistence without another operator approval.
+
+**Why:** the user repeatedly instructed removal of anything that makes the
+system pause before completing PDF text extraction.
+
+**How to apply:** remove stale approval/bookkeeping gates, keep eligible resume
+paths usable, and finish local extraction/persistence once PDF bytes arrive.
+Genuine external denials, challenges and active server waits remain distinct
+from application-imposed approvals.
+
 Ordinary authenticated calendar searches must not require per-run operator
 approval or single-use permits unless an actual applicable external
 requirement mandates them. Do not extend the pilot framework. Optional office,

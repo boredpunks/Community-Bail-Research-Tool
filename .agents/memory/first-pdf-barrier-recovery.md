@@ -3,8 +3,8 @@ name: First-PDF barrier recovery
 description: Safe recovery from a persisted source-validation barrier after an ordinary live calendar search.
 ---
 
-A persisted `SOURCE_VALIDATION_BARRIER` must not globally enable PDF collection. A new authenticated live search may clear only that barrier when it reaches the one-use first-PDF check: validated calendar results, a linked live bail search, the first supported pending item, exactly one Search POST, no earlier PDF request, and no active request or cooldown.
+A persisted internal validation barrier must not require another operator approval for an ordinary authenticated live Search. Automatically validate the first eligible PDF linked to its validated calendar results. Pagination, eligible resumes, expired cooldown bookkeeping and obsolete client-verification records must not create fresh approval requirements.
 
-**Why:** A validated calendar can be available while an older source-wide barrier still prevents the document-access check. Clearing the barrier broadly would bypass document safeguards.
+**Why:** the user repeatedly required automatic PDF extraction; historical pilot gates had prevented an ordinary authorized search from even attempting its first PDF.
 
-**How to apply:** Keep access unverified until the first PDF returns successfully and its docket identity is validated. Audit the narrow barrier clearing; retain denial, challenge, rate-limit, transport, cooldown, and sustained-deterioration stops.
+**How to apply:** Clear only stale internal validation bookkeeping when reserving the eligible first request, not by inventing successful access proof. Establish current proof from the actual successful identity-validated response and continue automatically. Preserve genuine denials, challenges, active cooldowns, transport uncertainty and deterioration stops for future source traffic; finish local processing of bytes already received.

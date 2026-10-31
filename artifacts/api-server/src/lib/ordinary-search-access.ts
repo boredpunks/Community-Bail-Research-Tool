@@ -1,7 +1,19 @@
+import { validCalendarDocketLink } from "./discovery-safety";
+
 type PlainRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is PlainRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function isOrdinarySearchPdfCandidate(item: {
+  docketNumber: string;
+  sourceUrl: string;
+  provenance: { extractionOutcome: string; courtType?: string | null };
+}): boolean {
+  return item.provenance.extractionOutcome === "UNPROCESSED"
+    && ["MDJ", "COMMON_PLEAS"].includes(item.provenance.courtType ?? "")
+    && validCalendarDocketLink(item.sourceUrl, item.docketNumber);
 }
 
 export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
@@ -30,6 +42,7 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
   supportedCourtType: boolean;
   priorPdfRequests: number;
   priorSearchPosts: number;
+  now?: Date;
 }): boolean {
   const criteria = isRecord(input.criteria) ? input.criteria : null;
   // Latency warnings are advisory; hard stops are represented by the source
@@ -42,9 +55,9 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
     && input.method === "GET"
     && input.block === "ACCESS_UNVERIFIED"
     && (input.sourceBlockedReason === null || input.sourceBlockedReason === "SOURCE_VALIDATION_BARRIER")
-    && input.accessVerifiedAt === null
-    && input.verifiedMethod === null
-    && input.pausedUntil === null
+    // A past cooldown or old client proof is not an approval requirement.
+    // This request will establish fresh proof through the actual PDF response.
+    && (!input.pausedUntil || input.pausedUntil <= (input.now ?? new Date()))
     && input.activeRequestId === null
     && input.jobStatus === "RUNNING"
     && input.calendarComplete
@@ -55,5 +68,5 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
     && input.firstPendingItem
     && input.supportedCourtType
     && input.priorPdfRequests === 0
-    && input.priorSearchPosts === 1;
+    && input.priorSearchPosts >= 1;
 }

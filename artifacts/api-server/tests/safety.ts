@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "../src/lib/session-refresh-safety";
 import { canUseOrdinarySearchFirstPdfAccessCheck } from "../src/lib/ordinary-search-access";
+import { canAutomaticallyCheckOrdinaryPdfAccess, establishOrdinarySearchAccessProof } from "../src/lib/ordinary-search-proof";
 import { discoveryPolicy } from "../src/lib/discovery";
 import { clearExpiredDiscoveryResults, expiredResumeConflict } from "../src/lib/discovery-retention";
 import { db, pool, discoveryAssessmentsTable as pilots, discoveryEventsTable as events, discoveryJobsTable as jobs, discoveryRequestsTable as requests, discoverySourceTable as sources } from "@workspace/db";
@@ -145,16 +146,25 @@ const ordinaryAccessCheckFixture = {
   priorPdfRequests: 0, priorSearchPosts: 1,
 };
 check(canUseOrdinarySearchFirstPdfAccessCheck(ordinaryAccessCheckFixture));
-check(!canUseOrdinarySearchFirstPdfAccessCheck({
+check(canUseOrdinarySearchFirstPdfAccessCheck({
   ...ordinaryAccessCheckFixture,
   sourceBlockedReason: "SOURCE_VALIDATION_BARRIER",
 }));
-check(!canUseOrdinarySearchFirstPdfAccessCheck({
+check(canUseOrdinarySearchFirstPdfAccessCheck({
   ...ordinaryAccessCheckFixture,
   latencyWarning: "Slow response 1; conservative pacing retained.",
 }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorPdfRequests: 1 }));
-check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 2 }));
+check(canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 2 }));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, priorSearchPosts: 0 }));
+check(canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture, pausedUntil: new Date("2026-10-01"),
+  accessVerifiedAt: new Date("2026-10-01"), verifiedMethod: "old-client",
+  now: new Date("2026-10-30"),
+}));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture, pausedUntil: new Date("2026-10-31"), now: new Date("2026-10-30"),
+}));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, liveSearchLinked: false }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, supportedCourtType: false }));
 check(!canUseOrdinarySearchFirstPdfAccessCheck({ ...ordinaryAccessCheckFixture, sourceBlockedReason: "ACCESS_DENIED" }));
@@ -573,8 +583,9 @@ try {
   check(calendarSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
   check(calendarSource!.accessVerifiedAt === null && calendarSource!.verifiedMethod === null);
 
-  // A user-initiated search cannot clear the retained barrier or latency
-  // warning by reaching the first-PDF access-check gate.
+  // Browser-session search ownership differs from workspace job ownership.
+  // Their explicit job link authorizes the automatic first-PDF check; a stale
+  // validation barrier and advisory latency warning must not require approval.
   await reset(false);
   const ordinaryPdfCriteria = {
     ...criteria, resultVersion: 2 as const, courtOffice: "ANY", eventType: "Bail Hearing",
@@ -593,7 +604,7 @@ try {
     },
   }).returning();
   await store.insert(schema.bailSearchesTable).values({
-    ownerId: ordinaryPdfJob.ownerId, discoveryJobId: ordinaryPdfJob.id,
+    ownerId: "OFFLINE_BROWSER_SESSION", discoveryJobId: ordinaryPdfJob.id,
     criteria: { startDate: "2026-10-06", endDate: "2026-10-06", maxBail: 2000, source: "live" },
     status: "running",
   });
@@ -608,6 +619,14 @@ try {
     latencyWarning: "Slow response 1; conservative pacing retained. No automatic acceleration.",
     slowResponseStreak: 1, adaptiveSpacingMs: 60_000, lastLatencyMs: 52_178,
   });
+  await store.update(schema.bailSearchesTable).set({ status: "paused" });
+  const [pausedOrdinaryJob] = await store.update(jobs).set({ status: "PAUSED" })
+    .where(eq(jobs.id, ordinaryPdfJob.id)).returning();
+  const [waitingOrdinarySource] = await store.select().from(sources);
+  check(await canAutomaticallyCheckOrdinaryPdfAccess(pausedOrdinaryJob!, waitingOrdinarySource,
+    { store, now: () => new Date(time) }));
+  await store.update(schema.bailSearchesTable).set({ status: "running" });
+  await store.update(jobs).set({ status: "RUNNING" }).where(eq(jobs.id, ordinaryPdfJob.id));
   const ordinaryPdfGrant = await reserveSourceRequest(
     ordinaryPdfJob, "/Report/CpDocketSheet", "GET", undefined, ordinaryPdfUrl, () => false,
     { ...context, randomJitterMs: () => 0 },
@@ -618,14 +637,42 @@ try {
       },
     },
   );
-  check(!ordinaryPdfGrant.allow);
+  assert.ok(ordinaryPdfGrant.allow && ordinaryPdfGrant.requestId);
+  check(ordinaryPdfGrant.firstPdfAccessCheckAuthorized === true);
   const [recoveredSource] = await store.select().from(sources);
-  check(recoveredSource!.blockedReason === "SOURCE_VALIDATION_BARRIER");
+  check(recoveredSource!.blockedReason === null);
   check(recoveredSource!.accessVerifiedAt === null && recoveredSource!.verifiedMethod === null);
   check(recoveredSource!.latencyWarning === "Slow response 1; conservative pacing retained. No automatic acceleration.");
   const [barrierAudit] = await store.select().from(events).where(eq(events.kind, "SOURCE_BARRIER_CLEARED"));
-  check(!barrierAudit);
-  check((await store.select().from(requests)).length === 1);
+  check(!!barrierAudit);
+  check((await store.select().from(requests)).length === 2);
+  // Simulate only completed transport/identity metadata in this isolated test
+  // schema. No source request, PDF bytes or case evidence is produced.
+  await store.update(requests).set({
+    outcome: "OK", statusCode: 200, completedAt: new Date(time),
+  }).where(eq(requests.id, ordinaryPdfGrant.requestId));
+  await store.update(sources).set({
+    activeRequestId: null, pausedUntil: new Date(time - 1_000),
+    accessVerifiedAt: new Date(time - 60_000), verifiedMethod: "obsolete-client",
+  });
+  await store.update(schema.discoveryItemsTable).set({
+    sourceRetrievedAt: new Date(time),
+    provenance: {
+      ...ordinaryPdfItem!.provenance,
+      documentSha256: "0".repeat(64),
+      extractionOutcome: "MISSING_BAIL_SECTION",
+    },
+  }).where(eq(schema.discoveryItemsTable.id, ordinaryPdfItem!.id));
+  check(await establishOrdinarySearchAccessProof(
+    ordinaryPdfJob, ordinaryPdfGrant.requestId, ordinaryPdfItem!.id,
+    { store, now: () => new Date(time) },
+  ));
+  const [verifiedOrdinarySource] = await store.select().from(sources);
+  check(collectionBlock(verifiedOrdinarySource) === null);
+  check(verifiedOrdinarySource!.collectionApprovedAt === null);
+  check(verifiedOrdinarySource!.verifiedMethod === integratedSourceMethod);
+  check(!await canAutomaticallyCheckOrdinaryPdfAccess(ordinaryPdfJob, verifiedOrdinarySource,
+    { store, now: () => new Date(time) }));
 
   await reset();
   const first = await createJob(), second = await createJob();

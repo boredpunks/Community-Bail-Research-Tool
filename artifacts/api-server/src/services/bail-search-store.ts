@@ -11,6 +11,7 @@ import { easternToday } from "../lib/discovery";
 import { resultsDeadline } from "../lib/discovery-safety";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
+import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 
 export const SEARCH_SLICE_MS = 240_000;
 export const sourceNotice = (source: string) => source === "live"
@@ -88,7 +89,9 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
     const status = await discoverySourceStatus();
     if (status.nextEligibleAt) cooldown = new Date(Math.max(cooldown?.getTime() ?? 0, Date.parse(status.nextEligibleAt)));
     const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    const block = !job?.calendarComplete ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
+    let block = !job?.calendarComplete ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
+    if (job && ["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
+      && await canAutomaticallyCheckOrdinaryPdfAccess(job, source)) block = null;
     // Timed pacing/quota waits are recoverable, unlike access denials.
     sourceBlocked = !!block && !cooldown;
     if (block && source?.blockedReason) sourceBlocked = true;

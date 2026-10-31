@@ -34,6 +34,8 @@ import { validSourceResponse, sourceResponseEvents } from "./document-response";
 import { resolveUjsRuntimeScript } from "./ujs-runtime-script";
 import { isExactAuthorizedSessionRefreshCriteria, sameSavedCalendarResults } from "./session-refresh-safety";
 import { publishCalendarRowsToSearch, publishVerifiedDocumentToSearch } from "../services/bail-search-worker";
+import { isOrdinarySearchPdfCandidate } from "./ordinary-search-access";
+import { establishOrdinarySearchAccessProof } from "./ordinary-search-proof";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let activeChild: ChildProcessWithoutNullStreams | null = null;
@@ -106,44 +108,6 @@ async function establishSessionRefreshAccessProof(job: DiscoveryJobRow, requestI
       || !isExactAuthorizedSessionRefreshCriteria(current.criteria)
       || source.blockedReason !== null || source.pausedUntil !== null || source.activeRequestId !== null
       || source.accessVerifiedAt !== null || source.verifiedMethod !== null
-      || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome))
-      return false;
-    await tx.update(discoverySourceTable).set({
-      accessVerifiedAt: now,
-      verifiedMethod: integratedSourceMethod,
-    }).where(eq(discoverySourceTable.id, sourceId));
-    return true;
-  });
-}
-
-async function establishOrdinarySearchAccessProof(job: DiscoveryJobRow, requestId: string, itemId: string): Promise<boolean> {
-  const now = new Date();
-  return db.transaction(async (tx) => {
-    const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
-    const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
-    const [search] = await tx.select().from(bailSearchesTable).where(and(
-      eq(bailSearchesTable.discoveryJobId, job.id),
-      eq(bailSearchesTable.ownerId, job.ownerId),
-      eq(bailSearchesTable.status, "running"),
-    )).for("update");
-    const [request] = await tx.select().from(discoveryRequestsTable).where(and(
-      eq(discoveryRequestsTable.id, requestId),
-      eq(discoveryRequestsTable.jobId, job.id),
-      eq(discoveryRequestsTable.itemId, itemId),
-      eq(discoveryRequestsTable.method, "GET"),
-      inArray(discoveryRequestsTable.path, ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"]),
-      eq(discoveryRequestsTable.outcome, "OK"),
-      eq(discoveryRequestsTable.statusCode, 200),
-    )).for("update");
-    const [item] = await tx.select().from(discoveryItemsTable).where(and(
-      eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, job.id),
-    ));
-    if (!source || !current || current.status !== "RUNNING" || !search || search.criteria.source !== "live"
-      || current.assessmentId !== null || current.criteria.resultVersion !== 2
-      || current.criteria.calendarPreviewOnly === true || !current.calendarComplete || !request || !item
-      || source.blockedReason !== null || source.pausedUntil !== null || source.activeRequestId !== null
-      || source.accessVerifiedAt !== null || source.verifiedMethod !== null
-      || !item.sourceRetrievedAt || !item.provenance.documentSha256
       || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome))
       return false;
     await tx.update(discoverySourceTable).set({
@@ -328,7 +292,11 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   let accessCheckResponseValid = false;
   let accessCheckConsumed = false;
   let accessCheckVerified = false;
-  let ordinaryAccessCheckItem: { id: string; docketNumber: string; url: string } | null = null;
+  const savedFirstPending = ordinarySearchAccessScope && job.calendarComplete && !exactSessionRefresh
+    ? items.find(isOrdinarySearchPdfCandidate) : undefined;
+  let ordinaryAccessCheckItem: { id: string; docketNumber: string; url: string } | null = savedFirstPending
+    ? { id: savedFirstPending.id, docketNumber: savedFirstPending.docketNumber, url: savedFirstPending.sourceUrl }
+    : null;
   let ordinaryAccessCheckRequestId: string | null = null;
   let ordinaryAccessCheckResponseValid = false;
   let ordinaryAccessCheckConsumed = false;
@@ -646,9 +614,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         if (ordinarySearchAccessScope && !exactSessionRefresh) {
           const saved = await db.select().from(discoveryItemsTable)
             .where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
-          const firstPending = saved.find(item => item.provenance.extractionOutcome === "UNPROCESSED"
-            && ["MDJ", "COMMON_PLEAS"].includes(item.provenance.courtType ?? "")
-            && validCalendarDocketLink(item.sourceUrl, item.docketNumber));
+          const firstPending = saved.find(isOrdinarySearchPdfCandidate);
           if (firstPending) {
             ordinaryAccessCheckItem = {
               id: firstPending.id,
