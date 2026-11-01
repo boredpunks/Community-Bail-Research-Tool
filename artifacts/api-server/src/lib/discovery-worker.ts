@@ -1,5 +1,7 @@
 import { validCalendarResponseSize } from "./calendar-response-metadata";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { createInterface } from "node:readline";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, bailSearchesTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
@@ -18,7 +20,7 @@ import { isExplicitEmptyCalendarLayout, validCalendarLayout } from "./calendar-l
 import { finishBoundedRun } from "./bounded-report";
 import { logger } from "./logger";
 import { clearExpiredDiscoveryResults } from "./discovery-retention";
-import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest, type RequestReservationAuthorization } from "./discovery-scheduler";
+import { accountSourceResponse, recoverUncertainRequests, reserveSourceRequest, type RequestReservationAuthorization, type SchedulerTestContext } from "./discovery-scheduler";
 import { formInspectionMethod, validInspectionMetadata } from "./form-inspection";
 import { coverageInspectionMethod, coveragePhases, validCoverageMetadata } from "./coverage-inspection";
 import { filingInspectionMethod, filingPhases, validFilingInventoryMetadata } from "./filing-inspection";
@@ -66,13 +68,15 @@ async function pause(job: DiscoveryJobRow, message: string) {
 
 export async function grant(
   job: DiscoveryJobRow, requestPath: unknown, method: unknown, permitId?: string | number,
-  url?: unknown, authorization: RequestReservationAuthorization = {},
+  url?: unknown, authorization: RequestReservationAuthorization = {}, context?: SchedulerTestContext,
 ) {
-  return reserveSourceRequest(job, requestPath, method, permitId, url, () => stopping, {}, authorization);
+  return reserveSourceRequest(job, requestPath, method, permitId, url, () => stopping, context, authorization);
 }
 
-export async function sourceOutcome(job: DiscoveryJobRow, message: Record<string, unknown>) {
-  return accountSourceResponse(job, message);
+export async function sourceOutcome(
+  job: DiscoveryJobRow, message: Record<string, unknown>, context?: SchedulerTestContext,
+) {
+  return accountSourceResponse(job, message, context);
 }
 
 async function validationStop(reason: string) {
@@ -122,6 +126,7 @@ const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.p
 
 type RunJobOptions = {
   exactSessionRefresh?: boolean; waitAcrossQuota?: boolean; singleDocumentProofItemId?: string;
+  offlineMockSource?: boolean;
 };
 
 async function finishSingleDocumentProof(jobId: string, permitId: string, itemId: string) {
@@ -160,7 +165,13 @@ async function finishSingleDocumentProof(jobId: string, permitId: string, itemId
 }
 
 export async function runJob(job: DiscoveryJobRow, permitId?: string, options: RunJobOptions = {}) {
+  if (options.offlineMockSource && process.env.NODE_ENV !== "test")
+    throw new Error("Offline mock source is available only in test mode.");
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
+  let mockSchedulerTime = new Date();
+  const schedulerContext = options.offlineMockSource
+    ? { now: () => mockSchedulerTime }
+    : undefined;
   const exactSessionRefresh = options.exactSessionRefresh === true;
   if (exactSessionRefresh && (!isExactAuthorizedSessionRefreshCriteria(job.criteria)
     || job.assessmentId !== null || !job.calendarComplete))
@@ -235,7 +246,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
     await db.update(discoveryJobsTable).set({ status: "COMPLETED", message: "Explicit record cap reached; remaining discovered dockets were not processed.", updatedAt: new Date() }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "RUNNING")));
     return;
   }
-  const script = resolveUjsRuntimeScript(import.meta.url, "worker.py");
+  const testScript = path.resolve(process.cwd(), "tests/mock-live-search-worker.py");
+  if (options.offlineMockSource && !existsSync(testScript))
+    throw new Error("Offline mock source worker is unavailable.");
+  const script = options.offlineMockSource ? testScript : resolveUjsRuntimeScript(import.meta.url, "worker.py");
   const args = inspectionOnly
     ? [resolveUjsRuntimeScript(import.meta.url, "network_sandbox.py"), script]
     : ["-u", script];
@@ -361,7 +375,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         const permission = inspectionOnly
           ? await inspectionBroker!.handle(message, (requestPath, method, url) =>
             grant(job, requestPath, method, permitId, url))
-          : await grant(job, message.path, message.method, permitId, message.url, requestAuthorization);
+          : await grant(job, message.path, message.method, permitId, message.url, requestAuthorization, schedulerContext);
         if (exactSessionRefresh && requestAuthorization.firstPdfAccessCheck && permission.allow && "requestId" in permission
           && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(String(message.path))
           && String(message.method) === "GET") {
@@ -380,7 +394,8 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         if (!validSourceResponse(message)) throw new Error("Invalid source response metadata");
         if (inspectionOnly && !inspectionBroker!.acknowledge(message))
           throw new Error("Inspection response accounting mismatch");
-        const continueRun = await sourceOutcome(job, message);
+        const continueRun = await sourceOutcome(job, message, schedulerContext);
+        if (options.offlineMockSource) mockSchedulerTime = new Date(mockSchedulerTime.getTime() + 5 * 60_000);
         if (exactSessionRefresh && accessCheckRequestId === String(message.requestId))
           accessCheckResponseValid = message.outcome === "OK" && message.status === 200 && continueRun;
         if (ordinaryAccessCheckRequestId === String(message.requestId))
