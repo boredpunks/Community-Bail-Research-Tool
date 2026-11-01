@@ -152,7 +152,7 @@ def main():
             output = server.stdout.read() if server.stdout else ""
             raise RuntimeError(f"Vite did not start for the browser test.\n{output}")
 
-        started = {"value": False, "body": None}
+        started = {"value": False, "body": None, "post_count": 0}
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(
                 headless=True,
@@ -169,9 +169,18 @@ def main():
                 elif path.endswith("/api/bail-search/search") and request.method == "GET":
                     body = [newer, older] if started["value"] else [older]
                 elif path.endswith("/api/bail-search/search") and request.method == "POST":
-                    started["body"] = request.post_data_json
-                    started["value"] = True
-                    body = newer
+                    started["post_count"] += 1
+                    if started["post_count"] == 1:
+                        started["body"] = request.post_data_json
+                        started["value"] = True
+                        body = newer
+                    else:
+                        route.fulfill(
+                            status=503,
+                            content_type="application/json",
+                            body='{"message":"Test start failure"}',
+                        )
+                        return
                 elif path.endswith("/api/bail-search/search/older-search/status"):
                     body = older
                 elif path.endswith("/api/bail-search/search/newer-search/status"):
@@ -210,9 +219,20 @@ def main():
             page.get_by_test_id("select-search-history").select_option("older-search")
             assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
             assert page.get_by_test_id("row-search-newer-row").count() == 0
+
+            page.get_by_test_id("button-start-bail-search").click()
+            error = page.get_by_test_id("error-search-form")
+            error.wait_for()
+            assert error.get_attribute("role") == "alert"
+            assert "Search not started." in error.inner_text()
+            assert "Previous results are unchanged." in error.inner_text()
+            assert started["post_count"] == 2
+            assert page.get_by_test_id("select-search-history").input_value() == "older-search"
+            assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
+            assert page.get_by_test_id("row-search-newer-row").count() == 0
             browser.close()
 
-        print("PASS: a new search is selected with its progress and results while older PDF evidence remains in history.")
+        print("PASS: successful searches can be reviewed, and a failed new search preserves the selected older PDF evidence.")
     finally:
         server.terminate()
         try:
