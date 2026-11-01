@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { db, pool, discoveryJobsTable, discoveryItemsTable, bailRecordsTable } from "@workspace/db";
+import {
+  db, pool, discoveryJobsTable, discoveryItemsTable, bailRecordsTable,
+  bailSearchesTable, bailSearchResultsTable,
+} from "@workspace/db";
 import { GetBailSearchStatusResponse, GetDiscoveryJobResponse } from "@workspace/api-zod";
 import { projectQualifyingRows } from "@workspace/bail-research";
 import { newResearchCriteria, criteriaIdentity } from "../src/lib/discovery-launch";
@@ -11,7 +14,8 @@ import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import { observationValues } from "../src/lib/discovery-candidates";
 import { createWorkspaceSession, hasValidWorkspaceSession } from "../src/middlewares/researchAuth";
 import { bailSearchDocumentStatus, resultDocumentTimings } from "../src/services/bail-search-evidence";
-import { latestDocumentRequestByItem } from "../src/services/bail-search-store";
+import { latestDocumentRequestByItem, serializeSearchResult } from "../src/services/bail-search-store";
+import { publishVerifiedDocumentToSearch } from "../src/services/bail-search-document-publisher";
 import { eq } from "drizzle-orm";
 
 class IntentionalRollback extends Error {}
@@ -102,8 +106,8 @@ assert.equal(run.status, 0, "Genuine fixture extraction failed");
 const parsed = JSON.parse(run.stdout);
 const provenance = {calendarUrl: `urn:sha256:${parsed.documentSha256}`, calendarRetrievedAt: now.toISOString(),
   courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS" as const,
-  eventType: "Formal Arraignment", eventDate: "2026-10-20", filingDate: null,
-  matchingEvents: [{eventDate: "2026-10-20", eventType: "Formal Arraignment", eventTime: "8:00 am"}],
+  eventType: "Formal Arraignment", eventDate: date, filingDate: null,
+  matchingEvents: [{eventDate: date, eventType: "Formal Arraignment", eventTime: "8:00 am"}],
   documentAcquisition: "MANUAL_UPLOAD" as const, ...parsed};
 assert.equal(matchesDiscoveryFilters(provenance, criteria.matchFilters, 2), true);
 assert.equal(matchesDiscoveryFilters(provenance, criteria.matchFilters), false);
@@ -117,6 +121,32 @@ try {
     const [item] = await tx.insert(discoveryItemsTable).values({jobId: job!.id, ownerId: job!.ownerId,
       docketNumber: "CP-02-CR-0005845-2026", position: 0, sourceUrl: provenance.calendarUrl,
       sourceRetrievedAt: now, provenance, excerpt: parsed.excerpt, detail: parsed.detail}).returning();
+    const searchCriteria = {
+      startDate: date, endDate: date, maxBail: 2_000, source: "live" as const,
+      courtOffice: "ANY", eventType: "Formal Arraignment",
+    };
+    const [search] = await tx.insert(bailSearchesTable).values({
+      ownerId: job!.ownerId, discoveryJobId: job!.id, criteria: searchCriteria,
+      status: "running",
+    }).returning();
+    await publishVerifiedDocumentToSearch(job!.id, item!.id, tx);
+    const [projectedResult] = await tx.select().from(bailSearchResultsTable)
+      .where(eq(bailSearchResultsTable.searchId, search!.id));
+    assert.ok(projectedResult, "A verified extracted PDF must create a row in the linked live search.");
+    const serializedResult = serializeSearchResult(projectedResult!);
+    assert.equal(serializedResult.docket_number, item!.docketNumber);
+    assert.equal(serializedResult.bail_amount, 100);
+    assert.ok(serializedResult.evidence_quote.trim().length > 0,
+      "The API result must carry the text extracted from the genuine PDF fixture.");
+    assert.equal(serializedResult.evidence_page, 1);
+    const visibleResultResponse = GetBailSearchStatusResponse.parse({
+      ...timingResponse,
+      searchId: search!.id,
+      criteria: searchCriteria,
+      results: [{...timingResponse.results[0], ...serializedResult}],
+    });
+    assert.equal(visibleResultResponse.results[0]!.evidence_quote, serializedResult.evidence_quote,
+      "The Search results response must preserve the extracted quote for the UI row.");
     const rows = projectQualifyingRows([item!], criteria.matchFilters);
     assert.equal(rows.length, 1);
     const report = {job: {id: job!.id, criteria, status: "COMPLETED",
