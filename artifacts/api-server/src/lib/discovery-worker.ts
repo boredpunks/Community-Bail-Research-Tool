@@ -228,6 +228,16 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   }).where(and(eq(discoveryJobsTable.id, job.id), eq(discoveryJobsTable.status, "QUEUED"))).returning();
   if (!running) return;
   await discoveryEvent(job, "START", "Worker acquired this job; original query and ordering retained.");
+  let localOcrProgress: { pagesTotal: number; pagesAttempted: number; pagesCompleted: number } | null = null;
+  let localOcrEventClock = 0;
+  const recordLocalOcrEvent = async (kind: "LOCAL_OCR_PROGRESS" | "LOCAL_OCR_FINISHED", message: string) => {
+    const createdAt = new Date(Math.max(Date.now(), localOcrEventClock + 1));
+    localOcrEventClock = createdAt.getTime();
+    await db.insert(discoveryEventsTable).values({
+      jobId: job.id, ownerId: job.ownerId, kind, message, createdAt,
+    });
+  };
+  await recordLocalOcrEvent("LOCAL_OCR_FINISHED", "Local OCR is inactive.");
   const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id)).orderBy(asc(discoveryItemsTable.position));
   const proofItem = singleDocumentProof ? items.find((item) => item.id === singleDocumentProofItemId) : undefined;
   if (singleDocumentProof && (!proofItem || proofItem.sourceRetrievedAt !== null
@@ -699,6 +709,10 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         finished = true;
       } else if (message.kind === "docket") {
         if (calendarPreviewOnly) throw new Error("Calendar preview cannot emit document evidence");
+        if (localOcrProgress) {
+          await recordLocalOcrEvent("LOCAL_OCR_FINISHED", "Local OCR is inactive.");
+          localOcrProgress = null;
+        }
         if (exactSessionRefresh && refreshMismatch) continue;
         const [item] = await db.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.jobId, job.id), eq(discoveryItemsTable.docketNumber, String(message.docketNumber))));
         if (!item || item.provenance.extractionOutcome !== "UNPROCESSED") continue;
@@ -773,6 +787,36 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
             await pause(job, "ORDINARY_SEARCH_FIRST_PDF_ACCESS_CHECK_FAILED: the first document did not validate; collection stopped without another PDF request.");
         }
         if (outcome === "IDENTITY_MISMATCH") await validationStop("DOCUMENT_VALIDATION_FAILED");
+      } else if (message.kind === "ocr_progress") {
+        if (diagnosticOnly || calendarPreviewOnly
+          || Object.keys(message).length !== 4
+          || !Number.isSafeInteger(message.pagesTotal) || Number(message.pagesTotal) < 1
+          || Number(message.pagesTotal) > 100
+          || !Number.isSafeInteger(message.pagesAttempted)
+          || !Number.isSafeInteger(message.pagesCompleted)) {
+          throw new Error("Invalid local OCR progress");
+        }
+        const next = {
+          pagesTotal: Number(message.pagesTotal),
+          pagesAttempted: Number(message.pagesAttempted),
+          pagesCompleted: Number(message.pagesCompleted),
+        };
+        const previous = localOcrProgress;
+        const validFirstAttempt = previous === null
+          && next.pagesAttempted === 1 && next.pagesCompleted === 0;
+        const validNextPage = !!previous && next.pagesTotal === previous.pagesTotal
+          && next.pagesAttempted === previous.pagesAttempted + 1
+          && next.pagesCompleted === previous.pagesCompleted;
+        const validCompletedPage = !!previous && next.pagesTotal === previous.pagesTotal
+          && next.pagesAttempted === previous.pagesAttempted
+          && next.pagesCompleted === previous.pagesCompleted + 1
+          && next.pagesCompleted <= next.pagesAttempted;
+        if (!(validFirstAttempt || validNextPage || validCompletedPage)
+          || next.pagesAttempted > next.pagesTotal) {
+          throw new Error("Invalid local OCR progress sequence");
+        }
+        localOcrProgress = next;
+        await recordLocalOcrEvent("LOCAL_OCR_PROGRESS", JSON.stringify(next));
       } else if (message.kind === "checkpoint") {
         const [current] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));
         const counts = current ? await jobSummary(current) : null;

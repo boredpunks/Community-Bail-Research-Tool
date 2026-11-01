@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BailSearchCurrentRequest } from './bailSearchCurrentRequest';
+import type { BailSearchLocalOcrProgress } from './bailSearchLocalOcrProgress';
 import type { BailSearchProgressCalendarCoverage } from './bailSearchProgressCalendarCoverage';
 
 export interface BailSearchProgress {
@@ -22,5 +23,6 @@ export interface BailSearchProgress {
   sourceRequestsUsed: number;
   /** @nullable */
   sourceRequestLimit: number | null;
+  localOcr: BailSearchLocalOcrProgress | null;
   currentRequest?: BailSearchCurrentRequest;
 }

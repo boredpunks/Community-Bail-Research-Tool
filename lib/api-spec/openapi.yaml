@@ -684,9 +684,17 @@ components:
         method: { type: string }
         path: { type: string }
         startedAt: { type: string, format: date-time }
+    BailSearchLocalOcrProgress:
+      type: object
+      additionalProperties: false
+      required: [pagesTotal, pagesAttempted, pagesCompleted]
+      properties:
+        pagesTotal: { type: integer, minimum: 1, maximum: 100 }
+        pagesAttempted: { type: integer, minimum: 0, maximum: 100 }
+        pagesCompleted: { type: integer, minimum: 0, maximum: 100 }
     BailSearchProgress:
       type: object
-      required: [completed, total, pending, calendarValidated, calendarCoverage, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit]
+      required: [completed, total, pending, calendarValidated, calendarCoverage, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit, localOcr]
       properties:
         completed: { type: integer }
         total: { type: integer }
@@ -710,6 +718,7 @@ components:
         documentsWithEvidence: { type: integer }
         sourceRequestsUsed: { type: integer }
         sourceRequestLimit: { type: [integer, "null"] }
+        localOcr: { oneOf: [{ $ref: "#/components/schemas/BailSearchLocalOcrProgress" }, { type: "null" }] }
         currentRequest: { $ref: "#/components/schemas/BailSearchCurrentRequest" }
     BailSearchResult:
       type: object

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   bailSearchResultsTable, bailSearchesTable, db, discoveryEventsTable, discoveryItemsTable,
   discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, pool,
@@ -141,7 +141,30 @@ try {
 
     // The test-only worker uses local calendar HTML and supplied PDFs. It has
     // no browser, HTTP client, or public-network path.
-    await runJob(job, undefined, { offlineMockSource: true });
+    const workerRun = runJob(job, undefined, { offlineMockSource: true });
+    if (searchIds.length === 1) {
+      let activeProgress: { pagesTotal: number; pagesAttempted: number; pagesCompleted: number } | null = null;
+      let requestDuringOcr: unknown;
+      const deadline = Date.now() + 5_000;
+      while (!activeProgress && Date.now() < deadline) {
+        const progressResponse = await fetch(
+          `${origin}/api/bail-search/search/${started.searchId}/status`, { headers: { cookie } },
+        );
+        assert.equal(progressResponse.status, 200);
+        const body = await progressResponse.json() as {
+          progress: {
+            localOcr: { pagesTotal: number; pagesAttempted: number; pagesCompleted: number } | null;
+            currentRequest?: unknown;
+          };
+        };
+        activeProgress = body.progress.localOcr;
+        requestDuringOcr = body.progress.currentRequest;
+        if (!activeProgress) await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      assert.deepEqual(activeProgress, { pagesTotal: 2, pagesAttempted: 1, pagesCompleted: 0 });
+      assert.equal(requestDuringOcr, undefined, "Local OCR must not appear as a court request in flight.");
+    }
+    await workerRun;
     const [afterDiscovery] = await db.select().from(bailSearchesTable)
       .where(eq(bailSearchesTable.id, started.searchId));
     assert.ok(afterDiscovery);
@@ -156,6 +179,7 @@ try {
       reason?: string | null;
       progress: {
         calendarValidated: boolean; documentsRetrieved: number; documentsProcessed: number;
+        localOcr: { pagesTotal: number; pagesAttempted: number; pagesCompleted: number } | null;
         calendarCoverage: {
           segmentsChecked: number; segmentsTotal: number | null;
           rowsObserved: number; rowsRetained: number; rowsExcluded: number; partial: boolean;
@@ -172,6 +196,7 @@ try {
     assert.equal(response.progress.calendarValidated, true);
     assert.equal(response.progress.documentsRetrieved, 1);
     assert.equal(response.progress.documentsProcessed, 1);
+    assert.equal(response.progress.localOcr, null, "Completed extraction must clear active OCR status.");
     if (scenario.partialCoverage) {
       assert.deepEqual(response.progress.calendarCoverage, {
         segmentsChecked: 1,
@@ -192,6 +217,23 @@ try {
       .where(eq(discoveryRequestsTable.jobId, search.discoveryJobId));
     assert.deepEqual(requests.map(request => [request.method, request.path, request.outcome]).sort(),
       [["GET", scenario.documentPath, "OK"], ["POST", "/CaseSearch", "OK"]]);
+    if (searchIds.length === 1) {
+      const ocrEvents = await db.select({
+        kind: discoveryEventsTable.kind,
+        message: discoveryEventsTable.message,
+      }).from(discoveryEventsTable).where(and(
+        eq(discoveryEventsTable.jobId, search.discoveryJobId),
+        inArray(discoveryEventsTable.kind, ["LOCAL_OCR_PROGRESS", "LOCAL_OCR_FINISHED"]),
+      )).orderBy(asc(discoveryEventsTable.createdAt));
+      const progressEvents = ocrEvents.filter(event => event.kind === "LOCAL_OCR_PROGRESS");
+      assert.deepEqual(progressEvents.map(event => JSON.parse(event.message)), [
+        { pagesTotal: 2, pagesAttempted: 1, pagesCompleted: 0 },
+        { pagesTotal: 2, pagesAttempted: 1, pagesCompleted: 1 },
+        { pagesTotal: 2, pagesAttempted: 2, pagesCompleted: 1 },
+        { pagesTotal: 2, pagesAttempted: 2, pagesCompleted: 2 },
+      ]);
+      assert.ok(ocrEvents.some(event => event.kind === "LOCAL_OCR_FINISHED"));
+    }
     const [item] = await db.select().from(discoveryItemsTable)
       .where(and(eq(discoveryItemsTable.jobId, search.discoveryJobId),
         eq(discoveryItemsTable.docketNumber, scenario.docketNumber)));

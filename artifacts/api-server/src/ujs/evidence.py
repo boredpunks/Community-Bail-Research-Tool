@@ -534,7 +534,7 @@ def bail_sections(pages):
     return sections
 
 
-def extract_bail(body, docket):
+def extract_bail(body, docket, progress=None):
     base = {"entries": [], "postedEntryState": "UNKNOWN", "excerpt": None}
     if not body.startswith(b"%PDF-"):
         return dict(base, extractionOutcome="UNREADABLE", detail="Source did not return a PDF.")
@@ -543,7 +543,7 @@ def extract_bail(body, docket):
             if document.page_count > 100:
                 return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Document page limit exceeded.")
             pages = [page.get_text(sort=True) for page in document]
-            pages, ocr_used, ocr_notice = fill_scanned_pages(document, pages)
+            pages, ocr_used, ocr_notice = fill_scanned_pages(document, pages, progress)
     except Exception:
         return dict(base, extractionOutcome="UNREADABLE", detail="PDF could not be read.")
     if not pages or not pages[0].strip():

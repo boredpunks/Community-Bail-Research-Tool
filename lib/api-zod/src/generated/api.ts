@@ -160,6 +160,14 @@ export const listBailSearchesResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}
 export const listBailSearchesResponseCriteriaMaxBailMin = 0;
 export const listBailSearchesResponseCriteriaMaxBailMax = 20000000;
 
+export const listBailSearchesResponseProgressLocalOcrOnePagesTotalMax = 100;
+
+export const listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMin = 0;
+export const listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMax = 100;
+
+export const listBailSearchesResponseProgressLocalOcrOnePagesCompletedMin = 0;
+export const listBailSearchesResponseProgressLocalOcrOnePagesCompletedMax = 100;
+
 export const listBailSearchesResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -194,6 +202,11 @@ export const ListBailSearchesResponseItem = zod.object({
   "documentsWithEvidence": zod.int(),
   "sourceRequestsUsed": zod.int(),
   "sourceRequestLimit": zod.int().nullable(),
+  "localOcr": zod.union([zod.object({
+  "pagesTotal": zod.int().min(1).max(listBailSearchesResponseProgressLocalOcrOnePagesTotalMax),
+  "pagesAttempted": zod.int().min(listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMin).max(listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMax),
+  "pagesCompleted": zod.int().min(listBailSearchesResponseProgressLocalOcrOnePagesCompletedMin).max(listBailSearchesResponseProgressLocalOcrOnePagesCompletedMax)
+}),zod.null()]),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -270,6 +283,14 @@ export const startBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}-
 export const startBailSearchResponseCriteriaMaxBailMin = 0;
 export const startBailSearchResponseCriteriaMaxBailMax = 20000000;
 
+export const startBailSearchResponseProgressLocalOcrOnePagesTotalMax = 100;
+
+export const startBailSearchResponseProgressLocalOcrOnePagesAttemptedMin = 0;
+export const startBailSearchResponseProgressLocalOcrOnePagesAttemptedMax = 100;
+
+export const startBailSearchResponseProgressLocalOcrOnePagesCompletedMin = 0;
+export const startBailSearchResponseProgressLocalOcrOnePagesCompletedMax = 100;
+
 export const startBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -304,6 +325,11 @@ export const StartBailSearchResponse = zod.object({
   "documentsWithEvidence": zod.int(),
   "sourceRequestsUsed": zod.int(),
   "sourceRequestLimit": zod.int().nullable(),
+  "localOcr": zod.union([zod.object({
+  "pagesTotal": zod.int().min(1).max(startBailSearchResponseProgressLocalOcrOnePagesTotalMax),
+  "pagesAttempted": zod.int().min(startBailSearchResponseProgressLocalOcrOnePagesAttemptedMin).max(startBailSearchResponseProgressLocalOcrOnePagesAttemptedMax),
+  "pagesCompleted": zod.int().min(startBailSearchResponseProgressLocalOcrOnePagesCompletedMin).max(startBailSearchResponseProgressLocalOcrOnePagesCompletedMax)
+}),zod.null()]),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -367,6 +393,14 @@ export const getBailSearchStatusResponseCriteriaEndDateRegExp = new RegExp('^\\d
 export const getBailSearchStatusResponseCriteriaMaxBailMin = 0;
 export const getBailSearchStatusResponseCriteriaMaxBailMax = 20000000;
 
+export const getBailSearchStatusResponseProgressLocalOcrOnePagesTotalMax = 100;
+
+export const getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMin = 0;
+export const getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMax = 100;
+
+export const getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMin = 0;
+export const getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMax = 100;
+
 export const getBailSearchStatusResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -401,6 +435,11 @@ export const GetBailSearchStatusResponse = zod.object({
   "documentsWithEvidence": zod.int(),
   "sourceRequestsUsed": zod.int(),
   "sourceRequestLimit": zod.int().nullable(),
+  "localOcr": zod.union([zod.object({
+  "pagesTotal": zod.int().min(1).max(getBailSearchStatusResponseProgressLocalOcrOnePagesTotalMax),
+  "pagesAttempted": zod.int().min(getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMin).max(getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMax),
+  "pagesCompleted": zod.int().min(getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMin).max(getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMax)
+}),zod.null()]),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -473,6 +512,14 @@ export const resumeBailSearchResponseCriteriaEndDateRegExp = new RegExp('^\\d{4}
 export const resumeBailSearchResponseCriteriaMaxBailMin = 0;
 export const resumeBailSearchResponseCriteriaMaxBailMax = 20000000;
 
+export const resumeBailSearchResponseProgressLocalOcrOnePagesTotalMax = 100;
+
+export const resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMin = 0;
+export const resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMax = 100;
+
+export const resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMin = 0;
+export const resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMax = 100;
+
 export const resumeBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -507,6 +554,11 @@ export const ResumeBailSearchResponse = zod.object({
   "documentsWithEvidence": zod.int(),
   "sourceRequestsUsed": zod.int(),
   "sourceRequestLimit": zod.int().nullable(),
+  "localOcr": zod.union([zod.object({
+  "pagesTotal": zod.int().min(1).max(resumeBailSearchResponseProgressLocalOcrOnePagesTotalMax),
+  "pagesAttempted": zod.int().min(resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMin).max(resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMax),
+  "pagesCompleted": zod.int().min(resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMin).max(resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMax)
+}),zod.null()]),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),

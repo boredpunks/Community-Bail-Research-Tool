@@ -116,6 +116,13 @@ def main():
     )
     body = pdf_path.read_bytes()
     started = time.perf_counter()
+    # Offline-only IPC fixture: exercise progress propagation without claiming
+    # that these native-text PDF fixtures were actually OCR'd.
+    emit("ocr_progress", pagesAttempted=1, pagesCompleted=0, pagesTotal=2)
+    time.sleep(0.35)
+    emit("ocr_progress", pagesAttempted=1, pagesCompleted=1, pagesTotal=2)
+    emit("ocr_progress", pagesAttempted=2, pagesCompleted=1, pagesTotal=2)
+    emit("ocr_progress", pagesAttempted=2, pagesCompleted=2, pagesTotal=2)
     extracted = extract_bail(body, docket)
     extraction_ms = round((time.perf_counter() - started) * 1000)
     expected_outcome = "MISSING_BAIL_SECTION" if no_bail else "EXTRACTED"

@@ -10,6 +10,7 @@ import random
 import re
 import shutil
 import sys
+import threading
 import time
 from urllib.parse import urlsplit, parse_qs, parse_qsl
 
@@ -29,8 +30,13 @@ from inspection_safety import (
 from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
 
+_output_lock = threading.Lock()
+
+
 def emit(kind, **values):
-    print(json.dumps({"kind": kind, **values}), flush=True)
+    with _output_lock:
+        sys.stdout.write(json.dumps({"kind": kind, **values}) + "\n")
+        sys.stdout.flush()
 
 
 def submitted_calendar_payload_matches(request, expected_fields):
@@ -1126,7 +1132,13 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     try:
                         extraction_started = time.perf_counter()
                         try:
-                            result = extract_bail(body, item["docketNumber"])
+                            result = extract_bail(
+                                body, item["docketNumber"],
+                                progress=lambda attempted, completed, total: emit(
+                                    "ocr_progress", pagesAttempted=attempted,
+                                    pagesCompleted=completed, pagesTotal=total,
+                                ),
+                            )
                         finally:
                             extraction_ms = max(0, round((time.perf_counter() - extraction_started) * 1000))
                         emit("docket", docketNumber=item["docketNumber"], retrievedAt=retrieved,

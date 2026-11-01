@@ -23,6 +23,7 @@ export * from './bailSearchInput';
 export * from './bailSearchInputCourtOffice';
 export * from './bailSearchInputEventType';
 export * from './bailSearchInputSource';
+export * from './bailSearchLocalOcrProgress';
 export * from './bailSearchProgress';
 export * from './bailSearchProgressCalendarCoverage';
 export * from './bailSearchReadiness';

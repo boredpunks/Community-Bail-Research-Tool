@@ -94,6 +94,24 @@ export interface BailSearchCurrentRequest {
   startedAt: string;
 }
 
+export interface BailSearchLocalOcrProgress {
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  pagesTotal: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  pagesAttempted: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  pagesCompleted: number;
+}
+
 export type BailSearchProgressCalendarCoverage = {
   segmentsChecked: number;
   /** @nullable */
@@ -118,6 +136,7 @@ export interface BailSearchProgress {
   sourceRequestsUsed: number;
   /** @nullable */
   sourceRequestLimit: number | null;
+  localOcr: BailSearchLocalOcrProgress | null;
   currentRequest?: BailSearchCurrentRequest;
 }
 

@@ -109,6 +109,17 @@ export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
           ? `${requestLabel(currentRequest.path, currentRequest.method)} · ${formatElapsed(currentRequest.startedAt, now)} elapsed`
           : 'No court request is in flight at this instant.'}
       </p>
+      {search.progress.localOcr ? (
+        <p className="hint" role="status" data-testid="text-local-ocr-progress">
+          Local OCR:{' '}
+          <strong>{search.progress.localOcr.pagesAttempted > search.progress.localOcr.pagesCompleted
+            ? `reading scanned PDF page ${search.progress.localOcr.pagesAttempted} of ${search.progress.localOcr.pagesTotal}`
+            : `completed ${search.progress.localOcr.pagesCompleted} of ${search.progress.localOcr.pagesTotal} scanned PDF pages`}</strong>
+          <span className="block text-xs">
+            {search.progress.localOcr.pagesAttempted} attempted · {search.progress.localOcr.pagesCompleted} completed. Local processing is separate from court-request timing.
+          </span>
+        </p>
+      ) : null}
       {search.reason ? <p className="hint text-xs">Latest server update: {search.reason}</p> : null}
     </section>
   );

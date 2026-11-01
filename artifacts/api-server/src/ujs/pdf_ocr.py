@@ -35,7 +35,7 @@ def ordered_ocr_text(output):
     return "\n".join(" ".join(text for _, text in sorted(line[2])) for line in lines)
 
 
-def fill_scanned_pages(document, pages):
+def fill_scanned_pages(document, pages, progress=None):
     """Fill textless pages, without sending document bytes to another service."""
     missing = [index for index, text in enumerate(pages) if not text.strip()]
     if not missing:
@@ -46,6 +46,8 @@ def fill_scanned_pages(document, pages):
     pages = list(pages)
     used = False
     deadline = time.monotonic() + OCR_BUDGET_SECONDS
+    attempted = 0
+    completed = 0
     for index in missing:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -56,6 +58,9 @@ def fill_scanned_pages(document, pages):
         if area <= 0:
             return pages, used, "A scanned page has invalid dimensions."
         scale = min(220 / 72, math.sqrt(8_000_000 / area))
+        attempted += 1
+        if progress:
+            progress(attempted, completed, len(missing))
         try:
             image = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
             result = subprocess.run(
@@ -71,6 +76,9 @@ def fill_scanned_pages(document, pages):
             if text.strip():
                 pages[index] = text
                 used = True
+            completed += 1
+            if progress:
+                progress(attempted, completed, len(missing))
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
             return pages, used, "Local OCR stopped before every scanned page was read."
     return pages, used, None

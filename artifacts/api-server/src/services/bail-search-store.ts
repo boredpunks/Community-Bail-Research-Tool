@@ -22,6 +22,39 @@ type CalendarCoverage = {
   partial: boolean;
 };
 
+type LocalOcrProgress = {
+  pagesTotal: number;
+  pagesAttempted: number;
+  pagesCompleted: number;
+};
+
+async function localOcrProgress(jobId: string | null | undefined): Promise<LocalOcrProgress | null> {
+  if (!jobId) return null;
+  const [event] = await db.select({
+    kind: discoveryEventsTable.kind,
+    message: discoveryEventsTable.message,
+  }).from(discoveryEventsTable).where(and(
+    eq(discoveryEventsTable.jobId, jobId),
+    inArray(discoveryEventsTable.kind, ["LOCAL_OCR_PROGRESS", "LOCAL_OCR_FINISHED"]),
+  )).orderBy(desc(discoveryEventsTable.createdAt)).limit(1);
+  if (!event || event.kind !== "LOCAL_OCR_PROGRESS") return null;
+  try {
+    const value = JSON.parse(event.message) as Partial<LocalOcrProgress>;
+    if (Object.keys(value).sort().join(",") !== "pagesAttempted,pagesCompleted,pagesTotal"
+      || !Number.isSafeInteger(value.pagesTotal) || Number(value.pagesTotal) < 1
+      || Number(value.pagesTotal) > 100
+      || !Number.isSafeInteger(value.pagesAttempted)
+      || Number(value.pagesAttempted) < 1
+      || Number(value.pagesAttempted) > Number(value.pagesTotal)
+      || !Number.isSafeInteger(value.pagesCompleted)
+      || Number(value.pagesCompleted) < 0
+      || Number(value.pagesCompleted) > Number(value.pagesAttempted)) return null;
+    return value as LocalOcrProgress;
+  } catch {
+    return null;
+  }
+}
+
 async function calendarCoverage(jobId: string | null | undefined): Promise<CalendarCoverage> {
   const empty: CalendarCoverage = {
     segmentsChecked: 0, segmentsTotal: null, rowsObserved: 0, rowsRetained: 0, rowsExcluded: 0, partial: false,
@@ -230,6 +263,9 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     eq(discoveryRequestsTable.outcome, "IN_FLIGHT"),
   )).limit(1) : [];
   const coverage = await calendarCoverage(job?.id);
+  const ocrProgress = search.status === "running" && job?.status === "RUNNING"
+    ? await localOcrProgress(job.id)
+    : null;
   return {
     searchId: search.id, status: search.status as "running" | "paused" | "complete",
     criteria: search.criteria,
@@ -244,6 +280,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
       documentsWithEvidence,
       sourceRequestsUsed: job?.requestsUsed ?? 0,
       sourceRequestLimit: job?.criteria.requestCap ?? null,
+      localOcr: ocrProgress,
       ...(currentRequest ? { currentRequest: {
         method: currentRequest.method, path: currentRequest.path, startedAt: currentRequest.startedAt.toISOString(),
       } } : {}),

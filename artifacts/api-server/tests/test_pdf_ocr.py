@@ -4,15 +4,16 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pymupdf
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "artifacts/api-server/src/ujs"))
 from evidence import extract_bail
-from pdf_ocr import bail_transcript, ordered_ocr_text
+from pdf_ocr import bail_transcript, fill_scanned_pages, ordered_ocr_text
 
 
 class ScannedPdfTextTests(unittest.TestCase):
@@ -38,14 +39,39 @@ class ScannedPdfTextTests(unittest.TestCase):
         self.assertIn("OCR-assisted text is unvalidated", result["detail"])
 
     def test_ocr_timeout_is_visible_and_never_returns_guessed_evidence(self):
+        progress = []
         with patch("pdf_ocr.shutil.which", return_value="tesseract"), patch(
             "pdf_ocr.subprocess.run", side_effect=subprocess.TimeoutExpired("tesseract", 20)
         ):
-            result = extract_bail(self.scan, "CP-02-CR-0005845-2026")
+            result = extract_bail(
+                self.scan, "CP-02-CR-0005845-2026",
+                progress=lambda attempted, completed, total: progress.append(
+                    (attempted, completed, total)),
+            )
         self.assertEqual(result["extractionOutcome"], "UNREADABLE")
         self.assertEqual(result["entries"], [])
         self.assertIsNone(result["excerpt"])
         self.assertIn("OCR stopped", result["detail"])
+        self.assertEqual(progress, [(1, 0, 1)], "A timed-out page is attempted but not completed.")
+
+    def test_ocr_reports_only_page_counts_as_pages_are_attempted_and_completed(self):
+        page = Mock()
+        page.rect = SimpleNamespace(width=612, height=792)
+        page.get_pixmap.return_value = SimpleNamespace(tobytes=lambda _format: b"png")
+        document = [page, page]
+        progress = []
+        result = SimpleNamespace(returncode=0, stdout=b"level\tleft\ttop\theight\ttext\n")
+        with patch("pdf_ocr.shutil.which", return_value="tesseract"), patch(
+            "pdf_ocr.subprocess.run", return_value=result
+        ):
+            _pages, used, notice = fill_scanned_pages(
+                document, ["", ""],
+                lambda attempted, completed, total: progress.append(
+                    (attempted, completed, total)),
+            )
+        self.assertFalse(used, "An empty OCR result is still a completed page attempt.")
+        self.assertIsNone(notice)
+        self.assertEqual(progress, [(1, 0, 2), (1, 1, 2), (2, 1, 2), (2, 2, 2)])
 
     def test_mixed_mdj_pdf_keeps_scanned_setting_separate_from_posted_security(self):
         with pymupdf.open(ROOT / "attached_assets/MdjDocketSheet_1792451676271.pdf") as source:
