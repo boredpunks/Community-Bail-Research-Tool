@@ -103,12 +103,13 @@ def main():
         "running",
         date,
         progress(
-            completed=1,
+            completed=0,
             total=2,
-            pending=1,
+            pending=2,
             documentsDiscovered=2,
-            documentsRetrieved=1,
-            documentsProcessed=1,
+            documentsRetrieved=0,
+            documentsProcessed=0,
+            documentsWithEvidence=0,
             sourceRequestsUsed=3,
             currentRequest={
                 "method": "GET",
@@ -116,7 +117,7 @@ def main():
                 "startedAt": "2026-11-01T12:00:00.000Z",
             },
         ),
-        [result("newer-row", "NEW-2026-0002", "New run result.")],
+        [],
         "2026-11-01T12:01:00.000Z",
     )
 
@@ -202,9 +203,7 @@ def main():
             progress_panel = page.get_by_test_id("panel-search-progress")
             progress_panel.wait_for()
             assert "Checking docket documents" in progress_panel.inner_text()
-            assert "1 of 2 dockets processed; 1 remain." in progress_panel.inner_text()
-            page.get_by_test_id("row-search-newer-row").wait_for()
-            assert page.get_by_test_id("text-search-evidence-newer-row").inner_text() == "New run result."
+            assert "0 of 2 dockets processed; 2 remain." in progress_panel.inner_text()
             assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
             options = page.get_by_test_id("select-search-history").locator("option")
             assert options.count() == 2
@@ -216,10 +215,18 @@ def main():
             assert started["body"]["endDate"] == date
             assert started["body"]["source"] == "live"
 
+            page.reload(wait_until="domcontentloaded")
+            page.get_by_test_id("panel-search-progress").wait_for()
+            assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
+            assert "Running" in page.get_by_test_id("status-search").inner_text()
+            assert page.get_by_test_id("row-search-older-row").count() == 0
+
             page.get_by_test_id("select-search-history").select_option("older-search")
             assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
-            assert page.get_by_test_id("row-search-newer-row").count() == 0
+            assert page.get_by_test_id("panel-search-progress").count() == 0
 
+            page.get_by_test_id("input-search-start-date").fill(date)
+            page.get_by_test_id("input-search-end-date").fill(date)
             page.get_by_test_id("button-start-bail-search").click()
             error = page.get_by_test_id("error-search-form")
             error.wait_for()
@@ -229,10 +236,10 @@ def main():
             assert started["post_count"] == 2
             assert page.get_by_test_id("select-search-history").input_value() == "older-search"
             assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
-            assert page.get_by_test_id("row-search-newer-row").count() == 0
+            assert page.get_by_test_id("panel-search-progress").count() == 0
             browser.close()
 
-        print("PASS: successful searches can be reviewed, and a failed new search preserves the selected older PDF evidence.")
+        print("PASS: refresh restores the latest running search while older PDF evidence remains selectable.")
     finally:
         server.terminate()
         try:

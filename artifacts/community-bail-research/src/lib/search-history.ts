@@ -1,12 +1,13 @@
 export type SearchHistoryItem = {
   searchId: string;
+  status?: string;
   progress: {
     completed: number;
     documentsProcessed: number;
   };
 };
 
-/** Keep the latest search selected unless it has no completed evidence to show. */
+/** Prefer a running latest search; otherwise preserve useful evidence from history. */
 export function chooseDisplayedSearchId(
   searches: readonly SearchHistoryItem[],
   requestedId?: string,
@@ -14,6 +15,7 @@ export function chooseDisplayedSearchId(
   if (requestedId && searches.some((search) => search.searchId === requestedId)) return requestedId;
   const latest = searches[0];
   if (!latest) return "";
+  if (latest.status === "running") return latest.searchId;
   if (latest.progress.completed > 0 || latest.progress.documentsProcessed > 0) return latest.searchId;
   return searches.find((search) =>
     search.progress.completed > 0 || search.progress.documentsProcessed > 0,
