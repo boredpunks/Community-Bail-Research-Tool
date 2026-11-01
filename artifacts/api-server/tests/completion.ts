@@ -8,7 +8,7 @@ import {
   bailSearchesTable, bailSearchResultsTable,
 } from "@workspace/db";
 import { GetBailSearchStatusResponse, GetDiscoveryJobResponse } from "@workspace/api-zod";
-import { projectQualifyingRows, qualifyingEntries, matchingEvents, eventConflict } from "@workspace/bail-research";
+import { projectQualifyingRows } from "@workspace/bail-research";
 import { newResearchCriteria, criteriaIdentity } from "../src/lib/discovery-launch";
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import { observationValues } from "../src/lib/discovery-candidates";
@@ -108,17 +108,10 @@ const provenance = {...parsed, calendarUrl: `urn:sha256:${parsed.documentSha256}
   courtOffice: "CP-05-02-Crim", courtType: "COMMON_PLEAS" as const,
   eventType: "Formal Arraignment", eventDate: date, filingDate: null,
   matchingEvents: [{eventDate: date, eventType: "Formal Arraignment", eventTime: "8:00 am"}],
+  pdfEvents: [],
   documentAcquisition: "MANUAL_UPLOAD" as const};
-console.log("offline filter diagnostic", JSON.stringify({
-  matchingEvents: matchingEvents(provenance).length,
-  pdfEvents: provenance.pdfEvents?.length ?? 0,
-  eventConflicts: matchingEvents(provenance).map(event => eventConflict(event, provenance)),
-  qualifyingEntries: qualifyingEntries(provenance, criteria.matchFilters).length,
-  resultVersion: criteria.resultVersion,
-  inclusiveMaximum: criteria.matchFilters?.inclusiveMaximum,
-}));
 assert.equal(matchesDiscoveryFilters(provenance, criteria.matchFilters, 2), true, "version 2 monetary filter should include the verified fixture");
-assert.equal(matchesDiscoveryFilters(provenance, criteria.matchFilters), false, "legacy monetary filter should exclude the fixture when its limit is exclusive");
+assert.equal(matchesDiscoveryFilters(provenance, {...criteria.matchFilters, inclusiveMaximum: false}), false, "legacy monetary filter should exclude a value at its exclusive limit");
 assert.equal(matchesDiscoveryFilters({...provenance, entries: [], extractionOutcome: "MISSING_BAIL_SECTION"}, undefined, 2), false, "version 2 must exclude documents without bail evidence");
 assert.equal(matchesDiscoveryFilters({...provenance, entries: [], extractionOutcome: "MISSING_BAIL_SECTION"}, undefined), true, "legacy path preserves missing-section matches");
 
