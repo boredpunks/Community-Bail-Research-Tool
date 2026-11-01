@@ -10,6 +10,7 @@ import { integratedSourceMethod } from "../src/lib/discovery-safety";
 import { runJob } from "../src/lib/discovery-worker";
 import { createWorkspaceSession, WORKSPACE_COOKIE_NAME } from "../src/middlewares/researchAuth";
 import { runBailSearch } from "../src/services/bail-search-worker";
+import { resumeToken, searchOwner } from "../src/services/bail-search-store";
 
 const baseUrl = "https://ujsportal.pacourts.us";
 const sessionSecret = "task-115-offline-search-test-signing-key";
@@ -187,7 +188,132 @@ try {
     }
   }
 
-  console.log("PASS: live API launch/status preserves both extracted bail evidence and a verified no-bail-section calendar result; no public court requests.");
+  const templateSearch = (await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, searchIds[0]!)))[0]!;
+  const templateJob = (await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, templateSearch.discoveryJobId!)))[0]!;
+  const [blockedJob] = await db.insert(discoveryJobsTable).values({
+    ownerId: templateJob.ownerId,
+    criteria: templateJob.criteria,
+    status: "PAUSED",
+    calendarComplete: false,
+    requestsUsed: 1,
+    message: "ACCESS_DENIED: all source traffic stopped.",
+  }).returning();
+  jobIds.push(blockedJob!.id);
+  const [blockedSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: searchOwner(cookie),
+    discoveryJobId: blockedJob!.id,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "paused",
+    reason: "ACCESS_DENIED: all source traffic stopped.",
+  }).returning();
+  searchIds.push(blockedSearch!.id);
+  await db.insert(discoveryRequestsTable).values({
+    jobId: blockedJob!.id,
+    ownerId: blockedJob!.ownerId,
+    sourceId: "UJS",
+    path: "/CaseSearch",
+    method: "POST",
+    statusCode: 403,
+    outcome: "ACCESS_DENIED",
+    completedAt: new Date(),
+  });
+  await db.update(discoverySourceTable).set({
+    blockedReason: "ACCESS_DENIED",
+    accessVerifiedAt: null,
+    verifiedMethod: null,
+    collectionApprovedAt: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  const blockedStatus = await fetch(`${origin}/api/bail-search/search/${blockedSearch!.id}/status`, {
+    headers: { cookie },
+  });
+  assert.equal(blockedStatus.status, 200);
+  const blockedBody = await blockedStatus.json() as {
+    recovery: { action: string; message: string }; resumeToken: string | null;
+  };
+  assert.equal(blockedBody.recovery.action, "source_blocked");
+  assert.match(blockedBody.recovery.message, /latest source request recorded an access denial \(HTTP 403\)/);
+  assert.equal(blockedBody.resumeToken, null);
+  const deniedResume = await fetch(`${origin}/api/bail-search/search/${blockedSearch!.id}/resume`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ resumeToken: resumeToken(blockedSearch!) }),
+  });
+  assert.equal(deniedResume.status, 409);
+  const retainedRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, blockedJob!.id));
+  assert.equal(retainedRequests.length, 1, "A blocked resume must not reserve another source request.");
+  const [stillPausedJob] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, blockedJob!.id));
+  const [stillPausedSearch] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, blockedSearch!.id));
+  assert.equal(stillPausedJob?.status, "PAUSED");
+  assert.equal(stillPausedSearch?.status, "paused");
+  assert.deepEqual(stillPausedJob?.criteria, templateJob.criteria, "Resume must not broaden or rewrite original source criteria.");
+
+  await db.update(discoverySourceTable).set({
+    blockedReason: null,
+    pausedUntil: null,
+    activeRequestId: null,
+    accessVerifiedAt: new Date(),
+    verifiedMethod: integratedSourceMethod,
+    collectionApprovedAt: new Date(),
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  const [resumableJob] = await db.insert(discoveryJobsTable).values({
+    ownerId: templateJob.ownerId,
+    criteria: templateJob.criteria,
+    status: "PAUSED",
+    calendarComplete: false,
+    requestsUsed: 1,
+    message: "Local fixture pause; resume must retain the same scope.",
+  }).returning();
+  jobIds.push(resumableJob!.id);
+  const [resumableSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: searchOwner(cookie),
+    discoveryJobId: resumableJob!.id,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "paused",
+    reason: "Local fixture pause.",
+  }).returning();
+  searchIds.push(resumableSearch!.id);
+  await db.insert(discoveryRequestsTable).values({
+    jobId: resumableJob!.id,
+    ownerId: resumableJob!.ownerId,
+    sourceId: "UJS",
+    path: "/CaseSearch",
+    method: "POST",
+    statusCode: 200,
+    outcome: "OK",
+    completedAt: new Date(),
+  });
+  const resumableStatus = await fetch(`${origin}/api/bail-search/search/${resumableSearch!.id}/status`, {
+    headers: { cookie },
+  });
+  assert.equal(resumableStatus.status, 200);
+  const resumableBody = await resumableStatus.json() as {
+    recovery: { action: string }; resumeToken: string | null;
+  };
+  assert.equal(resumableBody.recovery.action, "resume");
+  assert.ok(resumableBody.resumeToken);
+  const resumedResponse = await fetch(`${origin}/api/bail-search/search/${resumableSearch!.id}/resume`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ resumeToken: resumeToken(resumableSearch!) }),
+  });
+  assert.equal(resumedResponse.status, 200);
+  const [resumedJob] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, resumableJob!.id));
+  const [resumedSearch] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, resumableSearch!.id));
+  assert.equal(resumedJob?.status, "QUEUED");
+  assert.equal(resumedSearch?.status, "running");
+  assert.deepEqual(resumedJob?.criteria, templateJob.criteria, "An allowed resume must preserve the original source scope.");
+  const resumedRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, resumableJob!.id));
+  assert.equal(resumedRequests.length, 1, "Resume queues only the existing job; it does not bypass the scheduler's request gate.");
+
+  console.log("PASS: mocked API preserves PDF evidence, rejects blocked resume, and resumes only the unchanged eligible scope.");
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
   for (const searchId of searchIds) {

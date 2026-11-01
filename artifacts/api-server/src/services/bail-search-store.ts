@@ -6,7 +6,7 @@ import {
 } from "@workspace/db";
 import { csvCell } from "../lib/bail-decision";
 import { resultEvidence } from "./bail-search-evidence";
-import { chooseRecovery } from "./bail-search-recovery";
+import { chooseRecovery, recoveryWaitForAdmission } from "./bail-search-recovery";
 import { easternToday } from "../lib/discovery";
 import { resultsDeadline } from "../lib/discovery-safety";
 import { calendarAdmission } from "../lib/research-operations";
@@ -83,26 +83,66 @@ export async function enrichedResult(search: BailSearchRow, row: BailSearchResul
 }
 export async function searchRecovery(search: BailSearchRow, missingEvidence: boolean) {
   const [job] = search.discoveryJobId ? await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, search.discoveryJobId)) : [];
-  let cooldown = search.resumeAvailableAt;
+  let cooldown: Date | null = null;
   let sourceBlocked = false;
+  let block: string | null = null;
+  let latestRequest: { outcome: string; statusCode: number | null } | undefined;
   if (search.status === "paused" && search.criteria.source === "live") {
-    const status = await discoverySourceStatus();
-    if (status.nextEligibleAt) cooldown = new Date(Math.max(cooldown?.getTime() ?? 0, Date.parse(status.nextEligibleAt)));
+    if (job) {
+      [latestRequest] = await db.select({
+        outcome: discoveryRequestsTable.outcome,
+        statusCode: discoveryRequestsTable.statusCode,
+      }).from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))
+        .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
+    }
     const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    let block = !job?.calendarComplete ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
+    block = !job?.calendarComplete ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
     if (job && ["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
       && await canAutomaticallyCheckOrdinaryPdfAccess(job, source)) block = null;
-    // Timed pacing/quota waits are recoverable, unlike access denials.
+    // Only a wait returned by the same admission calculation can expose
+    // Resume later. A future pacing estimate must not mask an access block.
+    if (block) {
+      const status = await discoverySourceStatus();
+      cooldown = recoveryWaitForAdmission(block, [
+        search.resumeAvailableAt,
+        status.nextEligibleAt ? new Date(status.nextEligibleAt) : null,
+        status.pausedUntil ? new Date(status.pausedUntil) : null,
+      ]);
+    }
     sourceBlocked = !!block && !cooldown;
-    if (block && source?.blockedReason) sourceBlocked = true;
   }
+  const deadline = job ? resultsDeadline(job) : null;
   const expired = !!job && (job.status !== "PAUSED" || !!job.resultsExpiredAt
-    || !!job.assessmentId || !!(resultsDeadline(job) && resultsDeadline(job)! <= new Date())
+    || !!job.assessmentId || !!(deadline && deadline <= new Date())
     || !job.calendarComplete && job.criteria.startDate < easternToday()
     || job.requestsUsed >= job.criteria.requestCap);
+  const expiryReason = !job ? null
+    : job.requestsUsed >= job.criteria.requestCap ? "This search used its full source-request budget."
+      : !job.calendarComplete && job.criteria.startDate < easternToday() ? "The original calendar date window has passed."
+        : job.resultsExpiredAt || deadline && deadline <= new Date() ? "The retained source results have expired."
+          : job.assessmentId ? "This source job belongs to an assessment scope that cannot be resumed from this search."
+            : job.status !== "PAUSED" ? "The linked source job is no longer paused."
+              : null;
   return {
     job, recovery: chooseRecovery({ paused: search.status === "paused", saved: search.criteria.source === "saved",
-      missingEvidence, expired, noJob: !job, sourceBlocked, cooldown }),
+      missingEvidence, expired, noJob: search.criteria.source === "live" && !job, sourceBlocked, cooldown,
+      evidence: {
+        calendarValidated: !!job?.calendarComplete,
+        retainedRows: await db.select({ id: bailSearchResultsTable.id }).from(bailSearchResultsTable)
+          .where(eq(bailSearchResultsTable.searchId, search.id)).then(rows => rows.length),
+        documentsDiscovered: job ? await db.select({ id: discoveryItemsTable.id }).from(discoveryItemsTable)
+          .where(eq(discoveryItemsTable.jobId, job.id)).then(rows => rows.length) : 0,
+        documentsProcessed: job ? await db.select({ id: discoveryItemsTable.id }).from(discoveryItemsTable)
+          .where(and(eq(discoveryItemsTable.jobId, job.id),
+            sql`${discoveryItemsTable.provenance}->>'extractionOutcome' <> 'UNPROCESSED'`)).then(rows => rows.length) : 0,
+        blockReason: block,
+        latestOutcome: latestRequest?.outcome ?? null,
+        latestStatusCode: latestRequest?.statusCode ?? null,
+        jobMessage: job?.message ?? search.reason,
+        expiryReason,
+        source: search.criteria.source,
+      },
+    }),
   };
 }
 export async function searchResponse(search: BailSearchRow, includeResults = true) {
