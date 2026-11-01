@@ -20,3 +20,9 @@ Always-on unattended execution needs an always-on worker host.
 **Why:** Autoscale can scale to zero without HTTP traffic; frontend independence alone cannot guarantee execution after all visitors leave.
 
 **How to apply:** Distinguish in-app navigation from leaving the app entirely. Explain ongoing compute costs and obtain approval before changing hosting.
+
+The user wants to keep the current hosting and have it last until a search is complete.
+
+**Why:** The user specified, “Current hosting that lasts until search is complete,” rather than approving an always-on hosting change.
+
+**How to apply:** Preserve the hosting choice. Do not claim Autoscale has a supported background-job completion lease; distinguish the requested behavior from what the current platform guarantees.
