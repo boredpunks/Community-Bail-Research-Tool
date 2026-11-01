@@ -32,14 +32,19 @@ def search(search_id, status, start_date, progress, results, updated_at):
         "progress": progress,
         "incomplete": False,
         "reason": None,
-        "resumeToken": None,
+        "resumeToken": "test-resume-token" if status == "paused" else None,
         "resumeAvailableAt": None,
+        "recovery": {
+            "action": "resume" if status == "paused" else "none",
+            "message": "Your results are saved. Continue checking the remaining evidence." if status == "paused" else "",
+            "availableAt": None,
+        },
         "canManage": True,
         "results": results,
         "createdAt": "2026-11-01T12:00:00.000Z",
         "updatedAt": updated_at,
         "sourceNotice": "Test fixture; no court source is contacted.",
-        "stage": "checking_documents" if status == "running" else "complete",
+        "stage": "checking_documents" if status in ("running", "paused") else "complete",
     }
 
 
@@ -100,7 +105,7 @@ def main():
     )
     newer = search(
         "newer-search",
-        "running",
+        "paused",
         date,
         progress(
             completed=0,
@@ -111,15 +116,13 @@ def main():
             documentsProcessed=0,
             documentsWithEvidence=0,
             sourceRequestsUsed=3,
-            currentRequest={
-                "method": "GET",
-                "path": "/docket/report",
-                "startedAt": "2026-11-01T12:00:00.000Z",
-            },
         ),
         [],
         "2026-11-01T12:01:00.000Z",
     )
+    resumed = {**newer, "status": "running", "resumeToken": None, "recovery": {
+        "action": "none", "message": "", "availableAt": None,
+    }}
 
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -153,7 +156,8 @@ def main():
             output = server.stdout.read() if server.stdout else ""
             raise RuntimeError(f"Vite did not start for the browser test.\n{output}")
 
-        started = {"value": False, "body": None, "post_count": 0}
+        started = {"value": False, "body": None, "post_count": 0, "resume_body": None}
+        latest_search = {"value": newer}
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(
                 headless=True,
@@ -168,13 +172,13 @@ def main():
                 if path.endswith("/api/workspace-access/session"):
                     body = {"authenticated": True}
                 elif path.endswith("/api/bail-search/search") and request.method == "GET":
-                    body = [newer, older] if started["value"] else [older]
+                    body = [latest_search["value"], older] if started["value"] else [older]
                 elif path.endswith("/api/bail-search/search") and request.method == "POST":
                     started["post_count"] += 1
                     if started["post_count"] == 1:
                         started["body"] = request.post_data_json
                         started["value"] = True
-                        body = newer
+                        body = latest_search["value"]
                     else:
                         route.fulfill(
                             status=503,
@@ -184,8 +188,12 @@ def main():
                         return
                 elif path.endswith("/api/bail-search/search/older-search/status"):
                     body = older
+                elif path.endswith("/api/bail-search/search/newer-search/resume") and request.method == "POST":
+                    started["resume_body"] = request.post_data_json
+                    latest_search["value"] = resumed
+                    body = resumed
                 elif path.endswith("/api/bail-search/search/newer-search/status"):
-                    body = newer
+                    body = latest_search["value"]
                 else:
                     route.fulfill(status=404, content_type="application/json", body='{"error":"Unexpected test request"}')
                     return
@@ -205,6 +213,8 @@ def main():
             assert "Checking docket documents" in progress_panel.inner_text()
             assert "0 of 2 dockets processed; 2 remain." in progress_panel.inner_text()
             assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
+            assert "Paused" in page.get_by_test_id("status-search").inner_text()
+            assert page.get_by_test_id("button-resume-search").is_enabled()
             options = page.get_by_test_id("select-search-history").locator("option")
             assert options.count() == 2
             assert [options.nth(index).get_attribute("value") for index in range(2)] == [
@@ -218,12 +228,23 @@ def main():
             page.reload(wait_until="domcontentloaded")
             page.get_by_test_id("panel-search-progress").wait_for()
             assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
-            assert "Running" in page.get_by_test_id("status-search").inner_text()
+            assert "Paused" in page.get_by_test_id("status-search").inner_text()
+            assert page.get_by_test_id("button-resume-search").is_visible()
+            assert page.get_by_test_id("button-resume-search").is_enabled()
             assert page.get_by_test_id("row-search-older-row").count() == 0
 
             page.get_by_test_id("select-search-history").select_option("older-search")
             assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
             assert page.get_by_test_id("panel-search-progress").count() == 0
+            page.get_by_test_id("select-search-history").select_option("newer-search")
+            page.get_by_test_id("button-resume-search").click()
+            assert started["resume_body"] == {"resumeToken": "test-resume-token"}
+            page.wait_for_function(
+                "() => document.querySelector('[data-testid=\"status-search\"]')?.textContent?.includes('Running')"
+            )
+            assert "Running" in page.get_by_test_id("status-search").inner_text()
+            page.get_by_test_id("select-search-history").select_option("older-search")
+            assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
 
             page.get_by_test_id("input-search-start-date").fill(date)
             page.get_by_test_id("input-search-end-date").fill(date)
@@ -239,7 +260,7 @@ def main():
             assert page.get_by_test_id("panel-search-progress").count() == 0
             browser.close()
 
-        print("PASS: refresh restores the latest running search while older PDF evidence remains selectable.")
+        print("PASS: refresh restores a resumable paused search while older PDF evidence remains selectable.")
     finally:
         server.terminate()
         try:
