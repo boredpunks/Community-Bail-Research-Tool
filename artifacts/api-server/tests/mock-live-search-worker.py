@@ -8,17 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import time
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "artifacts/api-server/src/ujs"))
 from evidence import CalendarResults, extract_bail
 
-DOCKET = "CP-02-CR-0005845-2026"
 CALENDAR_URL = "https://ujsportal.pacourts.us/CaseSearch"
-PDF_URL = (
-    "https://ujsportal.pacourts.us/Report/CpDocketSheet"
-    f"?docketNumber={DOCKET}"
-)
+POSITIVE_DOCKET = "CP-02-CR-0005845-2026"
+NO_BAIL_DOCKET = "MJ-05310-NT-0000228-2026"
 
 
 def emit(kind, **values):
@@ -33,8 +31,7 @@ def parent_message():
 
 
 def require_grant(url, method):
-    emit("request", path="/CaseSearch" if "CaseSearch" in url else "/Report/CpDocketSheet",
-         method=method, url=url)
+    emit("request", path=urlsplit(url).path, method=method, url=url)
     grant = parent_message()
     if grant.get("allow") is not True or not grant.get("requestId"):
         emit("pause", code="PARENT_DENIED", attempted=False)
@@ -44,7 +41,7 @@ def require_grant(url, method):
     return parent_message().get("continue") is True
 
 
-def calendar_rows(criteria):
+def calendar_rows(criteria, docket, court_type, court_office, event_type):
     date = datetime.strptime(criteria["startDate"], "%Y-%m-%d")
     display_date = f"{date.month}/{date.day}/{date.year}"
     headers = ["Column"] * 19
@@ -54,14 +51,15 @@ def calendar_rows(criteria):
     }.items():
         headers[index] = label
     cells = [""] * 19
-    cells[2] = DOCKET
-    cells[3] = "Common Pleas"
+    cells[2] = docket
+    cells[3] = court_type
     cells[6] = display_date
     cells[9] = "Allegheny"
-    cells[10] = "CP-05-02-Crim"
-    cells[14] = criteria["eventType"]
+    cells[10] = court_office
+    cells[14] = event_type
     cells[16] = f"{display_date} 9:00 am"
-    cells[18] = f'<a href="/Report/CpDocketSheet?docketNumber={DOCKET}">Docket PDF</a>'
+    report_path = "/Report/MdjDocketSheet" if court_type == "Magisterial District Court" else "/Report/CpDocketSheet"
+    cells[18] = f'<a href="{report_path}?docketNumber={docket}">Docket PDF</a>'
     html = (
         '<table id="caseSearchResultGrid"><tr>'
         + "".join(f"<th>{label}</th>" for label in headers)
@@ -81,25 +79,36 @@ def calendar_rows(criteria):
 def main():
     config = json.loads(sys.stdin.readline())
     criteria = config["criteria"]
+    no_bail = criteria["eventType"] == "Formal Arraignment"
+    docket = NO_BAIL_DOCKET if no_bail else POSITIVE_DOCKET
+    court_type = "Magisterial District Court" if no_bail else "Common Pleas"
+    event_type = criteria["eventType"]
+    report_path = "/Report/MdjDocketSheet" if no_bail else "/Report/CpDocketSheet"
+    pdf_url = f"https://ujsportal.pacourts.us{report_path}?docketNumber={docket}"
     if not require_grant(CALENDAR_URL, "POST"):
         return
-    rows = calendar_rows(criteria)
+    court_office = "05-3-10" if no_bail else criteria["courtOffice"]
+    rows = calendar_rows(criteria, docket, court_type, court_office, event_type)
     emit("calendar", rows=rows, retrievedAt=datetime.now(timezone.utc).isoformat(),
          paginationComplete=True, resultCapReached=False, traversal="STATIC_DOM",
          blockedAssets=0)
-    if not require_grant(PDF_URL, "GET"):
+    if not require_grant(pdf_url, "GET"):
         return
 
-    pdf_path = ROOT / "attached_assets/CpDocketSheet_1792451669525.pdf"
+    pdf_path = ROOT / (
+        "attached_assets/MdjDocketSheet_(1)_1792451673387.pdf"
+        if no_bail else "attached_assets/CpDocketSheet_1792451669525.pdf"
+    )
     body = pdf_path.read_bytes()
     started = time.perf_counter()
-    extracted = extract_bail(body, DOCKET)
+    extracted = extract_bail(body, docket)
     extraction_ms = round((time.perf_counter() - started) * 1000)
-    if extracted["extractionOutcome"] != "EXTRACTED":
-        raise RuntimeError("The supplied PDF fixture did not pass docket identity validation.")
+    expected_outcome = "MISSING_BAIL_SECTION" if no_bail else "EXTRACTED"
+    if extracted["extractionOutcome"] != expected_outcome:
+        raise RuntimeError(f"The supplied PDF fixture did not produce {expected_outcome}.")
     emit("docket", **{
         **extracted,
-        "docketNumber": DOCKET,
+        "docketNumber": docket,
         "retrievedAt": datetime.now(timezone.utc).isoformat(),
         "extractionMs": extraction_ms,
     })

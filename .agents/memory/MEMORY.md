@@ -29,3 +29,4 @@
 - [Shared search visibility](shared-search-visibility.md) — Earlier searches are visible to all shared-password users; resume and save remain creator-session actions.
 - [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.
 - [Dependency type rebuilds](dependency-type-rebuilds.md) — Force composite declarations to rebuild after major type-library upgrades; incremental checks can conceal incompatibilities.
+- [Offline live-search teardown](offline-live-search-teardown.md) — Interrupted integration tests can leave RUNNING jobs and simulated source approval; inspect and restore test state before rerunning.
