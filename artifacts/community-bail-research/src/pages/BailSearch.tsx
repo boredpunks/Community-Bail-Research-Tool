@@ -177,12 +177,24 @@ export default function BailSearch() {
                     <td>{shortDate(row.hearing_date)}</td>
                     <td className="mono">{money(row.bail_amount) || (row.classification === 'nonmonetary' ? 'Nonmonetary' : '')}</td>
                     <td>
-                      <details data-testid={`details-search-evidence-${row.id}`}>
-                        <summary className="cursor-pointer mono text-xs text-primary">Inspect</summary>
+                      {row.evidence_quote.trim() ? (
+                        <blockquote className="max-w-2xl whitespace-pre-wrap" data-testid={`text-search-evidence-${row.id}`}>
+                          {row.evidence_quote}
+                        </blockquote>
+                      ) : (
+                        <p className="hint" data-testid={`status-search-evidence-${row.id}`}>
+                          {row.error || DOCUMENT_STATUS_LABELS[row.document_status] || 'PDF text is not available yet.'}
+                        </p>
+                      )}
+                      {row.evidence_quote.trim() ? (
+                        <p className="hint text-xs">Page {row.evidence_page ?? 'not recorded'} · {DOCUMENT_STATUS_LABELS[row.document_status] ?? row.document_status}</p>
+                      ) : null}
+                      <details className="mt-2" data-testid={`details-search-evidence-${row.id}`}>
+                        <summary className="cursor-pointer mono text-xs text-primary">Source and extraction details</summary>
                         <div className="min-w-64 space-y-1 py-2">
                           <p className="hint">Document status: {DOCUMENT_STATUS_LABELS[row.document_status] ?? 'Status unavailable'}</p>
                           <p className="hint">Evidence page: {row.evidence_page ?? 'Not recorded'}</p>
-                          <blockquote>{row.evidence_quote || 'No evidence quote was captured.'}</blockquote>
+                          {row.evidence_quote.trim() ? <blockquote>{row.evidence_quote}</blockquote> : null}
                           <p className="hint">Acquisition: {ACQUISITION_LABELS[row.evidence_acquisition] ?? (row.evidence_acquisition || 'Not recorded')}</p>
                           <p className="hint">Original PDF retrieval: {row.source_retrieved_at ? formatInstant(row.source_retrieved_at) : 'Not recorded'}</p>
                           <p className="hint">Local document consultation: {row.source_consulted_at ? formatInstant(row.source_consulted_at) : 'Not recorded'}</p>
