@@ -133,17 +133,24 @@ class StructuralBailGeometry(unittest.TestCase):
 
     def test_denied_and_nonmonetary_printed_zero_are_unpriced_with_row_and_page(self):
         # Geometry-only financial controls; no docket or case-identifying text.
-        for category in ("Denied", "Nonmonetary", "Recognizance"):
+        for category in ("Denied", "Nonmonetary", "Recognizance", "ROR"):
             with self.subTest(category=category):
                 body = self.table([["Set", "10/19/2026", category, "Magisterial District Court", "", "$0.00"]])
                 entries, excerpt, pages, _ = read_bail_tables(body, iso_date)
                 self.assertEqual(len(entries), 1)
+                expected_category = "RECOGNIZANCE" if category == "ROR" else category.upper()
+                self.assertEqual(entries[0]["bailCategory"], expected_category)
                 self.assertIsNone(entries[0]["amountCents"])
                 self.assertIsNone(entries[0]["financialBasis"])
                 self.assertEqual(entries[0]["sourcePages"], [1])
                 self.assertEqual(pages, [1])
                 self.assertIn("$0.00", entries[0]["excerpt"])
                 self.assertIn(category, excerpt)
+
+    def test_ror_with_nonzero_amount_is_not_silently_discarded(self):
+        row = ["Set", "01/02/2000", "ROR", "Magisterial District Court", "", "$100.00"]
+        with self.assertRaises(FinancialAssociationError):
+            read_bail_tables(self.table([row]), iso_date)
 
     def test_action_column_denials_with_blank_bail_type_and_wrapped_action(self):
         rows = [

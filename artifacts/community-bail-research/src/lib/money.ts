@@ -37,7 +37,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   NOMINAL: 'Nominal',
   UNSECURED: 'Unsecured',
   NONMONETARY: 'Nonmonetary',
-  RECOGNIZANCE: 'Recognizance',
+  RECOGNIZANCE: 'Release on own recognizance (ROR)',
   DENIED: 'Bail denied',
   UNKNOWN: 'Unknown',
 };

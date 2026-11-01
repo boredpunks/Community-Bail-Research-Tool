@@ -6,7 +6,7 @@ from pdf_ocr import bail_transcript
 ROW = re.compile(
     r"(?m)^[ \t]*(Set|Changed|Modified|Denied|Revoked|Increased|Reduced|Bail Set)"
     r"\s+(\d{2}/\d{2}/\d{4})\s+"
-    r"(Monetary|Unsecured|Nonmonetary|Non-Monetary|Nominal|Recognizance|Denied)"
+    r"(Monetary|Unsecured|Nonmonetary|Non-Monetary|Nominal|Recognizance|ROR|Denied)"
     r"\s+(?:(N/A|--|\d+(?:\.\d+)?%?)\s+)?"
     r"\$?((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})[ \t]*$", re.I)
 
@@ -71,12 +71,16 @@ def extract_mdj_bail(pages, docket, base, iso_date, body=None):
                             detail="Percentage-bearing MDJ bail is not inferred to be total bail.")
             category = {"monetary": "MONETARY", "unsecured": "UNSECURED", "nominal": "NOMINAL",
                         "nonmonetary": "NONMONETARY", "non-monetary": "NONMONETARY",
-                        "recognizance": "RECOGNIZANCE", "denied": "DENIED"}[wording.lower()]
+                        "recognizance": "RECOGNIZANCE", "ror": "RECOGNIZANCE",
+                        "denied": "DENIED"}[wording.lower()]
             amount = int(Decimal(money.replace(",", "")) * 100)
             date = iso_date(date)
             if amount > 2147483647 or date is None:
                 return dict(base, excerpt=excerpt, extractionOutcome="UNSUPPORTED_LAYOUT",
                             detail="MDJ amount/date is outside supported storage bounds.")
+            if category in ("NONMONETARY", "RECOGNIZANCE", "DENIED") and amount != 0:
+                return dict(base, excerpt=excerpt, extractionOutcome="UNSUPPORTED_LAYOUT",
+                            detail="Nonmonetary, recognizance, and denied rows cannot establish a monetary bail amount.")
             basis = ("UNSECURED_AMOUNT" if category == "UNSECURED"
                      else "TOTAL_BAIL" if category in ("MONETARY", "NOMINAL") else None)
             entries.append({"action": action, "wording": wording, "orderDate": date,

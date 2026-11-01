@@ -26,6 +26,7 @@
 - [Database separation proof](database-separation.md) — Local Unix-socket connections have no server IP; never treat a hash of “unknown” as a host fingerprint.
 - [Intentional worker stops](worker-pause-barriers.md) — Separate source-request stops from response failures; finish local processing of successful responses already received.
 - [Bail setting vs. posted security](bail-set-vs-posted.md) — Keep a bail decision separate from later cash or surety postings.
+- [ROR classification](ror-classification.md) — Treat release on own recognizance as nonmonetary; a printed $0.00 is not a $0 bail amount.
 - [Shared search visibility](shared-search-visibility.md) — Earlier searches are visible to all shared-password users; resume and save remain creator-session actions.
 - [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.
 - [Dependency type rebuilds](dependency-type-rebuilds.md) — Force composite declarations to rebuild after major type-library upgrades; incremental checks can conceal incompatibilities.

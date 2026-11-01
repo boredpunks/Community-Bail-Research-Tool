@@ -11,6 +11,7 @@ STOP = {"CHARGES", "ATTORNEY INFORMATION", "DOCKET ENTRY INFORMATION",
 CATEGORIES = {"monetary": "MONETARY", "unsecured": "UNSECURED",
               "nominal": "NOMINAL", "nonmonetary": "NONMONETARY",
               "non-monetary": "NONMONETARY", "recognizance": "RECOGNIZANCE",
+              "ror": "RECOGNIZANCE",
               "denied": "DENIED"}
 
 
@@ -99,6 +100,17 @@ def bail_row_entry(cells, text, number, iso_date):
         conditional = percentage not in ("", "N/A", "--") and Decimal(percentage.rstrip("%")) != 0
         basis = ("UNSECURED_AMOUNT" if category == "UNSECURED" else
                  "RECORDED_BAIL_AMOUNT" if conditional else "TOTAL_BAIL")
+    elif category in ("NONMONETARY", "RECOGNIZANCE"):
+        if money and (
+            not re.fullmatch(r"\$(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}", money)
+            or Decimal(money[1:].replace(",", "")) != 0
+        ):
+            raise FinancialAssociationError(
+                "Nonmonetary or recognizance rows cannot establish a monetary bail amount.")
+        if (percentage not in ("", "N/A", "--")
+                and Decimal(percentage.rstrip("%")) != 0):
+            raise FinancialAssociationError(
+                "Nonmonetary or recognizance rows cannot establish a percentage condition.")
 
     return {
         "action": action, "wording": wording, "orderDate": iso_date(date),

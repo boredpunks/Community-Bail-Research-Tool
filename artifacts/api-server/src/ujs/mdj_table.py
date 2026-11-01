@@ -79,7 +79,8 @@ def read_originating_tables(body, iso_date):
                 percentage, amount = cells["Percentage"], cells["Amount"]
                 categories = {"monetary": "MONETARY", "unsecured": "UNSECURED",
                               "nominal": "NOMINAL", "nonmonetary": "NONMONETARY",
-                              "recognizance": "RECOGNIZANCE", "denied": "DENIED"}
+                              "recognizance": "RECOGNIZANCE", "ror": "RECOGNIZANCE",
+                              "denied": "DENIED"}
                 if (not re.fullmatch(r"Set|Changed|Modified|Denied|Revoked|Increased|Reduced|Bail Set", action, re.I)
                         or iso_date(date) is None or kind.lower() not in categories or not court
                         or not re.fullmatch(r"\$(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}", amount)
@@ -89,13 +90,20 @@ def read_originating_tables(body, iso_date):
                 if cents > 2147483647:
                     raise ValueError("MDJ amount exceeds storage bounds.")
                 category = categories[kind.lower()]
+                if category in ("NONMONETARY", "RECOGNIZANCE", "DENIED") and cents != 0:
+                    raise ValueError("Nonmonetary, recognizance, and denied rows cannot establish a monetary bail amount.")
+                if (category in ("NONMONETARY", "RECOGNIZANCE", "DENIED")
+                        and percentage not in ("", "N/A", "--")
+                        and Decimal(percentage.rstrip("%")) != 0):
+                    raise ValueError("Nonmonetary, recognizance, and denied rows cannot establish a percentage condition.")
                 conditional = percentage not in ("", "N/A", "--", "0", "0%")
                 basis = None if conditional else (
                     "UNSECURED_AMOUNT" if category == "UNSECURED" else
                     "TOTAL_BAIL" if category in ("MONETARY", "NOMINAL") else None)
                 entries.append({
                     "action": action, "wording": kind, "orderDate": iso_date(date),
-                    "bailCategory": category, "amountCents": cents, "financialBasis": basis,
+                    "bailCategory": category, "amountCents": cents if basis else None,
+                    "financialBasis": basis,
                     "originatingCourt": court, "percentageCondition": percentage or None,
                     "sourcePages": [number],
                 })
