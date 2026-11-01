@@ -62,9 +62,7 @@ export default function BailSearch() {
     if (!Number.isFinite(amount) || amount < 0 || amount > 20_000_000) return setFormError('Enter a maximum bail from $0 to $20,000,000.');
     started.mutate({ data: { startDate, endDate, maxBail: amount, source: 'live', courtOffice, eventType } }, {
       onSuccess: (result) => {
-        if (run?.results.some((row) => row.evidence_quote.trim() || row.bail_amount !== null)) {
-          setSelectedSearchId(run.searchId);
-        }
+        setSelectedSearchId(result.searchId);
         promote(result);
       },
       onError: (error) => setFormError(`Search not started. Previous results are unchanged. ${errMsg(error)}`),
