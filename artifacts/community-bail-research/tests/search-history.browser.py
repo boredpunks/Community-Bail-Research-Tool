@@ -71,6 +71,13 @@ def progress(**overrides):
         "documentsWithEvidence": 1,
         "sourceRequestsUsed": 2,
         "sourceRequestLimit": 10,
+        "localOcr": None,
+        "timeline": [{
+            "id": "request-calendar", "at": "2026-11-01T12:00:30.000Z",
+            "label": "POST · Submitting the court calendar search",
+            "detail": "Path /CaseSearch · HTTP 200 · source outcome OK",
+            "status": "completed", "durationMs": 1_250,
+        }],
     }
     values.update(overrides)
     return values
@@ -245,6 +252,10 @@ def main():
             assert "1 checked; total unknown" in page.get_by_test_id("text-calendar-coverage").inner_text()
             assert "3 observed · 2 retained · 1 excluded by validation" in page.get_by_test_id("text-calendar-coverage").inner_text()
             assert "Unchecked calendar dates have not been confirmed to have no cases." in page.get_by_test_id("text-calendar-partial-coverage").inner_text()
+            activity = page.get_by_test_id("list-search-activity").inner_text()
+            assert "Submitting the court calendar search" in activity
+            assert "Path /CaseSearch · HTTP 200 · source outcome OK" in activity
+            assert "Completed · 2s" in activity
             assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
             assert "Paused" in page.get_by_test_id("status-search").inner_text()
             assert page.get_by_test_id("button-resume-search").is_enabled()

@@ -58,9 +58,27 @@ function BackgroundSearchStatus() {
   });
   const running = searches.data?.find(search => search.status === 'running');
   if (location === '/search' || !running) return null;
+  const stage = running.progress.calendarValidated ? 'Checking docket documents' : 'Searching court calendar';
+  const request = running.progress.currentRequest;
+  const requestLabel = request
+    ? /case.?search/i.test(request.path) ? 'Court calendar request'
+      : /docket|report/i.test(request.path) ? 'Docket PDF request'
+        : 'Court resource request'
+    : 'No court request in flight';
+  const elapsedSeconds = running.createdAt
+    ? Math.max(0, Math.floor((Date.now() - Date.parse(running.createdAt)) / 1000))
+    : null;
+  const elapsed = elapsedSeconds === null ? '' : elapsedSeconds < 60
+    ? `${elapsedSeconds}s elapsed`
+    : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s elapsed`;
+  const localOcr = running.progress.localOcr;
+  const activity = localOcr
+    ? `Reading scanned PDF page ${localOcr.pagesAttempted} of ${localOcr.pagesTotal}`
+    : requestLabel;
   return <aside className="max-w-6xl w-full mx-auto px-4 pt-4" role="status" data-testid="background-search-status">
     <Link href="/search" className="notice block" onClick={() => rememberStartedSearch(running.searchId)}>
-      Search running in the background · {running.progress.documentsProcessed} PDFs processed. View progress and results.
+      Search running · {stage} · {running.progress.documentsProcessed} of {running.progress.documentsDiscovered} PDFs processed · {activity}
+      {elapsed ? ` · ${elapsed}` : ''}. Open Search for the line-by-line activity log and results.
     </Link>
   </aside>;
 }

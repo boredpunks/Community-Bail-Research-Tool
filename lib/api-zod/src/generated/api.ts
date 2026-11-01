@@ -168,6 +168,12 @@ export const listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMax = 100;
 export const listBailSearchesResponseProgressLocalOcrOnePagesCompletedMin = 0;
 export const listBailSearchesResponseProgressLocalOcrOnePagesCompletedMax = 100;
 
+export const listBailSearchesResponseProgressTimelineItemDetailMax = 700;
+
+export const listBailSearchesResponseProgressTimelineItemDurationMsMin = 0;
+
+export const listBailSearchesResponseProgressTimelineMax = 100;
+
 export const listBailSearchesResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -207,6 +213,14 @@ export const ListBailSearchesResponseItem = zod.object({
   "pagesAttempted": zod.int().min(listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMin).max(listBailSearchesResponseProgressLocalOcrOnePagesAttemptedMax),
   "pagesCompleted": zod.int().min(listBailSearchesResponseProgressLocalOcrOnePagesCompletedMin).max(listBailSearchesResponseProgressLocalOcrOnePagesCompletedMax)
 }),zod.null()]),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "at": zod.coerce.date(),
+  "label": zod.string(),
+  "detail": zod.string().max(listBailSearchesResponseProgressTimelineItemDetailMax).nullable(),
+  "status": zod.enum(['in_progress', 'completed', 'failed', 'blocked']),
+  "durationMs": zod.int().min(listBailSearchesResponseProgressTimelineItemDurationMsMin).nullable()
+})).max(listBailSearchesResponseProgressTimelineMax),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -291,6 +305,12 @@ export const startBailSearchResponseProgressLocalOcrOnePagesAttemptedMax = 100;
 export const startBailSearchResponseProgressLocalOcrOnePagesCompletedMin = 0;
 export const startBailSearchResponseProgressLocalOcrOnePagesCompletedMax = 100;
 
+export const startBailSearchResponseProgressTimelineItemDetailMax = 700;
+
+export const startBailSearchResponseProgressTimelineItemDurationMsMin = 0;
+
+export const startBailSearchResponseProgressTimelineMax = 100;
+
 export const startBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -330,6 +350,14 @@ export const StartBailSearchResponse = zod.object({
   "pagesAttempted": zod.int().min(startBailSearchResponseProgressLocalOcrOnePagesAttemptedMin).max(startBailSearchResponseProgressLocalOcrOnePagesAttemptedMax),
   "pagesCompleted": zod.int().min(startBailSearchResponseProgressLocalOcrOnePagesCompletedMin).max(startBailSearchResponseProgressLocalOcrOnePagesCompletedMax)
 }),zod.null()]),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "at": zod.coerce.date(),
+  "label": zod.string(),
+  "detail": zod.string().max(startBailSearchResponseProgressTimelineItemDetailMax).nullable(),
+  "status": zod.enum(['in_progress', 'completed', 'failed', 'blocked']),
+  "durationMs": zod.int().min(startBailSearchResponseProgressTimelineItemDurationMsMin).nullable()
+})).max(startBailSearchResponseProgressTimelineMax),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -401,6 +429,12 @@ export const getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMax = 1
 export const getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMin = 0;
 export const getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMax = 100;
 
+export const getBailSearchStatusResponseProgressTimelineItemDetailMax = 700;
+
+export const getBailSearchStatusResponseProgressTimelineItemDurationMsMin = 0;
+
+export const getBailSearchStatusResponseProgressTimelineMax = 100;
+
 export const getBailSearchStatusResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -440,6 +474,14 @@ export const GetBailSearchStatusResponse = zod.object({
   "pagesAttempted": zod.int().min(getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMin).max(getBailSearchStatusResponseProgressLocalOcrOnePagesAttemptedMax),
   "pagesCompleted": zod.int().min(getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMin).max(getBailSearchStatusResponseProgressLocalOcrOnePagesCompletedMax)
 }),zod.null()]),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "at": zod.coerce.date(),
+  "label": zod.string(),
+  "detail": zod.string().max(getBailSearchStatusResponseProgressTimelineItemDetailMax).nullable(),
+  "status": zod.enum(['in_progress', 'completed', 'failed', 'blocked']),
+  "durationMs": zod.int().min(getBailSearchStatusResponseProgressTimelineItemDurationMsMin).nullable()
+})).max(getBailSearchStatusResponseProgressTimelineMax),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),
@@ -520,6 +562,12 @@ export const resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMax = 100;
 export const resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMin = 0;
 export const resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMax = 100;
 
+export const resumeBailSearchResponseProgressTimelineItemDetailMax = 700;
+
+export const resumeBailSearchResponseProgressTimelineItemDurationMsMin = 0;
+
+export const resumeBailSearchResponseProgressTimelineMax = 100;
+
 export const resumeBailSearchResponseResultsItemSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
@@ -559,6 +607,14 @@ export const ResumeBailSearchResponse = zod.object({
   "pagesAttempted": zod.int().min(resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMin).max(resumeBailSearchResponseProgressLocalOcrOnePagesAttemptedMax),
   "pagesCompleted": zod.int().min(resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMin).max(resumeBailSearchResponseProgressLocalOcrOnePagesCompletedMax)
 }),zod.null()]),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "at": zod.coerce.date(),
+  "label": zod.string(),
+  "detail": zod.string().max(resumeBailSearchResponseProgressTimelineItemDetailMax).nullable(),
+  "status": zod.enum(['in_progress', 'completed', 'failed', 'blocked']),
+  "durationMs": zod.int().min(resumeBailSearchResponseProgressTimelineItemDurationMsMin).nullable()
+})).max(resumeBailSearchResponseProgressTimelineMax),
   "currentRequest": zod.object({
   "method": zod.string(),
   "path": zod.string(),

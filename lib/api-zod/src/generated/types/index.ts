@@ -26,6 +26,8 @@ export * from './bailSearchInputSource';
 export * from './bailSearchLocalOcrProgress';
 export * from './bailSearchProgress';
 export * from './bailSearchProgressCalendarCoverage';
+export * from './bailSearchProgressTimelineItem';
+export * from './bailSearchProgressTimelineItemStatus';
 export * from './bailSearchReadiness';
 export * from './bailSearchRecovery';
 export * from './bailSearchRecoveryAction';

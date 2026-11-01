@@ -122,6 +122,33 @@ export type BailSearchProgressCalendarCoverage = {
   partial: boolean;
 };
 
+export type BailSearchProgressTimelineItemStatus = typeof BailSearchProgressTimelineItemStatus[keyof typeof BailSearchProgressTimelineItemStatus];
+
+
+export const BailSearchProgressTimelineItemStatus = {
+  in_progress: 'in_progress',
+  completed: 'completed',
+  failed: 'failed',
+  blocked: 'blocked',
+} as const;
+
+export type BailSearchProgressTimelineItem = {
+  id: string;
+  at: string;
+  label: string;
+  /**
+     * @maxLength 700
+     * @nullable
+     */
+  detail: string | null;
+  status: BailSearchProgressTimelineItemStatus;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  durationMs: number | null;
+};
+
 export interface BailSearchProgress {
   completed: number;
   total: number;
@@ -137,6 +164,8 @@ export interface BailSearchProgress {
   /** @nullable */
   sourceRequestLimit: number | null;
   localOcr: BailSearchLocalOcrProgress | null;
+  /** @maxItems 100 */
+  timeline: BailSearchProgressTimelineItem[];
   currentRequest?: BailSearchCurrentRequest;
 }
 

@@ -694,7 +694,7 @@ components:
         pagesCompleted: { type: integer, minimum: 0, maximum: 100 }
     BailSearchProgress:
       type: object
-      required: [completed, total, pending, calendarValidated, calendarCoverage, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit, localOcr]
+      required: [completed, total, pending, calendarValidated, calendarCoverage, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit, localOcr, timeline]
       properties:
         completed: { type: integer }
         total: { type: integer }
@@ -719,6 +719,20 @@ components:
         sourceRequestsUsed: { type: integer }
         sourceRequestLimit: { type: [integer, "null"] }
         localOcr: { oneOf: [{ $ref: "#/components/schemas/BailSearchLocalOcrProgress" }, { type: "null" }] }
+        timeline:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, at, label, detail, status, durationMs]
+            properties:
+              id: { type: string }
+              at: { type: string, format: date-time }
+              label: { type: string }
+              detail: { type: [string, "null"], maxLength: 700 }
+              status: { type: string, enum: [in_progress, completed, failed, blocked] }
+              durationMs: { type: [integer, "null"], minimum: 0 }
         currentRequest: { $ref: "#/components/schemas/BailSearchCurrentRequest" }
     BailSearchResult:
       type: object

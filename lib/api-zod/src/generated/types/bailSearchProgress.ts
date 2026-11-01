@@ -8,6 +8,7 @@
 import type { BailSearchCurrentRequest } from './bailSearchCurrentRequest';
 import type { BailSearchLocalOcrProgress } from './bailSearchLocalOcrProgress';
 import type { BailSearchProgressCalendarCoverage } from './bailSearchProgressCalendarCoverage';
+import type { BailSearchProgressTimelineItem } from './bailSearchProgressTimelineItem';
 
 export interface BailSearchProgress {
   completed: number;
@@ -24,5 +25,7 @@ export interface BailSearchProgress {
   /** @nullable */
   sourceRequestLimit: number | null;
   localOcr: BailSearchLocalOcrProgress | null;
+  /** @maxItems 100 */
+  timeline: BailSearchProgressTimelineItem[];
   currentRequest?: BailSearchCurrentRequest;
 }

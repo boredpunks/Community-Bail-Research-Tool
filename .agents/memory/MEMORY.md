@@ -32,3 +32,4 @@
 - [Offline live-search teardown](offline-live-search-teardown.md) — Interrupted integration tests can leave RUNNING jobs and simulated source approval; inspect and restore test state before rerunning.
 - [PDF transcript validation](pdf-transcript-validation.md) — OCR text is review-only, never a financial finding; use word geometry rather than OCR block order.
 - [Background search lifecycle](background-search-lifecycle.md) — Navigation must not stop searches; collection completion is separate from financial review.
+- [Search progress visibility](search-progress-visibility.md) — Show observed stages, source details, durations, and line-by-line activity; don't substitute ETA disclaimers for progress.

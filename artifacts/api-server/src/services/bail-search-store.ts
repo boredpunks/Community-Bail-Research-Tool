@@ -28,6 +28,128 @@ type LocalOcrProgress = {
   pagesCompleted: number;
 };
 
+type SearchTimelineEntry = {
+  id: string;
+  at: string;
+  label: string;
+  detail: string | null;
+  status: "in_progress" | "completed" | "failed" | "blocked";
+  durationMs: number | null;
+};
+
+const timelineRequestLabel = (path: string, method: string) => {
+  if (/^\/CaseSearch\/?$/i.test(path)) return method === "POST"
+    ? "Submitted the court calendar search"
+    : "Loaded the court calendar search";
+  if (path.startsWith("/resource/")) return "Loaded a court calendar resource";
+  if (PDF_REQUEST_PATHS.has(path)) return "Requested a docket PDF";
+  return "Made a court-source request";
+};
+
+const safeTimelineRequestPath = (path: string) => {
+  if (path === "/CaseSearch" || path === "/CaseSearch/") return "/CaseSearch";
+  if (PDF_REQUEST_PATHS.has(path)) return path;
+  return null;
+};
+
+async function searchTimeline(jobId: string | null | undefined): Promise<SearchTimelineEntry[]> {
+  if (!jobId) return [];
+  const [requests, events] = await Promise.all([
+    db.select({
+      id: discoveryRequestsTable.id,
+      path: discoveryRequestsTable.path,
+      method: discoveryRequestsTable.method,
+      outcome: discoveryRequestsTable.outcome,
+      statusCode: discoveryRequestsTable.statusCode,
+      startedAt: discoveryRequestsTable.startedAt,
+      durationMs: discoveryRequestsTable.durationMs,
+    }).from(discoveryRequestsTable)
+      .where(eq(discoveryRequestsTable.jobId, jobId))
+      .orderBy(desc(discoveryRequestsTable.startedAt))
+      .limit(100),
+    db.select({
+      id: discoveryEventsTable.id,
+      kind: discoveryEventsTable.kind,
+      message: discoveryEventsTable.message,
+      createdAt: discoveryEventsTable.createdAt,
+    }).from(discoveryEventsTable)
+      .where(and(
+        eq(discoveryEventsTable.jobId, jobId),
+        inArray(discoveryEventsTable.kind, ["START", "CALENDAR", "DOCUMENT", "CALENDAR_COVERAGE", "LOCAL_OCR_PROGRESS"]),
+      ))
+      .orderBy(desc(discoveryEventsTable.createdAt))
+      .limit(100),
+  ]);
+  const timeline: SearchTimelineEntry[] = requests.map(request => ({
+    id: `request-${request.id}`,
+    at: request.startedAt.toISOString(),
+    label: `${request.method} · ${timelineRequestLabel(request.path, request.method)}`,
+    status: request.outcome === "IN_FLIGHT" ? "in_progress"
+      : request.outcome === "OK" ? "completed"
+        : ["ACCESS_DENIED", "CHALLENGE", "LOGIN_PROMPT", "RATE_LIMIT"].includes(request.outcome) ? "blocked" : "failed",
+    detail: `${safeTimelineRequestPath(request.path) ? `Path ${safeTimelineRequestPath(request.path)} · ` : ""}${
+      request.outcome === "IN_FLIGHT" ? "Waiting for the court response."
+        : `${request.statusCode === null ? "No HTTP status" : `HTTP ${request.statusCode}`} · source outcome ${request.outcome}`}`,
+    durationMs: request.durationMs,
+  }));
+  for (const event of events) {
+    let label: string | null = null;
+    let detail: string | null = null;
+    let status: SearchTimelineEntry["status"] = "completed";
+    if (event.kind === "START") {
+      label = "Court-source search started";
+      detail = event.message.slice(0, 700);
+    } else if (event.kind === "CALENDAR") {
+      label = "Court calendar validated";
+      detail = event.message.slice(0, 700);
+    } else if (event.kind === "DOCUMENT") {
+      const document = /^Document (\d+): ([A-Z_]+)\. PDF disposed after processing\. Custody remains unknown\.$/.exec(event.message);
+      if (document) {
+        label = `Docket PDF ${document[1]} processed`;
+        detail = `Extraction outcome: ${document[2]}. The PDF was disposed after processing.`;
+      }
+    } else if (event.kind === "CALENDAR_COVERAGE") {
+      try {
+        const coverage = JSON.parse(event.message) as Partial<CalendarCoverage>;
+        if (Number.isSafeInteger(coverage.segmentsChecked) && Number(coverage.segmentsChecked) >= 0
+          && Number.isSafeInteger(coverage.rowsObserved) && Number(coverage.rowsObserved) >= 0
+          && Number.isSafeInteger(coverage.rowsRetained) && Number(coverage.rowsRetained) >= 0
+          && Number.isSafeInteger(coverage.rowsExcluded) && Number(coverage.rowsExcluded) >= 0) {
+          label = "Calendar coverage updated";
+          detail = `${coverage.segmentsChecked} segment(s) checked · ${coverage.rowsObserved} row(s) observed · ${coverage.rowsRetained} retained · ${coverage.rowsExcluded} excluded`;
+        }
+      } catch {
+        // Ignore malformed progress events rather than exposing their contents.
+      }
+    } else if (event.kind === "LOCAL_OCR_PROGRESS") {
+      try {
+        const progress = JSON.parse(event.message) as Partial<LocalOcrProgress>;
+        if (Number.isSafeInteger(progress.pagesTotal) && Number(progress.pagesTotal) > 0
+          && Number.isSafeInteger(progress.pagesAttempted) && Number(progress.pagesAttempted) > 0
+          && Number.isSafeInteger(progress.pagesCompleted) && Number(progress.pagesCompleted) >= 0
+          && Number(progress.pagesCompleted) <= Number(progress.pagesAttempted)
+          && Number(progress.pagesAttempted) <= Number(progress.pagesTotal)) {
+          const activePage = Number(progress.pagesAttempted) > Number(progress.pagesCompleted);
+          label = `Local OCR · scanned page ${progress.pagesAttempted} of ${progress.pagesTotal} ${activePage ? "started" : "read"}`;
+          detail = `${progress.pagesAttempted} page(s) attempted · ${progress.pagesCompleted} completed`;
+          status = "completed";
+        }
+      } catch {
+        // Ignore malformed progress events rather than exposing their contents.
+      }
+    }
+    if (label) timeline.push({
+      id: `event-${event.id}`,
+      at: event.createdAt.toISOString(),
+      label,
+      detail,
+      status,
+      durationMs: null,
+    });
+  }
+  return timeline.sort((left, right) => Date.parse(left.at) - Date.parse(right.at)).slice(-100);
+}
+
 async function localOcrProgress(jobId: string | null | undefined): Promise<LocalOcrProgress | null> {
   if (!jobId) return null;
   const [event] = await db.select({
@@ -263,6 +385,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     eq(discoveryRequestsTable.outcome, "IN_FLIGHT"),
   )).limit(1) : [];
   const coverage = await calendarCoverage(job?.id);
+  const timeline = includeResults ? await searchTimeline(job?.id) : [];
   const ocrProgress = search.status === "running" && job?.status === "RUNNING"
     ? await localOcrProgress(job.id)
     : null;
@@ -281,6 +404,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
       sourceRequestsUsed: job?.requestsUsed ?? 0,
       sourceRequestLimit: job?.criteria.requestCap ?? null,
       localOcr: ocrProgress,
+      timeline,
       ...(currentRequest ? { currentRequest: {
         method: currentRequest.method, path: currentRequest.path, startedAt: currentRequest.startedAt.toISOString(),
       } } : {}),

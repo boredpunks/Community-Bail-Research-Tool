@@ -85,6 +85,10 @@ const timingResponse = {
       rowsRetained: 1, rowsExcluded: 0, partial: false},
     documentsDiscovered: 1, documentRequestsAttempted: 1, documentsRetrieved: 1,
     documentsProcessed: 1, documentsWithEvidence: 1, sourceRequestsUsed: 2, sourceRequestLimit: 10,
+    localOcr: null, timeline: [{
+      id: "request-test", at: now.toISOString(), label: "GET · Loaded a court calendar resource",
+      detail: "HTTP 200 · source outcome OK", status: "completed", durationMs: 250,
+    }],
   },
   incomplete: false, reason: null, resumeToken: null, resumeAvailableAt: null, canManage: true,
   results: [{

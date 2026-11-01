@@ -32,7 +32,8 @@ def make_search(status, result=None, reason=None):
                      "documentRequestsAttempted": 1, "documentsRetrieved": 1 if status == "complete" else 0,
                      "documentsProcessed": 0 if status == "running" else 1,
                      "documentsWithEvidence": 0 if status == "running" else 1,
-                     "sourceRequestsUsed": 2, "sourceRequestLimit": 10},
+                      "sourceRequestsUsed": 2, "sourceRequestLimit": 10,
+                      "localOcr": None, "timeline": []},
         "incomplete": False, "reason": reason, "resumeToken": None,
         "resumeAvailableAt": None,
         "recovery": {"action": "none", "message": "", "availableAt": None},
@@ -127,7 +128,10 @@ async def main():
             # The mocked POST is deliberately unresolved while navigation unmounts Search.
             await page.get_by_test_id("nav-review").click()
             await page.get_by_test_id("background-search-status").wait_for()
-            assert "Search running in the background" in await page.get_by_test_id("background-search-status").inner_text()
+            background_status = await page.get_by_test_id("background-search-status").inner_text()
+            assert "Search running" in background_status
+            assert "Checking docket documents" in background_status
+            assert "PDFs processed" in background_status
             state["release_post"].set()
             await page.wait_for_function(
                 "() => sessionStorage.getItem('bail-research:last-started-search') === 'journey-search-1'"
