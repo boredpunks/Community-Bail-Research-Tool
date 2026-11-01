@@ -161,7 +161,8 @@ def main():
             output = server.stdout.read() if server.stdout else ""
             raise RuntimeError(f"Vite did not start for the browser test.\n{output}")
 
-        started = {"value": False, "body": None, "post_count": 0, "resume_body": None}
+        started = {"value": False, "body": None, "post_count": 0, "resume_body": None,
+                   "next_post_response": None}
         latest_search = {"value": newer}
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(
@@ -180,7 +181,13 @@ def main():
                     body = [latest_search["value"], older] if started["value"] else [older]
                 elif path.endswith("/api/bail-search/search") and request.method == "POST":
                     started["post_count"] += 1
-                    if started["post_count"] == 1:
+                    if started["next_post_response"] is not None:
+                        started["body"] = request.post_data_json
+                        latest_search["value"] = started["next_post_response"]
+                        started["value"] = True
+                        body = started["next_post_response"]
+                        started["next_post_response"] = None
+                    elif started["post_count"] == 1:
                         started["body"] = request.post_data_json
                         started["value"] = True
                         body = latest_search["value"]
@@ -198,6 +205,8 @@ def main():
                     latest_search["value"] = resumed
                     body = resumed
                 elif path.endswith("/api/bail-search/search/newer-search/status"):
+                    body = latest_search["value"]
+                elif path.endswith("/api/bail-search/search/successful-search/status"):
                     body = latest_search["value"]
                 else:
                     route.fulfill(status=404, content_type="application/json", body='{"error":"Unexpected test request"}')
@@ -291,6 +300,34 @@ def main():
                 assert message in notice.inner_text()
                 assert page.get_by_test_id("button-resume-search").count() == 0
                 assert page.get_by_test_id("row-search-pending-row-1").count() == 1
+                assert started["post_count"] == 2, "A displayed timeout or source stop must not trigger another Search request."
+
+            page.get_by_test_id("select-search-history").select_option("older-search")
+            assert page.get_by_test_id("text-search-evidence-older-row").inner_text() == "Bail is set at $1,500."
+
+            successful_result = result(
+                "successful-row", "CP-02-CR-0005845-2026",
+                "10.00% unsecured bail, $100.00.",
+            )
+            completed_search = search(
+                "successful-search", "complete", date,
+                progress(completed=1, total=1, pending=0, calendarValidated=True,
+                         documentsDiscovered=1, documentsRetrieved=1,
+                         documentsProcessed=1, documentsWithEvidence=1,
+                         sourceRequestsUsed=2),
+                [successful_result],
+                "2026-11-01T12:04:00.000Z",
+            )
+            started["next_post_response"] = completed_search
+            page.get_by_test_id("input-search-start-date").fill(date)
+            page.get_by_test_id("input-search-end-date").fill(date)
+            page.get_by_test_id("button-start-bail-search").click()
+            page.get_by_test_id("text-search-evidence-successful-row").wait_for()
+            assert page.get_by_test_id("text-search-evidence-successful-row").inner_text() == "10.00% unsecured bail, $100.00."
+            assert "$100.00" in page.get_by_test_id("table-search-rows").inner_text()
+            assert "Complete" in page.get_by_test_id("status-search").inner_text()
+            assert page.get_by_test_id("select-search-history").input_value() == "successful-search"
+            assert started["post_count"] == 3, "Successful search projection must not issue automatic retries."
 
             future = datetime.now().astimezone().replace(microsecond=0)
             from datetime import timedelta
@@ -321,7 +358,7 @@ def main():
             assert "$0.00" not in page.get_by_test_id("table-search-rows").inner_text()
             browser.close()
 
-        print("PASS: mocked recovery states explain stops, restrict resume controls, and retain calendar/PDF statuses.")
+        print("PASS: mocked search completion projects evidence; stop states preserve results and never retry automatically.")
     finally:
         server.terminate()
         try:

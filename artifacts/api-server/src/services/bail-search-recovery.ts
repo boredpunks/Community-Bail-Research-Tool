@@ -110,12 +110,13 @@ export function recoveryWaitForAdmission(
 }
 
 function retainedSummary(input: RecoveryEvidence) {
-  const rows = input.retainedRows === 1 ? "1 docket row" : `${input.retainedRows} docket rows`;
-  if (input.source === "saved") return `${rows} are retained from the saved evidence set.`;
+  const singleRow = input.retainedRows === 1;
+  const rows = singleRow ? "1 docket row" : `${input.retainedRows} docket rows`;
+  if (input.source === "saved") return `${rows} ${singleRow ? "is" : "are"} retained from the saved evidence set.`;
   const documents = `${input.documentsProcessed} of ${input.documentsDiscovered} discovered PDFs processed`;
   return input.calendarValidated
-    ? `${rows} from the validated calendar and ${documents} are retained.`
-    : `${rows} are retained; the calendar is not validated, so no zero-result conclusion is available.`;
+    ? `${rows} from the validated calendar; ${documents} are retained.`
+    : `${rows} ${singleRow ? "is" : "are"} retained; the calendar is not validated, so no zero-result conclusion is available.`;
 }
 
 function explanation(input: RecoveryEvidence, nextAction: string) {

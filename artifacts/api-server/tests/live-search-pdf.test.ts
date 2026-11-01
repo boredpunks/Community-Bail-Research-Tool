@@ -252,6 +252,90 @@ try {
   assert.equal(stillPausedSearch?.status, "paused");
   assert.deepEqual(stillPausedJob?.criteria, templateJob.criteria, "Resume must not broaden or rewrite original source criteria.");
 
+  const [timedOutJob] = await db.insert(discoveryJobsTable).values({
+    ownerId: templateJob.ownerId,
+    criteria: templateJob.criteria,
+    status: "PAUSED",
+    calendarComplete: false,
+    requestsUsed: 1,
+    message: "TIMEOUT: source request timed out; no automatic retry.",
+  }).returning();
+  jobIds.push(timedOutJob!.id);
+  const [timedOutSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: searchOwner(cookie),
+    discoveryJobId: timedOutJob!.id,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 1,
+    status: "paused",
+    reason: "TIMEOUT: source request timed out; no automatic retry.",
+  }).returning();
+  searchIds.push(timedOutSearch!.id);
+  await db.insert(bailSearchResultsTable).values({
+    searchId: timedOutSearch!.id,
+    docketNumber: "CP-02-CR-0005845-2026",
+    hearingDate: templateSearch.criteria.startDate,
+    office: "CP-05-02-Crim",
+    classification: "monetary",
+    amountCents: 10_000,
+    evidencePage: 1,
+    evidenceQuote: "10.00% unsecured bail, $100.00.",
+    evidenceAcquisition: "STORED_EXTRACTION",
+    qualifies: true,
+  });
+  await db.insert(discoveryRequestsTable).values({
+    jobId: timedOutJob!.id,
+    ownerId: timedOutJob!.ownerId,
+    sourceId: "UJS",
+    path: "/CaseSearch",
+    method: "POST",
+    statusCode: null,
+    outcome: "TIMEOUT",
+    startedAt: new Date(Date.now() - 30_000),
+    completedAt: new Date(),
+    durationMs: 30_000,
+  });
+  await db.update(discoverySourceTable).set({
+    blockedReason: "TIMEOUT",
+    accessVerifiedAt: null,
+    verifiedMethod: null,
+    collectionApprovedAt: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  const timedOutStatus = await fetch(`${origin}/api/bail-search/search/${timedOutSearch!.id}/status`, {
+    headers: { cookie },
+  });
+  assert.equal(timedOutStatus.status, 200);
+  const timedOutBody = await timedOutStatus.json() as {
+    incomplete: boolean;
+    progress: { calendarValidated: boolean };
+    recovery: { action: string; message: string };
+    resumeToken: string | null;
+    results: Array<{ id: string; evidence_quote: string }>;
+  };
+  assert.equal(timedOutBody.incomplete, true);
+  assert.equal(timedOutBody.progress.calendarValidated, false);
+  assert.equal(timedOutBody.recovery.action, "source_blocked");
+  assert.match(timedOutBody.recovery.message, /latest source request timed out/);
+  assert.match(timedOutBody.recovery.message, /not a confirmed empty search/);
+  assert.match(timedOutBody.recovery.message, /1 docket row is retained/);
+  assert.equal(timedOutBody.resumeToken, null);
+  assert.equal(timedOutBody.results.length, 1);
+  assert.match(timedOutBody.results[0]!.evidence_quote, /10\.00% unsecured bail/);
+  const timedOutResume = await fetch(`${origin}/api/bail-search/search/${timedOutSearch!.id}/resume`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ resumeToken: resumeToken(timedOutSearch!) }),
+  });
+  assert.equal(timedOutResume.status, 409);
+  const timedOutRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, timedOutJob!.id));
+  assert.equal(timedOutRequests.length, 1, "A timed-out source request must not be retried automatically or by blocked resume.");
+  const [stillTimedOutJob] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, timedOutJob!.id));
+  assert.equal(stillTimedOutJob?.status, "PAUSED");
+  const [stillTimedOutSource] = await db.select().from(discoverySourceTable)
+    .where(eq(discoverySourceTable.id, "UJS"));
+  assert.equal(stillTimedOutSource?.blockedReason, "TIMEOUT");
+
   await db.update(discoverySourceTable).set({
     blockedReason: null,
     pausedUntil: null,
