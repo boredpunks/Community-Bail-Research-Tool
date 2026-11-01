@@ -11,14 +11,32 @@ import { GetBailSearchStatusResponse, GetDiscoveryJobResponse } from "@workspace
 import { projectQualifyingRows } from "@workspace/bail-research";
 import { newResearchCriteria, criteriaIdentity } from "../src/lib/discovery-launch";
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
-import { observationValues } from "../src/lib/discovery-candidates";
+import { candidateEligible, observationValues } from "../src/lib/discovery-candidates";
 import { createWorkspaceSession, hasValidWorkspaceSession } from "../src/middlewares/researchAuth";
 import { bailSearchDocumentStatus, resultDocumentTimings } from "../src/services/bail-search-evidence";
 import { latestDocumentRequestByItem, serializeSearchResult } from "../src/services/bail-search-store";
 import { publishVerifiedDocumentToSearch } from "../src/services/bail-search-document-publisher";
+import { completedLiveSearch } from "../src/services/bail-search-completion";
 import { eq } from "drizzle-orm";
 
 class IntentionalRollback extends Error {}
+const finishedJob = {status: "COMPLETED", calendarComplete: true, paginationComplete: true, resultCapReached: false};
+const readPdf = {sourceRetrievedAt: new Date(), provenance: {extractionOutcome: "EXTRACTED"}};
+const reviewPdf = {...readPdf, provenance: {extractionOutcome: "AMBIGUOUS_FINANCIAL_ASSOCIATION"}};
+assert.equal(completedLiveSearch(finishedJob, [readPdf], [{error: null}], 1)?.reason, null);
+assert.match(completedLiveSearch(finishedJob, [readPdf, reviewPdf],
+  [{error: null}, {error: "Review required"}], 2)!.reason!, /1 result needs review/);
+for (const incompleteJob of [
+  {...finishedJob, status: "RUNNING"}, {...finishedJob, status: "PAUSED"},
+  {...finishedJob, calendarComplete: false}, {...finishedJob, paginationComplete: false},
+  {...finishedJob, resultCapReached: true},
+]) assert.equal(completedLiveSearch(incompleteJob, [readPdf], [{error: null}], 1), null);
+assert.equal(completedLiveSearch(finishedJob, [readPdf], [], 1), null);
+assert.equal(completedLiveSearch(finishedJob, [{...readPdf, sourceRetrievedAt: null}],
+  [{error: "PDF not retrieved"}], 1), null);
+for (const extractionOutcome of ["UNPROCESSED", "IDENTITY_MISMATCH", "RETRIEVAL_FAILED"])
+  assert.equal(completedLiveSearch(finishedJob, [{...readPdf, provenance: {extractionOutcome}}],
+    [{error: "Unavailable"}], 1), null);
 const root = path.resolve("../..");
 const now = new Date();
 let savedFixtureId: string | undefined;
@@ -148,6 +166,26 @@ try {
     });
     assert.equal(visibleResultResponse.results[0]!.evidence_quote, serializedResult.evidence_quote,
       "The Search results response must preserve the extracted quote for the UI row.");
+    const transcriptProvenance = {...provenance, entries: [],
+      extractionOutcome: "UNSUPPORTED_LAYOUT" as const};
+    const transcriptNotice = "OCR-assisted text is unvalidated. Compare it with the original PDF.";
+    await tx.update(discoveryItemsTable).set({
+      provenance: transcriptProvenance, excerpt: parsed.excerpt, detail: transcriptNotice,
+    }).where(eq(discoveryItemsTable.id, item!.id));
+    await publishVerifiedDocumentToSearch(job!.id, item!.id, tx);
+    const [transcriptResult] = await tx.select().from(bailSearchResultsTable)
+      .where(eq(bailSearchResultsTable.searchId, search!.id));
+    const transcript = serializeSearchResult(transcriptResult!);
+    assert.equal(transcript.evidence_quote, parsed.excerpt, "Unvalidated readable text must reach the user.");
+    assert.equal(transcript.bail_amount, null, "OCR transcripts must not produce inferred bail amounts.");
+    assert.equal(transcript.qualifies, false);
+    assert.equal(transcript.error, transcriptNotice);
+    assert.equal(transcript.evidence_acquisition, "UNVALIDATED_TEXT");
+    assert.equal(candidateEligible({...item!, provenance: transcriptProvenance}), false,
+      "A transcript cannot be saved as a verified bail finding.");
+    await tx.update(discoveryItemsTable).set({
+      provenance, excerpt: parsed.excerpt, detail: parsed.detail,
+    }).where(eq(discoveryItemsTable.id, item!.id));
     const rows = projectQualifyingRows([item!], criteria.matchFilters);
     assert.equal(rows.length, 1);
     const report = {job: {id: job!.id, criteria, status: "COMPLETED",

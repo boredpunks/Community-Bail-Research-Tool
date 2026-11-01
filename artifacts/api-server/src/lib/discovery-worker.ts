@@ -700,7 +700,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           provenance: { ...updatedProvenance, documentTimings: { ...updatedProvenance.documentTimings, persistenceMs } },
         }).where(eq(discoveryItemsTable.id, item.id));
         await discoveryEvent(job, "DOCUMENT", `Document ${item.position + 1}: ${outcome}. PDF disposed after processing. Custody remains unknown.`);
-        if (["EXTRACTED", "MISSING_BAIL_SECTION"].includes(outcome))
+        if (["EXTRACTED", "MISSING_BAIL_SECTION", "UNSUPPORTED_LAYOUT", "AMBIGUOUS_FINANCIAL_ASSOCIATION"].includes(outcome))
           await publishVerifiedDocumentToSearch(job.id, item.id);
         if (exactSessionRefresh && accessCheckConsumed && accessCheckItem?.id === item.id) {
           if (accessCheckResponseValid && accessCheckRequestId

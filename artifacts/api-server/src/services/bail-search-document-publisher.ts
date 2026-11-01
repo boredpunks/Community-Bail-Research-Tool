@@ -18,11 +18,14 @@ export async function storeItem(
   const [item] = await store.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id, queued.itemId));
   let error: string | null = null;
   let entries = item ? savedEntries(item.provenance) : null;
+  const unvalidatedText = item?.sourceRetrievedAt && item.provenance.documentSha256
+    && ["UNSUPPORTED_LAYOUT", "AMBIGUOUS_FINANCIAL_ASSOCIATION"].includes(item.provenance.extractionOutcome)
+    && item.excerpt?.trim() ? item.excerpt : null;
   let acquisition = item?.provenance.extractionOutcome === "RETRIEVAL_FAILED" && !item.sourceRetrievedAt
     ? "RETRIEVAL_FAILED"
     : item?.sourceRetrievedAt ? "RETRIEVED_NO_EVIDENCE" : "NOT_RETRIEVED";
   let cacheEvidence: Awaited<ReturnType<typeof extractSavedBail>> | null = null;
-  if (entries === null && cacheAllowed && item) {
+  if (entries === null && cacheAllowed && item && !unvalidatedText) {
     try { cacheEvidence = await extractSavedBail(item.docketNumber, item.sourceUrl); entries = cacheEvidence.entries; acquisition = "CACHE"; }
     catch { acquisition = "CACHE_UNAVAILABLE"; error = "Evidence is not locally available or could not be validated. No new request was made."; }
   } else if (entries === null) {
@@ -31,6 +34,10 @@ export async function storeItem(
       : item?.sourceRetrievedAt
         ? "PDF retrieved, but no validated bail evidence was produced."
         : "PDF not retrieved; this row comes from the validated court calendar only.";
+  }
+  if (unvalidatedText) {
+    acquisition = "UNVALIDATED_TEXT";
+    error = item?.detail || "Extracted text is unvalidated. Compare it with the original PDF before interpreting bail.";
   }
   if (entries !== null && !cacheEvidence) acquisition = "STORED_EXTRACTION";
   const decision = selectBailDecision(entries ?? []);
@@ -46,9 +53,10 @@ export async function storeItem(
     classification: decision.classification,
     amountCents: decision.amount === null ? null : Math.round(decision.amount * 100),
     percentage: decision.percentage === null ? null : String(decision.percentage),
-    evidencePage: decision.page, evidenceQuote: decision.quote, evidenceAcquisition: acquisition,
+    evidencePage: unvalidatedText ? item?.provenance.bailSectionPages?.[0] ?? null : decision.page,
+    evidenceQuote: unvalidatedText ?? decision.quote, evidenceAcquisition: acquisition,
     qualifies: !error && qualifiesMonetary(decision, search.criteria.maxBail),
-    ambiguous: decision.ambiguous, history: decision.history, error,
+    ambiguous: !!unvalidatedText || decision.ambiguous, history: decision.history, error,
   };
   await store.insert(bailSearchResultsTable).values(values).onConflictDoUpdate({
     target: [bailSearchResultsTable.searchId, bailSearchResultsTable.docketNumber, bailSearchResultsTable.hearingDate],
@@ -57,7 +65,8 @@ export async function storeItem(
 }
 
 /**
- * Reflect one identity-checked, extracted PDF in each linked live-search result.
+ * Reflect an identity-checked PDF in each linked search, including readable
+ * transcripts that are explicitly excluded from financial findings.
  * The optional transaction store keeps projection and verification atomic.
  */
 export async function publishVerifiedDocumentToSearch(
@@ -71,7 +80,8 @@ export async function publishVerifiedDocumentToSearch(
     eq(discoveryItemsTable.id, itemId), eq(discoveryItemsTable.jobId, jobId),
   ));
   if (!item || !item.sourceRetrievedAt || !item.provenance.documentSha256
-    || !["EXTRACTED", "MISSING_BAIL_SECTION"].includes(item.provenance.extractionOutcome)) return;
+    || !["EXTRACTED", "MISSING_BAIL_SECTION", "UNSUPPORTED_LAYOUT", "AMBIGUOUS_FINANCIAL_ASSOCIATION"]
+      .includes(item.provenance.extractionOutcome)) return;
 
   const allItems = await store.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, jobId));
   for (const search of linkedSearches) {

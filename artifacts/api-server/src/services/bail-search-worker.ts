@@ -4,6 +4,7 @@ import { discoverySourceStatus } from "../lib/discovery-source-status";
 import { logger } from "../lib/logger";
 import { resultDatesForItem } from "./bail-search-projection";
 import { storeItem } from "./bail-search-document-publisher";
+import { completedLiveSearch } from "./bail-search-completion";
 export { publishVerifiedDocumentToSearch } from "./bail-search-document-publisher";
 
 const active = new Set<string>();
@@ -37,7 +38,9 @@ async function syncLive(search: BailSearchRow) {
   const items = await db.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.jobId, job.id));
   let total = 0;
   for (const item of items) {
-    const dates = [...new Set(item.provenance.matchingEvents?.map(event => event.eventDate) ?? [item.provenance.eventDate])];
+    if (search.criteria.courtOffice && search.criteria.courtOffice !== "ANY"
+      && item.provenance.courtOffice !== search.criteria.courtOffice) continue;
+    const dates = resultDatesForItem(search.criteria, item);
     for (const date of dates) {
       if (!date || date < search.criteria.startDate || date > search.criteria.endDate) continue;
       total++;
@@ -46,8 +49,11 @@ async function syncLive(search: BailSearchRow) {
   }
   await db.update(bailSearchesTable).set({ total, updatedAt: new Date() }).where(eq(bailSearchesTable.id, search.id));
   const results = await db.select().from(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, search.id));
-  if (job.status === "COMPLETED" && job.calendarComplete && job.paginationComplete && !job.resultCapReached && results.length === total && results.every(row => !row.error)) {
-    await db.update(bailSearchesTable).set({ status: "complete", reason: null }).where(eq(bailSearchesTable.id, search.id)); return;
+  const completion = completedLiveSearch(job, items, results, total);
+  if (completion) {
+    await db.update(bailSearchesTable).set({
+      status: "complete", reason: completion.reason, resumeAvailableAt: null, updatedAt: new Date(),
+    }).where(eq(bailSearchesTable.id, search.id)); return;
   }
   // The live engine owns its request budgets and waits. The local saved-PDF
   // processing slice must not cancel a legitimate paced calendar search.
@@ -102,6 +108,14 @@ export async function startBailSearchWorker() {
   // Startup cannot assume an interrupted request succeeded.
   const interrupted = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "running"));
   for (const search of interrupted) await pauseSearch(search, "Server restarted. Saved results retained; resume explicitly.");
+  // Repair old presentation-only pauses using retained evidence. No court
+  // worker is launched and no PDF is fetched or retried by this reconciliation.
+  const finished = await db.select({ search: bailSearchesTable }).from(bailSearchesTable)
+    .innerJoin(discoveryJobsTable, eq(bailSearchesTable.discoveryJobId, discoveryJobsTable.id))
+    .where(and(eq(bailSearchesTable.status, "paused"), eq(discoveryJobsTable.status, "COMPLETED"),
+      eq(discoveryJobsTable.calendarComplete, true), eq(discoveryJobsTable.paginationComplete, true),
+      eq(discoveryJobsTable.resultCapReached, false)));
+  for (const { search } of finished) if (search.criteria.source === "live") await runBailSearch(search);
   let busy = false;
   const timer = setInterval(async () => {
     if (busy) return;

@@ -5,7 +5,8 @@ import { BailSearchProgressPanel } from '@/components/bail-search-progress';
 import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
-import { money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
+import { bailDisplay, money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
+import { lastStartedSearchId } from '@/lib/search-history';
 
 const LIVE_OFFICES = [
   { value: 'ANY', label: 'Any supported office' },
@@ -30,6 +31,7 @@ const ACQUISITION_LABELS: Record<string, string> = {
   STORED_EXTRACTION: 'Stored PDF extraction',
   CACHE: 'Local cached PDF extraction',
   CACHE_UNAVAILABLE: 'Local cached PDF unavailable',
+  UNVALIDATED_TEXT: 'Extracted text — manual verification required',
 };
 type Office = (typeof LIVE_OFFICES)[number]['value'];
 type LiveEvent = (typeof LIVE_EVENTS)[number];
@@ -38,11 +40,13 @@ function todayNewYork() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 export default function BailSearch() {
-  const [selectedSearchId, setSelectedSearchId] = useState('');
+  const [selectedSearchId, setSelectedSearchId] = useState(lastStartedSearchId);
   const { run, status, list, latest, searchId } = useLatestSearch(selectedSearchId);
   const promote = usePromoteSearch();
-  const started = useStartBailSearch();
-  const resume = useResumeBailSearch();
+  // Mutation-level callbacks survive this page unmounting during navigation.
+  // Per-call callbacks below only update the currently mounted page.
+  const started = useStartBailSearch({ mutation: { onSuccess: promote } });
+  const resume = useResumeBailSearch({ mutation: { onSuccess: promote } });
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [maxBail, setMaxBail] = useState('2000');
@@ -63,7 +67,6 @@ export default function BailSearch() {
     started.mutate({ data: { startDate, endDate, maxBail: amount, source: 'live', courtOffice, eventType } }, {
       onSuccess: (result) => {
         setSelectedSearchId(result.searchId);
-        promote(result);
       },
       onError: (error) => setFormError(`Search not started. Previous results are unchanged. ${errMsg(error)}`),
     });
@@ -147,6 +150,14 @@ export default function BailSearch() {
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
             {!run.canManage ? <p className="hint" data-testid="text-search-readonly">View-only search. Only its creating session can resume or save results.</p> : null}
+            {run.status === 'running' ? (
+              <p className="notice" role="status" data-testid="text-search-background">
+                You can navigate to another page without stopping this search. It runs on the server; return to Search to view docket numbers and bail amounts extracted from PDFs.
+              </p>
+            ) : null}
+            {run.status === 'complete' && run.reason ? (
+              <p className="notice" role="status" data-testid="text-search-completion-warning">{run.reason}</p>
+            ) : null}
             {run.status === 'paused' && (recovery?.message || run.reason) ? (
               <div className="notice" role="status" data-testid="text-recovery-message">
                 <p className="font-semibold">Search stopped</p>
@@ -159,7 +170,6 @@ export default function BailSearch() {
               <button type="button" className="btn" disabled={waiting || resume.isPending} data-testid="button-resume-search"
                 onClick={() => run.resumeToken && resume.mutate({ searchId: run.searchId, data: { resumeToken: run.resumeToken } }, { onSuccess: (result) => {
                   setSelectedSearchId(result.searchId);
-                  promote(result);
                 } })}>
                 {resume.isPending ? 'Resuming…' : waiting ? 'Resume available soon' : 'Resume'}
               </button>
@@ -180,7 +190,7 @@ export default function BailSearch() {
                     <td className="mono">{i + 1}</td>
                     <th className="mono break-all">{row.docket_number}</th>
                     <td>{shortDate(row.hearing_date)}</td>
-                    <td className="mono">{money(row.bail_amount) || (row.classification === 'nonmonetary' ? 'Nonmonetary' : '')}</td>
+                    <td className="mono" data-testid={`bail-search-amount-${row.id}`}>{bailDisplay(row)}</td>
                     <td>
                       {row.evidence_quote.trim() ? (
                         <blockquote className="max-w-2xl whitespace-pre-wrap" data-testid={`text-search-evidence-${row.id}`}>
@@ -193,6 +203,11 @@ export default function BailSearch() {
                       )}
                       {row.evidence_quote.trim() ? (
                         <p className="hint text-xs">Page {row.evidence_page ?? 'not recorded'} · {DOCUMENT_STATUS_LABELS[row.document_status] ?? row.document_status}</p>
+                      ) : null}
+                      {row.evidence_quote.trim() && row.error ? (
+                        <p className="notice mt-2 max-w-2xl" role="status" data-testid={`warning-search-evidence-${row.id}`}>
+                          {row.error}
+                        </p>
                       ) : null}
                       <details className="mt-2" data-testid={`details-search-evidence-${row.id}`}>
                         <summary className="cursor-pointer mono text-xs text-primary">Source and extraction details</summary>

@@ -9,7 +9,7 @@ import {
   type BailSearch,
   type BailSearchResult,
 } from '@workspace/api-client-react';
-import { chooseDisplayedSearchId } from '@/lib/search-history';
+import { chooseDisplayedSearchId, rememberStartedSearch } from '@/lib/search-history';
 
 /** Latest useful search, with older evidence retained when the newest is empty. */
 export function useLatestSearch(requestedSearchId?: string) {
@@ -41,6 +41,7 @@ export function useLatestSearch(requestedSearchId?: string) {
 export function usePromoteSearch() {
   const queryClient = useQueryClient();
   return (result: BailSearch) => {
+    rememberStartedSearch(result.searchId);
     queryClient.setQueryData(getGetBailSearchStatusQueryKey(result.searchId), result);
     queryClient.setQueryData(getListBailSearchesQueryKey(), (old: BailSearch[] | undefined) =>
       [result, ...(old ?? []).filter((item) => item.searchId !== result.searchId)]);
@@ -64,6 +65,16 @@ export function isReviewable(row: BailSearchResult) {
 
 export function money(amount: number | null | undefined) {
   return amount == null ? '' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount);
+}
+
+export function bailDisplay(row: Pick<BailSearchResult, 'bail_amount' | 'classification' | 'document_status'>) {
+  if (row.bail_amount != null) return money(row.bail_amount);
+  if (row.classification === 'denied') return 'Bail denied';
+  if (row.classification === 'nonmonetary') return 'Nonmonetary';
+  if (row.classification === 'recognizance') return 'Recognizance';
+  if (row.document_status === 'NO_BAIL_SECTION') return 'No bail section';
+  if (['NOT_REQUESTED', 'REQUEST_IN_PROGRESS', 'RETRIEVED'].includes(row.document_status)) return 'Pending PDF';
+  return 'Not established';
 }
 
 export function shortDate(value: string | null | undefined) {

@@ -2,6 +2,7 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 import pymupdf
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -44,6 +45,22 @@ class SuppliedBail(unittest.TestCase):
         self.assertEqual(result["entries"], [])
         self.assertEqual(result["bailSectionPages"], [])
 
+    def test_unresolved_table_keeps_readable_text_but_no_financial_findings(self):
+        for name, docket, page in (
+            ("CpDocketSheet_1792451669525.pdf", "CP-02-CR-0005845-2026", 1),
+            ("MdjDocketSheet_1792451676271.pdf", "MJ-05317-CR-0000264-2026", 2),
+        ):
+            with self.subTest(document=name), patch(
+                "bail_table.read_bail_tables",
+                side_effect=FinancialAssociationError("Financial columns require review."),
+            ):
+                result = self.read(name, docket)
+            self.assertEqual(result["extractionOutcome"], "AMBIGUOUS_FINANCIAL_ASSOCIATION")
+            self.assertEqual(result["entries"], [])
+            self.assertIn("Bail Action", result["excerpt"])
+            self.assertEqual(result["bailSectionPages"], [page])
+            self.assertIn("Extracted PDF text is unvalidated", result["detail"])
+
     def test_genuine_mdj_events_group_once_without_filing_date_substitution(self):
         docket = "MJ-05317-CR-0000264-2026"
         parsed = self.read("MdjDocketSheet_1792451676271.pdf", docket)
@@ -76,7 +93,7 @@ class SuppliedBail(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_event_date("10/20/2026", criteria)
 
-    def test_invalid_pdf_and_image_only(self):
+    def test_invalid_pdf_and_scanned_pdf_when_ocr_unavailable(self):
         self.assertEqual(extract_bail(b"<html>not a document</html>", "")["extractionOutcome"], "UNREADABLE")
         self.assertEqual(extract_bail(b"%PDF-broken", "")["extractionOutcome"], "UNREADABLE")
         with pymupdf.open(ROOT / "attached_assets/CpDocketSheet_1792451669525.pdf") as source:
@@ -84,7 +101,11 @@ class SuppliedBail(unittest.TestCase):
             with pymupdf.open() as image_only:
                 page = image_only.new_page()
                 page.insert_image(page.rect, pixmap=image)
-                self.assertEqual(extract_bail(image_only.tobytes(), "CP-02-CR-0005845-2026")["extractionOutcome"], "UNREADABLE")
+                with patch("pdf_ocr.shutil.which", return_value=None):
+                    result = extract_bail(image_only.tobytes(), "CP-02-CR-0005845-2026")
+                self.assertEqual(result["extractionOutcome"], "UNREADABLE")
+                self.assertEqual(result["entries"], [])
+                self.assertIn("OCR is unavailable", result["detail"])
 
 
 class StructuralBailGeometry(unittest.TestCase):

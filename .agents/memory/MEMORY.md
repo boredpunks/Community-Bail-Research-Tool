@@ -30,3 +30,5 @@
 - [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.
 - [Dependency type rebuilds](dependency-type-rebuilds.md) — Force composite declarations to rebuild after major type-library upgrades; incremental checks can conceal incompatibilities.
 - [Offline live-search teardown](offline-live-search-teardown.md) — Interrupted integration tests can leave RUNNING jobs and simulated source approval; inspect and restore test state before rerunning.
+- [PDF transcript validation](pdf-transcript-validation.md) — OCR text is review-only, never a financial finding; use word geometry rather than OCR block order.
+- [Background search lifecycle](background-search-lifecycle.md) — Navigation must not stop searches; collection completion is separate from financial review.

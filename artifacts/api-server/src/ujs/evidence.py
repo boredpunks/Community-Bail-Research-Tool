@@ -7,6 +7,7 @@ import re
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pymupdf
+from pdf_ocr import fill_scanned_pages, bail_transcript
 from source_protocol import allowed
 from calendar_structure import STRUCTURE_REASONS, CANDIDATE_COUNT_KEYS, bounded_candidate_counts
 
@@ -542,25 +543,32 @@ def extract_bail(body, docket):
             if document.page_count > 100:
                 return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Document page limit exceeded.")
             pages = [page.get_text(sort=True) for page in document]
+            pages, ocr_used, ocr_notice = fill_scanned_pages(document, pages)
     except Exception:
         return dict(base, extractionOutcome="UNREADABLE", detail="PDF could not be read.")
     if not pages or not pages[0].strip():
-        return dict(base, extractionOutcome="UNREADABLE", detail="No readable document text; OCR is not enabled.")
+        return dict(base, extractionOutcome="UNREADABLE",
+                    detail=ocr_notice or "No readable document text could be extracted, including local OCR.")
     first = pages[0][:2500]
     if MDJ_DOCKET.fullmatch(docket):
         from mdj_bail import extract_mdj_bail
         base.update(documentSha256=hashlib.sha256(body).hexdigest(), documentPageCount=len(pages))
-        return dict(extract_mdj_bail(pages, docket, base, iso_date, body=body),
-                    pdfEvents=document_events(pages))
+        result = extract_mdj_bail(pages, docket, base, iso_date,
+                                  body=None if ocr_used or ocr_notice else body)
+        if (ocr_used or ocr_notice) and result["extractionOutcome"] != "IDENTITY_MISMATCH":
+            return bail_transcript(pages, base, ocr_notice)
+        return dict(result, pdfEvents=document_events(pages))
     identifiers = DOCKET.findall(first)
     if (not identifiers or identifiers[0] != docket
-            or not re.search(r"COURT OF COMMON PLEAS OF\s+ALLEGHENY COUNTY", first, re.I)):
+            or not re.search(r"COURT\s+OF\s+COMMON\s+PLEAS\s+OF\s+ALLEGHENY\s+COUNTY", first, re.I)):
         return dict(base, extractionOutcome="IDENTITY_MISMATCH", detail="Court/docket header did not match the calendar row.")
     base.update(documentSha256=hashlib.sha256(body).hexdigest(),
                 documentPageCount=len(pages),
                 pdfEvents=document_events(pages),
                 bailSectionPages=[i for i, page in enumerate(pages, 1)
                                   if "BAIL INFORMATION" in page])
+    if ocr_used or ocr_notice:
+        return bail_transcript(pages, base, ocr_notice)
     if not base["bailSectionPages"]:
         return dict(base, extractionOutcome="MISSING_BAIL_SECTION", detail="Readable matching docket has no bail section. Bail and custody remain unknown.")
     if any("Originating Court" in page[page.find("BAIL INFORMATION"):]
@@ -569,19 +577,19 @@ def extract_bail(body, docket):
         try:
             entries, excerpt, locations, posted = read_bail_tables(body, iso_date)
         except ValueError as error:
-            return dict(base, extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
-                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT",
-                        detail=str(error))
+            return dict(bail_transcript(pages, base, str(error), ocr_assisted=False),
+                        extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
+                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT")
         return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=locations,
                     postedEntryState=posted, extractionOutcome="EXTRACTED",
                     detail="Verified recorded bail-row columns. Denied actions are not reported as monetary bail amounts; percentage and posting remain separate. Historical/provisional evidence, not an operative-order finding.")
     try:
         sections = bail_sections(pages)
     except ValueError:
-        return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Bail section exists but its table header is unsupported.")
+        return bail_transcript(pages, base, "The bail table header is unsupported.", ocr_assisted=False)
     section = "\n".join(text for _, text in sections)
     if len(section) > 4000:
-        return dict(base, extractionOutcome="UNSUPPORTED_LAYOUT", detail="Bail chronology exceeds the minimal excerpt limit; do not truncate it silently.")
+        return bail_transcript(pages, base, "The complete bail chronology could not be validated.", ocr_assisted=False)
     entries = []
     unknown_rows = []
     located_lines = [(page, line) for page, text in sections for line in text.splitlines()]
@@ -594,11 +602,13 @@ def extract_bail(body, docket):
             continue
         action, date, tail = match.groups()
         source_pages = [located_lines[index][0]]
+        row_excerpt = line.strip()
         if action.count("(") > action.count(")") and index + 1 < len(lines):
             continuation = lines[index + 1].strip()
             if re.fullmatch(r"[A-Za-z -]+\)", continuation):
                 action += " " + continuation
                 source_pages = sorted(set(source_pages + [located_lines[index + 1][0]]))
+                row_excerpt += "\n" + continuation
         words = re.sub(r"\s+", " ", tail).strip()
         # Never silently select one of two financial values in an unknown layout.
         # Multiple historical rows are expected; multiple amounts in ONE row are
@@ -634,7 +644,8 @@ def extract_bail(body, docket):
         entries.append({"action": action.strip(), "wording": words,
                         "orderDate": iso_date(date), "bailCategory": category,
                          "amountCents": amount, "financialBasis": basis,
-                         "sourcePages": source_pages})
+                          "sourcePages": source_pages,
+                          "excerpt": row_excerpt})
     if not entries or unknown_rows or any(entry["orderDate"] is None for entry in entries):
         return dict(base, excerpt=section, extractionOutcome="UNSUPPORTED_LAYOUT",
                     detail="Some bail rows could not be interpreted; no guessed amounts were saved.")

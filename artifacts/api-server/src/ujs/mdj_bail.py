@@ -1,6 +1,7 @@
 """Strict MDJ bail-table text parsing. No guessed amounts or case fixtures."""
 import re
 from decimal import Decimal
+from pdf_ocr import bail_transcript
 
 ROW = re.compile(
     r"(?m)^[ \t]*(Set|Changed|Modified|Denied|Revoked|Increased|Reduced|Bail Set)"
@@ -23,9 +24,9 @@ def extract_mdj_bail(pages, docket, base, iso_date, body=None):
         try:
             entries, excerpt, section_pages, posted = read_bail_tables(body, iso_date)
         except ValueError as error:
-            return dict(base, extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
-                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT",
-                        bailSectionPages=[], detail=str(error))
+            return dict(bail_transcript(pages, base, str(error), ocr_assisted=False),
+                        extractionOutcome="AMBIGUOUS_FINANCIAL_ASSOCIATION"
+                        if isinstance(error, FinancialAssociationError) else "UNSUPPORTED_LAYOUT")
         return dict(base, entries=entries, excerpt=excerpt, bailSectionPages=section_pages,
                     postedEntryState=posted, extractionOutcome="EXTRACTED",
                     detail="Header-mapped MDJ recorded setting amount; originating court and posting status kept separate. Historical/provisional evidence, not an operative-order or custody finding.")

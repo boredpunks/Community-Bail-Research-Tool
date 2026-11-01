@@ -1,3 +1,5 @@
+import { getListBailSearchesQueryKey, useListBailSearches } from '@workspace/api-client-react';
+import { rememberStartedSearch } from '@/lib/search-history';
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useStandardView } from '@/lib/theme';
@@ -49,6 +51,20 @@ const NAV = [
   { href: '/candidates', label: 'Candidates' },
 ];
 
+function BackgroundSearchStatus() {
+  const [location] = useLocation();
+  const searches = useListBailSearches({
+    query: { queryKey: getListBailSearchesQueryKey(), refetchInterval: 8000, refetchOnWindowFocus: true },
+  });
+  const running = searches.data?.find(search => search.status === 'running');
+  if (location === '/search' || !running) return null;
+  return <aside className="max-w-6xl w-full mx-auto px-4 pt-4" role="status" data-testid="background-search-status">
+    <Link href="/search" className="notice block" onClick={() => rememberStartedSearch(running.searchId)}>
+      Search running in the background · {running.progress.documentsProcessed} PDFs processed. View progress and results.
+    </Link>
+  </aside>;
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const [loc] = useLocation();
   return (
@@ -75,6 +91,7 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </header>
+      <BackgroundSearchStatus />
       <main id="main" className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">{children}</main>
       <footer className="border-t border-border">
         <p className="max-w-6xl mx-auto px-4 py-5 hint">

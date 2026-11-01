@@ -7,6 +7,18 @@ export type SearchHistoryItem = {
   };
 };
 
+const LAST_STARTED_SEARCH = 'bail-research:last-started-search';
+
+export function lastStartedSearchId(): string {
+  try { return sessionStorage.getItem(LAST_STARTED_SEARCH) ?? ''; }
+  catch { return ''; }
+}
+
+export function rememberStartedSearch(searchId: string) {
+  try { sessionStorage.setItem(LAST_STARTED_SEARCH, searchId); }
+  catch { /* Server history remains authoritative when browser storage is unavailable. */ }
+}
+
 /** Prefer an active or resumable latest search; otherwise preserve useful evidence from history. */
 export function chooseDisplayedSearchId(
   searches: readonly SearchHistoryItem[],
