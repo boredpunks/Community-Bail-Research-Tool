@@ -12,6 +12,7 @@
     "test:completion": "node ./tests/run-completion.mjs",
     "test:research-workflow": "node ./tests/run-research-workflow.mjs",
     "test:live-search-pdf": "node ./tests/run-live-search-pdf.mjs",
+    "test:clear-search-history": "node ./tests/run-clear-search-history.mjs",
     "test:volunteer-workflow": "node ./tests/run-volunteer-workflow.mjs",
     "test:cached-pdf-provenance": "python ../../scripts/test-cached-pdf-provenance.py"
   },

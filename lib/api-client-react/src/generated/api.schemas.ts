@@ -237,6 +237,26 @@ export interface BailSearchResult {
   review_status?: string | null;
 }
 
+export interface BailSearchCandidate {
+  id: string;
+  docket_number: string;
+  /** @nullable */
+  bail_amount: number | null;
+  /** @nullable */
+  source_url: string | null;
+  /** @nullable */
+  evidence_page: number | null;
+}
+
+export interface ClearBailSearchHistoryResult {
+  /** @minimum 0 */
+  deletedSearches: number;
+  /** @minimum 0 */
+  deletedResults: number;
+  /** @minimum 0 */
+  retainedRunning: number;
+}
+
 export type BailSearchStatus = typeof BailSearchStatus[keyof typeof BailSearchStatus];
 
 

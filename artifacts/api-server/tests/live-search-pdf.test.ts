@@ -71,6 +71,7 @@ if (!acquired) {
 const server = createServer(app);
 const searchIds: string[] = [];
 const jobIds: string[] = [];
+let otherSearchId: string | undefined;
 try {
   await db.insert(discoverySourceTable).values({ id: "UJS" }).onConflictDoNothing();
   await db.update(discoverySourceTable).set({
@@ -465,13 +466,51 @@ try {
     .where(eq(discoveryRequestsTable.jobId, resumableJob!.id));
   assert.equal(resumedRequests.length, 1, "Resume queues only the existing job; it does not bypass the scheduler's request gate.");
 
-  console.log("PASS: mocked API preserves PDF evidence, rejects blocked resume, and resumes only the unchanged eligible scope.");
+  const otherOwnerId = "offline-search-clear-other-session";
+  const [otherSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: otherOwnerId,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "paused",
+  }).returning();
+  otherSearchId = otherSearch!.id;
+  const candidateResponseBefore = await fetch(`${origin}/api/bail-search/candidates`, { headers: { cookie } });
+  assert.equal(candidateResponseBefore.status, 200);
+  const candidatesBefore = await candidateResponseBefore.json() as { id: string; evidence_page: number | null }[];
+
+  const clearResponse = await fetch(`${origin}/api/bail-search/search`, { method: "DELETE", headers });
+  assert.equal(clearResponse.status, 200);
+  const clearBody = await clearResponse.json() as {
+    deletedSearches: number; deletedResults: number; retainedRunning: number;
+  };
+  assert.equal(clearBody.deletedSearches, searchIds.length - 1);
+  assert.equal(clearBody.retainedRunning, 1, "A running search is kept active.");
+  const retainedSearch = (await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, resumableSearch!.id)))[0];
+  const retainedOtherSearch = (await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, otherSearch!.id)))[0];
+  assert.ok(retainedSearch, "The active search remains in storage.");
+  assert.ok(retainedOtherSearch, "Searches created by another session remain untouched.");
+  const candidateResponse = await fetch(`${origin}/api/bail-search/candidates`, { headers: { cookie } });
+  assert.equal(candidateResponse.status, 200);
+  const candidates = await candidateResponse.json() as { id: string; evidence_page: number | null }[];
+  assert.ok(candidatesBefore.every(before => candidates.some(after =>
+    after.id === before.id && after.evidence_page === before.evidence_page)),
+  "Existing saved candidates and citations remain available after search rows are removed.");
+  const remainingSearchResults = await db.select().from(bailSearchResultsTable)
+    .where(inArray(bailSearchResultsTable.searchId, searchIds));
+  assert.ok(remainingSearchResults.every(result => result.searchId === resumableSearch!.id),
+    "Inactive search result rows are removed while active-search results remain.");
+
+  console.log("PASS: mocked API preserves PDF evidence and resume scope; clearing deletes only this session's inactive search rows while retaining active searches, other sessions' searches, and saved candidates.");
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
   for (const searchId of searchIds) {
     await db.delete(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, searchId));
     await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, searchId));
   }
+  if (otherSearchId) await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, otherSearchId));
   for (const jobId of jobIds) {
     await db.delete(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, jobId));
     await db.delete(discoveryEventsTable).where(eq(discoveryEventsTable.jobId, jobId));

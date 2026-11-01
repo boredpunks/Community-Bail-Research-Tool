@@ -107,39 +107,12 @@ export const SaveBailSearchResultResponse = zod.object({
 /**
  * @summary List explicitly saved search candidates in this workspace
  */
-export const listBailSearchCandidatesResponseSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-
-
 export const ListBailSearchCandidatesResponseItem = zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
-  "hearing_date": zod.string(),
-  "decision_date": zod.string().nullable(),
-  "office": zod.string(),
   "bail_amount": zod.number().nullable(),
-  "percentage": zod.number().nullable(),
-  "classification": zod.string(),
-  "evidence_page": zod.int().nullable(),
-  "evidence_quote": zod.string(),
-  "evidence_acquisition": zod.string(),
-  "document_status": zod.enum(['NOT_REQUESTED', 'REQUEST_IN_PROGRESS', 'RETRIEVAL_FAILED', 'RETRIEVED', 'EXTRACTED', 'NO_BAIL_SECTION', 'EXTRACTION_FAILED', 'IDENTITY_MISMATCH', 'AMBIGUOUS']),
-  "qualifies": zod.boolean(),
-  "ambiguous": zod.boolean(),
-  "error": zod.string().nullable(),
-  "source_url": zod.string().nullish(),
-  "source_retrieved_at": zod.string().nullish(),
-  "source_consulted_at": zod.string().nullish(),
-  "source_pdf_sha256": zod.string().regex(listBailSearchCandidatesResponseSourcePdfSha256RegExp).nullish(),
-  "document_timings": zod.object({
-  "slot_wait_ms": zod.int().nullable(),
-  "retrieval_ms": zod.int().nullable(),
-  "extraction_ms": zod.int().nullable(),
-  "persistence_ms": zod.int().nullable()
-}).optional(),
-  "save_available": zod.boolean().optional(),
-  "save_reason": zod.string().nullish(),
-  "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "source_url": zod.string().nullable(),
+  "evidence_page": zod.int().nullable()
 })
 export const ListBailSearchCandidatesResponse = zod.array(ListBailSearchCandidatesResponseItem)
 
@@ -409,6 +382,24 @@ export const StartBailSearchResponse = zod.object({
   "message": zod.string(),
   "availableAt": zod.string().nullable()
 }).optional()
+})
+
+
+/**
+ * @summary Clear completed or paused searches created by this session
+ */
+export const clearOwnedBailSearchesResponseDeletedSearchesMin = 0;
+
+export const clearOwnedBailSearchesResponseDeletedResultsMin = 0;
+
+export const clearOwnedBailSearchesResponseRetainedRunningMin = 0;
+
+
+
+export const ClearOwnedBailSearchesResponse = zod.object({
+  "deletedSearches": zod.int().min(clearOwnedBailSearchesResponseDeletedSearchesMin),
+  "deletedResults": zod.int().min(clearOwnedBailSearchesResponseDeletedResultsMin),
+  "retainedRunning": zod.int().min(clearOwnedBailSearchesResponseRetainedRunningMin)
 })
 
 

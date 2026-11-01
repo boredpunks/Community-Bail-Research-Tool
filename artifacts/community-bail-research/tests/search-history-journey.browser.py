@@ -81,7 +81,7 @@ async def main():
         "source_url": "https://example.test/docket.pdf", "source_retrieved_at": None,
         "source_consulted_at": None, "source_pdf_sha256": None,
     }, reason="Review warning: the extracted result needs manual review.")
-    state = {"search": running, "post_count": 0, "post_seen": asyncio.Event(),
+    state = {"search": running, "post_count": 0, "delete_count": 0, "post_seen": asyncio.Event(),
              "release_post": asyncio.Event(), "status_ids": []}
 
     try:
@@ -97,7 +97,11 @@ async def main():
                 if path.endswith("/api/workspace-access/session"):
                     body = {"authenticated": True}
                 elif path.endswith("/api/bail-search/search") and req.method == "GET":
-                    body = [state["search"]]
+                    body = [state["search"]] if state["search"] else []
+                elif path.endswith("/api/bail-search/search") and req.method == "DELETE":
+                    state["delete_count"] += 1
+                    state["search"] = None
+                    body = {"deletedSearches": 1, "deletedResults": 1, "retainedRunning": 0}
                 elif path.endswith("/api/bail-search/search") and req.method == "POST":
                     state["post_count"] += 1
                     assert state["post_count"] == 1, "Unexpected automatic/duplicate Search POST"
@@ -156,7 +160,15 @@ async def main():
             assert await page.get_by_test_id("button-resume-search").count() == 0
             assert state["post_count"] == 1
             assert state["status_ids"] and set(state["status_ids"]) == {"journey-search-1"}
-            print("PASS: delayed mocked start promotes across navigation; completion, warning, docket and $100 persist after reload at 390x844; no extra POST/resume.")
+
+            await page.get_by_test_id("button-clear-search-history").click()
+            await page.get_by_test_id("button-confirm-clear-search-history").click()
+            await page.get_by_test_id("text-clear-search-history-result").wait_for()
+            assert "Cleared 1 search and 1 result." in await page.get_by_test_id("text-clear-search-history-result").inner_text()
+            assert await page.evaluate("sessionStorage.getItem('bail-research:last-started-search')") is None
+            assert await page.get_by_test_id("table-search-rows").count() == 0
+            assert state["delete_count"] == 1
+            print("PASS: delayed mocked start promotes across navigation; results persist after reload, then confirmed clear deletes history/results and resets session selection; no extra court request.")
             await browser.close()
     finally:
         server.terminate()

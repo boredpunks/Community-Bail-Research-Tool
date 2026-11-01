@@ -1,12 +1,24 @@
 import { useState } from 'react';
-import { useResumeBailSearch, useStartBailSearch } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  getGetBailSearchStatusQueryKey,
+  getListBailSearchCandidatesQueryKey,
+  getListBailSearchesQueryKey,
+  useClearOwnedBailSearches,
+  useResumeBailSearch,
+  useStartBailSearch,
+} from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { BailSearchProgressPanel } from '@/components/bail-search-progress';
 import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
 import { bailDisplay, money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
-import { lastStartedSearchId } from '@/lib/search-history';
+import { forgetStartedSearch, lastStartedSearchId } from '@/lib/search-history';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const LIVE_OFFICES = [
   { value: 'ANY', label: 'Any supported office' },
@@ -42,11 +54,15 @@ function todayNewYork() {
 export default function BailSearch() {
   const [selectedSearchId, setSelectedSearchId] = useState(lastStartedSearchId);
   const { run, status, list, latest, searchId } = useLatestSearch(selectedSearchId);
+  const queryClient = useQueryClient();
   const promote = usePromoteSearch();
   // Mutation-level callbacks survive this page unmounting during navigation.
   // Per-call callbacks below only update the currently mounted page.
   const started = useStartBailSearch({ mutation: { onSuccess: promote } });
   const resume = useResumeBailSearch({ mutation: { onSuccess: promote } });
+  const clearHistory = useClearOwnedBailSearches();
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearNotice, setClearNotice] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [maxBail, setMaxBail] = useState('2000');
@@ -78,6 +94,31 @@ export default function BailSearch() {
   const canResume = run?.status === 'paused' && !!run.resumeToken
     && (!recovery || recovery.action === 'resume' || recovery.action === 'wait');
   const rows = run?.results ?? [];
+
+  function clearPastSearches() {
+    clearHistory.mutate(undefined, {
+      onSuccess: (result) => {
+        forgetStartedSearch();
+        setSelectedSearchId('');
+        queryClient.setQueryData(getListBailSearchesQueryKey(), (old: typeof list.data) =>
+          old?.filter((search) => !search.canManage || search.status === 'running'));
+        void queryClient.invalidateQueries({ queryKey: getListBailSearchesQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: getListBailSearchCandidatesQueryKey() });
+        list.data?.filter((search) => search.canManage && search.status !== 'running')
+          .forEach((search) => queryClient.removeQueries({
+            queryKey: getGetBailSearchStatusQueryKey(search.searchId),
+          }));
+        const searchLabel = result.deletedSearches === 1 ? 'search' : 'searches';
+        const resultLabel = result.deletedResults === 1 ? 'result' : 'results';
+        setClearNotice(
+          result.deletedSearches === 0
+            ? 'There were no past searches to clear.'
+            : `Cleared ${result.deletedSearches} ${searchLabel} and ${result.deletedResults} ${resultLabel}.${result.retainedRunning ? ` ${result.retainedRunning} running search was kept.` : ''}`,
+        );
+        setConfirmClear(false);
+      },
+    });
+  }
 
   return (
     <Shell>
@@ -123,6 +164,16 @@ export default function BailSearch() {
       <section className="mt-8" aria-label="Results" data-testid="section-search-results">
         {status.isLoading ? <p className="hint" role="status">Loading saved search results…</p> : null}
         {status.isError ? <p className="errbox" role="alert">Status unavailable. {errMsg(status.error)} <button className="btn" type="button" onClick={() => status.refetch()}>Retry</button></p> : null}
+        {!list.isLoading && !list.isError ? (
+          <div className="mb-3 space-y-2">
+            <button className="btn btn-danger" type="button" onClick={() => { setClearNotice(''); setConfirmClear(true); }}
+              disabled={clearHistory.isPending} data-testid="button-clear-search-history">
+              Clear my past searches
+            </button>
+            {clearHistory.isError ? <p className="errbox" role="alert">Could not clear past searches. {errMsg(clearHistory.error)}</p> : null}
+            {clearNotice ? <p className="notice" role="status" data-testid="text-clear-search-history-result">{clearNotice}</p> : null}
+          </div>
+        ) : null}
         {(list.data?.length ?? 0) > 1 && searchId ? (
           <div className="panel max-w-2xl mb-3">
             <label className="block">
@@ -235,6 +286,25 @@ export default function BailSearch() {
           </div>
         ) : null}
       </section>
+      <AlertDialog open={confirmClear} onOpenChange={(open) => { if (!clearHistory.isPending) setConfirmClear(open); }}>
+        <AlertDialogContent className="border-primary bg-background text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="mono">Clear your past searches?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes your completed and paused searches and their result rows. Everyone will stop seeing them. Saved candidates remain available, running searches are kept, and separate source-collection history in Discovery is not deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {clearHistory.isError ? <p className="errbox" role="alert">Could not clear past searches. {errMsg(clearHistory.error)}</p> : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel className="btn" disabled={clearHistory.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="btn btn-danger" disabled={clearHistory.isPending}
+              onClick={(event) => { event.preventDefault(); clearPastSearches(); }}
+              data-testid="button-confirm-clear-search-history">
+              {clearHistory.isPending ? 'Clearing…' : 'Clear searches'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Shell>
   );
 }

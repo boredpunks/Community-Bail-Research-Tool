@@ -19,6 +19,11 @@ export function rememberStartedSearch(searchId: string) {
   catch { /* Server history remains authoritative when browser storage is unavailable. */ }
 }
 
+export function forgetStartedSearch() {
+  try { sessionStorage.removeItem(LAST_STARTED_SEARCH); }
+  catch { /* Server history remains authoritative when browser storage is unavailable. */ }
+}
+
 /** Prefer an active or resumable latest search; otherwise preserve useful evidence from history. */
 export function chooseDisplayedSearchId(
   searches: readonly SearchHistoryItem[],
