@@ -686,12 +686,23 @@ components:
         startedAt: { type: string, format: date-time }
     BailSearchProgress:
       type: object
-      required: [completed, total, pending, calendarValidated, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit]
+      required: [completed, total, pending, calendarValidated, calendarCoverage, documentsDiscovered, documentRequestsAttempted, documentsRetrieved, documentsProcessed, documentsWithEvidence, sourceRequestsUsed, sourceRequestLimit]
       properties:
         completed: { type: integer }
         total: { type: integer }
         pending: { type: integer }
         calendarValidated: { type: boolean }
+        calendarCoverage:
+          type: object
+          additionalProperties: false
+          required: [segmentsChecked, segmentsTotal, rowsObserved, rowsRetained, rowsExcluded, partial]
+          properties:
+            segmentsChecked: { type: integer }
+            segmentsTotal: { type: [integer, "null"] }
+            rowsObserved: { type: integer }
+            rowsRetained: { type: integer }
+            rowsExcluded: { type: integer }
+            partial: { type: boolean }
         documentsDiscovered: { type: integer }
         documentRequestsAttempted: { type: integer }
         documentsRetrieved: { type: integer }

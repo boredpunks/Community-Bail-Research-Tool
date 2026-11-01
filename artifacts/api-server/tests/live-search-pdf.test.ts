@@ -36,6 +36,16 @@ const scenarios = [
     documentPath: "/Report/MdjDocketSheet",
     outcome: "MISSING_BAIL_SECTION",
   },
+  {
+    startDate: isoToday,
+    endDate: isoToday,
+    courtOffice: "CP-05-02-Crim",
+    eventType: "Preliminary Hearing",
+    docketNumber: "CP-02-CR-0005845-2026",
+    documentPath: "/Report/CpDocketSheet",
+    outcome: "EXTRACTED",
+    partialCoverage: true,
+  },
 ] as const;
 
 process.env.NODE_ENV = "test";
@@ -144,7 +154,13 @@ try {
       status: string;
       stage: string;
       reason?: string | null;
-      progress: { calendarValidated: boolean; documentsRetrieved: number; documentsProcessed: number };
+      progress: {
+        calendarValidated: boolean; documentsRetrieved: number; documentsProcessed: number;
+        calendarCoverage: {
+          segmentsChecked: number; segmentsTotal: number | null;
+          rowsObserved: number; rowsRetained: number; rowsExcluded: number; partial: boolean;
+        };
+      };
       results: Array<{
         docket_number: string; hearing_date: string; bail_amount: number | null;
         evidence_page: number | null; evidence_quote: string; document_status: string;
@@ -152,10 +168,20 @@ try {
       }>;
     };
     assert.equal(response.searchId, started.searchId);
-    assert.equal(response.status, "complete", response.reason ?? response.stage);
+    assert.equal(response.status, scenario.partialCoverage ? "paused" : "complete", response.reason ?? response.stage);
     assert.equal(response.progress.calendarValidated, true);
     assert.equal(response.progress.documentsRetrieved, 1);
     assert.equal(response.progress.documentsProcessed, 1);
+    if (scenario.partialCoverage) {
+      assert.deepEqual(response.progress.calendarCoverage, {
+        segmentsChecked: 1,
+        segmentsTotal: null,
+        rowsObserved: 2,
+        rowsRetained: 1,
+        rowsExcluded: 1,
+        partial: true,
+      });
+    }
     assert.equal(response.results.length, 1);
     const [result] = response.results;
     assert.equal(result?.docket_number, scenario.docketNumber);

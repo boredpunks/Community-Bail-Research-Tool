@@ -179,6 +179,14 @@ export const ListBailSearchesResponseItem = zod.object({
   "total": zod.int(),
   "pending": zod.int(),
   "calendarValidated": zod.boolean(),
+  "calendarCoverage": zod.object({
+  "segmentsChecked": zod.int(),
+  "segmentsTotal": zod.int().nullable(),
+  "rowsObserved": zod.int(),
+  "rowsRetained": zod.int(),
+  "rowsExcluded": zod.int(),
+  "partial": zod.boolean()
+}),
   "documentsDiscovered": zod.int(),
   "documentRequestsAttempted": zod.int(),
   "documentsRetrieved": zod.int(),
@@ -281,6 +289,14 @@ export const StartBailSearchResponse = zod.object({
   "total": zod.int(),
   "pending": zod.int(),
   "calendarValidated": zod.boolean(),
+  "calendarCoverage": zod.object({
+  "segmentsChecked": zod.int(),
+  "segmentsTotal": zod.int().nullable(),
+  "rowsObserved": zod.int(),
+  "rowsRetained": zod.int(),
+  "rowsExcluded": zod.int(),
+  "partial": zod.boolean()
+}),
   "documentsDiscovered": zod.int(),
   "documentRequestsAttempted": zod.int(),
   "documentsRetrieved": zod.int(),
@@ -370,6 +386,14 @@ export const GetBailSearchStatusResponse = zod.object({
   "total": zod.int(),
   "pending": zod.int(),
   "calendarValidated": zod.boolean(),
+  "calendarCoverage": zod.object({
+  "segmentsChecked": zod.int(),
+  "segmentsTotal": zod.int().nullable(),
+  "rowsObserved": zod.int(),
+  "rowsRetained": zod.int(),
+  "rowsExcluded": zod.int(),
+  "partial": zod.boolean()
+}),
   "documentsDiscovered": zod.int(),
   "documentRequestsAttempted": zod.int(),
   "documentsRetrieved": zod.int(),
@@ -468,6 +492,14 @@ export const ResumeBailSearchResponse = zod.object({
   "total": zod.int(),
   "pending": zod.int(),
   "calendarValidated": zod.boolean(),
+  "calendarCoverage": zod.object({
+  "segmentsChecked": zod.int(),
+  "segmentsTotal": zod.int().nullable(),
+  "rowsObserved": zod.int(),
+  "rowsRetained": zod.int(),
+  "rowsExcluded": zod.int(),
+  "partial": zod.boolean()
+}),
   "documentsDiscovered": zod.int(),
   "documentRequestsAttempted": zod.int(),
   "documentsRetrieved": zod.int(),

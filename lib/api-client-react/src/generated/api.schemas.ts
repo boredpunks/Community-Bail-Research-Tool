@@ -94,11 +94,22 @@ export interface BailSearchCurrentRequest {
   startedAt: string;
 }
 
+export type BailSearchProgressCalendarCoverage = {
+  segmentsChecked: number;
+  /** @nullable */
+  segmentsTotal: number | null;
+  rowsObserved: number;
+  rowsRetained: number;
+  rowsExcluded: number;
+  partial: boolean;
+};
+
 export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
   calendarValidated: boolean;
+  calendarCoverage: BailSearchProgressCalendarCoverage;
   documentsDiscovered: number;
   documentRequestsAttempted: number;
   documentsRetrieved: number;

@@ -4,7 +4,7 @@ The calendar and docket PDF are local fixtures. This worker preserves the
 parent IPC protocol but has no browser, HTTP client, or public-network path.
 """
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import time
@@ -65,15 +65,27 @@ def calendar_rows(criteria, docket, court_type, court_office, event_type):
         + "".join(f"<th>{label}</th>" for label in headers)
         + "</tr><tr>"
         + "".join(f"<td>{cell}</td>" for cell in cells)
-        + "</tr></table>"
+        + "</tr>"
     )
+    if event_type == "Preliminary Hearing":
+        # Offline-only fixture: one valid row, one rejected out-of-window row,
+        # and a visible next-page link. No court request is made by this test.
+        rejected = cells.copy()
+        rejected[2] = "CP-02-CR-0005846-2026"
+        outside_date = date + timedelta(days=1)
+        rejected[16] = f"{outside_date.month}/{outside_date.day}/{outside_date.year} 9:00 am"
+        rejected[18] = f'<a href="{report_path}?docketNumber={rejected[2]}">Docket PDF</a>'
+        html += "<tr>" + "".join(f"<td>{cell}</td>" for cell in rejected) + "</tr>"
+    html += "</table>"
+    if event_type == "Preliminary Hearing":
+        html += '<a href="/CaseSearch?page=2">Next page</a>'
     parser = CalendarResults()
     parser.feed(html)
     parser.close()
     rows = parser.validated(criteria)
-    if len(rows) != 1:
+    if len(rows) != 1 or parser.row_rejection_count != (1 if event_type == "Preliminary Hearing" else 0):
         raise RuntimeError("The mocked calendar response did not validate.")
-    return rows
+    return rows, parser.row_rejection_count, len(parser.rows)
 
 
 def main():
@@ -88,9 +100,12 @@ def main():
     if not require_grant(CALENDAR_URL, "POST"):
         return
     court_office = "05-3-10" if no_bail else criteria["courtOffice"]
-    rows = calendar_rows(criteria, docket, court_type, court_office, event_type)
+    rows, rejected_rows, observed_rows = calendar_rows(criteria, docket, court_type, court_office, event_type)
+    if event_type == "Preliminary Hearing":
+        emit("calendar_coverage", segmentsChecked=1, segmentsTotal=None,
+             rowsObserved=observed_rows, rowsExcluded=rejected_rows)
     emit("calendar", rows=rows, retrievedAt=datetime.now(timezone.utc).isoformat(),
-         paginationComplete=True, resultCapReached=False, traversal="STATIC_DOM",
+         paginationComplete=event_type != "Preliminary Hearing", resultCapReached=False, traversal="STATIC_DOM",
          blockedAssets=0)
     if not require_grant(pdf_url, "GET"):
         return

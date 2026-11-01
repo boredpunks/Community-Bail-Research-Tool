@@ -24,6 +24,7 @@ export * from './bailSearchInputCourtOffice';
 export * from './bailSearchInputEventType';
 export * from './bailSearchInputSource';
 export * from './bailSearchProgress';
+export * from './bailSearchProgressCalendarCoverage';
 export * from './bailSearchReadiness';
 export * from './bailSearchRecovery';
 export * from './bailSearchRecoveryAction';

@@ -6,12 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BailSearchCurrentRequest } from './bailSearchCurrentRequest';
+import type { BailSearchProgressCalendarCoverage } from './bailSearchProgressCalendarCoverage';
 
 export interface BailSearchProgress {
   completed: number;
   total: number;
   pending: number;
   calendarValidated: boolean;
+  calendarCoverage: BailSearchProgressCalendarCoverage;
   documentsDiscovered: number;
   documentRequestsAttempted: number;
   documentsRetrieved: number;

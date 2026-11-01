@@ -3,7 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, pool, bailSearchesTable, discoveryAssessmentsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type DiscoveryJobRow, type DiscoveryEntryData } from "@workspace/db";
 import { actualDate, discoveryEvent, discoveryPolicy, jobSummary } from "./discovery";
 import {
@@ -298,6 +298,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   let calendarLayoutSeen = false;
   let calendarResponseDiagnosticSeen = false;
   let rejectedCalendarRows = 0;
+  let calendarCoverageSeen = false;
   let refreshCalendarActive = exactSessionRefresh;
   let refreshCalendarValidated = false;
   let refreshMismatch = false;
@@ -519,6 +520,29 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           `Response structure and result validation: ${result.outcome}; intercepted Search body check=${String(message.criteriaValidation)}; source rows=${result.observedRows}; rows validated=${result.validatedRows}; row-level rejects=${rejectedCalendarRows}; distinct dockets=${result.validatedDockets}; document links=${result.documentLinks}; office/event/date scope=${result.scope}; date window=${result.dates}; explicit empty-result evidence=${result.explicitEmptyResult}.`,
           `Document retrieval eligibility: ${String(message.documentEligibility)}.`,
         ].join("|"));
+      } else if (message.kind === "calendar_coverage") {
+        if (diagnosticOnly || calendarCoverageSeen
+          || Object.keys(message).sort().join() !== [
+            "kind", "segmentsChecked", "segmentsTotal", "rowsObserved", "rowsExcluded",
+          ].sort().join()
+          || message.segmentsChecked !== 1
+          || message.segmentsTotal !== null
+            && (!Number.isSafeInteger(message.segmentsTotal) || Number(message.segmentsTotal) < 1)
+          || !Number.isSafeInteger(message.rowsObserved) || Number(message.rowsObserved) < 0 || Number(message.rowsObserved) > 5000
+          || !Number.isSafeInteger(message.rowsExcluded) || Number(message.rowsExcluded) < 0
+          || Number(message.rowsExcluded) > Number(message.rowsObserved)) {
+          throw new Error("Invalid calendar coverage progress");
+        }
+        calendarCoverageSeen = true;
+        rejectedCalendarRows = Number(message.rowsExcluded);
+        await discoveryEvent(job, "CALENDAR_COVERAGE", JSON.stringify({
+          segmentsChecked: message.segmentsChecked,
+          segmentsTotal: message.segmentsTotal,
+          rowsObserved: message.rowsObserved,
+          rowsRetained: 0,
+          rowsExcluded: message.rowsExcluded,
+          partial: message.segmentsTotal === null || Number(message.rowsExcluded) > 0,
+        }));
       } else if (message.kind === "calendar_layout") {
         if (diagnosticOnly || calendarLayoutSeen || !validCalendarLayout(message))
           throw new Error("Invalid calendar layout projection");
@@ -649,6 +673,26 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
           `Validated ${rows.length} distinct result-linked dockets in source order. ${calendarPreviewOnly
             ? `Validated column headers (allowlisted labels only): ${calendarAuditHeaders.join(", ")}. `
             : ""}${message.paginationComplete ? "All locally available rows inspected; no remote pagination detected." : "Pagination or source result cap limits coverage; additional remote pages were not examined."} Traversal: ${["STATIC_DOM", "LOCAL_DATATABLES", "REMOTE_PAGINATION_NOT_TRAVERSED"].includes(String(message.traversal)) ? message.traversal : "LEGACY_UNREPORTED"}. Nonessential assets blocked before transmission: ${Number(message.blockedAssets) || 0}.`);
+        const [coverageEvent] = await db.select().from(discoveryEventsTable)
+          .where(and(eq(discoveryEventsTable.jobId, job.id), eq(discoveryEventsTable.kind, "CALENDAR_COVERAGE")))
+          .orderBy(desc(discoveryEventsTable.createdAt)).limit(1);
+        const previousCoverage = coverageEvent ? JSON.parse(coverageEvent.message) as {
+          segmentsChecked: number; segmentsTotal: number | null; rowsObserved: number;
+          rowsRetained: number; rowsExcluded: number;
+        } : null;
+        const segmentsChecked = previousCoverage?.segmentsChecked ?? 1;
+        const segmentsTotal = previousCoverage?.segmentsTotal
+          ?? (message.paginationComplete === true && message.resultCapReached !== true ? 1 : null);
+        const rowsExcluded = previousCoverage?.rowsExcluded ?? rejectedCalendarRows;
+        await discoveryEvent(job, "CALENDAR_COVERAGE", JSON.stringify({
+          segmentsChecked,
+          segmentsTotal,
+          rowsObserved: previousCoverage?.rowsObserved ?? rows.length + rowsExcluded,
+          rowsRetained: rows.length,
+          rowsExcluded,
+          partial: segmentsTotal === null || segmentsChecked < segmentsTotal
+            || rowsExcluded > 0 || message.resultCapReached === true,
+        }));
       } else if (message.kind === "calendar_preview_finished") {
         if (!calendarPreviewOnly || !job.calendarComplete || Object.keys(message).length !== 1)
           throw new Error("Invalid calendar preview completion");

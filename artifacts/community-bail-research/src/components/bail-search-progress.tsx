@@ -19,6 +19,7 @@ function formatElapsed(startedAt: string, now: number) {
 export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
   const [now, setNow] = useState(() => Date.now());
   const currentRequest = search.progress.currentRequest;
+  const coverage = search.progress.calendarCoverage;
   const findingCalendar = !search.progress.calendarValidated;
   const total = search.progress.total;
   const hasDocumentTotal = !findingCalendar && total > 0;
@@ -67,6 +68,19 @@ export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
         <p className="hint">
           Calendar: <strong>{findingCalendar ? 'searching and validating' : 'validated'}</strong>
         </p>
+        <p className="hint" data-testid="text-calendar-coverage">
+          Calendar segments checked:{' '}
+          <strong>{coverage.segmentsChecked === 0
+            ? 'not confirmed'
+            : coverage.segmentsTotal === null
+              ? `${coverage.segmentsChecked} checked; total unknown`
+              : `${coverage.segmentsChecked} of ${coverage.segmentsTotal}`}</strong>
+          {coverage.segmentsChecked > 0 ? (
+            <span className="block text-xs">
+              Rows: {coverage.rowsObserved} observed · {coverage.rowsRetained} retained · {coverage.rowsExcluded} excluded by validation
+            </span>
+          ) : null}
+        </p>
         <p className="hint">
           Dockets processed: <strong>{hasDocumentTotal ? `${completed} / ${total}` : 'not available until calendar validation'}</strong>
         </p>
@@ -83,6 +97,12 @@ export function BailSearchProgressPanel({ search }: { search: BailSearch }) {
           <p className="hint">Source requests used: <strong>{search.progress.sourceRequestsUsed}</strong></p>
         )}
       </div>
+
+      {coverage.partial ? (
+        <p className="hint text-sm" role="status" data-testid="text-calendar-partial-coverage">
+          Partial calendar coverage. Unchecked calendar dates have not been confirmed to have no cases.
+        </p>
+      ) : null}
 
       <p className="hint" data-testid="text-search-current-activity">
         {currentRequest

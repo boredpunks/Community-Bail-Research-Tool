@@ -56,6 +56,14 @@ def progress(**overrides):
         "total": 1,
         "pending": 0,
         "calendarValidated": True,
+        "calendarCoverage": {
+            "segmentsChecked": 1,
+            "segmentsTotal": 1,
+            "rowsObserved": 1,
+            "rowsRetained": 1,
+            "rowsExcluded": 0,
+            "partial": False,
+        },
         "documentsDiscovered": 1,
         "documentRequestsAttempted": 1,
         "documentsRetrieved": 1,
@@ -118,6 +126,14 @@ def main():
             documentsProcessed=0,
             documentsWithEvidence=0,
             sourceRequestsUsed=3,
+            calendarCoverage={
+                "segmentsChecked": 1,
+                "segmentsTotal": None,
+                "rowsObserved": 3,
+                "rowsRetained": 2,
+                "rowsExcluded": 1,
+                "partial": True,
+            },
         ),
         [
             result("pending-row-1", "CP-2026-0001", "", status="NOT_REQUESTED"),
@@ -226,6 +242,9 @@ def main():
             progress_panel.wait_for()
             assert "Checking docket documents" in progress_panel.inner_text()
             assert "0 of 2 dockets processed; 2 remain." in progress_panel.inner_text()
+            assert "1 checked; total unknown" in page.get_by_test_id("text-calendar-coverage").inner_text()
+            assert "3 observed · 2 retained · 1 excluded by validation" in page.get_by_test_id("text-calendar-coverage").inner_text()
+            assert "Unchecked calendar dates have not been confirmed to have no cases." in page.get_by_test_id("text-calendar-partial-coverage").inner_text()
             assert page.get_by_test_id("select-search-history").input_value() == "newer-search"
             assert "Paused" in page.get_by_test_id("status-search").inner_text()
             assert page.get_by_test_id("button-resume-search").is_enabled()

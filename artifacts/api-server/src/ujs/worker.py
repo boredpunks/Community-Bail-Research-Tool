@@ -915,6 +915,21 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                   })
             response_diagnostic_emitted = True
 
+        def emit_calendar_coverage():
+            result = response_result_validation or {}
+            observed = result.get("observedRows", 0)
+            validated = result.get("validatedRows", 0)
+            row_rejections = result.get("outcome") in ("VALIDATED_PARTIAL", "ROW_REJECTIONS_ONLY")
+            excluded = max(0, observed - validated) if row_rejections else 0
+            parser_accepted = response_parser_outcome in (
+                "CANDIDATE_NONEMPTY", "CANDIDATE_PARTIAL", "EXPLICIT_EMPTY_RESULT",
+                "ROW_REJECTIONS_ONLY",
+            )
+            segments_total = (1 if parser_accepted and not calendar_has_remote_pagination
+                              and not calendar_result_limit_warning else None)
+            emit("calendar_coverage", segmentsChecked=1, segmentsTotal=segments_total,
+                 rowsObserved=observed, rowsExcluded=excluded)
+
         try:
             items = config["pendingItems"]
             if not config["calendarComplete"]:
@@ -1039,6 +1054,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 if not calendar_post_completed:
                     raise RuntimeError("UNEXPECTED_RESPONSE")
                 response_diagnostic()
+                emit_calendar_coverage()
                 eligibility = response_eligibility(
                     response_transport_status(), response_console_status())
                 if eligibility not in ("ELIGIBLE", "VALIDATED_EMPTY"):

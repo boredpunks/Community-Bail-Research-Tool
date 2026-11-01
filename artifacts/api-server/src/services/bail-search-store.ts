@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
-  db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable,
+  db, bailSearchesTable, bailSearchResultsTable, discoveryEventsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable,
   type BailSearchRow, type BailSearchResultRow, type BailSearchCriteria, type BailSearchQueueItem,
 } from "@workspace/db";
 import { csvCell } from "../lib/bail-decision";
@@ -12,6 +12,39 @@ import { resultsDeadline } from "../lib/discovery-safety";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
+
+type CalendarCoverage = {
+  segmentsChecked: number;
+  segmentsTotal: number | null;
+  rowsObserved: number;
+  rowsRetained: number;
+  rowsExcluded: number;
+  partial: boolean;
+};
+
+async function calendarCoverage(jobId: string | null | undefined): Promise<CalendarCoverage> {
+  const empty: CalendarCoverage = {
+    segmentsChecked: 0, segmentsTotal: null, rowsObserved: 0, rowsRetained: 0, rowsExcluded: 0, partial: false,
+  };
+  if (!jobId) return empty;
+  const [event] = await db.select({ message: discoveryEventsTable.message }).from(discoveryEventsTable)
+    .where(and(eq(discoveryEventsTable.jobId, jobId), eq(discoveryEventsTable.kind, "CALENDAR_COVERAGE")))
+    .orderBy(desc(discoveryEventsTable.createdAt)).limit(1);
+  if (!event) return empty;
+  try {
+    const value = JSON.parse(event.message) as Partial<CalendarCoverage>;
+    if (!Number.isSafeInteger(value.segmentsChecked) || Number(value.segmentsChecked) < 0
+      || value.segmentsTotal !== null && (!Number.isSafeInteger(value.segmentsTotal)
+        || Number(value.segmentsTotal) < Number(value.segmentsChecked))
+      || !Number.isSafeInteger(value.rowsObserved) || Number(value.rowsObserved) < 0
+      || !Number.isSafeInteger(value.rowsRetained) || Number(value.rowsRetained) < 0
+      || !Number.isSafeInteger(value.rowsExcluded) || Number(value.rowsExcluded) < 0
+      || typeof value.partial !== "boolean") throw new Error("Invalid retained calendar coverage");
+    return value as CalendarCoverage;
+  } catch {
+    return empty;
+  }
+}
 
 export const SEARCH_SLICE_MS = 240_000;
 export const sourceNotice = (source: string) => source === "live"
@@ -196,12 +229,14 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
     eq(discoveryRequestsTable.jobId, job.id),
     eq(discoveryRequestsTable.outcome, "IN_FLIGHT"),
   )).limit(1) : [];
+  const coverage = await calendarCoverage(job?.id);
   return {
     searchId: search.id, status: search.status as "running" | "paused" | "complete",
     criteria: search.criteria,
     progress: {
       completed, total: search.total, pending: Math.max(0, search.total - completed),
       calendarValidated: !!job?.calendarComplete,
+      calendarCoverage: coverage,
       documentsDiscovered: documentItemIds.length,
       documentRequestsAttempted: documentRequests.length,
       documentsRetrieved: retrievedItemIds.size,
