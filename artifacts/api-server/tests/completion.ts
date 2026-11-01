@@ -81,6 +81,8 @@ const timingResponse = {
   criteria: { startDate: "2026-10-30", endDate: "2026-10-30", maxBail: 1_000, source: "live" },
   progress: {
     completed: 1, total: 1, pending: 0, calendarValidated: true,
+    calendarCoverage: {segmentsChecked: 1, segmentsTotal: 1, rowsObserved: 1,
+      rowsRetained: 1, rowsExcluded: 0, partial: false},
     documentsDiscovered: 1, documentRequestsAttempted: 1, documentsRetrieved: 1,
     documentsProcessed: 1, documentsWithEvidence: 1, sourceRequestsUsed: 2, sourceRequestLimit: 10,
   },
