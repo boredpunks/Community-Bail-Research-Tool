@@ -16,6 +16,7 @@ type RecoveryEvidence = {
   jobMessage?: string | null;
   expiryReason?: string | null;
   missingEvidence?: boolean;
+  autoResumeQuota?: boolean;
 };
 
 function stageName(input: RecoveryEvidence) {
@@ -169,7 +170,9 @@ export function chooseRecovery(input: {
   if (input.cooldown && input.cooldown > now) return {
     action: "wait",
     message: explanation(evidence,
-      `Wait until ${input.cooldown.toISOString()}, then check this same search again. Its scope and remaining budget are unchanged.`),
+      evidence.autoResumeQuota
+        ? `This same search will continue automatically after the shared quota window clears (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
+        : `Wait until ${input.cooldown.toISOString()}, then check this same search again. Its scope and remaining budget are unchanged.`),
     availableAt: input.cooldown.toISOString(),
   };
   return {

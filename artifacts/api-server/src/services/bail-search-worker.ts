@@ -1,10 +1,12 @@
-import { and, eq, inArray } from "drizzle-orm";
-import { db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, type BailSearchRow, type BailSearchQueueItem } from "@workspace/db";
+import { and, eq, gt, inArray } from "drizzle-orm";
+import { db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type BailSearchRow, type BailSearchQueueItem } from "@workspace/db";
 import { discoverySourceStatus } from "../lib/discovery-source-status";
 import { logger } from "../lib/logger";
 import { resultDatesForItem } from "./bail-search-projection";
 import { storeItem } from "./bail-search-document-publisher";
 import { completedLiveSearch } from "./bail-search-completion";
+import { quotaResumeReason, autoResumeQuotaBlock, isLegacyQuotaPause, legacyQuotaResumeBlock } from "./bail-search-auto-resume";
+import { resumeBailSearch } from "./bail-search-resume";
 export { publishVerifiedDocumentToSearch } from "./bail-search-document-publisher";
 
 const active = new Set<string>();
@@ -59,9 +61,46 @@ async function syncLive(search: BailSearchRow) {
   // processing slice must not cancel a legitimate paced calendar search.
   if (!["RUNNING", "QUEUED"].includes(job.status)) {
     const source = await discoverySourceStatus();
-    await pauseSearch(search, job.message || "Processing paused. Partial results retained.",
+    const quotaReason = quotaResumeReason(source.blockedReason ?? "", job.message);
+    await pauseSearch(search, quotaReason ?? (job.message || "Processing paused. Partial results retained."),
       source.nextEligibleAt ? new Date(source.nextEligibleAt) : new Date());
   }
+}
+
+async function autoContinueQuotaSearches() {
+  const paused = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "paused"));
+  const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const legacy = paused.filter(search => search.criteria.source === "live"
+    && isLegacyQuotaPause(search.reason) && search.resumeAvailableAt
+    && search.updatedAt > recentCutoff);
+  if (legacy.length) {
+    const oldestPause = new Date(Math.min(...legacy.map(search => search.updatedAt.getTime())));
+    const starts = await db.select({ startedAt: discoveryRequestsTable.startedAt })
+      .from(discoveryRequestsTable).where(and(
+        eq(discoveryRequestsTable.sourceId, "UJS"),
+        gt(discoveryRequestsTable.startedAt, new Date(oldestPause.getTime() - 24 * 60 * 60 * 1000)),
+      ));
+    for (const search of legacy) {
+      const pauseTime = search.updatedAt.getTime();
+      const recentStarts = starts.flatMap(request => request.startedAt <= search.updatedAt
+        && request.startedAt.getTime() > pauseTime - 24 * 60 * 60 * 1000 ? [request.startedAt] : []);
+      const block = legacyQuotaResumeBlock(search.reason, search.resumeAvailableAt, search.updatedAt, recentStarts);
+      const reason = block ? quotaResumeReason(block, null) : null;
+      if (reason) await db.update(bailSearchesTable).set({
+        reason,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(bailSearchesTable.id, search.id),
+        eq(bailSearchesTable.status, "paused"),
+        eq(bailSearchesTable.reason, search.reason!),
+      ));
+    }
+  }
+  const now = new Date();
+  const eligible = paused.filter(search => search.criteria.source === "live"
+    && autoResumeQuotaBlock(search.reason) !== null
+    && search.resumeAvailableAt !== null && search.resumeAvailableAt <= now);
+  await Promise.all(eligible.map(search => resumeBailSearch(search.id, { automaticQuota: true })));
 }
 export async function runBailSearch(search: BailSearchRow) {
   if (active.has(search.id)) return;
@@ -121,6 +160,7 @@ export async function startBailSearchWorker() {
     if (busy) return;
     busy = true;
     try {
+      await autoContinueQuotaSearches();
       const rows = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "running"));
       await Promise.all(rows.map(runBailSearch));
     } catch { logger.error("Volunteer search worker unavailable"); }

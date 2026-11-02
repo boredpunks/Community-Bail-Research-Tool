@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, discoverySourceTable, volunteerFeedbackTable } from "@workspace/db";
+import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, volunteerFeedbackTable } from "@workspace/db";
 import {
   StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
   SaveBailSearchResultBody, SaveBailSearchResultParams, ExportBailSearchQueryParams,
@@ -9,16 +9,12 @@ import {
 } from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
-import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, searchRecovery, enrichedResult, validResumeToken, validateSearchDates } from "../services/bail-search-store";
+import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, enrichedResult, validateSearchDates } from "../services/bail-search-store";
 import { safeDocketLink, shareResult } from "../services/bail-search-evidence";
-import { easternToday } from "../lib/discovery";
-import { calendarAdmission } from "../lib/research-operations";
-import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
-import { resultsDeadline } from "../lib/discovery-safety";
 import { discoveryPolicy } from "../lib/discovery";
 import { launchDiscovery, newResearchCriteria } from "../lib/discovery-launch";
 import { canManageSearch, withSearchViewerAccess } from "../services/bail-search-access";
-import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
+import { resumeBailSearch } from "../services/bail-search-resume";
 
 class ActiveVolunteerSearchError extends Error {}
 
@@ -269,36 +265,9 @@ router.post("/search/:searchId/resume", async (req, res) => {
   }
   const input = ResumeBailSearchBody.safeParse(req.body);
   const prior = res.locals.search as typeof bailSearchesTable.$inferSelect;
-  if (!input.success || !validResumeToken(prior, input.data.resumeToken)) { res.status(403).json({ error: "Invalid or expired resume token." }); return; }
-  const rows = await db.select().from(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, prior.id));
-  const { recovery } = await searchRecovery(prior, rows.some(row => !!row.error));
-  if (recovery.action !== "resume") { res.status(409).json({ error: recovery.message }); return; }
-  const result = await db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prior.ownerId}))`);
-    const [search] = await tx.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, prior.id)).for("update");
-    if (!search || search.status !== "paused" || !validResumeToken(search, input.data.resumeToken)) return "Search is no longer paused.";
-    if (search.resumeAvailableAt && search.resumeAvailableAt > new Date()) return "Source cooldown has not expired.";
-    const active = await tx.select().from(bailSearchesTable).where(and(eq(bailSearchesTable.ownerId, search.ownerId), eq(bailSearchesTable.status, "running")));
-    if (active.length) return "Another search is running.";
-    if (search.criteria.source === "live") {
-      if (!search.discoveryJobId) return "The source search did not start. Start a new search after the source blocker is resolved.";
-      const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
-      const [job] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, search.discoveryJobId)).for("update");
-      if (!job || job.status !== "PAUSED" || job.assessmentId || job.resultsExpiredAt
-        || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())
-        || (!job.calendarComplete && job.criteria.startDate < easternToday())
-        || job.requestsUsed >= job.criteria.requestCap) return "Original source scope or budget cannot resume. Start a new eligible search.";
-      let block = !job.calendarComplete ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
-      if (["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
-        && await canAutomaticallyCheckOrdinaryPdfAccess(job, source, { store: tx })) block = null;
-      if (block) return `Source remains paused: ${block}.`;
-      await tx.update(discoveryJobsTable).set({ status: "QUEUED", updatedAt: new Date() }).where(eq(discoveryJobsTable.id, job.id));
-    }
-    await tx.update(bailSearchesTable).set({ status: "running", reason: null, resumeVersion: search.resumeVersion + 1,
-      leaseExpiresAt: new Date(Date.now() + SEARCH_SLICE_MS), resumeAvailableAt: null, updatedAt: new Date() }).where(eq(bailSearchesTable.id, search.id));
-    return null;
-  });
-  if (result) { res.status(409).json({ error: result }); return; }
+  if (!input.success) { res.status(403).json({ error: "Invalid or expired resume token." }); return; }
+  const result = await resumeBailSearch(prior.id, { resumeToken: input.data.resumeToken });
+  if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
   const [updated] = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, prior.id));
   res.json(ResumeBailSearchResponse.parse(await searchResponseForViewer(updated!, prior.ownerId)));
 });

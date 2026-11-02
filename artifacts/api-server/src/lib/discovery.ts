@@ -16,8 +16,8 @@ export const discoveryPolicy = {
   maxRecordCap: policyInteger("UJS_MAX_RECORDS", 5, 1, 200),
   maxRequestCap: policyInteger("UJS_MAX_REQUESTS", 12, 8, 500),
   cooldownMs: policyInteger("UJS_RATE_LIMIT_COOLDOWN_MS", 900_000, 900_000, 86_400_000),
-  hourlyRequestCap: policyInteger("UJS_MAX_HOURLY_REQUESTS", 30, 1, 500),
-  dailyRequestCap: policyInteger("UJS_MAX_DAILY_REQUESTS", 120, 1, 2000),
+  hourlyRequestCap: policyInteger("UJS_MAX_HOURLY_REQUESTS", 60, 1, 500),
+  dailyRequestCap: policyInteger("UJS_MAX_DAILY_REQUESTS", 240, 1, 2000),
 };
 
 export { easternToday, actualDate } from "./calendar-criteria";

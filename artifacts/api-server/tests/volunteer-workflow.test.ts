@@ -5,6 +5,7 @@ import { selectBailDecision, qualifiesMonetary, csvCell } from "../src/lib/bail-
 import { validCachedConsultationChronology } from "../src/lib/discovery-candidates";
 import { resultDatesForItem } from "../src/services/bail-search-projection";
 import { withSearchViewerAccess } from "../src/services/bail-search-access";
+import { autoResumeQuotaBlock, legacyQuotaResumeBlock, quotaResumeReason, visibleSearchPauseReason } from "../src/services/bail-search-auto-resume";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
   noJob: false, sourceBlocked: false, cooldown: null, now: new Date("2026-10-29T12:00:00Z") };
@@ -40,6 +41,36 @@ test("quota wait exposes a concrete time then becomes resumable", () => {
   assert.match(result.message, /recorded cooldown/);
   assert.match(result.message, /Wait until 2026-10-29T13:00:00.000Z/);
   assert.equal(chooseRecovery({ ...base, saved: false, cooldown, now: new Date("2026-10-29T14:00:00Z") }).action, "resume");
+});
+test("only shared rolling quota pauses are marked for automatic continuation", () => {
+  const reason = quotaResumeReason("HOURLY_REQUEST_LIMIT", "The scheduler denied the next request.");
+  assert.ok(reason);
+  assert.equal(autoResumeQuotaBlock(reason), "HOURLY_REQUEST_LIMIT");
+  assert.equal(visibleSearchPauseReason(reason)?.includes("AUTO_RESUME_QUOTA"), false);
+  assert.equal(quotaResumeReason("RATE_LIMIT"), null);
+  assert.equal(autoResumeQuotaBlock("Source validation stopped collection."), null);
+});
+test("legacy scheduler pauses are adopted only with timestamp-matched old quota evidence", () => {
+  const pausedAt = new Date("2026-10-29T12:00:00Z");
+  const starts = Array.from({ length: 30 }, (_, index) => new Date(pausedAt.getTime() - 30 * 60_000 + index * 1000));
+  const release = new Date(starts[0]!.getTime() + 3_600_000);
+  const genericPause = "The scheduler denied a source request before transmission. Original source state and budgets retained; no validation barrier added.";
+  assert.equal(legacyQuotaResumeBlock(genericPause, release, pausedAt, starts), "HOURLY_REQUEST_LIMIT");
+  assert.equal(legacyQuotaResumeBlock(genericPause, new Date(release.getTime() + 5 * 60_000), pausedAt, starts), null);
+  assert.equal(legacyQuotaResumeBlock("Access denied", release, pausedAt, starts), null);
+  const recordedReason = "HOURLY_REQUEST_LIMIT; next eligible 2026-10-29T12:30:00.000Z: source request not sent.";
+  assert.equal(legacyQuotaResumeBlock(recordedReason, release, pausedAt, []), "HOURLY_REQUEST_LIMIT");
+  assert.equal(legacyQuotaResumeBlock(recordedReason, new Date(release.getTime() + 5 * 60_000), pausedAt, []), null);
+});
+test("eligible quota waits explain automatic continuation without widening scope", () => {
+  const cooldown = new Date("2026-10-29T13:00:00Z");
+  const result = chooseRecovery({ ...base, saved: false, cooldown, evidence: {
+    calendarValidated: true, retainedRows: 3, documentsDiscovered: 35, documentsProcessed: 19,
+    autoResumeQuota: true,
+  } });
+  assert.equal(result.action, "wait");
+  assert.match(result.message, /continue automatically/);
+  assert.match(result.message, /scope and remaining budget are unchanged/);
 });
 test("access failures never invite a retry, even with a future cooldown", () => {
   for (const [blockReason, phrase] of [

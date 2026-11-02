@@ -785,7 +785,10 @@ try {
     check((await store.select().from(requests)).length === 1);
   }
 
-  for (const [count, age, reason] of [[30, 1_800_000, "HOURLY_REQUEST_LIMIT"], [120, 7_200_000, "DAILY_REQUEST_LIMIT"]] as const) {
+  for (const [count, age, reason] of [
+    [discoveryPolicy.hourlyRequestCap, 1_800_000, "HOURLY_REQUEST_LIMIT"],
+    [discoveryPolicy.dailyRequestCap, 7_200_000, "DAILY_REQUEST_LIMIT"],
+  ] as const) {
     await reset();
     const job = await createJob();
     await store.insert(requests).values(Array.from({ length: count }, () => ({

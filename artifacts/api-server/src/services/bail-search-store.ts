@@ -12,6 +12,7 @@ import { resultsDeadline } from "../lib/discovery-safety";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
+import { autoResumeQuotaBlock, visibleSearchPauseReason } from "./bail-search-auto-resume";
 
 type CalendarCoverage = {
   segmentsChecked: number;
@@ -316,6 +317,7 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
       missingEvidence, expired, noJob: search.criteria.source === "live" && !job, sourceBlocked, cooldown,
       evidence: {
         calendarValidated: !!job?.calendarComplete,
+        autoResumeQuota: autoResumeQuotaBlock(search.reason) !== null,
         retainedRows: await db.select({ id: bailSearchResultsTable.id }).from(bailSearchResultsTable)
           .where(eq(bailSearchResultsTable.searchId, search.id)).then(rows => rows.length),
         documentsDiscovered: job ? await db.select({ id: discoveryItemsTable.id }).from(discoveryItemsTable)
@@ -410,7 +412,7 @@ export async function searchResponse(search: BailSearchRow, includeResults = tru
       } } : {}),
     },
     incomplete: search.status !== "complete",
-    reason: search.status === "running" && job ? job.message : search.reason,
+    reason: search.status === "running" && job ? job.message : visibleSearchPauseReason(search.reason),
     resumeToken: ["resume", "wait"].includes(recovery.action) ? resumeToken(search) : null,
     resumeAvailableAt: recovery.availableAt,
     results: includeResults ? await Promise.all(rows.map(row => {

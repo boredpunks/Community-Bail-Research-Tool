@@ -211,7 +211,9 @@ export default function BailSearch() {
             ) : null}
             {run.status === 'paused' && (recovery?.message || run.reason) ? (
               <div className="notice" role="status" data-testid="text-recovery-message">
-                <p className="font-semibold">Search stopped</p>
+                <p className="font-semibold">
+                  {recovery?.message.includes('continue automatically') ? 'Waiting for shared request capacity' : 'Search stopped'}
+                </p>
                 <p className="mt-1">{recovery?.message || run.reason}</p>
               </div>
             ) : null}
