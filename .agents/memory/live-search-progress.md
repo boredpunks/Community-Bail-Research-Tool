@@ -9,8 +9,8 @@ For live court searches, show the backend stage, request-slot usage, and an acti
 
 **How to apply:** Derive activity from structured server fields, keep source-request and document counts separate, and preserve the existing status polling path.
 
-Resume availability must follow the same server-side source-admission decision as the resume endpoint. A future `nextEligibleAt` can reflect ordinary pacing or quota timing; it does not make an access denial, challenge, validation barrier, or uncertain request recoverable.
+Resume availability must follow the same server-side source-admission decision as the resume endpoint. A future `nextEligibleAt` can reflect ordinary pacing, quota timing, or the explicit transport-failure cooldown; it does not make an access denial, challenge, validation barrier, or unresolved uncertainty recoverable.
 
 **Why:** A future source estimate previously allowed the UI to offer Resume while the actual server gate still rejected the request.
 
-**How to apply:** Classify the admission result first, then expose a timed wait only for a recognized cooldown or quota block with a future release time. Keep the original scope and budget checks authoritative.
+**How to apply:** Classify the admission result first, then expose a timed wait only for a recognized cooldown or quota block with a future release time. A timed-out, disconnected, or interrupted request still stops its current job and never retries automatically; a later explicit resume is allowed only after its transport cooldown expires. Keep the original scope and budget checks authoritative.

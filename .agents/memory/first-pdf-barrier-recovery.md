@@ -7,4 +7,4 @@ A persisted internal validation barrier must not require another operator approv
 
 **Why:** the user repeatedly required automatic PDF extraction; historical pilot gates had prevented an ordinary authorized search from even attempting its first PDF.
 
-**How to apply:** Clear only stale internal validation bookkeeping when reserving the eligible first request, not by inventing successful access proof. Establish current proof from the actual successful identity-validated response and continue automatically. Preserve genuine denials, challenges, active cooldowns, transport uncertainty and deterioration stops for future source traffic; finish local processing of bytes already received.
+**How to apply:** Clear only stale internal validation bookkeeping when reserving the eligible first request, not by inventing successful access proof. Establish current proof from the actual successful identity-validated response and continue automatically. Preserve genuine denials, challenges, active transport cooldowns, unresolved uncertainty and deterioration stops for future source traffic; finish local processing of bytes already received.
