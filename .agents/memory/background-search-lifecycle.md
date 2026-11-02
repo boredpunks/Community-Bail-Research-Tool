@@ -26,3 +26,9 @@ The user wants to keep the current hosting and have it last until a search is co
 **Why:** The user specified, “Current hosting that lasts until search is complete,” rather than approving an always-on hosting change.
 
 **How to apply:** Preserve the hosting choice. Do not claim Autoscale has a supported background-job completion lease; distinguish the requested behavior from what the current platform guarantees.
+
+A server restart, including a republish, ends the court browser session. A search stopped in the PDF stage cannot use its remaining document links afterward and needs a new search.
+
+**Why:** On 2026-11-02 a quota-paused search was resumed after an API restart and paused 13 seconds later with the session-ended message, without sending a court request.
+
+**How to apply:** Do not promise that PDF-stage searches continue across restarts or idle shutdowns; restart-continuation tests should expect this stop for PDF-stage work.
