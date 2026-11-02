@@ -7,6 +7,7 @@ import {
   useRemoveBailSearchCandidate,
   useSetBailSearchCandidateArchive,
   useSetBailSearchCandidateOutcome,
+  type BailSearchCandidate,
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import {
@@ -14,9 +15,32 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { errMsg } from '@/lib/money';
-import { money, safeSourceUrl } from '@/lib/latest-search';
+import { money, safeSourceUrl, shortDate } from '@/lib/latest-search';
 
 type CandidateView = 'active' | 'archived';
+
+const bailCategoryLabels: Record<BailSearchCandidate['bail_category'], string> = {
+  MONETARY: 'Monetary bail',
+  NOMINAL: 'Nominal bail',
+  UNSECURED: 'Unsecured bail',
+  NONMONETARY: 'Nonmonetary',
+  RECOGNIZANCE: 'Recognizance',
+  DENIED: 'Bail denied',
+  UNKNOWN: 'Unknown bail type',
+};
+
+const courtLevelLabels: Record<BailSearchCandidate['court_level'], string> = {
+  MDJ: 'Magisterial District Court',
+  COMMON_PLEAS: 'Court of Common Pleas',
+};
+
+const financialBasisLabels: Record<string, string> = {
+  TOTAL_BAIL: 'Total bail',
+  CASH_DEPOSIT: 'Cash deposit',
+  SURETY_BOND: 'Surety bond',
+  RECORDED_BAIL_AMOUNT: 'Recorded bail amount',
+  UNSECURED_AMOUNT: 'Unsecured amount',
+};
 
 export default function Candidates() {
   const [view, setView] = useState<CandidateView>('active');
@@ -127,11 +151,43 @@ export default function Candidates() {
                 {rows.map((row) => {
                   const url = safeSourceUrl(row.source_url);
                   const markedBailedOut = row.bailed_out_at !== null;
+                  const bailCategory = bailCategoryLabels[row.bail_category];
+                  const financialBasis = row.financial_basis ? financialBasisLabels[row.financial_basis] ?? row.financial_basis : null;
+                  const courtDetails = [row.county, courtLevelLabels[row.court_level], row.court_office]
+                    .filter(Boolean).join(' · ');
+                  const dateDetails = [
+                    row.event_type,
+                    row.event_date ? `Hearing ${shortDate(row.event_date)}` : null,
+                    row.order_date ? `Order ${shortDate(row.order_date)}` : null,
+                  ].filter(Boolean).join(' · ');
                   return (
                     <tr key={row.id} data-testid={`row-candidate-${row.id}`}>
-                      <th className="mono break-all">{row.docket_number}</th>
-                      <td className="mono">{money(row.bail_amount)}</td>
-                      <td>{url ? <a href={url} target="_blank" rel="noopener noreferrer" className="navlink">PDF{row.evidence_page != null ? `, p. ${row.evidence_page}` : ''}</a> : <span className="hint">PDF link unavailable</span>}</td>
+                      <th className="mono break-all">
+                        <div>{row.docket_number}</div>
+                        <div className="candidate-glance">{courtDetails}</div>
+                        {dateDetails ? <div className="candidate-glance">{dateDetails}</div> : null}
+                      </th>
+                      <td>
+                        <div className="mono">
+                          {row.bail_amount === null ? bailCategory : money(row.bail_amount)}
+                        </div>
+                        {row.bail_amount !== null || financialBasis || row.percentage_condition ? (
+                          <div className="candidate-glance">
+                            {row.bail_amount !== null ? bailCategory : null}
+                            {financialBasis ? `${row.bail_amount !== null ? ' · ' : ''}${financialBasis}` : null}
+                            {row.percentage_condition ? `${row.bail_amount !== null || financialBasis ? ' · ' : ''}${row.percentage_condition}` : null}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <div className="candidate-source-details">
+                          {url
+                            ? <a href={url} target="_blank" rel="noopener noreferrer" className="navlink" data-testid={`link-candidate-pdf-${row.id}`}>Open original PDF{row.evidence_page != null ? ` · p. ${row.evidence_page}` : ''}</a>
+                            : <span className="hint">Original PDF link unavailable</span>}
+                          <div className="candidate-glance">{row.source_title}</div>
+                          <p className="candidate-evidence-quote" title={row.evidence_quote}>{row.evidence_quote}</p>
+                        </div>
+                      </td>
                       <td className="align-top">
                         <div className="candidate-actions">
                           <button

@@ -244,6 +244,27 @@ export interface DismissBailSearchReviewResult {
   dismissed: boolean;
 }
 
+export type BailSearchCandidateCourtLevel = typeof BailSearchCandidateCourtLevel[keyof typeof BailSearchCandidateCourtLevel];
+
+
+export const BailSearchCandidateCourtLevel = {
+  MDJ: 'MDJ',
+  COMMON_PLEAS: 'COMMON_PLEAS',
+} as const;
+
+export type BailSearchCandidateBailCategory = typeof BailSearchCandidateBailCategory[keyof typeof BailSearchCandidateBailCategory];
+
+
+export const BailSearchCandidateBailCategory = {
+  MONETARY: 'MONETARY',
+  NOMINAL: 'NOMINAL',
+  UNSECURED: 'UNSECURED',
+  NONMONETARY: 'NONMONETARY',
+  RECOGNIZANCE: 'RECOGNIZANCE',
+  DENIED: 'DENIED',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
 export interface BailSearchCandidate {
   id: string;
   docket_number: string;
@@ -257,6 +278,23 @@ export interface BailSearchCandidate {
   bailed_out_at: string | null;
   /** @nullable */
   archived_at: string | null;
+  county: string;
+  court_level: BailSearchCandidateCourtLevel;
+  /** @nullable */
+  court_office: string | null;
+  /** @nullable */
+  event_date: string | null;
+  /** @nullable */
+  event_type: string | null;
+  /** @nullable */
+  order_date: string | null;
+  bail_category: BailSearchCandidateBailCategory;
+  /** @nullable */
+  financial_basis: string | null;
+  /** @nullable */
+  percentage_condition: string | null;
+  source_title: string;
+  evidence_quote: string;
 }
 
 export interface BailSearchCandidateOutcomeUpdate {

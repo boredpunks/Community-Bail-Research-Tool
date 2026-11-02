@@ -134,7 +134,18 @@ export const ListBailSearchCandidatesResponseItem = zod.object({
   "source_url": zod.string().nullable(),
   "evidence_page": zod.int().nullable(),
   "bailed_out_at": zod.coerce.date().nullable(),
-  "archived_at": zod.coerce.date().nullable()
+  "archived_at": zod.coerce.date().nullable(),
+  "county": zod.string(),
+  "court_level": zod.enum(['MDJ', 'COMMON_PLEAS']),
+  "court_office": zod.string().nullable(),
+  "event_date": zod.coerce.date().nullable(),
+  "event_type": zod.string().nullable(),
+  "order_date": zod.coerce.date().nullable(),
+  "bail_category": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "financial_basis": zod.string().nullable(),
+  "percentage_condition": zod.string().nullable(),
+  "source_title": zod.string(),
+  "evidence_quote": zod.string()
 })
 export const ListBailSearchCandidatesResponse = zod.array(ListBailSearchCandidatesResponseItem)
 
@@ -157,7 +168,18 @@ export const SetBailSearchCandidateOutcomeResponse = zod.object({
   "source_url": zod.string().nullable(),
   "evidence_page": zod.int().nullable(),
   "bailed_out_at": zod.coerce.date().nullable(),
-  "archived_at": zod.coerce.date().nullable()
+  "archived_at": zod.coerce.date().nullable(),
+  "county": zod.string(),
+  "court_level": zod.enum(['MDJ', 'COMMON_PLEAS']),
+  "court_office": zod.string().nullable(),
+  "event_date": zod.coerce.date().nullable(),
+  "event_type": zod.string().nullable(),
+  "order_date": zod.coerce.date().nullable(),
+  "bail_category": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "financial_basis": zod.string().nullable(),
+  "percentage_condition": zod.string().nullable(),
+  "source_title": zod.string(),
+  "evidence_quote": zod.string()
 })
 
 
@@ -179,7 +201,18 @@ export const SetBailSearchCandidateArchiveResponse = zod.object({
   "source_url": zod.string().nullable(),
   "evidence_page": zod.int().nullable(),
   "bailed_out_at": zod.coerce.date().nullable(),
-  "archived_at": zod.coerce.date().nullable()
+  "archived_at": zod.coerce.date().nullable(),
+  "county": zod.string(),
+  "court_level": zod.enum(['MDJ', 'COMMON_PLEAS']),
+  "court_office": zod.string().nullable(),
+  "event_date": zod.coerce.date().nullable(),
+  "event_type": zod.string().nullable(),
+  "order_date": zod.coerce.date().nullable(),
+  "bail_category": zod.enum(['MONETARY', 'NOMINAL', 'UNSECURED', 'NONMONETARY', 'RECOGNIZANCE', 'DENIED', 'UNKNOWN']),
+  "financial_basis": zod.string().nullable(),
+  "percentage_condition": zod.string().nullable(),
+  "source_title": zod.string(),
+  "evidence_quote": zod.string()
 })
 
 

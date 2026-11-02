@@ -255,6 +255,25 @@
     gap: 0.5rem;
     flex-wrap: wrap;
   }
+  .candidate-glance {
+    margin-top: 0.2rem;
+    color: hsl(var(--muted-foreground));
+    font-family: var(--app-font-sans);
+    font-size: 0.72rem;
+    font-weight: 400;
+    line-height: 1.35;
+  }
+  .candidate-source-details { max-width: 25rem; }
+  .candidate-evidence-quote {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 0.3rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
   .candidate-outcome {
     display: flex;
     align-items: center;

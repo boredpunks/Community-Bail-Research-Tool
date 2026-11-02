@@ -20,6 +20,8 @@ export * from './bailReviewInputOrderInterpretation';
 export * from './bailSearch';
 export * from './bailSearchCandidate';
 export * from './bailSearchCandidateArchiveUpdate';
+export * from './bailSearchCandidateBailCategory';
+export * from './bailSearchCandidateCourtLevel';
 export * from './bailSearchCandidateOutcomeUpdate';
 export * from './bailSearchCurrentRequest';
 export * from './bailSearchInput';

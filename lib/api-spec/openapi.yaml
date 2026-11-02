@@ -858,7 +858,7 @@ components:
         dismissed: { type: boolean }
     BailSearchCandidate:
       type: object
-      required: [id, docket_number, bail_amount, source_url, evidence_page, bailed_out_at, archived_at]
+      required: [id, docket_number, bail_amount, source_url, evidence_page, bailed_out_at, archived_at, county, court_level, court_office, event_date, event_type, order_date, bail_category, financial_basis, percentage_condition, source_title, evidence_quote]
       properties:
         id: { type: string }
         docket_number: { type: string }
@@ -867,6 +867,17 @@ components:
         evidence_page: { type: [integer, "null"] }
         bailed_out_at: { type: ["string", "null"], format: date-time }
         archived_at: { type: ["string", "null"], format: date-time }
+        county: { type: string }
+        court_level: { type: string, enum: [MDJ, COMMON_PLEAS] }
+        court_office: { type: [string, "null"] }
+        event_date: { type: [string, "null"], format: date }
+        event_type: { type: [string, "null"] }
+        order_date: { type: [string, "null"], format: date }
+        bail_category: { type: string, enum: [MONETARY, NOMINAL, UNSECURED, NONMONETARY, RECOGNIZANCE, DENIED, UNKNOWN] }
+        financial_basis: { type: [string, "null"] }
+        percentage_condition: { type: [string, "null"] }
+        source_title: { type: string }
+        evidence_quote: { type: string }
     BailSearchCandidateOutcomeUpdate:
       type: object
       required: [bailedOut]

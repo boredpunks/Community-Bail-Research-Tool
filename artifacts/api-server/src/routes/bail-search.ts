@@ -44,6 +44,17 @@ function serializeSearchCandidate(saved: typeof bailRecordsTable.$inferSelect) {
     evidence_page: entry?.sourcePages?.[0] ?? null,
     bailed_out_at: saved.bailOutReportedAt?.toISOString() ?? null,
     archived_at: saved.candidateArchivedAt?.toISOString() ?? null,
+    county: saved.county,
+    court_level: saved.courtLevel,
+    court_office: saved.discoveryEvidence?.courtOffice ?? null,
+    event_date: saved.discoveryEvidence?.eventDate ?? null,
+    event_type: saved.discoveryEvidence?.eventType ?? null,
+    order_date: saved.orderDate,
+    bail_category: saved.bailCategory,
+    financial_basis: saved.financialBasis,
+    percentage_condition: entry?.percentageCondition ?? null,
+    source_title: saved.sourceTitle,
+    evidence_quote: entry?.excerpt ?? saved.evidenceNote,
   };
 }
 

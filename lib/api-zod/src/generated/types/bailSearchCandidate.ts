@@ -5,6 +5,8 @@
  * Source-backed bail observations in a shared, password-protected workspace. No synthetic docket or case records are permitted.
  * OpenAPI spec version: 0.1.0
  */
+import type { BailSearchCandidateBailCategory } from './bailSearchCandidateBailCategory';
+import type { BailSearchCandidateCourtLevel } from './bailSearchCandidateCourtLevel';
 
 export interface BailSearchCandidate {
   id: string;
@@ -19,4 +21,21 @@ export interface BailSearchCandidate {
   bailed_out_at: Date | null;
   /** @nullable */
   archived_at: Date | null;
+  county: string;
+  court_level: BailSearchCandidateCourtLevel;
+  /** @nullable */
+  court_office: string | null;
+  /** @nullable */
+  event_date: Date | null;
+  /** @nullable */
+  event_type: string | null;
+  /** @nullable */
+  order_date: Date | null;
+  bail_category: BailSearchCandidateBailCategory;
+  /** @nullable */
+  financial_basis: string | null;
+  /** @nullable */
+  percentage_condition: string | null;
+  source_title: string;
+  evidence_quote: string;
 }
