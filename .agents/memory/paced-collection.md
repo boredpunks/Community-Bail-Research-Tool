@@ -50,3 +50,9 @@ A single slow-response warning is advisory for ordinary calendar searches when t
 **Why:** On October 30, 2026, a 52-second calendar response produced a first-warning advisory, but admission incorrectly treated the warning as a hard lockout despite the scheduler reserving that stop for sustained deterioration.
 
 **How to apply:** Do not use `latencyWarning` alone to disable ordinary calendar admission. Preserve `RESPONSE_DETERIORATION`, explicit cooldowns, quotas, access denials, challenges, and other actual stop reasons.
+
+Before increasing a shared source quota, verify production source-request outcomes and durations show quota-only saturation; application traffic metrics alone cannot establish upstream health.
+
+**Why:** Production runtime logs and app-level metrics may not expose outbound source responses. The durable request ledger is needed to distinguish quota exhaustion from source-side throttling or access restrictions.
+
+**How to apply:** Increase quotas only in bounded steps when source outcomes support it. Preserve per-request pacing, daily limits, adaptive backoff, and stop conditions, then monitor source responses after rollout.
