@@ -15,4 +15,8 @@ export interface BailSearchCandidate {
   source_url: string | null;
   /** @nullable */
   evidence_page: number | null;
+  /** @nullable */
+  bailed_out_at: Date | null;
+  /** @nullable */
+  archived_at: Date | null;
 }

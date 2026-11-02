@@ -1,11 +1,16 @@
 import { Router } from "express";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, volunteerFeedbackTable } from "@workspace/db";
 import {
   StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
   SaveBailSearchResultBody, SaveBailSearchResultParams, ExportBailSearchQueryParams,
+  DismissBailSearchReviewResultParams, DismissBailSearchReviewResultResponse,
   ListBailSearchesResponse, StartBailSearchResponse, GetBailSearchStatusResponse, ResumeBailSearchResponse,
-  ListBailSearchCandidatesResponse, ClearOwnedBailSearchesResponse,
+  ListBailSearchCandidatesQueryParams, ListBailSearchCandidatesResponse,
+  SetBailSearchCandidateOutcomeParams, SetBailSearchCandidateOutcomeBody, SetBailSearchCandidateOutcomeResponse,
+  SetBailSearchCandidateArchiveParams, SetBailSearchCandidateArchiveBody, SetBailSearchCandidateArchiveResponse,
+  RemoveBailSearchCandidateParams, RemoveBailSearchCandidateResponse,
+  ClearOwnedBailSearchesResponse,
 } from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
@@ -27,6 +32,21 @@ async function searchResponseForViewer(
   return withSearchViewerAccess(response, search.ownerId, viewerOwnerId);
 }
 
+function serializeSearchCandidate(saved: typeof bailRecordsTable.$inferSelect) {
+  const entry = saved.discoveryEvidence?.entries.find(value =>
+    value.orderDate === saved.orderDate && value.amountCents === saved.amountCents
+    && value.bailCategory === saved.bailCategory);
+  return {
+    id: saved.id,
+    docket_number: saved.docketNumber,
+    bail_amount: saved.amountCents === null ? null : saved.amountCents / 100,
+    source_url: safeDocketLink(saved.sourceUrl, saved.docketNumber),
+    evidence_page: entry?.sourcePages?.[0] ?? null,
+    bailed_out_at: saved.bailOutReportedAt?.toISOString() ?? null,
+    archived_at: saved.candidateArchivedAt?.toISOString() ?? null,
+  };
+}
+
 const router = Router();
 router.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -39,23 +59,115 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/readiness", async (_req, res) => { res.json(await calendarSearchReadiness(getWorkspaceIdentity(res).ownerIds)); });
-router.get("/candidates", async (_req, res) => {
+router.get("/candidates", async (req, res) => {
+  const query = ListBailSearchCandidatesQueryParams.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: "Choose either the active or archived candidate list." });
+    return;
+  }
+  const archived = query.data.view === "archived";
   const rows = await db.select().from(bailRecordsTable)
     .where(and(inArray(bailRecordsTable.ownerId, getWorkspaceIdentity(res).ownerIds),
-      isNotNull(bailRecordsTable.discoveryKey)))
+      isNotNull(bailRecordsTable.discoveryKey),
+      isNull(bailRecordsTable.candidateRemovedAt),
+      archived ? isNotNull(bailRecordsTable.candidateArchivedAt) : isNull(bailRecordsTable.candidateArchivedAt)))
     .orderBy(desc(bailRecordsTable.createdAt));
-  res.json(ListBailSearchCandidatesResponse.parse(rows.map(saved => {
-    const entry = saved.discoveryEvidence?.entries.find(value =>
-      value.orderDate === saved.orderDate && value.amountCents === saved.amountCents
-      && value.bailCategory === saved.bailCategory);
-    return {
-      id: saved.id,
-      docket_number: saved.docketNumber,
-      bail_amount: saved.amountCents === null ? null : saved.amountCents / 100,
-      source_url: safeDocketLink(saved.sourceUrl, saved.docketNumber),
-      evidence_page: entry?.sourcePages?.[0] ?? null,
-    };
-  })));
+  res.json(ListBailSearchCandidatesResponse.parse(rows.map(serializeSearchCandidate)));
+});
+router.patch("/candidates/:candidateId/outcome", async (req, res): Promise<void> => {
+  const params = SetBailSearchCandidateOutcomeParams.safeParse(req.params);
+  const body = SetBailSearchCandidateOutcomeBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Candidate ID or outcome is invalid." });
+    return;
+  }
+  const ownerIds = getWorkspaceIdentity(res).ownerIds;
+  const conditions = and(
+    eq(bailRecordsTable.id, params.data.candidateId),
+    inArray(bailRecordsTable.ownerId, ownerIds),
+    isNotNull(bailRecordsTable.discoveryKey),
+    isNull(bailRecordsTable.candidateRemovedAt),
+  );
+  const [existing] = await db.select().from(bailRecordsTable).where(conditions);
+  if (!existing) {
+    res.status(404).json({ error: "Candidate not found in the shared workspace." });
+    return;
+  }
+  if (existing.candidateArchivedAt) {
+    res.status(409).json({ error: "Restore this candidate before changing its outcome." });
+    return;
+  }
+  const [updated] = await db.update(bailRecordsTable)
+    .set({ bailOutReportedAt: body.data.bailedOut ? existing.bailOutReportedAt ?? new Date() : null })
+    .where(conditions)
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Candidate is no longer in the shared list." });
+    return;
+  }
+  res.json(SetBailSearchCandidateOutcomeResponse.parse(serializeSearchCandidate(updated)));
+});
+router.patch("/candidates/:candidateId/archive", async (req, res): Promise<void> => {
+  const params = SetBailSearchCandidateArchiveParams.safeParse(req.params);
+  const body = SetBailSearchCandidateArchiveBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Candidate ID or archive state is invalid." });
+    return;
+  }
+  const ownerIds = getWorkspaceIdentity(res).ownerIds;
+  const conditions = and(
+    eq(bailRecordsTable.id, params.data.candidateId),
+    inArray(bailRecordsTable.ownerId, ownerIds),
+    isNotNull(bailRecordsTable.discoveryKey),
+    isNull(bailRecordsTable.candidateRemovedAt),
+  );
+  const [existing] = await db.select().from(bailRecordsTable).where(conditions);
+  if (!existing) {
+    res.status(404).json({ error: "Candidate not found in the shared workspace." });
+    return;
+  }
+  if (body.data.archived && !existing.bailOutReportedAt) {
+    res.status(409).json({ error: "Mark the reported successful outcome before archiving this candidate." });
+    return;
+  }
+  const [updated] = await db.update(bailRecordsTable)
+    .set({ candidateArchivedAt: body.data.archived ? existing.candidateArchivedAt ?? new Date() : null })
+    .where(conditions)
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Candidate is no longer in the shared list." });
+    return;
+  }
+  res.json(SetBailSearchCandidateArchiveResponse.parse(serializeSearchCandidate(updated)));
+});
+router.delete("/candidates/:candidateId", async (req, res): Promise<void> => {
+  const params = RemoveBailSearchCandidateParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Candidate ID is invalid." });
+    return;
+  }
+  const ownerIds = getWorkspaceIdentity(res).ownerIds;
+  const removed = await db.transaction(async tx => {
+    const [candidate] = await tx.select().from(bailRecordsTable).where(and(
+      eq(bailRecordsTable.id, params.data.candidateId),
+      inArray(bailRecordsTable.ownerId, ownerIds),
+      isNotNull(bailRecordsTable.discoveryKey),
+      isNull(bailRecordsTable.candidateRemovedAt),
+    )).for("update");
+    if (!candidate) return false;
+    await tx.update(bailRecordsTable)
+      .set({ candidateRemovedAt: new Date() })
+      .where(eq(bailRecordsTable.id, candidate.id));
+    await tx.update(bailSearchResultsTable)
+      .set({ savedRecordId: null })
+      .where(eq(bailSearchResultsTable.savedRecordId, candidate.id));
+    return true;
+  });
+  if (!removed) {
+    res.status(404).json({ error: "Candidate not found in the shared workspace." });
+    return;
+  }
+  res.json(RemoveBailSearchCandidateResponse.parse({ removed: true }));
 });
 router.get("/feedback", async (_req, res) => {
   const rows = await db.select().from(volunteerFeedbackTable).orderBy(desc(volunteerFeedbackTable.createdAt)).limit(100);
@@ -257,6 +369,34 @@ router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
   const [updated] = await db.update(bailSearchResultsTable).set({ savedRecordId: recordId })
     .where(eq(bailSearchResultsTable.id, row.id)).returning();
   res.json(await enrichedResult(res.locals.search, updated!));
+});
+router.delete("/search/:searchId/results/:resultId/review", async (req, res): Promise<void> => {
+  if (!res.locals.canManageSearch) {
+    res.status(403).json({ error: "Only the session that created this search can remove its results from Review." });
+    return;
+  }
+  const params = DismissBailSearchReviewResultParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Search or result ID is invalid." });
+    return;
+  }
+  const [result] = await db.select().from(bailSearchResultsTable).where(and(
+    eq(bailSearchResultsTable.id, params.data.resultId),
+    eq(bailSearchResultsTable.searchId, res.locals.search.id),
+  ));
+  if (!result) {
+    res.status(404).json({ error: "Result not found in this search." });
+    return;
+  }
+  if (!result.reviewDismissedAt) {
+    await db.update(bailSearchResultsTable)
+      .set({ reviewDismissedAt: new Date() })
+      .where(and(
+        eq(bailSearchResultsTable.id, result.id),
+        eq(bailSearchResultsTable.searchId, res.locals.search.id),
+      ));
+  }
+  res.json(DismissBailSearchReviewResultResponse.parse({ dismissed: true }));
 });
 router.post("/search/:searchId/resume", async (req, res) => {
   if (!res.locals.canManageSearch) {

@@ -132,7 +132,9 @@ export default function BailSearch() {
 
   return (
     <Shell>
-      <PageHead label="Search" title="Live court search" />
+      <PageHead label="Search" title="Live court search">
+        Verified dockets with bail amounts at or below your maximum are automatically passed to Review.
+      </PageHead>
       {readiness.data?.liveAvailable || run?.status === 'running' ? (
         <div className="mb-3 max-w-2xl space-y-1 text-xs leading-relaxed text-muted-foreground"
           role="status" data-testid="text-search-context">

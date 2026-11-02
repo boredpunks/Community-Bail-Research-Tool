@@ -48,4 +48,5 @@ export interface BailSearchResult {
   saved_record_id?: string | null;
   /** @nullable */
   review_status?: string | null;
+  review_dismissed: boolean;
 }

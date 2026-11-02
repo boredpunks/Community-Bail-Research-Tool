@@ -34,6 +34,7 @@ export const bailSearchResultsTable = pgTable("bail_search_results", {
   evidenceAcquisition: text("evidence_acquisition").notNull(),
   qualifies: boolean("qualifies").notNull().default(false),
   ambiguous: boolean("ambiguous").notNull().default(false),
+  reviewDismissedAt: timestamp("review_dismissed_at", { withTimezone: true }),
   history: jsonb("history").$type<BailDecisionEvidence[]>().notNull().default([]),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

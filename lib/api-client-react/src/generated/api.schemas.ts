@@ -237,6 +237,11 @@ export interface BailSearchResult {
   saved_record_id?: string | null;
   /** @nullable */
   review_status?: string | null;
+  review_dismissed: boolean;
+}
+
+export interface DismissBailSearchReviewResult {
+  dismissed: boolean;
 }
 
 export interface BailSearchCandidate {
@@ -248,6 +253,22 @@ export interface BailSearchCandidate {
   source_url: string | null;
   /** @nullable */
   evidence_page: number | null;
+  /** @nullable */
+  bailed_out_at: string | null;
+  /** @nullable */
+  archived_at: string | null;
+}
+
+export interface BailSearchCandidateOutcomeUpdate {
+  bailedOut: boolean;
+}
+
+export interface BailSearchCandidateArchiveUpdate {
+  archived: boolean;
+}
+
+export interface RemoveBailSearchCandidateResult {
+  removed: boolean;
 }
 
 export interface ClearBailSearchHistoryResult {
@@ -1045,6 +1066,18 @@ export type UnavailableResponse = ApiError;
 export type SaveBailSearchResultBody = {
   shareWithWorkspace: boolean;
 };
+
+export type ListBailSearchCandidatesParams = {
+view?: ListBailSearchCandidatesView;
+};
+
+export type ListBailSearchCandidatesView = typeof ListBailSearchCandidatesView[keyof typeof ListBailSearchCandidatesView];
+
+
+export const ListBailSearchCandidatesView = {
+  active: 'active',
+  archived: 'archived',
+} as const;
 
 export type ExportBailSearchParams = {
 selection?: ExportBailSearchSelection;

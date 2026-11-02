@@ -213,6 +213,10 @@ export async function shareResult(search: BailSearchRow, row: BailSearchResultRo
     const record = created ?? (await tx.select().from(bailRecordsTable).where(and(
       eq(bailRecordsTable.ownerId, ownerId), eq(bailRecordsTable.discoveryKey, values.discoveryKey),
     )))[0]!;
+    if (record.candidateRemovedAt) {
+      await tx.update(bailRecordsTable).set({ candidateRemovedAt: null, candidateArchivedAt: null })
+        .where(eq(bailRecordsTable.id, record.id));
+    }
     return record.id;
   });
 }

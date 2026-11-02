@@ -203,6 +203,8 @@
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
   .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
   .btn-primary:hover:not(:disabled) { background: hsl(var(--primary) / 0.85); }
+  .btn-candidate-blue { border-color: #2563eb; background: #2563eb; color: #fff; }
+  .btn-candidate-blue:hover:not(:disabled) { background: #1d4ed8; }
   .btn-danger { border-color: hsl(var(--destructive)); color: hsl(var(--destructive)); }
   .btn-danger:hover:not(:disabled) { background: hsl(var(--destructive) / 0.14); }
   .btn-compact {
@@ -211,6 +213,57 @@
     font-size: 0.72rem;
     letter-spacing: 0.015em;
     white-space: nowrap;
+  }
+  .btn-icon {
+    width: 2.35rem;
+    height: 2.35rem;
+    min-height: 2.35rem;
+    padding: 0;
+  }
+  .candidate-check-button {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+  }
+  .candidate-check-button:hover:not(:disabled) { background: #1d4ed8; }
+  .candidate-check-button-marked:disabled { opacity: 1; }
+  .candidate-restore-button { gap: 0.4rem; }
+  .candidate-tabs {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .candidate-tab {
+    padding: 0.55rem 0.9rem;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-family: var(--app-font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .candidate-tab[aria-selected="true"] {
+    border-bottom-color: hsl(var(--primary));
+    color: hsl(var(--primary));
+  }
+  .candidate-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .candidate-outcome {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-left: 3px solid #2563eb;
+    padding-left: 0.55rem;
+    color: hsl(var(--primary));
+    font-size: 0.8rem;
   }
   .field {
     width: 100%;

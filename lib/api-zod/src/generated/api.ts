@@ -100,21 +100,99 @@ export const SaveBailSearchResultResponse = zod.object({
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
+})
+
+
+/**
+ * @summary Remove a search result from the Review queue without deleting its evidence
+ */
+export const DismissBailSearchReviewResultParams = zod.object({
+  "searchId": zod.uuid(),
+  "resultId": zod.uuid()
+})
+
+export const DismissBailSearchReviewResultResponse = zod.object({
+  "dismissed": zod.boolean()
 })
 
 
 /**
  * @summary List explicitly saved search candidates in this workspace
  */
+export const listBailSearchCandidatesQueryViewDefault = `active`;
+
+export const ListBailSearchCandidatesQueryParams = zod.object({
+  "view": zod.enum(['active', 'archived']).default(listBailSearchCandidatesQueryViewDefault)
+})
+
 export const ListBailSearchCandidatesResponseItem = zod.object({
   "id": zod.string(),
   "docket_number": zod.string(),
   "bail_amount": zod.number().nullable(),
   "source_url": zod.string().nullable(),
-  "evidence_page": zod.int().nullable()
+  "evidence_page": zod.int().nullable(),
+  "bailed_out_at": zod.coerce.date().nullable(),
+  "archived_at": zod.coerce.date().nullable()
 })
 export const ListBailSearchCandidatesResponse = zod.array(ListBailSearchCandidatesResponseItem)
+
+
+/**
+ * @summary Set or clear a candidate's reported bail-out outcome
+ */
+export const SetBailSearchCandidateOutcomeParams = zod.object({
+  "candidateId": zod.uuid()
+})
+
+export const SetBailSearchCandidateOutcomeBody = zod.object({
+  "bailedOut": zod.boolean()
+})
+
+export const SetBailSearchCandidateOutcomeResponse = zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "source_url": zod.string().nullable(),
+  "evidence_page": zod.int().nullable(),
+  "bailed_out_at": zod.coerce.date().nullable(),
+  "archived_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Archive or restore a candidate
+ */
+export const SetBailSearchCandidateArchiveParams = zod.object({
+  "candidateId": zod.uuid()
+})
+
+export const SetBailSearchCandidateArchiveBody = zod.object({
+  "archived": zod.boolean()
+})
+
+export const SetBailSearchCandidateArchiveResponse = zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "source_url": zod.string().nullable(),
+  "evidence_page": zod.int().nullable(),
+  "bailed_out_at": zod.coerce.date().nullable(),
+  "archived_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Remove a candidate from the shared candidate list
+ */
+export const RemoveBailSearchCandidateParams = zod.object({
+  "candidateId": zod.uuid()
+})
+
+export const RemoveBailSearchCandidateResponse = zod.object({
+  "removed": zod.boolean()
+})
 
 
 export const GetBailSearchReadinessResponse = zod.object({
@@ -235,7 +313,8 @@ export const ListBailSearchesResponseItem = zod.object({
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
@@ -372,7 +451,8 @@ export const StartBailSearchResponse = zod.object({
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
@@ -514,7 +594,8 @@ export const GetBailSearchStatusResponse = zod.object({
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
@@ -647,7 +728,8 @@ export const ResumeBailSearchResponse = zod.object({
   "save_available": zod.boolean().optional(),
   "save_reason": zod.string().nullish(),
   "saved_record_id": zod.string().nullish(),
-  "review_status": zod.string().nullish()
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),

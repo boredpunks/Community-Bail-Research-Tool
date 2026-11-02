@@ -61,10 +61,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BailSearchResult" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /bail-search/search/{searchId}/results/{resultId}/review:
+    parameters:
+      - { name: searchId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: resultId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: dismissBailSearchReviewResult
+      summary: Remove a search result from the Review queue without deleting its evidence
+      responses:
+        "200":
+          description: Result dismissed from Review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DismissBailSearchReviewResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /bail-search/candidates:
     get:
       operationId: listBailSearchCandidates
       summary: List explicitly saved search candidates in this workspace
+      parameters:
+        - name: view
+          in: query
+          required: false
+          schema: { type: string, enum: [active, archived], default: active }
       responses:
         "200":
           description: Persisted candidates, independent of the latest search
@@ -73,6 +93,57 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/BailSearchCandidate" }
+  /bail-search/candidates/{candidateId}/outcome:
+    parameters:
+      - { name: candidateId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: setBailSearchCandidateOutcome
+      summary: Set or clear a candidate's reported bail-out outcome
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BailSearchCandidateOutcomeUpdate" }
+      responses:
+        "200":
+          description: Candidate outcome updated without changing evidence review status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearchCandidate" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /bail-search/candidates/{candidateId}/archive:
+    parameters:
+      - { name: candidateId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: setBailSearchCandidateArchive
+      summary: Archive or restore a candidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BailSearchCandidateArchiveUpdate" }
+      responses:
+        "200":
+          description: Candidate archive state updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BailSearchCandidate" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /bail-search/candidates/{candidateId}:
+    parameters:
+      - { name: candidateId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeBailSearchCandidate
+      summary: Remove a candidate from the shared candidate list
+      responses:
+        "200":
+          description: Candidate removed while preserving the source observation and review history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoveBailSearchCandidateResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /bail-search/readiness:
     get:
       operationId: getBailSearchReadiness
@@ -746,7 +817,7 @@ components:
         currentRequest: { $ref: "#/components/schemas/BailSearchCurrentRequest" }
     BailSearchResult:
       type: object
-      required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, document_status, qualifies, ambiguous, error]
+      required: [id, docket_number, hearing_date, decision_date, office, bail_amount, percentage, classification, evidence_page, evidence_quote, evidence_acquisition, document_status, qualifies, ambiguous, error, review_dismissed]
       properties:
         id: { type: string }
         docket_number: { type: string }
@@ -779,15 +850,38 @@ components:
         save_reason: { type: [string, "null"] }
         saved_record_id: { type: [string, "null"] }
         review_status: { type: [string, "null"] }
+        review_dismissed: { type: boolean }
+    DismissBailSearchReviewResult:
+      type: object
+      required: [dismissed]
+      properties:
+        dismissed: { type: boolean }
     BailSearchCandidate:
       type: object
-      required: [id, docket_number, bail_amount, source_url, evidence_page]
+      required: [id, docket_number, bail_amount, source_url, evidence_page, bailed_out_at, archived_at]
       properties:
         id: { type: string }
         docket_number: { type: string }
         bail_amount: { type: [number, "null"] }
         source_url: { type: [string, "null"] }
         evidence_page: { type: [integer, "null"] }
+        bailed_out_at: { type: ["string", "null"], format: date-time }
+        archived_at: { type: ["string", "null"], format: date-time }
+    BailSearchCandidateOutcomeUpdate:
+      type: object
+      required: [bailedOut]
+      properties:
+        bailedOut: { type: boolean }
+    BailSearchCandidateArchiveUpdate:
+      type: object
+      required: [archived]
+      properties:
+        archived: { type: boolean }
+    RemoveBailSearchCandidateResult:
+      type: object
+      required: [removed]
+      properties:
+        removed: { type: boolean }
     ClearBailSearchHistoryResult:
       type: object
       required: [deletedSearches, deletedResults, retainedRunning]

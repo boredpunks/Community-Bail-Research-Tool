@@ -11,6 +11,7 @@ type CandidateActionProps = {
   testId?: string;
   compact?: boolean;
   showDisabledButton?: boolean;
+  blue?: boolean;
 };
 
 export function CandidateAction({
@@ -22,6 +23,7 @@ export function CandidateAction({
   testId = `button-candidate-${row.id}`,
   compact = false,
   showDisabledButton = false,
+  blue = false,
 }: CandidateActionProps) {
   const after = useAfterCandidateSave(searchId);
   const save = useSaveBailSearchResult({ mutation: { onSuccess: after } });
@@ -31,6 +33,19 @@ export function CandidateAction({
       ? row.save_reason || 'This result is not ready to save for review.'
       : null;
 
+  if (row.saved_record_id && blue && showDisabledButton) {
+    return (
+      <button
+        type="button"
+        className={`btn btn-candidate-blue${compact ? ' btn-compact' : ''}`}
+        disabled
+        title="Already saved as a candidate"
+        data-testid={testId}
+      >
+        {buttonLabel}
+      </button>
+    );
+  }
   if (row.saved_record_id) {
     return <span className="tag text-primary" data-testid={`status-candidate-${row.id}`}>{savedLabel}</span>;
   }
@@ -45,7 +60,7 @@ export function CandidateAction({
     <div className="space-y-1">
       <button
         type="button"
-        className={`btn btn-primary${compact ? ' btn-compact' : ''}`}
+        className={`btn ${blue ? 'btn-candidate-blue' : 'btn-primary'}${compact ? ' btn-compact' : ''}`}
         disabled={save.isPending || disabledReason !== null}
         title={disabledReason ?? 'Saves and shares with the workspace'}
         onClick={() => save.mutate({ searchId, resultId: row.id, data: { shareWithWorkspace: true } })}

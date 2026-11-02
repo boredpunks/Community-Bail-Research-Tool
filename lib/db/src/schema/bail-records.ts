@@ -35,6 +35,9 @@ export const bailRecordsTable = pgTable("bail_records", {
   reviewComment: text("review_comment"),
   reviewerId: text("reviewer_id"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  bailOutReportedAt: timestamp("bail_out_reported_at", { withTimezone: true }),
+  candidateArchivedAt: timestamp("candidate_archived_at", { withTimezone: true }),
+  candidateRemovedAt: timestamp("candidate_removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   check("bail_amount_nonnegative", sql`${table.amountCents} IS NULL OR ${table.amountCents} >= 0`),
@@ -55,6 +58,9 @@ export const insertBailRecordSchema = createInsertSchema(bailRecordsTable).omit(
   reviewComment: true,
   reviewerId: true,
   reviewedAt: true,
+  bailOutReportedAt: true,
+  candidateArchivedAt: true,
+  candidateRemovedAt: true,
 });
 export type InsertBailRecord = z.infer<typeof insertBailRecordSchema>;
 export type BailRecordRow = typeof bailRecordsTable.$inferSelect;

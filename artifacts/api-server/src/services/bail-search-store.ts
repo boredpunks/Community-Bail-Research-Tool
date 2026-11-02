@@ -261,6 +261,7 @@ export function serializeSearchResult(row: BailSearchResultRow) {
     classification: row.classification, evidence_page: row.evidencePage,
     evidence_quote: row.evidenceQuote, evidence_acquisition: row.evidenceAcquisition,
     qualifies: row.qualifies, ambiguous: row.ambiguous, error: row.error,
+    review_dismissed: row.reviewDismissedAt !== null,
     source_consulted_at: row.sourceConsultedAt?.toISOString() ?? row.sourceRetrievedAt?.toISOString() ?? null,
     source_pdf_sha256: row.sourcePdfSha256,
   };

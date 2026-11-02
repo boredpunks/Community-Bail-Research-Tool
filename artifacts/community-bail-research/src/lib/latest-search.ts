@@ -60,7 +60,7 @@ export function useAfterCandidateSave(searchId: string) {
 }
 
 export function isReviewable(row: BailSearchResult) {
-  return row.qualifies && row.bail_amount != null && !row.ambiguous;
+  return row.qualifies && row.bail_amount != null && !row.ambiguous && !row.review_dismissed;
 }
 
 export function money(amount: number | null | undefined) {

@@ -29,6 +29,8 @@ import type {
   BailReviewInput,
   BailSearch,
   BailSearchCandidate,
+  BailSearchCandidateArchiveUpdate,
+  BailSearchCandidateOutcomeUpdate,
   BailSearchInput,
   BailSearchReadiness,
   BailSearchResult,
@@ -45,13 +47,16 @@ import type {
   DiscoveryObservationInput,
   DiscoveryPolicy,
   DiscoveryReport,
+  DismissBailSearchReviewResult,
   ExportBailSearchParams,
   ForbiddenResponse,
   GetBailRangeParams,
   GetResearchOperations200,
   HealthStatus,
   ListBailRecordsParams,
+  ListBailSearchCandidatesParams,
   NotFoundResponse,
+  RemoveBailSearchCandidateResult,
   SaveBailSearchResultBody,
   SingleDocumentProofInput,
   SingleDocumentProofResponse,
@@ -331,20 +336,103 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getSaveBailSearchResultMutationOptions(options));
     }
 
-export const getListBailSearchCandidatesUrl = () => {
+export const getDismissBailSearchReviewResultUrl = (searchId: string,
+    resultId: string,) => {
 
 
 
 
-  return `/api/bail-search/candidates`
+  return `/api/bail-search/search/${searchId}/results/${resultId}/review`
+}
+
+/**
+ * @summary Remove a search result from the Review queue without deleting its evidence
+ */
+export const dismissBailSearchReviewResult = async (searchId: string,
+    resultId: string, options?: Parameters<typeof customFetch>[1]): Promise<DismissBailSearchReviewResult> => {
+
+  return customFetch<DismissBailSearchReviewResult>(getDismissBailSearchReviewResultUrl(searchId,resultId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissBailSearchReviewResultMutationKey = () => ['dismissBailSearchReviewResult'] as const;
+
+export const getDismissBailSearchReviewResultMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext> => {
+
+const mutationKey = getDismissBailSearchReviewResultMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, DismissBailSearchReviewResultMutationVariables> = (props) => {
+          const {searchId,resultId} = props ?? {};
+
+          return  dismissBailSearchReviewResult(searchId,resultId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissBailSearchReviewResultMutationResult = NonNullable<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>>
+
+    export type DismissBailSearchReviewResultMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type DismissBailSearchReviewResultMutationVariables = {searchId: string;resultId: string}
+
+    /**
+ * @summary Remove a search result from the Review queue without deleting its evidence
+ */
+export const useDismissBailSearchReviewResult = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissBailSearchReviewResult>>,
+        TError,
+        DismissBailSearchReviewResultMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissBailSearchReviewResultMutationOptions(options));
+    }
+
+export const getListBailSearchCandidatesUrl = (params?: ListBailSearchCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/bail-search/candidates?${stringifiedParams}` : `/api/bail-search/candidates`
 }
 
 /**
  * @summary List explicitly saved search candidates in this workspace
  */
-export const listBailSearchCandidates = async ( options?: Parameters<typeof customFetch>[1]): Promise<BailSearchCandidate[]> => {
+export const listBailSearchCandidates = async (params?: ListBailSearchCandidatesParams, options?: Parameters<typeof customFetch>[1]): Promise<BailSearchCandidate[]> => {
 
-  return customFetch<BailSearchCandidate[]>(getListBailSearchCandidatesUrl(),
+  return customFetch<BailSearchCandidate[]>(getListBailSearchCandidatesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -357,23 +445,23 @@ export const listBailSearchCandidates = async ( options?: Parameters<typeof cust
 
 
 
-export const getListBailSearchCandidatesQueryKey = () => {
+export const getListBailSearchCandidatesQueryKey = (params?: ListBailSearchCandidatesParams,) => {
     return [
-    `/api/bail-search/candidates`
+    `/api/bail-search/candidates`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListBailSearchCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof listBailSearchCandidates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListBailSearchCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof listBailSearchCandidates>>, TError = ErrorType<unknown>>(params?: ListBailSearchCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListBailSearchCandidatesQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListBailSearchCandidatesQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBailSearchCandidates>>> = ({ signal }) => listBailSearchCandidates({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBailSearchCandidates>>> = ({ signal }) => listBailSearchCandidates(params, { signal, ...requestOptions });
 
 
 
@@ -391,11 +479,11 @@ export type ListBailSearchCandidatesQueryError = ErrorType<unknown>
  */
 
 export function useListBailSearchCandidates<TData = Awaited<ReturnType<typeof listBailSearchCandidates>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListBailSearchCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListBailSearchCandidatesQueryOptions(options)
+  const queryOptions = getListBailSearchCandidatesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -407,6 +495,258 @@ export function useListBailSearchCandidates<TData = Awaited<ReturnType<typeof li
 
 
 
+
+export const getSetBailSearchCandidateOutcomeUrl = (candidateId: string,) => {
+
+
+
+
+  return `/api/bail-search/candidates/${candidateId}/outcome`
+}
+
+/**
+ * @summary Set or clear a candidate's reported bail-out outcome
+ */
+export const setBailSearchCandidateOutcome = async (candidateId: string,
+    bailSearchCandidateOutcomeUpdate: BailSearchCandidateOutcomeUpdate, options?: Parameters<typeof customFetch>[1]): Promise<BailSearchCandidate> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BailSearchCandidate>(getSetBailSearchCandidateOutcomeUrl(candidateId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bailSearchCandidateOutcomeUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetBailSearchCandidateOutcomeMutationKey = () => ['setBailSearchCandidateOutcome'] as const;
+
+export const getSetBailSearchCandidateOutcomeMutationOptions = <TError = ErrorType<NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>, TError,SetBailSearchCandidateOutcomeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>, TError,SetBailSearchCandidateOutcomeMutationVariables, TContext> => {
+
+const mutationKey = getSetBailSearchCandidateOutcomeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>, SetBailSearchCandidateOutcomeMutationVariables> = (props) => {
+          const {candidateId,data} = props ?? {};
+
+          return  setBailSearchCandidateOutcome(candidateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetBailSearchCandidateOutcomeMutationResult = NonNullable<Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>>
+    export type SetBailSearchCandidateOutcomeMutationBody = BodyType<BailSearchCandidateOutcomeUpdate>
+    export type SetBailSearchCandidateOutcomeMutationError = ErrorType<NotFoundResponse | ConflictResponse>
+    export type SetBailSearchCandidateOutcomeMutationVariables = {candidateId: string;data: BodyType<BailSearchCandidateOutcomeUpdate>}
+
+    /**
+ * @summary Set or clear a candidate's reported bail-out outcome
+ */
+export const useSetBailSearchCandidateOutcome = <TError = ErrorType<NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>, TError,SetBailSearchCandidateOutcomeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setBailSearchCandidateOutcome>>,
+        TError,
+        SetBailSearchCandidateOutcomeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetBailSearchCandidateOutcomeMutationOptions(options));
+    }
+
+export const getSetBailSearchCandidateArchiveUrl = (candidateId: string,) => {
+
+
+
+
+  return `/api/bail-search/candidates/${candidateId}/archive`
+}
+
+/**
+ * @summary Archive or restore a candidate
+ */
+export const setBailSearchCandidateArchive = async (candidateId: string,
+    bailSearchCandidateArchiveUpdate: BailSearchCandidateArchiveUpdate, options?: Parameters<typeof customFetch>[1]): Promise<BailSearchCandidate> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BailSearchCandidate>(getSetBailSearchCandidateArchiveUrl(candidateId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bailSearchCandidateArchiveUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetBailSearchCandidateArchiveMutationKey = () => ['setBailSearchCandidateArchive'] as const;
+
+export const getSetBailSearchCandidateArchiveMutationOptions = <TError = ErrorType<NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateArchive>>, TError,SetBailSearchCandidateArchiveMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateArchive>>, TError,SetBailSearchCandidateArchiveMutationVariables, TContext> => {
+
+const mutationKey = getSetBailSearchCandidateArchiveMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setBailSearchCandidateArchive>>, SetBailSearchCandidateArchiveMutationVariables> = (props) => {
+          const {candidateId,data} = props ?? {};
+
+          return  setBailSearchCandidateArchive(candidateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetBailSearchCandidateArchiveMutationResult = NonNullable<Awaited<ReturnType<typeof setBailSearchCandidateArchive>>>
+    export type SetBailSearchCandidateArchiveMutationBody = BodyType<BailSearchCandidateArchiveUpdate>
+    export type SetBailSearchCandidateArchiveMutationError = ErrorType<NotFoundResponse | ConflictResponse>
+    export type SetBailSearchCandidateArchiveMutationVariables = {candidateId: string;data: BodyType<BailSearchCandidateArchiveUpdate>}
+
+    /**
+ * @summary Archive or restore a candidate
+ */
+export const useSetBailSearchCandidateArchive = <TError = ErrorType<NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setBailSearchCandidateArchive>>, TError,SetBailSearchCandidateArchiveMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setBailSearchCandidateArchive>>,
+        TError,
+        SetBailSearchCandidateArchiveMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetBailSearchCandidateArchiveMutationOptions(options));
+    }
+
+export const getRemoveBailSearchCandidateUrl = (candidateId: string,) => {
+
+
+
+
+  return `/api/bail-search/candidates/${candidateId}`
+}
+
+/**
+ * @summary Remove a candidate from the shared candidate list
+ */
+export const removeBailSearchCandidate = async (candidateId: string, options?: Parameters<typeof customFetch>[1]): Promise<RemoveBailSearchCandidateResult> => {
+
+  return customFetch<RemoveBailSearchCandidateResult>(getRemoveBailSearchCandidateUrl(candidateId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveBailSearchCandidateMutationKey = () => ['removeBailSearchCandidate'] as const;
+
+export const getRemoveBailSearchCandidateMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeBailSearchCandidate>>, TError,RemoveBailSearchCandidateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeBailSearchCandidate>>, TError,RemoveBailSearchCandidateMutationVariables, TContext> => {
+
+const mutationKey = getRemoveBailSearchCandidateMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeBailSearchCandidate>>, RemoveBailSearchCandidateMutationVariables> = (props) => {
+          const {candidateId} = props ?? {};
+
+          return  removeBailSearchCandidate(candidateId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveBailSearchCandidateMutationResult = NonNullable<Awaited<ReturnType<typeof removeBailSearchCandidate>>>
+
+    export type RemoveBailSearchCandidateMutationError = ErrorType<NotFoundResponse>
+    export type RemoveBailSearchCandidateMutationVariables = {candidateId: string}
+
+    /**
+ * @summary Remove a candidate from the shared candidate list
+ */
+export const useRemoveBailSearchCandidate = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeBailSearchCandidate>>, TError,RemoveBailSearchCandidateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeBailSearchCandidate>>,
+        TError,
+        RemoveBailSearchCandidateMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveBailSearchCandidateMutationOptions(options));
+    }
 
 export const getGetBailSearchReadinessUrl = () => {
 

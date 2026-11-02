@@ -1,36 +1,234 @@
-import { getListBailSearchCandidatesQueryKey, useListBailSearchCandidates } from '@workspace/api-client-react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Archive, Check, RotateCcw, X } from 'lucide-react';
+import {
+  getListBailSearchCandidatesQueryKey,
+  useListBailSearchCandidates,
+  useRemoveBailSearchCandidate,
+  useSetBailSearchCandidateArchive,
+  useSetBailSearchCandidateOutcome,
+} from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { errMsg } from '@/lib/money';
 import { money, safeSourceUrl } from '@/lib/latest-search';
 
+type CandidateView = 'active' | 'archived';
+
 export default function Candidates() {
-  const q = useListBailSearchCandidates({ query: { queryKey: getListBailSearchCandidatesQueryKey() } });
-  const rows = q.data ?? [];
+  const [view, setView] = useState<CandidateView>('active');
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; docket_number: string } | null>(null);
+  const [actionError, setActionError] = useState('');
+  const queryClient = useQueryClient();
+  const afterCandidateAction = () => {
+    setActionError('');
+    void queryClient.invalidateQueries({ queryKey: getListBailSearchCandidatesQueryKey() });
+    void queryClient.invalidateQueries({
+      predicate: (query) => typeof query.queryKey[0] === 'string'
+        && query.queryKey[0].startsWith('/api/bail-search/search/')
+        && query.queryKey[0].endsWith('/status'),
+    });
+  };
+  const setBailOut = useSetBailSearchCandidateOutcome({
+    mutation: {
+      onSuccess: afterCandidateAction,
+      onError: (error) => setActionError(errMsg(error)),
+    },
+  });
+  const setArchive = useSetBailSearchCandidateArchive({
+    mutation: {
+      onSuccess: afterCandidateAction,
+      onError: (error) => setActionError(errMsg(error)),
+    },
+  });
+  const removeCandidate = useRemoveBailSearchCandidate({
+    mutation: {
+      onSuccess: () => {
+        setRemoveTarget(null);
+        afterCandidateAction();
+      },
+      onError: (error) => setActionError(errMsg(error)),
+    },
+  });
+  const query = useListBailSearchCandidates(
+    { view },
+    {
+      query: {
+        queryKey: getListBailSearchCandidatesQueryKey({ view }),
+        refetchInterval: 8000,
+        refetchOnWindowFocus: true,
+      },
+    },
+  );
+  const rows = query.data ?? [];
+  const actionPending = setBailOut.isPending || setArchive.isPending || removeCandidate.isPending;
+  const isArchivedView = view === 'archived';
+
   return (
     <Shell>
-      <PageHead label="Candidates" title="Marked candidates">Shared with the workspace.</PageHead>
-      {q.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
-      {q.isError ? <p className="errbox" role="alert">{errMsg(q.error)} <button type="button" className="btn ml-2" onClick={() => q.refetch()} data-testid="button-retry-candidates">Retry</button></p> : null}
-      {q.data && rows.length === 0 ? <p className="hint">No candidates yet.</p> : null}
-      {rows.length ? (
-        <div className="bail-compare-scroll">
-          <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-candidates">
-            <thead><tr><th>Docket</th><th>Bail</th><th>Citation</th></tr></thead>
-            <tbody>
-              {rows.map((row) => {
-                const url = safeSourceUrl(row.source_url);
-                return (
-                  <tr key={row.id} data-testid={`row-candidate-${row.id}`}>
-                    <th className="mono break-all">{row.docket_number}</th>
-                    <td className="mono">{money(row.bail_amount)}</td>
-                    <td>{url ? <a href={url} target="_blank" rel="noopener noreferrer" className="navlink">PDF{row.evidence_page != null ? `, p. ${row.evidence_page}` : ''}</a> : <span className="hint">PDF link unavailable</span>}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <PageHead label="Candidates" title={isArchivedView ? 'Candidate archive' : 'Marked candidates'}>
+        {isArchivedView
+          ? 'Archived candidates remain available here and can be restored.'
+          : 'Shared with the workspace. Mark a reported successful outcome before archiving.'}
+      </PageHead>
+
+      <div className="candidate-tabs" role="tablist" aria-label="Candidate lists">
+        <button
+          type="button"
+          role="tab"
+          id="active-candidates-tab"
+          aria-controls="candidate-panel-active"
+          aria-selected={!isArchivedView}
+          className="candidate-tab"
+          onClick={() => setView('active')}
+          data-testid="tab-active-candidates"
+        >
+          Active candidates
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="archived-candidates-tab"
+          aria-controls="candidate-panel-archived"
+          aria-selected={isArchivedView}
+          className="candidate-tab"
+          onClick={() => setView('archived')}
+          data-testid="tab-archived-candidates"
+        >
+          Archive
+        </button>
+      </div>
+
+      <div
+        role="tabpanel"
+        id={isArchivedView ? 'candidate-panel-archived' : 'candidate-panel-active'}
+        aria-labelledby={isArchivedView ? 'archived-candidates-tab' : 'active-candidates-tab'}
+        tabIndex={0}
+      >
+        {actionError ? <p className="errbox mb-3" role="alert">{actionError}</p> : null}
+        {query.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
+        {query.isError ? (
+          <p className="errbox" role="alert">
+            {errMsg(query.error)}{' '}
+            <button type="button" className="btn ml-2" onClick={() => query.refetch()} data-testid="button-retry-candidates">Retry</button>
+          </p>
+        ) : null}
+        {!query.isLoading && query.data && rows.length === 0 ? (
+          <p className="hint">{isArchivedView ? 'No archived candidates.' : 'No candidates yet.'}</p>
+        ) : null}
+        {rows.length ? (
+          <div className="bail-compare-scroll">
+            <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-candidates">
+              <thead><tr><th>Docket</th><th>Bail</th><th>Citation</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.map((row) => {
+                  const url = safeSourceUrl(row.source_url);
+                  const markedBailedOut = row.bailed_out_at !== null;
+                  return (
+                    <tr key={row.id} data-testid={`row-candidate-${row.id}`}>
+                      <th className="mono break-all">{row.docket_number}</th>
+                      <td className="mono">{money(row.bail_amount)}</td>
+                      <td>{url ? <a href={url} target="_blank" rel="noopener noreferrer" className="navlink">PDF{row.evidence_page != null ? `, p. ${row.evidence_page}` : ''}</a> : <span className="hint">PDF link unavailable</span>}</td>
+                      <td className="align-top">
+                        <div className="candidate-actions">
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-compact btn-icon"
+                            disabled={actionPending}
+                            aria-label={`Delete ${row.docket_number} from candidates`}
+                            title="Delete this candidate from the shared list"
+                            onClick={() => {
+                              setActionError('');
+                              removeCandidate.reset();
+                              setRemoveTarget({ id: row.id, docket_number: row.docket_number });
+                            }}
+                            data-testid={`button-delete-candidate-${row.id}`}
+                          >
+                            <X aria-hidden="true" size={18} />
+                          </button>
+                          {isArchivedView ? (
+                            <button
+                              type="button"
+                              className="btn btn-compact candidate-restore-button"
+                              disabled={actionPending}
+                              aria-label={`Restore ${row.docket_number} to active candidates`}
+                              title="Restore to active candidates"
+                              onClick={() => setArchive.mutate({ candidateId: row.id, data: { archived: false } })}
+                              data-testid={`button-restore-candidate-${row.id}`}
+                            >
+                              <RotateCcw aria-hidden="true" size={16} />
+                              <span>Restore</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`btn btn-compact btn-icon candidate-check-button${markedBailedOut ? ' candidate-check-button-marked' : ''}`}
+                              disabled={actionPending}
+                              aria-label={markedBailedOut ? `Undo successful bail-out mark for ${row.docket_number}` : `Mark ${row.docket_number} as successfully bailed out`}
+                              aria-pressed={markedBailedOut}
+                              title={markedBailedOut ? 'Undo successful-outcome mark' : 'Mark as successfully bailed out'}
+                              onClick={() => setBailOut.mutate({ candidateId: row.id, data: { bailedOut: !markedBailedOut } })}
+                              data-testid={`button-mark-bailed-out-${row.id}`}
+                            >
+                              <Check aria-hidden="true" size={18} />
+                            </button>
+                          )}
+                        </div>
+                        {markedBailedOut ? (
+                          <div className="candidate-outcome mt-2" role="status" data-testid={`status-bailed-out-${row.id}`}>
+                            <span>{isArchivedView ? 'Reported successful bail-out' : 'Candidate successfully bailed out! Archive?'}</span>
+                            {!isArchivedView ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-compact"
+                                disabled={actionPending}
+                                onClick={() => setArchive.mutate({ candidateId: row.id, data: { archived: true } })}
+                                data-testid={`button-archive-candidate-${row.id}`}
+                              >
+                                <Archive aria-hidden="true" size={15} />
+                                <span>Archive?</span>
+                              </button>
+                            ) : <span className="tag">Archived</span>}
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+
+      <AlertDialog open={Boolean(removeTarget)} onOpenChange={(open) => { if (!removeCandidate.isPending && !open) setRemoveTarget(null); }}>
+        <AlertDialogContent className="border-primary bg-background text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="mono">Delete this candidate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {removeTarget?.docket_number ?? 'this candidate'} from both candidate lists? The source-backed observation and any review history will be kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {removeCandidate.isError ? <p className="errbox" role="alert">{actionError || errMsg(removeCandidate.error)}</p> : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel className="btn" disabled={removeCandidate.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="btn btn-danger"
+              disabled={removeCandidate.isPending || !removeTarget}
+              onClick={(event) => {
+                event.preventDefault();
+                if (removeTarget) removeCandidate.mutate({ candidateId: removeTarget.id });
+              }}
+              data-testid="button-confirm-delete-candidate"
+            >
+              {removeCandidate.isPending ? 'Deleting…' : 'Delete candidate'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Shell>
   );
 }
