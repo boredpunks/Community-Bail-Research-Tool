@@ -65,6 +65,8 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc': '-'
   '@tailwindcss/typography>postcss-selector-parser': 7.1.6
+  # GHSA-g3hv-75wg-m249: TypeDoc still requests vulnerable minimatch 10.
+  typedoc>minimatch: 11.0.3
   esbuild: 0.28.2
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
