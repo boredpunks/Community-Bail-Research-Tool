@@ -2,6 +2,7 @@ import { and, desc, eq, gt, or } from "drizzle-orm";
 import { db, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import { collectionBlock, paceEligibleAt, rollingUsage } from "./discovery-safety";
+import { sourceTransportCooldownUntil } from "./transport-cooldown";
 import { effectiveAdaptiveSpacing } from "./research-pacing";
 
 export async function discoverySourceStatus(now = new Date()) {
@@ -10,17 +11,19 @@ export async function discoverySourceStatus(now = new Date()) {
     eq(discoveryRequestsTable.sourceId, "UJS"),
     or(gt(discoveryRequestsTable.startedAt, new Date(now.getTime() - 86_400_000)), eq(discoveryRequestsTable.outcome, "IN_FLIGHT")),
   )).orderBy(desc(discoveryRequestsTable.startedAt));
+  const transportUntil = await sourceTransportCooldownUntil(db, source, now);
   const usage = rollingUsage(requests.map((request) => request.startedAt), now, discoveryPolicy.hourlyRequestCap, discoveryPolicy.dailyRequestCap);
   const inFlight = requests.some((request) => request.outcome === "IN_FLIGHT") || !!source?.activeRequestId;
-  const reason = collectionBlock(source, now) ?? (inFlight ? "REQUEST_IN_FLIGHT" : usage.blockedReason);
+  const reason = collectionBlock(source, now, transportUntil) ?? (inFlight ? "REQUEST_IN_FLIGHT" : usage.blockedReason);
   const currentSpacingMs = source
     ? effectiveAdaptiveSpacing(source, discoveryPolicy.spacingMs)
     : discoveryPolicy.spacingMs;
   const paceAt = source
     ? paceEligibleAt({ ...source, adaptiveSpacingMs: currentSpacingMs }, currentSpacingMs)
     : null;
-  const next = Math.max(source?.pausedUntil?.getTime() ?? 0, paceAt?.getTime() ?? 0, usage.nextEligibleAt?.getTime() ?? 0);
-  const pilotState = collectionBlock(source, now) === "ACCESS_UNVERIFIED" ? "NOT_VERIFIED"
+  const next = Math.max(source?.pausedUntil?.getTime() ?? 0, transportUntil?.getTime() ?? 0,
+    paceAt?.getTime() ?? 0, usage.nextEligibleAt?.getTime() ?? 0);
+  const pilotState = collectionBlock(source, now, transportUntil) === "ACCESS_UNVERIFIED" ? "NOT_VERIFIED"
     : source?.accessVerifiedAt ? "VERIFIED_METHOD" : "BLOCKED";
   return {
     blockedReason: reason, collectionEnabled: !reason,
@@ -42,7 +45,8 @@ export async function sourceAdmissionBlock(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   source: typeof discoverySourceTable.$inferSelect | undefined, now = new Date(),
 ) {
-  const access = collectionBlock(source, now);
+  const transportUntil = await sourceTransportCooldownUntil(tx, source, now);
+  const access = collectionBlock(source, now, transportUntil);
   if (access) return access;
   const requests = await tx.select().from(discoveryRequestsTable).where(and(
     eq(discoveryRequestsTable.sourceId, "UJS"),

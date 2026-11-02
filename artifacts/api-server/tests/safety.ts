@@ -146,6 +146,17 @@ const ordinaryAccessCheckFixture = {
   priorPdfRequests: 0, priorSearchPosts: 1,
 };
 check(canUseOrdinarySearchFirstPdfAccessCheck(ordinaryAccessCheckFixture));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture, sourceBlockedReason: "TIMEOUT",
+}));
+check(canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture, sourceBlockedReason: "TIMEOUT", transportCooldownExpired: true,
+}));
+check(!canUseOrdinarySearchFirstPdfAccessCheck({
+  ...ordinaryAccessCheckFixture, sourceBlockedReason: "TIMEOUT",
+  transportCooldownExpired: true, pausedUntil: new Date("2026-10-31"),
+  now: new Date("2026-10-30"),
+}));
 check(canUseOrdinarySearchFirstPdfAccessCheck({
   ...ordinaryAccessCheckFixture,
   sourceBlockedReason: "SOURCE_VALIDATION_BARRIER",
@@ -625,6 +636,22 @@ try {
   const [waitingOrdinarySource] = await store.select().from(sources);
   check(await canAutomaticallyCheckOrdinaryPdfAccess(pausedOrdinaryJob!, waitingOrdinarySource,
     { store, now: () => new Date(time) }));
+  const originalTime = time;
+  await store.update(sources).set({
+    blockedReason: "TIMEOUT", pausedUntil: new Date(time + 60_000),
+    accessVerifiedAt: null, verifiedMethod: null,
+  }).where(eq(sources.id, "UJS"));
+  const [coolingPdfSource] = await store.select().from(sources);
+  check(!await canAutomaticallyCheckOrdinaryPdfAccess(pausedOrdinaryJob!, coolingPdfSource,
+    { store, now: () => new Date(time) }));
+  time += 60_000;
+  check(await canAutomaticallyCheckOrdinaryPdfAccess(pausedOrdinaryJob!, coolingPdfSource,
+    { store, now: () => new Date(time) }));
+  time = originalTime;
+  await store.update(sources).set({
+    blockedReason: "SOURCE_VALIDATION_BARRIER", pausedUntil: null,
+    accessVerifiedAt: null, verifiedMethod: null,
+  }).where(eq(sources.id, "UJS"));
   await store.update(schema.bailSearchesTable).set({ status: "running" });
   await store.update(jobs).set({ status: "RUNNING" }).where(eq(jobs.id, ordinaryPdfJob.id));
   const ordinaryPdfGrant = await reserveSourceRequest(
@@ -785,6 +812,51 @@ try {
     check((await store.select().from(requests)).length === 1);
   }
 
+  // Transport failures stop the current job but only impose a timed source
+  // cooldown. The next user-created calendar job is admitted after it ends.
+  await reset();
+  const transportCriteria = { ...criteria, resultVersion: 2 as const };
+  const failedSearch = await createJob({ criteria: transportCriteria });
+  const failedGrant = await reserve(failedSearch);
+  assert.ok(failedGrant.allow && failedGrant.requestId);
+  check(!await response(failedSearch, failedGrant.requestId, "TIMEOUT", null));
+  const [timeoutState] = await store.select().from(sources);
+  check(timeoutState!.blockedReason === "TIMEOUT");
+  check(timeoutState!.pausedUntil!.getTime() === time + 15 * 60_000);
+  const pausedJob = await createJob({ criteria: transportCriteria });
+  check(!(await reserve(pausedJob)).allow);
+  time = timeoutState!.pausedUntil!.getTime();
+  const admittedAfterTimeout = await createJob({ criteria: transportCriteria });
+  const recoveredGrant = await reserve(admittedAfterTimeout);
+  assert.ok(recoveredGrant.allow && recoveredGrant.requestId);
+  const [clearedTimeout] = await store.select().from(sources);
+  check(clearedTimeout!.blockedReason === null && clearedTimeout!.pausedUntil === null);
+  check((await store.select().from(jobs).where(eq(jobs.id, failedSearch.id)))[0]!.status === "PAUSED");
+  check(!await response(admittedAfterTimeout, recoveredGrant.requestId, "NETWORK_ERROR", null));
+  const [escalated] = await store.select().from(sources);
+  check(escalated!.blockedReason === "NETWORK_ERROR");
+  check(escalated!.pausedUntil!.getTime() === time + 30 * 60_000);
+
+  await reset();
+  const staleRequestJob = await createJob({ criteria: transportCriteria });
+  const staleGrant = await reserve(staleRequestJob);
+  assert.ok(staleGrant.allow && staleGrant.requestId);
+  time += 90_001;
+  const competingJob = await createJob({ criteria: transportCriteria });
+  check(!(await reserve(competingJob)).allow);
+  const [staleRequest] = await store.select().from(requests)
+    .where(eq(requests.id, staleGrant.requestId));
+  const [staleSource] = await store.select().from(sources);
+  check(staleRequest!.outcome === "UNCERTAIN_AFTER_WORKER");
+  check(staleSource!.blockedReason === "UNCERTAIN_SOURCE_STATE");
+  assert.equal(staleSource!.pausedUntil!.getTime(), time + 15 * 60_000,
+    `stale cooldown now=${new Date(time).toISOString()} until=${staleSource!.pausedUntil?.toISOString()}`);
+  checks++;
+  time = staleSource!.pausedUntil!.getTime();
+  const afterStaleSearch = await createJob({ criteria: transportCriteria });
+  const afterStaleGrant = await reserve(afterStaleSearch);
+  assert.ok(afterStaleGrant.allow && afterStaleGrant.requestId);
+
   for (const [count, age, reason] of [
     [discoveryPolicy.hourlyRequestCap, 1_800_000, "HOURLY_REQUEST_LIMIT"],
     [discoveryPolicy.dailyRequestCap, 7_200_000, "DAILY_REQUEST_LIMIT"],
@@ -852,6 +924,7 @@ try {
   check(sourceAfterRestart!.blockedReason === "RESTART_IN_FLIGHT"
     && !sourceAfterRestart!.accessVerifiedAt && !sourceAfterRestart!.verifiedMethod
     && !sourceAfterRestart!.collectionApprovedAt);
+  check(sourceAfterRestart!.pausedUntil?.getTime() === time + 15 * 60_000);
   const replay = await reserveSourceRequest(
     diagnosticJob, "/CaseSearch", "GET", coveragePermit!.id, requestUrl, () => false, context,
   );

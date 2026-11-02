@@ -6,10 +6,11 @@ import { discoveryPolicy } from "./discovery";
 import {
   allowedSourceRequest, calendarPreviewMethod, calendarPreviewRequestAllowed,
   calendarPreviewSourceAllowed, collectionBlock, integratedSourceMethod,
-  isCalendarPreviewCriteria, paceEligibleAt, responseHealth, rollingUsage,
+  isCalendarPreviewCriteria, isTransportCooldownBlock, paceEligibleAt, responseHealth, rollingUsage,
   singleDocumentProofMethod, validSingleDocumentProofCriteria, validSingleDocumentProofRow,
   singleDocumentProofItemId,
-  throttleDeadline, validAccountingMessage,
+  throttleDeadline, transportCooldownDeadline, transportCooldownDuration, transportFailureOutcomes,
+  validAccountingMessage,
 } from "./discovery-safety";
 import { formInspectionLiveEnabled, formInspectionMethod, inspectionRequestAllowed } from "./form-inspection";
 import { coverageInspectionMethod } from "./coverage-inspection";
@@ -21,6 +22,7 @@ import { calendarAdmission } from "./research-operations";
 import { effectiveAdaptiveSpacing, pacingJitterRangeMs, requestSpacing, randomizedRequestSpacing } from "./research-pacing";
 import { canUseFirstPdfAccessCheck, isExactAuthorizedSessionRefreshCriteria } from "./session-refresh-safety";
 import { canUseOrdinarySearchFirstPdfAccessCheck, isOrdinarySearchPdfCandidate } from "./ordinary-search-access";
+import { transportCooldownHistory } from "./transport-cooldown";
 
 const sourceId = "UJS";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,6 +55,10 @@ export async function reserveSourceRequest(
     const decision = await (context.store ?? db).transaction(async (tx) => {
       const now = context.now?.() ?? new Date();
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
+      const transportHistory = await transportCooldownHistory(tx, source, now);
+      const transportUntil = transportCooldownDeadline(source?.blockedReason, source?.pausedUntil, transportHistory);
+      const transportExpired = !!transportUntil && transportUntil <= now
+        && isTransportCooldownBlock(source?.blockedReason);
       const [current] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id)).for("update");
       const deny = async (reason: string) => {
         if (current?.status === "RUNNING") await tx.update(discoveryJobsTable).set({
@@ -170,7 +176,7 @@ export async function reserveSourceRequest(
         const independentCalendar = current.criteria.resultVersion === 2
           && calendarPreviewRequestAllowed(requestPath, method);
         const block = current.criteria.calendarPreviewOnly || independentCalendar
-          ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now);
+          ? await calendarAdmission(tx, source, now, true) : collectionBlock(source, now, transportUntil);
         const ordinaryPdfBarrierRecovery = block === "SOURCE_VALIDATION_BARRIER"
           && authorization.authorizedOrdinarySearchJobId === current.id
           && !!authorization.ordinarySearchFirstPdfAccessCheck
@@ -273,6 +279,7 @@ export async function reserveSourceRequest(
             priorPdfRequests: previousPdfs.length,
             priorSearchPosts: previousSearches.length,
             now,
+            transportCooldownExpired: transportExpired,
           });
         }
         if (block && !firstPdfAccessCheckAllowed && !ordinarySearchAccessCheckAllowed) return deny(block);
@@ -293,7 +300,32 @@ export async function reserveSourceRequest(
       const [pending] = await tx.select().from(discoveryRequestsTable).where(and(eq(discoveryRequestsTable.sourceId, sourceId), eq(discoveryRequestsTable.outcome, "IN_FLIGHT"))).limit(1);
       if (source.activeRequestId || pending) {
         if (!pending || pending.startedAt.getTime() + 90_000 < now.getTime()) {
-          await tx.update(discoverySourceTable).set({ blockedReason: "UNCERTAIN_SOURCE_STATE", collectionApprovedAt: null }).where(eq(discoverySourceTable.id, sourceId));
+          const priorFailures = await tx.select({ id: discoveryRequestsTable.id })
+            .from(discoveryRequestsTable).where(and(
+              eq(discoveryRequestsTable.sourceId, sourceId),
+              inArray(discoveryRequestsTable.outcome, [...transportFailureOutcomes]),
+              gt(discoveryRequestsTable.startedAt, new Date(now.getTime() - 86_400_000)),
+            ));
+          if (pending) {
+            await tx.update(discoveryRequestsTable).set({
+              outcome: "UNCERTAIN_AFTER_WORKER",
+              completedAt: now,
+              durationMs: Math.min(2_147_483_647, Math.max(0, now.getTime() - pending.startedAt.getTime())),
+            }).where(eq(discoveryRequestsTable.id, pending.id));
+          }
+          await tx.update(discoverySourceTable).set({
+            activeRequestId: null,
+            blockedReason: "UNCERTAIN_SOURCE_STATE",
+            pausedUntil: pending ? new Date(now.getTime() + transportCooldownDuration(priorFailures.length)) : null,
+            collectionApprovedAt: null,
+            accessVerifiedAt: null,
+            verifiedMethod: null,
+          }).where(eq(discoverySourceTable.id, sourceId));
+          if (pending) await tx.update(discoveryJobsTable).set({
+            status: "PAUSED",
+            updatedAt: now,
+            message: "UNCERTAIN_AFTER_WORKER: stale source request stopped. No automatic retry; partial evidence and consumed slots retained.",
+          }).where(inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]));
           return deny("UNCERTAIN_SOURCE_STATE");
         }
         return { waitMs: 1000 };
@@ -425,7 +457,8 @@ export async function reserveSourceRequest(
       }
       await tx.update(discoverySourceTable).set({
         activeRequestId: request!.id, lastRequestAt: now,
-        ...(!current.assessmentId && ["RATE_LIMIT", "HTTP_ERROR"].includes(source.blockedReason ?? "")
+        ...(!current.assessmentId && (["RATE_LIMIT", "HTTP_ERROR"].includes(source.blockedReason ?? "")
+          || transportExpired)
           ? { blockedReason: null, pausedUntil: null } : {}),
       }).where(eq(discoverySourceTable.id, sourceId));
       await tx.update(discoveryJobsTable).set({
@@ -463,6 +496,12 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     const recent = await tx.select({ duration: discoveryRequestsTable.durationMs }).from(discoveryRequestsTable).where(and(
       eq(discoveryRequestsTable.sourceId, sourceId), eq(discoveryRequestsTable.outcome, "OK"),
     )).orderBy(desc(discoveryRequestsTable.completedAt)).limit(20);
+    const recentTransportFailures = await tx.select({ id: discoveryRequestsTable.id })
+      .from(discoveryRequestsTable).where(and(
+        eq(discoveryRequestsTable.sourceId, sourceId),
+        inArray(discoveryRequestsTable.outcome, [...transportFailureOutcomes]),
+        gt(discoveryRequestsTable.startedAt, new Date(now.getTime() - 86_400_000)),
+      ));
     const health = responseHealth(source, durationMs, recent.flatMap((row) => row.duration === null ? [] : [row.duration]), discoveryPolicy.spacingMs);
     const outcome = String(message.outcome);
     const slowCalendarPreview = calendarOnlyPreview && outcome === "OK" && durationMs >= 20_000;
@@ -473,7 +512,9 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
     const automaticWait = throttle
       ? throttleDeadline(now, discoveryPolicy.cooldownMs, source.throttleCount, message.retryAfter).getTime()
       : outcome === "HTTP_ERROR" && Number(message.status) >= 500
-        ? throttleDeadline(now, 60_000, 0, message.retryAfter).getTime() : 0;
+        ? throttleDeadline(now, 60_000, 0, message.retryAfter).getTime()
+        : (transportFailureOutcomes as readonly string[]).includes(outcome)
+          ? now.getTime() + transportCooldownDuration(recentTransportFailures.length) : 0;
     const pauseUntil = Math.max(source.pausedUntil?.getTime() ?? 0, directedWait, automaticWait);
     await tx.update(discoveryRequestsTable).set({
       outcome, statusCode: message.status as number | null, completedAt: now, durationMs,
@@ -506,13 +547,24 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
 
 export async function recoverUncertainRequests(context: SchedulerTestContext = {}) {
   await (context.store ?? db).transaction(async (tx) => {
+    const now = context.now?.() ?? new Date();
     const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, sourceId)).for("update");
     if (!source) return;
+    const recentFailures = await tx.select({ id: discoveryRequestsTable.id })
+      .from(discoveryRequestsTable).where(and(
+        eq(discoveryRequestsTable.sourceId, sourceId),
+        inArray(discoveryRequestsTable.outcome, [...transportFailureOutcomes]),
+        gt(discoveryRequestsTable.startedAt, new Date(now.getTime() - 86_400_000)),
+      ));
     const uncertain = await tx.update(discoveryRequestsTable).set({
-      outcome: "UNCERTAIN_AFTER_RESTART", completedAt: context.now?.() ?? new Date(),
+      outcome: "UNCERTAIN_AFTER_RESTART", completedAt: now,
     }).where(and(eq(discoveryRequestsTable.sourceId, sourceId), eq(discoveryRequestsTable.outcome, "IN_FLIGHT"))).returning();
     if (uncertain.length || source.activeRequestId) await tx.update(discoverySourceTable).set({
-      activeRequestId: null, blockedReason: "RESTART_IN_FLIGHT", pausedUntil: null, collectionApprovedAt: null,
+      activeRequestId: null, blockedReason: "RESTART_IN_FLIGHT",
+      pausedUntil: uncertain.length
+        ? new Date(now.getTime() + transportCooldownDuration(recentFailures.length))
+        : null,
+      collectionApprovedAt: null, accessVerifiedAt: null, verifiedMethod: null,
     }).where(eq(discoverySourceTable.id, sourceId));
   });
 }

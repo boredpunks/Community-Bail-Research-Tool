@@ -43,6 +43,21 @@ test("quota wait exposes a concrete time then becomes resumable", () => {
   assert.match(result.message, /Wait until 2026-10-29T13:00:00.000Z/);
   assert.equal(chooseRecovery({ ...base, saved: false, cooldown, now: new Date("2026-10-29T14:00:00Z") }).action, "resume");
 });
+test("transport failure cooldown invites explicit resume only after its end", () => {
+  const cooldown = new Date("2026-10-29T13:00:00Z");
+  const waiting = chooseRecovery({
+    ...base, saved: false, cooldown,
+    evidence: {
+      calendarValidated: true, retainedRows: 1, documentsDiscovered: 1, documentsProcessed: 0,
+      blockReason: "TIMEOUT", latestOutcome: "TIMEOUT",
+    },
+  });
+  assert.equal(waiting.action, "wait");
+  assert.equal(waiting.availableAt, cooldown.toISOString());
+  assert.match(waiting.message, /timed out/);
+  assert.match(waiting.message, /Wait until 2026-10-29T13:00:00.000Z/);
+  assert.equal(chooseRecovery({ ...base, saved: false, cooldown: null }).action, "resume");
+});
 test("only shared rolling quota pauses are marked for automatic continuation", () => {
   const reason = quotaResumeReason("HOURLY_REQUEST_LIMIT", "The scheduler denied the next request.");
   assert.ok(reason);

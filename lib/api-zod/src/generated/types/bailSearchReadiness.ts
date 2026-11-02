@@ -15,4 +15,6 @@ export interface BailSearchReadiness {
   scope: string;
   authScope: string;
   collectedDockets: number;
+  /** @nullable */
+  nextEligibleAt: Date | null;
 }

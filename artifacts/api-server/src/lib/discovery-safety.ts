@@ -77,6 +77,68 @@ export const sourceOutcomes = [
   "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER", "UNCERTAIN_AFTER_ASSESSMENT",
 ] as const;
 
+export const transportFailureOutcomes = [
+  "TIMEOUT", "NETWORK_ERROR", "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER",
+] as const;
+const transportCooldownBlocks = new Set([
+  "TIMEOUT", "NETWORK_ERROR", "RESTART_IN_FLIGHT", "UNCERTAIN_SOURCE_STATE",
+  "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER",
+]);
+const transportBlockOutcomes: Record<string, readonly string[]> = {
+  TIMEOUT: ["TIMEOUT"],
+  NETWORK_ERROR: ["NETWORK_ERROR"],
+  RESTART_IN_FLIGHT: ["UNCERTAIN_AFTER_RESTART"],
+  UNCERTAIN_SOURCE_STATE: ["UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER", "IN_FLIGHT"],
+  UNCERTAIN_AFTER_RESTART: ["UNCERTAIN_AFTER_RESTART"],
+  UNCERTAIN_AFTER_WORKER: ["UNCERTAIN_AFTER_WORKER"],
+};
+const transportCooldownBaseMs = 15 * 60_000;
+const transportCooldownMaximumMs = 4 * 60 * 60_000;
+
+export function isTransportCooldownBlock(reason: string | null | undefined): boolean {
+  return !!reason && transportCooldownBlocks.has(reason);
+}
+
+export function transportOutcomesForBlock(reason: string | null | undefined): readonly string[] {
+  return reason ? transportBlockOutcomes[reason] ?? [] : [];
+}
+
+export function transportStopDescription(reason: string | null | undefined): string | null {
+  if (reason === "TIMEOUT") return "A court request timed out; its result could not be confirmed.";
+  if (reason === "NETWORK_ERROR") return "The connection to the court source ended before the result was confirmed.";
+  if (isTransportCooldownBlock(reason))
+    return "A court request stopped before the result could be confirmed.";
+  return null;
+}
+
+export function transportCooldownDuration(previousFailures: number): number {
+  return Math.min(transportCooldownMaximumMs,
+    transportCooldownBaseMs * 2 ** Math.max(0, Math.min(4, previousFailures)));
+}
+
+export function transportCooldownDeadline(
+  reason: string | null | undefined,
+  pausedUntil: Date | null | undefined,
+  requests: readonly { outcome: string; startedAt: Date; completedAt?: Date | null }[],
+): Date | null {
+  if (!isTransportCooldownBlock(reason)) return null;
+  if (pausedUntil) return pausedUntil;
+  const allowedOutcomes = transportBlockOutcomes[reason!];
+  if (!allowedOutcomes) return null;
+  const latest = requests
+    .filter(request => allowedOutcomes.includes(request.outcome))
+    .sort((a, b) => (b.completedAt?.getTime() ?? b.startedAt.getTime())
+      - (a.completedAt?.getTime() ?? a.startedAt.getTime()))[0];
+  if (!latest) return null;
+  const failedAt = latest.completedAt ?? latest.startedAt;
+  const previousFailures = requests.filter(request => {
+    if (!(transportFailureOutcomes as readonly string[]).includes(request.outcome)) return false;
+    const at = request.completedAt ?? request.startedAt;
+    return at.getTime() < failedAt.getTime() && at.getTime() > failedAt.getTime() - 86_400_000;
+  }).length;
+  return new Date(failedAt.getTime() + transportCooldownDuration(previousFailures));
+}
+
 export function validAccountingMessage(message: Record<string, unknown>) {
   if (typeof message.requestId !== "string" || !/^[\da-f-]{36}$/i.test(message.requestId)
     || !sourceOutcomes.includes(message.outcome as typeof sourceOutcomes[number])) return false;
@@ -279,13 +341,20 @@ export function calendarDiagnosticRejection(message: unknown): string | null {
   return null;
 }
 
-export function collectionBlock(source: SourceState | undefined, now = new Date()): string | null {
-  // Only a rate-limit cooldown expires automatically. Denials, challenges and
-  // uncertain in-flight requests always require an operator's assessment.
+export function collectionBlock(
+  source: SourceState | undefined,
+  now = new Date(),
+  transportUntil?: Date | null,
+): string | null {
+  const transportExpired = isTransportCooldownBlock(source?.blockedReason)
+    && !!transportUntil && transportUntil <= now;
+  // Denials, challenges, validation barriers, and other uncertain states remain
+  // fail-closed. Only known transport failures receive this bounded cooldown.
   // Verified ordinary jobs are authorized by the authenticated user's exact
   // search submission; the historical global collection flag is not a gate.
   if (source?.blockedReason && !(source.blockedReason === "RATE_LIMIT"
-    && source.pausedUntil && source.pausedUntil <= now)) return source.blockedReason;
+    && source.pausedUntil && source.pausedUntil <= now) && !transportExpired)
+    return source.blockedReason;
   if (source?.pausedUntil && source.pausedUntil > now) return source.blockedReason ?? "SOURCE_COOLDOWN";
   if (!source?.accessVerifiedAt || source.verifiedMethod !== integratedSourceMethod) return "ACCESS_UNVERIFIED";
   return null;

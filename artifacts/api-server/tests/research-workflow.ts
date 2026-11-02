@@ -54,7 +54,10 @@ assert.equal(validCalendarResponseSize({...responseSize,complete:false,observedB
 assert.equal(validCalendarResponseSize({...responseSize,complete:false,statusCode:null,observedBytes:0}),true);
 import { calendarOperationBlock } from "../src/lib/research-operations";
 import { pacingConfig, effectiveAdaptiveSpacing, randomizedRequestSpacing } from "../src/lib/research-pacing";
-import { calendarPreviewRequestAllowed, qualifyingMonetaryTotal, throttleDeadline } from "../src/lib/discovery-safety";
+import {
+  calendarPreviewRequestAllowed, collectionBlock, qualifyingMonetaryTotal, throttleDeadline,
+  transportCooldownDeadline, transportCooldownDuration,
+} from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria } from "../src/lib/calendar-criteria";
 import { matchesDiscoveryFilters } from "../src/lib/discovery";
 import type { DiscoveryProvenanceData } from "@workspace/db";
@@ -81,6 +84,42 @@ assert.equal(calendarOperationBlock(source,[{...denial,path:"/CaseSearch"}]),"AC
 assert.equal(calendarOperationBlock(source,[denial,{...denial,outcome:"CHALLENGE",path:"/CaseSearch"}]),"ACCESS_DENIED");
 assert.equal(calendarOperationBlock({...source,pausedUntil:new Date(Date.now()+60000)},[denial]),"SOURCE_COOLDOWN");
 assert.equal(calendarOperationBlock({...source,blockedReason:"RESTART_IN_FLIGHT"},[denial]),"RESTART_IN_FLIGHT");
+const cooldownNow = new Date("2026-11-01T12:00:00Z");
+assert.equal(transportCooldownDuration(0), 15 * 60_000);
+assert.equal(transportCooldownDuration(1), 30 * 60_000);
+assert.equal(transportCooldownDuration(20), 4 * 60 * 60_000);
+for (const [reason, outcome] of [
+  ["TIMEOUT", "TIMEOUT"],
+  ["NETWORK_ERROR", "NETWORK_ERROR"],
+  ["RESTART_IN_FLIGHT", "UNCERTAIN_AFTER_RESTART"],
+  ["UNCERTAIN_SOURCE_STATE", "UNCERTAIN_AFTER_WORKER"],
+  ["UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_RESTART"],
+  ["UNCERTAIN_AFTER_WORKER", "UNCERTAIN_AFTER_WORKER"],
+] as const) {
+  const failedAt = new Date(cooldownNow.getTime() - 60_000);
+  const requests = [{ outcome, startedAt: failedAt, completedAt: failedAt }];
+  const until = transportCooldownDeadline(reason, null, requests)!;
+  assert.equal(until.getTime(), failedAt.getTime() + 15 * 60_000);
+  const stopped = { ...source, blockedReason: reason, pausedUntil: null };
+  assert.equal(calendarOperationBlock(stopped, [], cooldownNow, until), reason);
+  assert.equal(calendarOperationBlock(stopped, [], until, until), null);
+  assert.equal(calendarOperationBlock(stopped, [], until, null), reason);
+}
+const repeatedFailureAt = new Date(cooldownNow.getTime() - 30_000);
+assert.equal(transportCooldownDeadline("TIMEOUT", null, [
+  { outcome: "NETWORK_ERROR", startedAt: new Date(repeatedFailureAt.getTime() - 1_000), completedAt: new Date(repeatedFailureAt.getTime() - 1_000) },
+  { outcome: "TIMEOUT", startedAt: repeatedFailureAt, completedAt: repeatedFailureAt },
+])?.getTime(), repeatedFailureAt.getTime() + 30 * 60_000);
+assert.equal(transportCooldownDeadline("TIMEOUT", null, []), null);
+const verifiedSource = {
+  blockedReason: "TIMEOUT", pausedUntil: null,
+  accessVerifiedAt: new Date("2026-10-31T00:00:00Z"),
+  verifiedMethod: "integrated", collectionApprovedAt: null,
+};
+const activeTimeoutUntil = new Date(cooldownNow.getTime() + 60_000);
+assert.equal(collectionBlock(verifiedSource, cooldownNow, activeTimeoutUntil), "TIMEOUT");
+assert.equal(collectionBlock(verifiedSource, activeTimeoutUntil, activeTimeoutUntil), "ACCESS_UNVERIFIED");
+assert.equal(collectionBlock(verifiedSource, cooldownNow, null), "TIMEOUT");
 const retainedSizeLimit = {...source, blockedReason:"SIZE_LIMIT"};
 const sizeLimitCalendarRequest = {method:"POST",path:"/CaseSearch",statusCode:200,outcome:"SIZE_LIMIT"};
 assert.equal(calendarOperationBlock(retainedSizeLimit,[sizeLimitCalendarRequest]),null);

@@ -5,6 +5,7 @@ import {
 } from "@workspace/db";
 import { integratedSourceMethod } from "./discovery-safety";
 import { canUseOrdinarySearchFirstPdfAccessCheck, isOrdinarySearchPdfCandidate } from "./ordinary-search-access";
+import { sourceTransportCooldownUntil } from "./transport-cooldown";
 
 export async function canAutomaticallyCheckOrdinaryPdfAccess(
   job: DiscoveryJobRow,
@@ -13,6 +14,7 @@ export async function canAutomaticallyCheckOrdinaryPdfAccess(
 ): Promise<boolean> {
   if (!source || !["PAUSED", "RUNNING", "QUEUED"].includes(job.status)) return false;
   const store = context.store ?? db;
+  const now = context.now?.() ?? new Date();
   const [searches, items, requests] = await Promise.all([
     store.select().from(bailSearchesTable).where(and(
       eq(bailSearchesTable.discoveryJobId, job.id),
@@ -23,6 +25,7 @@ export async function canAutomaticallyCheckOrdinaryPdfAccess(
     store.select({ path: discoveryRequestsTable.path, method: discoveryRequestsTable.method })
       .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id)),
   ]);
+  const transportUntil = await sourceTransportCooldownUntil(store, source, now);
   const item = items.find(isOrdinarySearchPdfCandidate);
   if (!item) return false;
   return canUseOrdinarySearchFirstPdfAccessCheck({
@@ -43,7 +46,8 @@ export async function canAutomaticallyCheckOrdinaryPdfAccess(
     priorPdfRequests: requests.filter(request =>
       ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(request.path)).length,
     priorSearchPosts: requests.filter(request => request.path === "/CaseSearch" && request.method === "POST").length,
-    now: context.now?.() ?? new Date(),
+    now,
+    transportCooldownExpired: !!transportUntil && transportUntil <= now,
   });
 }
 

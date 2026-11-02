@@ -43,6 +43,7 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
   priorPdfRequests: number;
   priorSearchPosts: number;
   now?: Date;
+  transportCooldownExpired?: boolean;
 }): boolean {
   const criteria = isRecord(input.criteria) ? input.criteria : null;
   // Latency warnings are advisory; hard stops are represented by the source
@@ -54,7 +55,8 @@ export function canUseOrdinarySearchFirstPdfAccessCheck(input: {
     && ["/Report/CpDocketSheet", "/Report/MdjDocketSheet"].includes(input.requestPath)
     && input.method === "GET"
     && input.block === "ACCESS_UNVERIFIED"
-    && (input.sourceBlockedReason === null || input.sourceBlockedReason === "SOURCE_VALIDATION_BARRIER")
+    && (input.sourceBlockedReason === null || input.sourceBlockedReason === "SOURCE_VALIDATION_BARRIER"
+      || input.transportCooldownExpired === true)
     // A past cooldown or old client proof is not an approval requirement.
     // This request will establish fresh proof through the actual PDF response.
     && (!input.pausedUntil || input.pausedUntil <= (input.now ?? new Date()))

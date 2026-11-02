@@ -97,6 +97,8 @@ function observedCause(input: RecoveryEvidence) {
 
 const timedAdmissionBlocks = new Set([
   "SOURCE_COOLDOWN", "RATE_LIMIT", "HOURLY_REQUEST_LIMIT", "DAILY_REQUEST_LIMIT",
+  "TIMEOUT", "NETWORK_ERROR", "RESTART_IN_FLIGHT", "UNCERTAIN_SOURCE_STATE",
+  "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER",
 ]);
 
 export function recoveryWaitForAdmission(

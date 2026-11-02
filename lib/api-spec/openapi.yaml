@@ -662,7 +662,7 @@ components:
         resumeToken: { type: string, minLength: 20, maxLength: 200 }
     BailSearchReadiness:
       type: object
-      required: [calendarVerified, liveAvailable, evidence, reason, scope, authScope, collectedDockets]
+      required: [calendarVerified, liveAvailable, evidence, reason, scope, authScope, collectedDockets, nextEligibleAt]
       properties:
         calendarVerified: { type: boolean }
         liveAvailable: { type: boolean }
@@ -671,6 +671,7 @@ components:
         scope: { type: string }
         authScope: { type: string }
         collectedDockets: { type: integer }
+        nextEligibleAt: { type: [string, "null"], format: date-time }
     VolunteerFeedbackInput:
       type: object
       required: [tryingToDo, obstacle, needed]

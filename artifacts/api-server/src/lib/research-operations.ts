@@ -2,6 +2,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, discoveryRequestsTable, discoverySourceTable } from "@workspace/db";
 import { discoveryPolicy } from "./discovery";
 import { rollingUsage } from "./discovery-safety";
+import { sourceTransportCooldownUntil } from "./transport-cooldown";
+import { isTransportCooldownBlock } from "./discovery-safety";
 
 type Source = typeof discoverySourceTable.$inferSelect;
 type Origin = { path: string; method: string; outcome: string; statusCode: number | null };
@@ -9,9 +11,15 @@ type Store = Pick<typeof db, "select">;
 const barriers = ["SOURCE_VALIDATION_BARRIER", "ACCESS_UNVERIFIED", "COLLECTION_NOT_APPROVED"];
 
 /** Only ordinary calendar jobs use this policy; never PDF or pilot authority. */
-export function calendarOperationBlock(source: Source | undefined, origins: Origin[], now = new Date()) {
+export function calendarOperationBlock(
+  source: Source | undefined,
+  origins: Origin[],
+  now = new Date(),
+  transportUntil: Date | null = null,
+) {
   if (!source) return "SOURCE_STATE_UNAVAILABLE";
-  if (source.pausedUntil && source.pausedUntil > now) return "SOURCE_COOLDOWN";
+  if (source.pausedUntil && source.pausedUntil > now)
+    return isTransportCooldownBlock(source.blockedReason) ? source.blockedReason! : "SOURCE_COOLDOWN";
   const reason = source.blockedReason;
   // A single slow response raises an advisory and increases shared pacing.
   // Only the scheduler's explicit sustained-deterioration stop blocks ordinary
@@ -20,6 +28,9 @@ export function calendarOperationBlock(source: Source | undefined, origins: Orig
   if (!reason || barriers.includes(reason)) return null;
   if (reason === "RATE_LIMIT" && source.pausedUntil && source.pausedUntil <= now) return null;
   if (reason === "HTTP_ERROR" && source.pausedUntil && source.pausedUntil <= now) return null;
+  if (transportUntil && transportUntil <= now
+    && ["TIMEOUT", "NETWORK_ERROR", "RESTART_IN_FLIGHT", "UNCERTAIN_SOURCE_STATE",
+      "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER"].includes(reason)) return null;
   // A completed 200 Calendar Event HTML response rejected only by the former
   // shared size cap may be retried as a new, user-initiated, calendar-only job.
   // The exact source block and failed job/ledger stay untouched; document and
@@ -50,7 +61,8 @@ export async function calendarAdmission(store: Store, source: Source | undefined
     }).from(discoveryRequestsTable).where(eq(discoveryRequestsTable.sourceId, "UJS"))
       .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1)
     : [];
-  const block = calendarOperationBlock(source, origins, now);
+  const transportUntil = await sourceTransportCooldownUntil(store, source, now);
+  const block = calendarOperationBlock(source, origins, now, transportUntil);
   if (block) return block;
   const usageRows = await store.select().from(discoveryRequestsTable).where(eq(discoveryRequestsTable.sourceId, "UJS"));
   if (!allowInFlightWait && (source?.activeRequestId || usageRows.some(row => row.outcome === "IN_FLIGHT")))

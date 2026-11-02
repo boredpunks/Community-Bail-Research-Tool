@@ -4,6 +4,8 @@ import { actualDate, easternToday, validCalendarPreviewCriteria } from "./calend
 import { discoveryPolicy, jobSummary } from "./discovery";
 import { sourceAdmissionBlock } from "./discovery-source-status";
 import { calendarAdmission } from "./research-operations";
+import { sourceTransportCooldownUntil } from "./transport-cooldown";
+import { isTransportCooldownBlock, transportStopDescription } from "./discovery-safety";
 
 export function criteriaIdentity(value: unknown): string {
   if (Array.isArray(value)) return JSON.stringify(value.map(criteriaIdentity));
@@ -74,7 +76,15 @@ export async function launchDiscovery(
     // Discovery may proceed even while the separate document client is blocked.
     // The request scheduler still denies every unverified PDF transmission.
     const block = await calendarAdmission(tx, source);
-    if (block) return reject(`Collection blocked: ${block}. Existing evidence is retained.`, 409);
+    if (block) {
+      const now = new Date();
+      const transportUntil = await sourceTransportCooldownUntil(tx, source, now);
+      const availability = isTransportCooldownBlock(source?.blockedReason)
+        && transportUntil && transportUntil > now
+        ? ` ${transportStopDescription(source?.blockedReason)} Live search is expected to be available after ${transportUntil.toISOString()}.`
+        : "";
+      return reject(`Collection blocked: ${block}. Existing evidence is retained.${availability}`, 409);
+    }
     const [job] = await tx.insert(discoveryJobsTable).values({ ownerId, criteria,
       message: "Queued with fixed calendar criteria, monetary filters, target, and budgets." }).returning();
     if (onCreated) await onCreated(tx, job!);

@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetBailSearchStatusQueryKey,
+  getGetBailSearchReadinessQueryKey,
   getListBailSearchCandidatesQueryKey,
   getListBailSearchesQueryKey,
   useClearOwnedBailSearches,
+  useGetBailSearchReadiness,
   useResumeBailSearch,
   useStartBailSearch,
 } from '@workspace/api-client-react';
@@ -54,6 +56,13 @@ function todayNewYork() {
 export default function BailSearch() {
   const [selectedSearchId, setSelectedSearchId] = useState(lastStartedSearchId);
   const { run, status, list, latest, searchId } = useLatestSearch(selectedSearchId);
+  const readiness = useGetBailSearchReadiness({
+    query: {
+      queryKey: getGetBailSearchReadinessQueryKey(),
+      refetchInterval: (query) => query.state.data?.liveAvailable === false ? 15_000 : false,
+      refetchOnWindowFocus: true,
+    },
+  });
   const queryClient = useQueryClient();
   const promote = usePromoteSearch();
   // Mutation-level callbacks survive this page unmounting during navigation.
@@ -123,6 +132,26 @@ export default function BailSearch() {
   return (
     <Shell>
       <PageHead label="Search" title="Live court search" />
+      {readiness.isLoading ? <p className="hint mb-3" role="status">Checking live court search availability…</p> : null}
+      {readiness.isError ? (
+        <p className="errbox mb-3" role="alert" data-testid="error-live-search-readiness">
+          Live search availability could not be checked. {errMsg(readiness.error)}
+          <button className="btn ml-2" type="button" onClick={() => readiness.refetch()}>Retry</button>
+        </p>
+      ) : readiness.data?.liveAvailable === false ? (
+        <div className="notice mb-3 max-w-2xl" role="status" data-testid="status-live-search-readiness">
+          <p className="font-semibold">Live search is temporarily unavailable</p>
+          <p className="mt-1">{readiness.data.reason}</p>
+          {readiness.data.nextEligibleAt ? (
+            <p className="mt-1">Expected availability: {formatInstant(readiness.data.nextEligibleAt)}</p>
+          ) : null}
+          <p className="mt-1">Saved results are not affected.</p>
+        </div>
+      ) : readiness.data?.liveAvailable ? (
+        <p className="notice mb-3 max-w-2xl" role="status" data-testid="status-live-search-readiness">
+          Live search is available. Court response delays or access restrictions can still stop an individual search.
+        </p>
+      ) : null}
       <form className="panel space-y-4 max-w-2xl" onSubmit={submit} noValidate data-testid="form-bail-search">
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block">

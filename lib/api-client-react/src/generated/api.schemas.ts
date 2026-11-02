@@ -63,6 +63,8 @@ export interface BailSearchReadiness {
   scope: string;
   authScope: string;
   collectedDockets: number;
+  /** @nullable */
+  nextEligibleAt: string | null;
 }
 
 export interface VolunteerFeedbackInput {

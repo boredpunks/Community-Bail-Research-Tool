@@ -124,7 +124,8 @@ export const GetBailSearchReadinessResponse = zod.object({
   "reason": zod.string(),
   "scope": zod.string(),
   "authScope": zod.string(),
-  "collectedDockets": zod.int()
+  "collectedDockets": zod.int(),
+  "nextEligibleAt": zod.coerce.date().nullable()
 })
 
 
