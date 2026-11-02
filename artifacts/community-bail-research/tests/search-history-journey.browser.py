@@ -126,6 +126,10 @@ async def main():
             today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
             await page.get_by_test_id("input-search-start-date").fill(today)
             await page.get_by_test_id("input-search-end-date").fill(today)
+            await page.get_by_test_id("input-max-bail").fill("1500.25")
+            await page.get_by_test_id("toggle-search-settings").click()
+            await page.get_by_test_id("select-search-office").select_option("CP-05-02-Crim")
+            await page.get_by_test_id("select-search-event").select_option("Preliminary Hearing")
             await page.get_by_test_id("button-start-bail-search").click()
             await asyncio.wait_for(state["post_seen"].wait(), timeout=5)
 
@@ -165,10 +169,21 @@ async def main():
             await page.get_by_test_id("button-confirm-clear-search-history").click()
             await page.get_by_test_id("text-clear-search-history-result").wait_for()
             assert "Cleared 1 search and 1 result." in await page.get_by_test_id("text-clear-search-history-result").inner_text()
-            assert await page.evaluate("sessionStorage.getItem('bail-research:last-started-search')") is None
+            assert "Any running searches were stopped first." in await page.get_by_test_id("text-clear-search-history-result").inner_text()
+            assert await page.evaluate("sessionStorage.getItem('bail-research:last-started-search')") == ""
             assert await page.get_by_test_id("table-search-rows").count() == 0
+            assert await page.get_by_test_id("status-search-cleared").count() == 1
+            assert await page.get_by_test_id("input-search-start-date").input_value() == ""
+            assert await page.get_by_test_id("input-search-end-date").input_value() == ""
+            assert await page.get_by_test_id("input-max-bail").input_value() == "2000"
+            assert await page.locator("details").evaluate("(element) => element.open") is False
+            assert await page.get_by_test_id("select-search-office").input_value() == "ANY"
+            assert await page.get_by_test_id("select-search-event").input_value() == "Bail Hearing"
             assert state["delete_count"] == 1
-            print("PASS: delayed mocked start promotes across navigation; results persist after reload, then confirmed clear deletes history/results and resets session selection; no extra court request.")
+            await page.reload(wait_until="domcontentloaded")
+            await page.get_by_test_id("status-search-cleared").wait_for()
+            assert await page.get_by_test_id("table-search-rows").count() == 0
+            print("PASS: delayed mocked start promotes across navigation; confirmed clear resets search criteria and results across reload; no extra court request.")
             await browser.close()
     finally:
         server.terminate()

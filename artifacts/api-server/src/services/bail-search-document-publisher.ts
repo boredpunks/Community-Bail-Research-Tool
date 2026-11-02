@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import {
   db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable,
-  type BailSearchRow, type BailSearchQueueItem,
+  type BailSearchRow, type BailSearchQueueItem, type DiscoveryItemRow,
 } from "@workspace/db";
 import { selectBailDecision, qualifiesMonetary } from "../lib/bail-decision";
 import { extractSavedBail, savedEntries } from "./saved-bail-extraction";
@@ -14,8 +14,11 @@ export async function storeItem(
   queued: BailSearchQueueItem,
   cacheAllowed: boolean,
   store: ProjectionStore = db,
+  knownItem?: DiscoveryItemRow,
 ) {
-  const [item] = await store.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id, queued.itemId));
+  const item = knownItem?.id === queued.itemId
+    ? knownItem
+    : (await store.select().from(discoveryItemsTable).where(eq(discoveryItemsTable.id, queued.itemId)))[0];
   let error: string | null = null;
   let entries = item ? savedEntries(item.provenance) : null;
   const unvalidatedText = item?.sourceRetrievedAt && item.provenance.documentSha256
@@ -92,7 +95,7 @@ export async function publishVerifiedDocumentToSearch(
     for (const hearingDate of matching) {
       await storeItem(search, {
         itemId: item.id, docketNumber: item.docketNumber, hearingDate, office: item.provenance.courtOffice,
-      }, false, store);
+      }, false, store, item);
     }
     const total = allItems.reduce((count, row) => count + resultDatesForItem(search.criteria, row)
       .filter(date => search.criteria.courtOffice === undefined || search.criteria.courtOffice === "ANY"

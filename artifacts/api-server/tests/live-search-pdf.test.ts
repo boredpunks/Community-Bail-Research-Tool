@@ -465,6 +465,8 @@ try {
   const resumedRequests = await db.select().from(discoveryRequestsTable)
     .where(eq(discoveryRequestsTable.jobId, resumableJob!.id));
   assert.equal(resumedRequests.length, 1, "Resume queues only the existing job; it does not bypass the scheduler's request gate.");
+  await db.update(discoveryJobsTable).set({ status: "RUNNING" })
+    .where(eq(discoveryJobsTable.id, resumableJob!.id));
 
   const otherOwnerId = "offline-search-clear-other-session";
   const [otherSearch] = await db.insert(bailSearchesTable).values({
@@ -484,13 +486,16 @@ try {
   const clearBody = await clearResponse.json() as {
     deletedSearches: number; deletedResults: number; retainedRunning: number;
   };
-  assert.equal(clearBody.deletedSearches, searchIds.length - 1);
-  assert.equal(clearBody.retainedRunning, 1, "A running search is kept active.");
-  const retainedSearch = (await db.select().from(bailSearchesTable)
+  assert.equal(clearBody.deletedSearches, searchIds.length);
+  assert.equal(clearBody.retainedRunning, 0, "No owned running search remains active after clearing.");
+  const clearedSearch = (await db.select().from(bailSearchesTable)
     .where(eq(bailSearchesTable.id, resumableSearch!.id)))[0];
+  const stoppedJob = (await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, resumableJob!.id)))[0];
   const retainedOtherSearch = (await db.select().from(bailSearchesTable)
     .where(eq(bailSearchesTable.id, otherSearch!.id)))[0];
-  assert.ok(retainedSearch, "The active search remains in storage.");
+  assert.equal(clearedSearch, undefined, "The active owned search is removed.");
+  assert.equal(stoppedJob?.status, "PAUSED", "Its linked source job is stopped before the search is deleted.");
   assert.ok(retainedOtherSearch, "Searches created by another session remain untouched.");
   const candidateResponse = await fetch(`${origin}/api/bail-search/candidates`, { headers: { cookie } });
   assert.equal(candidateResponse.status, 200);
@@ -500,10 +505,10 @@ try {
   "Existing saved candidates and citations remain available after search rows are removed.");
   const remainingSearchResults = await db.select().from(bailSearchResultsTable)
     .where(inArray(bailSearchResultsTable.searchId, searchIds));
-  assert.ok(remainingSearchResults.every(result => result.searchId === resumableSearch!.id),
-    "Inactive search result rows are removed while active-search results remain.");
+  assert.equal(remainingSearchResults.length, 0,
+    "Results for all owned searches are removed, including a previously active search.");
 
-  console.log("PASS: mocked API preserves PDF evidence and resume scope; clearing deletes only this session's inactive search rows while retaining active searches, other sessions' searches, and saved candidates.");
+  console.log("PASS: mocked API preserves PDF evidence and resume scope; clearing stops linked source jobs, removes owned active/inactive searches, and preserves other sessions' searches and saved candidates.");
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
   for (const searchId of searchIds) {

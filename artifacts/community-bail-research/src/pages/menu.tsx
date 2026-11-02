@@ -4,7 +4,7 @@ import { CageRoom } from '@/components/cage-room';
 const PANELS = [
   { href: '/search', n: '01', title: 'Search', id: 'search', text: 'Search the live court calendar and view the raw results.' },
   { href: '/review', n: '02', title: 'Review', id: 'review', text: 'Review matches from your latest search and mark candidates.' },
-  { href: '/candidates', n: '03', title: 'Candidates', id: 'candidates', text: 'Open the candidates you have chosen to save.' },
+  { href: '/candidates', n: '03', title: 'Candidates', id: 'candidates', text: 'List of dockets reviewed and approved for bail candidacy.' },
 ];
 
 export default function Menu() {

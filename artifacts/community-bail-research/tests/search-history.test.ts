@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseDisplayedSearchId, lastStartedSearchId, rememberStartedSearch, type SearchHistoryItem } from "../src/lib/search-history";
+import { chooseDisplayedSearchId, clearSearchSelection, lastStartedSearchId, rememberStartedSearch, type SearchHistoryItem } from "../src/lib/search-history";
 
 const latestEmpty: SearchHistoryItem = {
   searchId: "latest-empty",
@@ -36,6 +36,7 @@ assert.equal(chooseDisplayedSearchId([latestPaused, earlierWithEvidence]), "late
 assert.equal(chooseDisplayedSearchId([latestPaused, earlierWithEvidence], "earlier-evidence"), "earlier-evidence");
 assert.equal(chooseDisplayedSearchId([latestEmpty]), "latest-empty");
 assert.equal(chooseDisplayedSearchId([]), "");
+assert.equal(chooseDisplayedSearchId([latestRunning], ""), "", "An explicit clear must not select another search.");
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
 try {
@@ -44,13 +45,15 @@ try {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   } });
-  assert.equal(lastStartedSearchId(), "");
+  assert.equal(lastStartedSearchId(), undefined);
   rememberStartedSearch("started-search");
   assert.equal(lastStartedSearchId(), "started-search");
   rememberStartedSearch("resumed-search");
   assert.equal(lastStartedSearchId(), "resumed-search");
-  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, get() { throw new Error("Storage disabled"); } });
+  clearSearchSelection();
   assert.equal(lastStartedSearchId(), "");
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, get() { throw new Error("Storage disabled"); } });
+  assert.equal(lastStartedSearchId(), undefined);
   assert.doesNotThrow(() => rememberStartedSearch("server-history-still-works"));
 } finally {
   if (originalStorage) Object.defineProperty(globalThis, "sessionStorage", originalStorage);

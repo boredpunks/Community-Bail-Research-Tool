@@ -47,7 +47,7 @@ async function syncLive(search: BailSearchRow) {
     for (const date of dates) {
       if (!date || date < search.criteria.startDate || date > search.criteria.endDate) continue;
       total++;
-      await storeItem(search, { itemId: item.id, docketNumber: item.docketNumber, hearingDate: date, office: item.provenance.courtOffice }, false);
+      await storeItem(search, { itemId: item.id, docketNumber: item.docketNumber, hearingDate: date, office: item.provenance.courtOffice }, false, db, item);
     }
   }
   await db.update(bailSearchesTable).set({ total, updatedAt: new Date() }).where(eq(bailSearchesTable.id, search.id));
@@ -144,7 +144,7 @@ export async function publishCalendarRowsToSearch(jobId: string) {
         projected++;
         await storeItem(search, {
           itemId: item.id, docketNumber: item.docketNumber, hearingDate, office: item.provenance.courtOffice,
-        }, false);
+        }, false, db, item);
       }
     }
     const results = await db.select().from(bailSearchResultsTable)

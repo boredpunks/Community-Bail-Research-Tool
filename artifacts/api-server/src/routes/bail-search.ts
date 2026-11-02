@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, volunteerFeedbackTable } from "@workspace/db";
 import {
   StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
@@ -213,16 +213,40 @@ router.delete("/search", async (_req, res): Promise<void> => {
   const ownerId: string = res.locals.searchOwner;
   const cleared = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
-    const owned = await tx.select({ id: bailSearchesTable.id, status: bailSearchesTable.status })
+    const owned = await tx.select({
+      id: bailSearchesTable.id,
+      discoveryJobId: bailSearchesTable.discoveryJobId,
+    })
       .from(bailSearchesTable)
       .where(eq(bailSearchesTable.ownerId, ownerId))
       .for("update");
-    const removable = owned.filter(search => search.status !== "running");
-    const retainedRunning = owned.length - removable.length;
-    if (!removable.length) {
-      return { deletedSearches: 0, deletedResults: 0, retainedRunning };
+    if (!owned.length) {
+      return { deletedSearches: 0, deletedResults: 0, retainedRunning: 0 };
     }
-    const ids = removable.map(search => search.id);
+    const ids = owned.map(search => search.id);
+    const jobIds = [...new Set(owned.flatMap(search => search.discoveryJobId ? [search.discoveryJobId] : []))];
+    if (jobIds.length) {
+      const sharedActiveJobs = await tx.select({ discoveryJobId: bailSearchesTable.discoveryJobId })
+        .from(bailSearchesTable)
+        .where(and(
+          inArray(bailSearchesTable.discoveryJobId, jobIds),
+          ne(bailSearchesTable.ownerId, ownerId),
+          eq(bailSearchesTable.status, "running"),
+        ));
+      const sharedJobIds = new Set(sharedActiveJobs.flatMap(search =>
+        search.discoveryJobId ? [search.discoveryJobId] : []));
+      const jobsToStop = jobIds.filter(id => !sharedJobIds.has(id));
+      if (jobsToStop.length) {
+        await tx.update(discoveryJobsTable).set({
+          status: "PAUSED",
+          message: "Stopped by its creator because the search and results were cleared.",
+          updatedAt: new Date(),
+        }).where(and(
+          inArray(discoveryJobsTable.id, jobsToStop),
+          inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"]),
+        ));
+      }
+    }
     const deletedResults = await tx.delete(bailSearchResultsTable)
       .where(inArray(bailSearchResultsTable.searchId, ids))
       .returning({ id: bailSearchResultsTable.id });
@@ -232,7 +256,7 @@ router.delete("/search", async (_req, res): Promise<void> => {
     return {
       deletedSearches: deletedSearches.length,
       deletedResults: deletedResults.length,
-      retainedRunning,
+      retainedRunning: 0,
     };
   });
   res.json(ClearOwnedBailSearchesResponse.parse(cleared));
