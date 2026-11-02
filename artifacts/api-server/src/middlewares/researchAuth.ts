@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Request, RequestHandler, Response } from "express";
 import { bailRecordsTable, bailReviewsTable, db, discoveryJobsTable } from "@workspace/db";
+import { WORKSPACE_OWNER_ID } from "../lib/workspace-owner";
 
-export const WORKSPACE_OWNER_ID = "community-bail-research-shared-workspace";
+export { WORKSPACE_OWNER_ID } from "../lib/workspace-owner";
 export const WORKSPACE_COOKIE_NAME = "cbr_workspace";
 export const WORKSPACE_SESSION_TTL_SECONDS = 12 * 60 * 60;
 // Invalidate previously issued sessions after an acceptance-run token exposure.

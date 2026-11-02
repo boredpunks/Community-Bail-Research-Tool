@@ -10,6 +10,7 @@ import { resumeBailSearch } from "./bail-search-resume";
 export { publishVerifiedDocumentToSearch } from "./bail-search-document-publisher";
 
 const active = new Set<string>();
+const automaticQuotaRejections = new Map<string, string>();
 export async function pauseSearch(search: BailSearchRow, reason: string, availableAt = new Date()) {
   await db.transaction(async tx => {
     if (search.discoveryJobId) await tx.update(discoveryJobsTable).set({ status: "PAUSED", updatedAt: new Date(), message: reason })
@@ -100,7 +101,20 @@ async function autoContinueQuotaSearches() {
   const eligible = paused.filter(search => search.criteria.source === "live"
     && autoResumeQuotaBlock(search.reason) !== null
     && search.resumeAvailableAt !== null && search.resumeAvailableAt <= now);
-  await Promise.all(eligible.map(search => resumeBailSearch(search.id, { automaticQuota: true })));
+  const outcomes = await Promise.all(eligible.map(async search => ({
+    search,
+    result: await resumeBailSearch(search.id, { automaticQuota: true }),
+  })));
+  for (const { search, result } of outcomes) {
+    if (result.ok) {
+      automaticQuotaRejections.delete(search.id);
+      continue;
+    }
+    if (automaticQuotaRejections.get(search.id) !== result.error) {
+      automaticQuotaRejections.set(search.id, result.error);
+      logger.warn({ error: result.error }, "Automatic quota continuation deferred by an eligibility check");
+    }
+  }
 }
 export async function runBailSearch(search: BailSearchRow) {
   if (active.has(search.id)) return;

@@ -7,6 +7,7 @@ import { resultsDeadline } from "../lib/discovery-safety";
 import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
+import { isSharedWorkspaceDiscoveryOwner } from "../lib/workspace-owner";
 import { SEARCH_SLICE_MS, searchRecovery, validResumeToken } from "./bail-search-store";
 import { autoResumeQuotaBlock } from "./bail-search-auto-resume";
 
@@ -62,7 +63,7 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
       if (!search.discoveryJobId) return denied("The source search did not start. Start a new search after the source blocker is resolved.", 409, automaticQuota);
       const [source] = await tx.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS")).for("update");
       const [job] = await tx.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, search.discoveryJobId)).for("update");
-      if (!job || job.ownerId !== search.ownerId || job.status !== "PAUSED" || job.assessmentId || job.resultsExpiredAt
+      if (!job || !isSharedWorkspaceDiscoveryOwner(job.ownerId) || job.status !== "PAUSED" || job.assessmentId || job.resultsExpiredAt
         || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())
         || (!job.calendarComplete && job.criteria.startDate < easternToday())
         || job.requestsUsed >= job.criteria.requestCap)

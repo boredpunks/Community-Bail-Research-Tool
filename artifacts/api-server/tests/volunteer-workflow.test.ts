@@ -6,6 +6,7 @@ import { validCachedConsultationChronology } from "../src/lib/discovery-candidat
 import { resultDatesForItem } from "../src/services/bail-search-projection";
 import { withSearchViewerAccess } from "../src/services/bail-search-access";
 import { autoResumeQuotaBlock, legacyQuotaResumeBlock, quotaResumeReason, visibleSearchPauseReason } from "../src/services/bail-search-auto-resume";
+import { isSharedWorkspaceDiscoveryOwner } from "../src/lib/workspace-owner";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
   noJob: false, sourceBlocked: false, cooldown: null, now: new Date("2026-10-29T12:00:00Z") };
@@ -195,4 +196,8 @@ test("workspace viewers can read earlier searches without creator-only controls"
     resumeToken: null,
     canManage: false,
   });
+});
+test("live search jobs use the shared workspace owner, not the creator session owner", () => {
+  assert.equal(isSharedWorkspaceDiscoveryOwner("community-bail-research-shared-workspace"), true);
+  assert.equal(isSharedWorkspaceDiscoveryOwner("session-specific-owner"), false);
 });
