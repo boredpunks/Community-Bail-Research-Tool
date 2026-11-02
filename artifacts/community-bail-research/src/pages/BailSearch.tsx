@@ -132,6 +132,21 @@ export default function BailSearch() {
   return (
     <Shell>
       <PageHead label="Search" title="Live court search" />
+      {readiness.data?.liveAvailable || run?.status === 'running' ? (
+        <div className="mb-3 max-w-2xl space-y-1 text-xs leading-relaxed text-muted-foreground"
+          role="status" data-testid="text-search-context">
+          {readiness.data?.liveAvailable ? (
+            <p data-testid="status-live-search-readiness">
+              Live search is available. Court response delays or access restrictions can still stop an individual search.
+            </p>
+          ) : null}
+          {run?.status === 'running' ? (
+            <p data-testid="text-search-background">
+              You can navigate to another page without stopping this search. It runs on the server; return to Search to view docket numbers and bail amounts extracted from PDFs.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {readiness.isLoading ? <p className="hint mb-3" role="status">Checking live court search availability…</p> : null}
       {readiness.isError ? (
         <p className="errbox mb-3" role="alert" data-testid="error-live-search-readiness">
@@ -147,10 +162,6 @@ export default function BailSearch() {
           ) : null}
           <p className="mt-1">Saved results are not affected.</p>
         </div>
-      ) : readiness.data?.liveAvailable ? (
-        <p className="notice mb-3 max-w-2xl" role="status" data-testid="status-live-search-readiness">
-          Live search is available. Court response delays or access restrictions can still stop an individual search.
-        </p>
       ) : null}
       <form className="panel space-y-4 max-w-2xl" onSubmit={submit} noValidate data-testid="form-bail-search">
         <div className="grid gap-4 sm:grid-cols-3">
@@ -185,9 +196,17 @@ export default function BailSearch() {
           </div>
         </details>
         {formError ? <p className="errbox" role="alert" data-testid="error-search-form">{formError}</p> : null}
-        <button className="btn btn-primary" type="submit" disabled={started.isPending} data-testid="button-start-bail-search">
-          {started.isPending ? 'Starting…' : 'Search'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn btn-primary" type="submit" disabled={started.isPending} data-testid="button-start-bail-search">
+            {started.isPending ? 'Starting…' : 'Search'}
+          </button>
+          {!list.isLoading && !list.isError ? (
+            <button className="btn btn-danger" type="button" onClick={() => { setClearNotice(''); setConfirmClear(true); }}
+              disabled={clearHistory.isPending} data-testid="button-clear-search-history">
+              Clear my past searches
+            </button>
+          ) : null}
+        </div>
       </form>
 
       <section className="mt-8" aria-label="Results" data-testid="section-search-results">
@@ -195,10 +214,6 @@ export default function BailSearch() {
         {status.isError ? <p className="errbox" role="alert">Status unavailable. {errMsg(status.error)} <button className="btn" type="button" onClick={() => status.refetch()}>Retry</button></p> : null}
         {!list.isLoading && !list.isError ? (
           <div className="mb-3 space-y-2">
-            <button className="btn btn-danger" type="button" onClick={() => { setClearNotice(''); setConfirmClear(true); }}
-              disabled={clearHistory.isPending} data-testid="button-clear-search-history">
-              Clear my past searches
-            </button>
             {clearHistory.isError ? <p className="errbox" role="alert">Could not clear past searches. {errMsg(clearHistory.error)}</p> : null}
             {clearNotice ? <p className="notice" role="status" data-testid="text-clear-search-history-result">{clearNotice}</p> : null}
           </div>
@@ -230,11 +245,6 @@ export default function BailSearch() {
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
             {!run.canManage ? <p className="hint" data-testid="text-search-readonly">View-only search. Only its creating session can resume or save results.</p> : null}
-            {run.status === 'running' ? (
-              <p className="notice" role="status" data-testid="text-search-background">
-                You can navigate to another page without stopping this search. It runs on the server; return to Search to view docket numbers and bail amounts extracted from PDFs.
-              </p>
-            ) : null}
             {run.status === 'complete' && run.reason ? (
               <p className="notice" role="status" data-testid="text-search-completion-warning">{run.reason}</p>
             ) : null}
