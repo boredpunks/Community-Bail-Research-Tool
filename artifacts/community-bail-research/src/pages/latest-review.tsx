@@ -1,31 +1,15 @@
-import { useSaveBailSearchResult, type BailSearchResult } from '@workspace/api-client-react';
+import type { BailSearchResult } from '@workspace/api-client-react';
 import { Link } from 'wouter';
 import { Shell, PageHead } from '@/components/shell';
+import { CandidateAction } from '@/components/candidate-action';
 import { errMsg } from '@/lib/money';
-import { isReviewable, money, safeSourceUrl, useAfterCandidateSave, useLatestSearch } from '@/lib/latest-search';
+import { isReviewable, money, safeSourceUrl, useLatestSearch } from '@/lib/latest-search';
 
 function Citation({ row }: { row: BailSearchResult }) {
   const url = safeSourceUrl(row.source_url);
   const page = row.evidence_page != null ? `p. ${row.evidence_page}` : 'page not recorded';
   if (!url) return <span className="hint">PDF link unavailable</span>;
   return <a href={url} target="_blank" rel="noopener noreferrer" className="navlink" data-testid={`link-pdf-${row.id}`}>PDF, {page}</a>;
-}
-
-function CandidateAction({ row, searchId, canManage }: { row: BailSearchResult; searchId: string; canManage: boolean }) {
-  const after = useAfterCandidateSave(searchId);
-  const save = useSaveBailSearchResult({ mutation: { onSuccess: after } });
-  if (row.saved_record_id) return <span className="tag text-primary" data-testid={`status-candidate-${row.id}`}>Candidate · shared</span>;
-  if (!canManage) return <span className="hint" data-testid={`text-readonly-result-${row.id}`}>View only · created by another session</span>;
-  if (row.save_available !== true) return <span className="hint" data-testid={`text-save-unavailable-${row.id}`}>Cannot save{row.save_reason ? `: ${row.save_reason}` : ''}</span>;
-  return (
-    <div>
-      <button type="button" className="btn btn-primary" disabled={save.isPending} title="Saves and shares with the workspace"
-        onClick={() => save.mutate({ searchId, resultId: row.id, data: { shareWithWorkspace: true } })} data-testid={`button-candidate-${row.id}`}>
-        {save.isPending ? 'Saving…' : 'Candidate'}
-      </button>
-      {save.isError ? <p className="errbox mt-1" role="alert">{errMsg(save.error)}</p> : null}
-    </div>
-  );
 }
 
 export default function LatestReview() {

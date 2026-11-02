@@ -205,6 +205,13 @@
   .btn-primary:hover:not(:disabled) { background: hsl(var(--primary) / 0.85); }
   .btn-danger { border-color: hsl(var(--destructive)); color: hsl(var(--destructive)); }
   .btn-danger:hover:not(:disabled) { background: hsl(var(--destructive) / 0.14); }
+  .btn-compact {
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.015em;
+    white-space: nowrap;
+  }
   .field {
     width: 100%;
     min-height: 3rem;

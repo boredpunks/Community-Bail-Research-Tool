@@ -12,6 +12,7 @@ import {
 } from '@workspace/api-client-react';
 import { Shell, PageHead } from '@/components/shell';
 import { BailSearchProgressPanel } from '@/components/bail-search-progress';
+import { CandidateAction } from '@/components/candidate-action';
 import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
@@ -275,7 +276,7 @@ export default function BailSearch() {
         {rows.length ? (
           <div className="bail-compare-scroll">
             <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-search-rows">
-              <thead><tr><th>#</th><th>Docket</th><th>Date</th><th>Bail</th><th>Evidence</th></tr></thead>
+              <thead><tr><th>#</th><th>Docket</th><th>Date</th><th>Bail</th><th>Evidence</th><th>Review</th></tr></thead>
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={row.id} data-testid={`row-search-${row.id}`}>
@@ -319,6 +320,18 @@ export default function BailSearch() {
                           ) : <p className="hint">Source document link unavailable.</p>}
                         </div>
                       </details>
+                    </td>
+                    <td className="align-top">
+                      <CandidateAction
+                        row={row}
+                        searchId={run!.searchId}
+                        canManage={run!.canManage}
+                        buttonLabel="Save for Review"
+                        savedLabel="Saved for Review"
+                        testId={`button-save-for-review-${row.id}`}
+                        compact
+                        showDisabledButton
+                      />
                     </td>
                   </tr>
                 ))}
