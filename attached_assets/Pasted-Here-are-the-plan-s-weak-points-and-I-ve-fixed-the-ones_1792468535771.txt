@@ -1,0 +1,42 @@
+Here are the plan's weak points, and I've fixed the ones I could. The plan as it stands would likely produce green offline tests and still not run live. I also read the admission code myself instead of leaving it to Replit.
+
+## Where the plan was weak
+1. **"Working" was never defined.** Replit could pass 40 offline checks and call the project done. I've added an acceptance test below.
+2. **Admission was left for later, and it's the real blocker.** I found the likely route. `pilot.ts` has a SINGLE stage that needs no earlier proof. In `discovery-scheduler.ts`, a job with a permit skips the global denial check (`collectionBlock`). The run guard only rejects UNCERTAIN and RESTART states. A successful verified pilot then clears the denial itself (`pilot.ts:~425`). So the path is the existing prepare, approve and run commands for one SINGLE pilot with `recordCap` 1. Replit must confirm or refute this with file and line, not assume it.
+3. **A trap in that path.** Pilot scope requires the start date to be today or later, Eastern time (`pilot.ts` run guard). Only a fresh calendar for a future or current day can be used.
+4. **The research-proof stage is a dead end.** It uses hard-coded docket URLs with no `dnh` token (`research-scope.ts`). That explains the 2026-10-18 MDJ 401, and it breaks the rule against building URLs. It must not be used.
+5. **The enum gap can wreck the first live run.** If the first docket has conditional bail, the code produces `RECORDED_BAIL_AMOUNT`. The development database may reject it, the pilot would fail verification, and we'd have wasted the single run. The dev migration must be applied before any live step.
+6. **The plan ignored the shipped limits, which make the 200-docket goal impossible by default.** Defaults are 5 documents per job (`UJS_MAX_RECORDS`), 30 requests per hour and 120 per day. Raising them is your decision, not a patch. Given the 429 at 44 dockets on October 5, I would stay at 1, then 5, and decide after that.
+7. **Verification can fail even when the PDF succeeds.** The pilot requires every request under 20 seconds and no latency warning. The slow, paced calendar assets could fail that. The result would be a working PDF with the stop still set. Replit must report which condition failed.
+8. **The planned tests would miss a real defect.** Real links carry `dnh` values with `%2B`, `%2F` and `%3D`. No planned test proves the downloader sends those bytes unchanged. I've added one.
+9. **Nothing independent checks the output.** The app would certify itself. I've added a human check against the portal.
+10. **The Playwright calendar is the fragile part.** If it fails inside the pilot, don't retry. The fallback is a plain-HTTP calendar (it returned 1,002 links twice for me), written as v17. I'd spec that only if needed.
+
+## Acceptance test for "working"
+- **A1.** A fresh calendar search for a current or future date validates at least 1 row.
+- **A2.** The app itself fetches one docket PDF with the plain-HTTP method, within a recorded number of seconds of link capture.
+- **A3.** The PDF has the `%PDF-` signature, the docket number matches, and the SHA-256 is stored.
+- **A4.** The bail row is extracted with page and quoted text, or correctly reported as nonmonetary or ambiguous.
+- **A5.** The row shows on screen and in CSV with the required disclaimer, and the two match.
+- **A6.** You open the same docket on the portal and confirm the extracted row matches the bail section.
+- **A7.** The request ledger shows exactly the expected requests, no retries, and the denial cleared by the approve step, with an audit event.
+
+## Message to paste to Replit
+```
+Addendum to the approved Phase 2 plan. These are binding.
+
+1. Step B (R-12) proposal must test this specific hypothesis and cite file:line for each claim, or refute it: the existing path is one pilot with stage SINGLE (prepare, approve, run), recordCap 1. SINGLE skips the prior-stage proof in approve (pilot.ts around the row.stage !== "SINGLE" check). A job with an assessmentId skips collectionBlock in reserveSourceRequest (discovery-scheduler.ts permit branch). The run guard rejects only UNCERTAIN and RESTART_IN_FLIGHT blockedReason. A pilot that satisfies the "verified" predicate clears blockedReason (pilot.ts ~399-429). State the exact prepare/approve/run commands, the required criteria shape, and what the 'startDate >= easternToday()' rule means for scope (today or later, Eastern). State the request count one SINGLE run will use against requestCap, hourly cap 30 and daily cap 120.
+2. Do NOT use the RESEARCH_PROOF or RESEARCH_RUN stages. Their proofUrls are hard-coded URLs without the dnh token; this explains the 2026-10-18 MDJ 401 and violates the no-constructed-URL rule. Confirm that explanation from research-scope.ts and the ledger row c3ae7edf-e1e2-48dd-8674-8dfddf53a196 (do not print the URL).
+3. The development enum migration for RECORDED_BAIL_AMOUNT must be applied and verified in development BEFORE any live step, per the ruling on database separation.
+4. Add a loopback test: a docket URL whose dnh value contains %2B, %2F and %3D (and a bare '=' padding) passes allowed() and reaches the server byte-identical, with no re-encoding or decoding by the client. Assert on the exact raw request target the server received.
+5. Record, in the job event log, the elapsed seconds between calendar-link capture and the document GET, and the durationMs of every request. In the Step B proposal, list every condition in the pilot "verified" predicate and say which ones depend on timing (requests under 20 seconds, no latencyWarning, source.activeRequestId), so a success-with-unverified outcome is predicted, not a surprise.
+6. Do not change discoveryPolicy defaults (5 documents per job, 30 per hour, 120 per day). Do not edit env limits. State the throughput these limits imply for 5, 50 and 200 documents. Raising limits is an owner decision.
+7. Acceptance for the whole task (report against each, with quoted evidence, in the section 10 format):
+   A1 fresh calendar validates at least 1 row; A2 the app itself fetches one docket PDF by the plain-HTTP method; A3 %PDF- signature, docket identity match, SHA-256 stored; A4 bail row extracted with page and quoted text, or correctly reported nonmonetary/ambiguous; A5 row shown and CSV equal, with the required discovery-card statement; A6 owner confirms against the portal; A7 ledger shows exactly the expected requests, no retries, and the denial cleared only by the owner's approve step with an audit event naming the method id.
+   Phase 2 can only report A-items as NOT RUN. Do not mark any as met without a live run.
+8. Calendar fallback: if the Playwright calendar step fails to validate inside the future SINGLE run, there will be no retry. Prepare a one-page design note (no code) for a plain-HTTP calendar search as method v17, reusing the form-field construction in plain_http_probe2.py and the existing calendar parser, and list what would need new validation. Write it only if Phase 2 time allows; otherwise list it as not done.
+
+Everything else in the approved plan and the six amendments stands. No court requests. Stop after the section 10 report.
+```
+
+Replit's Phase 2 report should show A1 to A7 as NOT RUN. A report that marks any of them as met is wrong.
