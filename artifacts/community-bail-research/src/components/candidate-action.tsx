@@ -1,6 +1,7 @@
 import { useSaveBailSearchResult, type BailSearchResult } from '@workspace/api-client-react';
 import { errMsg } from '@/lib/money';
 import { useAfterCandidateSave } from '@/lib/latest-search';
+import { CANDIDATE_SAVED_LABEL, CANDIDATE_SAVE_LABEL, CANDIDATE_SAVE_TITLE } from '@/lib/workflow-copy';
 
 type CandidateActionProps = {
   row: BailSearchResult;
@@ -18,8 +19,8 @@ export function CandidateAction({
   row,
   searchId,
   canManage,
-  buttonLabel = 'Candidate',
-  savedLabel = 'Candidate · shared',
+  buttonLabel = CANDIDATE_SAVE_LABEL,
+  savedLabel = CANDIDATE_SAVED_LABEL,
   testId = `button-candidate-${row.id}`,
   compact = false,
   showDisabledButton = false,
@@ -39,10 +40,10 @@ export function CandidateAction({
         type="button"
         className={`btn btn-candidate-blue${compact ? ' btn-compact' : ''}`}
         disabled
-        title="Already saved as a candidate"
+        title="Already in the shared Candidates list"
         data-testid={testId}
       >
-        {buttonLabel}
+        {savedLabel}
       </button>
     );
   }
@@ -62,7 +63,7 @@ export function CandidateAction({
         type="button"
         className={`btn ${blue ? 'btn-candidate-blue' : 'btn-primary'}${compact ? ' btn-compact' : ''}`}
         disabled={save.isPending || disabledReason !== null}
-        title={disabledReason ?? 'Saves and shares with the workspace'}
+        title={disabledReason ?? CANDIDATE_SAVE_TITLE}
         onClick={() => save.mutate({ searchId, resultId: row.id, data: { shareWithWorkspace: true } })}
         data-testid={testId}
       >

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useStandardView } from '@/lib/theme';
 import { useWorkspaceAccess } from '@/lib/workspace-access';
+import { WORKFLOW_NAV } from '@/lib/workflow-copy';
 
 export function ThemeToggle() {
   const { standard, toggle } = useStandardView();
@@ -44,12 +45,6 @@ function LockWorkspace() {
     </>
   );
 }
-
-const NAV = [
-  { href: '/search', label: 'Search' },
-  { href: '/review', label: 'Review' },
-  { href: '/candidates', label: 'Candidates' },
-];
 
 function BackgroundSearchStatus() {
   const [location] = useLocation();
@@ -102,8 +97,16 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav aria-label="Primary" className="max-w-6xl mx-auto px-4 pb-3 flex flex-wrap gap-2">
-          {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className="navlink" aria-current={loc === n.href ? 'page' : undefined} data-testid={`nav-${n.href.slice(1).replace('/', '-')}`}>
+          {WORKFLOW_NAV.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              className="navlink"
+              aria-current={loc === n.href ? 'page' : undefined}
+              aria-label={n.description ? `${n.label}: ${n.description}` : undefined}
+              title={n.description}
+              data-testid={`nav-${n.href.slice(1).replace('/', '-')}`}
+            >
               {n.label}
             </Link>
           ))}

@@ -15,6 +15,7 @@ import Feedback from '@/pages/feedback';
 import { ThemeToggle } from '@/components/shell';
 import { applyStoredTheme } from '@/lib/theme';
 import { WorkspaceAccessProvider, useWorkspaceAccess } from '@/lib/workspace-access';
+import { CANDIDATES_ACTIVE_DESCRIPTION, REVIEW_DESCRIPTION, REVIEW_TITLE } from '@/lib/workflow-copy';
 import { Redirect, Route, Switch, useLocation, Router as WouterRouter, Link } from 'wouter';
 
 applyStoredTheme();
@@ -72,7 +73,7 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
       : location === '/search' ? 'Search'
       : location === '/research' || location === '/candidates' ? (location === '/candidates' ? 'Candidates' : 'Search saved observations')
       : location === '/records/new' ? 'Enter source evidence'
-      : location === '/review' ? 'Review'
+      : location === '/review' ? REVIEW_TITLE
       : location === '/discovery' ? 'Advanced court search'
       : location === '/feedback' ? 'Volunteer feedback'
       : location === '/' ? 'Workspace access'
@@ -82,8 +83,8 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
       : location === '/research' ? 'Search shared source-backed docket observations and inspect explicitly filtered descriptive financial ranges.'
       : location === '/records/new' ? 'Enter a real docket observation with source evidence and consultation time. Unknown details remain unknown.'
       : location === '/discovery' ? 'Start bounded live court discovery jobs and inspect docket and bail results before saving any observation.'
-      : location === '/review' ? 'Review matches from the latest search and explicitly mark candidates to save.'
-      : location === '/candidates' ? 'Dockets explicitly marked as candidates, with bail amounts and source PDF citations.'
+      : location === '/review' ? REVIEW_DESCRIPTION
+      : location === '/candidates' ? `${CANDIDATES_ACTIVE_DESCRIPTION} Bail amounts and source PDF citations are shown.`
       : 'A password-protected shared workspace for real docket evidence, explicit human review, and descriptive bail ranges.';
     document.title = title;
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', title);

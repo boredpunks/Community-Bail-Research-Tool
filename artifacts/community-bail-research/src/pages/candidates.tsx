@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { errMsg } from '@/lib/money';
 import { money, safeSourceUrl, shortDate } from '@/lib/latest-search';
+import { CANDIDATES_ACTIVE_DESCRIPTION, CANDIDATES_ARCHIVE_DESCRIPTION } from '@/lib/workflow-copy';
 
 type CandidateView = 'active' | 'archived';
 
@@ -93,10 +94,10 @@ export default function Candidates() {
 
   return (
     <Shell>
-      <PageHead label="Candidates" title={isArchivedView ? 'Candidate archive' : 'Marked candidates'}>
+      <PageHead label="Candidates" title={isArchivedView ? 'Candidate archive' : 'Saved candidates'}>
         {isArchivedView
-          ? 'Archived candidates remain available here and can be restored.'
-          : 'Shared with the workspace. Mark a reported successful outcome before archiving.'}
+          ? CANDIDATES_ARCHIVE_DESCRIPTION
+          : CANDIDATES_ACTIVE_DESCRIPTION}
       </PageHead>
 
       <div className="candidate-tabs" role="tablist" aria-label="Candidate lists">

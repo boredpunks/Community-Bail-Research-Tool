@@ -13,7 +13,9 @@
     "test:source-readiness": "tsx tests/source-readiness.test.ts",
     "test:document-timings": "tsx tests/document-timings.test.ts",
     "test:search-history": "tsx tests/search-history.test.ts",
-    "test:search-history-browser": "python tests/search-history.browser.py"
+    "test:search-history-browser": "python tests/search-history.browser.py",
+    "test:workflow-copy": "tsx tests/workflow-copy.test.ts",
+    "test:workflow-copy-browser": "python tests/workflow-copy.browser.py"
   },
   "devDependencies": {
     "@workspace/bail-research": "workspace:*",

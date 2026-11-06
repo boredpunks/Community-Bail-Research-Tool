@@ -12,6 +12,7 @@ import { Shell, PageHead } from '@/components/shell';
 import { CandidateAction } from '@/components/candidate-action';
 import { errMsg } from '@/lib/money';
 import { isReviewable, money, safeSourceUrl, useLatestSearch } from '@/lib/latest-search';
+import { CANDIDATE_SAVE_LABEL, CANDIDATE_SAVED_LABEL, REVIEW_DESCRIPTION, REVIEW_TITLE } from '@/lib/workflow-copy';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -89,10 +90,13 @@ export default function LatestReview() {
   const rows = (run?.results ?? []).filter(isReviewable);
   return (
     <Shell>
-      <PageHead label="Review" title="Latest search matches">
-        {run?.canManage
-          ? 'Candidate saves the row to the shared workspace, visible to everyone with the password.'
-          : 'Earlier searches are visible to everyone with the password; only their creating session can save or resume them.'}
+      <PageHead label="Review" title={REVIEW_TITLE}>
+        <p data-testid="text-review-state">
+          {REVIEW_DESCRIPTION}
+        </p>
+        {!run?.canManage ? (
+          <p className="mt-2">Earlier searches are visible to everyone with the password; only their creating session can save or resume them.</p>
+        ) : null}
       </PageHead>
       {list.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
       {list.isError ? <p className="errbox" role="alert">Could not load. <button type="button" className="btn ml-2" onClick={() => list.refetch()}>Retry</button></p> : null}
@@ -113,7 +117,15 @@ export default function LatestReview() {
                   <td>
                     <div className="flex flex-wrap items-start gap-2">
                       <ReviewDismissAction row={row} searchId={run.searchId} canManage={run.canManage} />
-                      <CandidateAction row={row} searchId={run.searchId} canManage={run.canManage} blue showDisabledButton />
+                      <CandidateAction
+                        row={row}
+                        searchId={run.searchId}
+                        canManage={run.canManage}
+                        buttonLabel={CANDIDATE_SAVE_LABEL}
+                        savedLabel={CANDIDATE_SAVED_LABEL}
+                        blue
+                        showDisabledButton
+                      />
                     </div>
                   </td>
                 </tr>

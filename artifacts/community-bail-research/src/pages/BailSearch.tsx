@@ -13,6 +13,7 @@ import {
 import { Shell, PageHead } from '@/components/shell';
 import { BailSearchProgressPanel } from '@/components/bail-search-progress';
 import { CandidateAction } from '@/components/candidate-action';
+import { CANDIDATE_SAVE_LABEL, CANDIDATE_SAVED_LABEL } from '@/lib/workflow-copy';
 import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
@@ -338,9 +339,9 @@ export default function BailSearch() {
                         row={row}
                         searchId={run!.searchId}
                         canManage={run!.canManage}
-                        buttonLabel="Save for Review"
-                        savedLabel="Saved for Review"
-                        testId={`button-save-for-review-${row.id}`}
+                        buttonLabel={CANDIDATE_SAVE_LABEL}
+                        savedLabel={CANDIDATE_SAVED_LABEL}
+                        testId={`button-save-for-candidates-${row.id}`}
                         compact
                         showDisabledButton
                       />
