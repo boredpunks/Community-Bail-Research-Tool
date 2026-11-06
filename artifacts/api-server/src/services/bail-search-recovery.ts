@@ -79,7 +79,7 @@ function observedCause(input: RecoveryEvidence) {
 
   const message = input.jobMessage ?? "";
   const known = [
-    ["RESULTS_EXPIRED", "The retained source results have expired."],
+    ["RESULTS_EXPIRED", "This checkpoint expired; dockets already in shared Review and Candidates remain."],
     ["JOB_REQUEST_LIMIT", "This search used its full source-request budget."],
     ["CALENDAR_NOT_VALIDATED", "Calendar validation did not finish, so docket processing could not begin."],
     ["DOCUMENT_CAP_REACHED", "This search reached its original document cap."],

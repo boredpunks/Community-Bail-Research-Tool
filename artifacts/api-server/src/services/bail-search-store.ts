@@ -309,7 +309,7 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
   const expiryReason = !job ? null
     : job.requestsUsed >= job.criteria.requestCap ? "This search used its full source-request budget."
       : !job.calendarComplete && job.criteria.startDate < easternToday() ? "The original calendar date window has passed."
-        : job.resultsExpiredAt || deadline && deadline <= new Date() ? "The retained source results have expired."
+        : job.resultsExpiredAt || deadline && deadline <= new Date() ? "This checkpoint expired; dockets already in shared Review and Candidates remain."
           : job.assessmentId ? "This source job belongs to an assessment scope that cannot be resumed from this search."
             : job.status !== "PAUSED" ? "The linked source job is no longer paused."
               : null;

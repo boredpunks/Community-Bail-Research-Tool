@@ -3,15 +3,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import {
   getGetBailSearchStatusQueryKey,
+  getListBailSearchReviewQueueQueryKey,
+  useListBailSearchReviewQueue,
   useDismissBailSearchReviewResult,
   type BailSearch,
   type BailSearchResult,
+  type BailSearchReviewItem,
 } from '@workspace/api-client-react';
-import { Link } from 'wouter';
 import { Shell, PageHead } from '@/components/shell';
 import { CandidateAction } from '@/components/candidate-action';
 import { errMsg } from '@/lib/money';
-import { isReviewable, money, safeSourceUrl, useLatestSearch } from '@/lib/latest-search';
+import { isReviewable, money, safeSourceUrl, shortDate } from '@/lib/latest-search';
 import { CANDIDATE_SAVE_LABEL, CANDIDATE_SAVED_LABEL, REVIEW_DESCRIPTION, REVIEW_TITLE } from '@/lib/workflow-copy';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -25,11 +27,11 @@ function Citation({ row }: { row: BailSearchResult }) {
   return <a href={url} target="_blank" rel="noopener noreferrer" className="navlink" data-testid={`link-pdf-${row.id}`}>PDF, {page}</a>;
 }
 
-function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResult; searchId: string; canManage: boolean }) {
+function ReviewDismissAction({ row }: { row: BailSearchReviewItem }) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
-  const statusKey = getGetBailSearchStatusQueryKey(searchId);
+  const statusKey = getGetBailSearchStatusQueryKey(row.search_id);
   const dismiss = useDismissBailSearchReviewResult({
     mutation: {
       onSuccess: () => {
@@ -38,6 +40,7 @@ function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResu
           ? { ...old, results: old.results.map((item) => item.id === row.id ? { ...item, review_dismissed: true } : item) }
           : old);
         void queryClient.invalidateQueries({ queryKey: statusKey });
+        void queryClient.invalidateQueries({ queryKey: getListBailSearchReviewQueueQueryKey() });
       },
       onError: (reason) => setError(errMsg(reason)),
     },
@@ -48,9 +51,9 @@ function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResu
       <button
         type="button"
         className="btn btn-danger btn-compact btn-icon"
-        disabled={!canManage || dismiss.isPending}
+        disabled={dismiss.isPending}
         aria-label={`Delete ${row.docket_number} from Review`}
-        title={canManage ? 'Remove this line from Review' : 'Only the session that started this search can remove results'}
+        title="Any workspace user can remove this docket from shared Review"
         onClick={() => { setError(''); dismiss.reset(); setConfirm(true); }}
         data-testid={`button-dismiss-review-${row.id}`}
       >
@@ -61,7 +64,7 @@ function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResu
           <AlertDialogHeader>
             <AlertDialogTitle className="mono">Delete this line from Review?</AlertDialogTitle>
             <AlertDialogDescription>
-              This only removes the line from Review. The search result and source evidence remain available in Search, and saved candidates are not affected.
+              This removes the docket from the shared Review list. Search history, source evidence, and any saved candidate remain available.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error ? <p className="errbox" role="alert">{error}</p> : null}
@@ -72,7 +75,7 @@ function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResu
               disabled={dismiss.isPending}
               onClick={(event) => {
                 event.preventDefault();
-                dismiss.mutate({ searchId, resultId: row.id });
+                dismiss.mutate({ searchId: row.search_id, resultId: row.id });
               }}
               data-testid={`button-confirm-dismiss-review-${row.id}`}
             >
@@ -86,41 +89,46 @@ function ReviewDismissAction({ row, searchId, canManage }: { row: BailSearchResu
 }
 
 export default function LatestReview() {
-  const { run, list, status } = useLatestSearch();
-  const rows = (run?.results ?? []).filter(isReviewable);
+  const query = useListBailSearchReviewQueue({
+    query: {
+      queryKey: getListBailSearchReviewQueueQueryKey(),
+      refetchInterval: 8000,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const rows = (query.data ?? []).filter(isReviewable);
   return (
     <Shell>
       <PageHead label="Review" title={REVIEW_TITLE}>
         <p data-testid="text-review-state">
           {REVIEW_DESCRIPTION}
         </p>
-        {!run?.canManage ? (
-          <p className="mt-2">Earlier searches are visible to everyone with the password; only their creating session can save or resume them.</p>
-        ) : null}
       </PageHead>
-      {list.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
-      {list.isError ? <p className="errbox" role="alert">Could not load. <button type="button" className="btn ml-2" onClick={() => list.refetch()}>Retry</button></p> : null}
-      {status.isLoading ? <p className="hint" role="status">Loading latest results…</p> : null}
-      {status.isError ? <p className="errbox" role="alert">Latest results could not be refreshed. <button type="button" className="btn" onClick={() => status.refetch()}>Retry</button></p> : null}
-      {!list.isLoading && !run ? <p className="hint">No search yet. <Link href="/search" className="navlink">Search</Link></p> : null}
-      {run && !status.isLoading && !status.isError && rows.length === 0 ? <p className="hint">{run.status === 'running' ? 'Searching. Matches appear here as they arrive.' : run.incomplete ? 'No matches yet. The latest search is incomplete.' : 'No matches in the latest search.'}</p> : null}
-      {run && rows.length ? (
+      {query.isLoading ? <div className="space-y-2"><div className="skel h-6" /><div className="skel h-6" /></div> : null}
+      {query.isError ? <p className="errbox" role="alert">Could not load shared Review. <button type="button" className="btn ml-2" onClick={() => query.refetch()}>Retry</button></p> : null}
+      {!query.isLoading && !query.isError && rows.length === 0 ? (
+        <p className="hint">No dockets are currently in shared Review. New reviewable matches appear here as searches finish.</p>
+      ) : null}
+      {rows.length ? (
         <div className="bail-compare-scroll">
           <table className="bail-compare-table" style={{ minWidth: 0 }} data-testid="table-review">
             <thead><tr><th>Docket</th><th>Bail</th><th>Citation</th><th>Actions</th></tr></thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} data-testid={`row-review-${row.id}`}>
-                  <th className="mono break-all">{row.docket_number}</th>
+                <tr key={`${row.search_id}:${row.id}`} data-testid={`row-review-${row.id}`}>
+                  <th className="mono break-all">
+                    <div>{row.docket_number}</div>
+                    <div className="candidate-glance">Search {shortDate(row.search_created_at)}</div>
+                  </th>
                   <td className="mono">{money(row.bail_amount)}</td>
                   <td><Citation row={row} /></td>
                   <td>
                     <div className="flex flex-wrap items-start gap-2">
-                      <ReviewDismissAction row={row} searchId={run.searchId} canManage={run.canManage} />
+                      <ReviewDismissAction row={row} />
                       <CandidateAction
                         row={row}
-                        searchId={run.searchId}
-                        canManage={run.canManage}
+                        searchId={row.search_id}
+                        canManage={row.can_manage}
                         buttonLabel={CANDIDATE_SAVE_LABEL}
                         savedLabel={CANDIDATE_SAVED_LABEL}
                         blue

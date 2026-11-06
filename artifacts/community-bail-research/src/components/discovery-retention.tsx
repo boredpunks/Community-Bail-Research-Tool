@@ -15,8 +15,9 @@ export function ExpiredResultsNotice({ resultsExpiredAt, items }: {
   return (
     <>
       <p className="errbox mt-2" role="status" data-testid="text-results-expired">
-        Unsaved results expired after 24 hours. {items.length === 0 ? 'No unsaved result rows remain.' : `${items.length} unsaved result rows are read-only.`}
-        {' '}Historical counts and request use remain; saved candidates remain available. This checkpoint cannot resume or replay collection.
+        This checkpoint expired after 24 hours and cannot resume or replay collection.
+        {' '}Dockets already in shared Review and Candidates remain until a workspace user deletes them.
+        {' '}Historical counts and request use remain{items.length === 0 ? '' : `; ${items.length} remaining Discovery rows are read-only`}.
       </p>
       {items.length === 0 ? (
         <p className="hint border border-dashed border-border rounded p-4" data-testid="empty-items">

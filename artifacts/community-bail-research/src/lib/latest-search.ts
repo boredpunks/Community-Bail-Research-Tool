@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetBailSearchStatusQueryKey,
   getListBailSearchCandidatesQueryKey,
+  getListBailSearchReviewQueueQueryKey,
   getListBailSearchesQueryKey,
   useGetBailSearchStatus,
   useListBailSearches,
@@ -56,6 +57,7 @@ export function useAfterCandidateSave(searchId: string) {
       old ? { ...old, results: old.results.map((item) => item.id === updated.id ? { ...item, ...updated } : item) } : old);
     queryClient.invalidateQueries({ queryKey: getGetBailSearchStatusQueryKey(searchId) });
     queryClient.invalidateQueries({ queryKey: getListBailSearchCandidatesQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListBailSearchReviewQueueQueryKey() });
   };
 }
 

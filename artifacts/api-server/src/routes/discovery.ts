@@ -414,7 +414,7 @@ router.post("/discovery/jobs/:jobId/items/:itemId/save", async (req, res): Promi
   const result = await db.transaction(async (tx) => {
     const [job] = await tx.select().from(discoveryJobsTable).where(and(eq(discoveryJobsTable.id, params.data.jobId), inArray(discoveryJobsTable.ownerId, ownerIds))).for("update");
     if (!job) return { error: "Job not found.", status: 404 };
-    if (job.resultsExpiredAt || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())) return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 };
+    if (job.resultsExpiredAt || (resultsDeadline(job) && resultsDeadline(job)! <= new Date())) return { error: "This checkpoint expired after 24 hours; dockets already in shared Review and Candidates remain.", status: 409 };
     const [item] = await tx.select().from(discoveryItemsTable).where(and(eq(discoveryItemsTable.id, params.data.itemId), eq(discoveryItemsTable.jobId, job.id), inArray(discoveryItemsTable.ownerId, ownerIds)));
     if (!item) return { error: "Evidence not found.", status: 404 };
     const entry = body.data.entryIndex === null ? null : item.provenance.entries[body.data.entryIndex];
@@ -446,7 +446,7 @@ router.post("/discovery/jobs/:jobId/candidates", async (req, res): Promise<void>
     if (!job) return { error: "Job not found in the shared workspace.", status: 404 as const };
     const deadline = resultsDeadline(job);
     if (job.resultsExpiredAt || (deadline && deadline <= new Date())) {
-      return { error: "Unsaved results expired after 24 hours; saved candidates remain available.", status: 409 as const };
+      return { error: "This checkpoint expired after 24 hours; dockets already in shared Review and Candidates remain.", status: 409 as const };
     }
     const items = await tx.select().from(discoveryItemsTable).where(and(
       eq(discoveryItemsTable.jobId, job.id),

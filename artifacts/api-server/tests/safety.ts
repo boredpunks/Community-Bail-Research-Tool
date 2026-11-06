@@ -952,7 +952,7 @@ try {
   check((await store.select().from(schema.bailRecordsTable)).length === 0);
   assert.deepEqual(expiredResumeConflict(expiredState!, new Date(time)), {
     status: 409,
-    error: "Unsaved results/checkpoints expired after 24 hours. This job cannot replay collection.",
+    error: "This checkpoint expired after 24 hours and cannot replay collection; dockets already in shared Review and Candidates remain.",
   });
   checks++;
   const inspectionMetadata = { kind: "inspection_metadata", phase: "BEFORE", controls:

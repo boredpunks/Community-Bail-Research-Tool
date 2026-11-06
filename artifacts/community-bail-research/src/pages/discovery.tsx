@@ -558,7 +558,7 @@ export default function Discovery() {
                 <p className="hint mt-1 mono">{job.processed}/{job.discovered} candidate dockets processed; {job.matching} matching{targetN != null ? ` of ${targetN} wanted` : ''}; {job.failed} failed; {job.unprocessed} unprocessed.{active ? ' Updating every few seconds.' : ''}</p>
               </div>
               {targetNote ? <p className={`mt-2 ${job.targetReached ? '' : 'font-semibold'}`} data-testid="text-target">{targetNote}</p> : null}
-              {expired ? <p className="errbox mt-2" role="alert" data-testid="text-expired">Results expired {formatInstant(job.resultsExpiredAt)}. Evidence detail is no longer available; run the search again.</p>
+              {expired ? <p className="errbox mt-2" role="alert" data-testid="text-expired">This checkpoint expired {formatInstant(job.resultsExpiredAt)} and cannot be replayed. Dockets already in shared Review and Candidates remain until a workspace user deletes them.</p>
                 : job.resultsExpireAt ? <p className="hint mt-1">Results kept until {formatInstant(job.resultsExpireAt)}.</p> : null}
               {partial && terminal ? <p className="errbox mt-2" role="status" data-testid="text-partial">Partial coverage: {!job.paginationComplete ? 'calendar pagination incomplete or unknown; ' : ''}{job.unprocessed > 0 ? `${job.unprocessed} candidates not processed; ` : ''}{job.resultCapReached ? 'record cap reached, more results possible. ' : ''}Rows shown are preserved partial results.</p> : null}
               <dl className="mt-3 grid gap-x-4 gap-y-1 sm:grid-cols-[14rem_1fr]">

@@ -15,9 +15,9 @@ const markup = renderToStaticMarkup(React.createElement(React.Fragment, null,
   }),
 ));
 
-assert.match(markup, /Unsaved results expired after 24 hours/);
-assert.match(markup, /No unsaved result rows remain/);
-assert.match(markup, /saved candidates remain available/);
+assert.match(markup, /This checkpoint expired after 24 hours/);
+assert.match(markup, /Dockets already in shared Review and Candidates remain/);
+assert.doesNotMatch(markup, /No unsaved result rows remain/);
 assert.match(markup, /cannot resume or replay collection/);
 assert.match(markup, /this empty list does not indicate that the calendar had no matching dockets/);
 assert.match(markup, /data-testid="empty-items"/);

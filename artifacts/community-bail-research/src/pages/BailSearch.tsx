@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  getGetBailSearchStatusQueryKey,
   getGetBailSearchReadinessQueryKey,
   getListBailSearchCandidatesQueryKey,
   getListBailSearchesQueryKey,
@@ -120,21 +119,18 @@ export default function BailSearch() {
         setEventType('Bail Hearing');
         setSettingsOpen(false);
         setFormError('');
-        queryClient.setQueryData(getListBailSearchesQueryKey(), (old: typeof list.data) =>
-          old?.filter((search) => !search.canManage));
         void queryClient.invalidateQueries({ queryKey: getListBailSearchesQueryKey() });
         void queryClient.invalidateQueries({ queryKey: getListBailSearchCandidatesQueryKey() });
-        list.data?.filter((search) => search.canManage)
-          .forEach((search) => queryClient.removeQueries({
-            queryKey: getGetBailSearchStatusQueryKey(search.searchId),
-          }));
         const searchLabel = result.deletedSearches === 1 ? 'search' : 'searches';
         const resultLabel = result.deletedResults === 1 ? 'result' : 'results';
-        setClearNotice(
-          result.deletedSearches === 0
-            ? 'Search form and results reset. There were no searches to remove.'
-            : `Cleared ${result.deletedSearches} ${searchLabel} and ${result.deletedResults} ${resultLabel}. Any running searches were stopped first.`,
-        );
+        const retainedLabel = result.retainedReviewSearches === 1 ? 'search' : 'searches';
+        const summary = result.deletedSearches
+          ? `Cleared ${result.deletedSearches} ${searchLabel} and ${result.deletedResults} ${resultLabel}.`
+          : 'Search form and results reset.';
+        const retained = result.retainedReviewSearches
+          ? ` Kept ${result.retainedReviewSearches} ${retainedLabel} with dockets still in shared Review; delete those dockets from Review before clearing their search history.`
+          : '';
+        setClearNotice(`${summary} Any running searches were stopped first.${retained}`);
         setConfirmClear(false);
       },
     });
@@ -363,7 +359,7 @@ export default function BailSearch() {
           <AlertDialogHeader>
             <AlertDialogTitle className="mono">Stop and clear your searches?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes searches you started and their result rows. Any running searches are stopped first; a court request already underway may finish, but no further requests will be started for those searches. Saved candidates, searches started by others, and separate source-collection history in Discovery remain.
+              This deletes your searches that have no dockets left in shared Review. Searches with Review dockets are kept until any workspace user deletes those dockets from Review. Running searches are stopped first; a court request already underway may finish, but no further requests will be started. Saved candidates, searches started by others, and separate source-collection history in Discovery remain.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {clearHistory.isError ? <p className="errbox" role="alert">Could not stop and clear searches. {errMsg(clearHistory.error)}</p> : null}

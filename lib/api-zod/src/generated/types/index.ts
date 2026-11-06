@@ -40,6 +40,7 @@ export * from './bailSearchResult';
 export * from './bailSearchResultDocumentStatus';
 export * from './bailSearchResultDocumentTimings';
 export * from './bailSearchResumeInput';
+export * from './bailSearchReviewItem';
 export * from './bailSearchStage';
 export * from './bailSearchStatus';
 export * from './calendarPreviewInput';

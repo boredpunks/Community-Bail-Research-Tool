@@ -67,15 +67,26 @@ paths:
       - { name: resultId, in: path, required: true, schema: { type: string, format: uuid } }
     delete:
       operationId: dismissBailSearchReviewResult
-      summary: Remove a search result from the Review queue without deleting its evidence
+      summary: Remove a search result from the shared Review queue without deleting its evidence
       responses:
         "200":
           description: Result dismissed from Review
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DismissBailSearchReviewResult" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /bail-search/review:
+    get:
+      operationId: listBailSearchReviewQueue
+      summary: List shared review results retained across searches
+      responses:
+        "200":
+          description: Undeleted reviewable docket results from all workspace searches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BailSearchReviewItem" }
   /bail-search/candidates:
     get:
       operationId: listBailSearchCandidates
@@ -183,7 +194,7 @@ paths:
       summary: Clear completed or paused searches created by this session
       responses:
         "200":
-          description: Search history cleared; saved candidates remain available
+          description: Searches without undeleted Review rows cleared; protected Review rows remain available
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ClearBailSearchHistoryResult" }
@@ -856,6 +867,15 @@ components:
       required: [dismissed]
       properties:
         dismissed: { type: boolean }
+    BailSearchReviewItem:
+      allOf:
+        - $ref: "#/components/schemas/BailSearchResult"
+        - type: object
+          required: [search_id, search_created_at, can_manage]
+          properties:
+            search_id: { type: string, format: uuid }
+            search_created_at: { type: string, format: date-time }
+            can_manage: { type: boolean }
     BailSearchCandidate:
       type: object
       required: [id, docket_number, bail_amount, source_url, evidence_page, bailed_out_at, archived_at, county, court_level, court_office, event_date, event_type, order_date, bail_category, financial_basis, percentage_condition, source_title, evidence_quote]
@@ -895,11 +915,12 @@ components:
         removed: { type: boolean }
     ClearBailSearchHistoryResult:
       type: object
-      required: [deletedSearches, deletedResults, retainedRunning]
+      required: [deletedSearches, deletedResults, retainedRunning, retainedReviewSearches]
       properties:
         deletedSearches: { type: integer, minimum: 0 }
         deletedResults: { type: integer, minimum: 0 }
         retainedRunning: { type: integer, minimum: 0 }
+        retainedReviewSearches: { type: integer, minimum: 0 }
     BailSearch:
       type: object
       required: [searchId, status, criteria, progress, incomplete, reason, resumeToken, resumeAvailableAt, canManage, results, createdAt, updatedAt, sourceNotice]

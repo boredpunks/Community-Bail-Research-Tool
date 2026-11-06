@@ -35,6 +35,7 @@ import type {
   BailSearchReadiness,
   BailSearchResult,
   BailSearchResumeInput,
+  BailSearchReviewItem,
   CalendarPreviewInput,
   ClearBailSearchHistoryResult,
   ConflictResponse,
@@ -346,7 +347,7 @@ export const getDismissBailSearchReviewResultUrl = (searchId: string,
 }
 
 /**
- * @summary Remove a search result from the Review queue without deleting its evidence
+ * @summary Remove a search result from the shared Review queue without deleting its evidence
  */
 export const dismissBailSearchReviewResult = async (searchId: string,
     resultId: string, options?: Parameters<typeof customFetch>[1]): Promise<DismissBailSearchReviewResult> => {
@@ -366,7 +367,7 @@ export const dismissBailSearchReviewResult = async (searchId: string,
 
 export const getDismissBailSearchReviewResultMutationKey = () => ['dismissBailSearchReviewResult'] as const;
 
-export const getDismissBailSearchReviewResultMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+export const getDismissBailSearchReviewResultMutationOptions = <TError = ErrorType<NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext> => {
 
@@ -395,13 +396,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DismissBailSearchReviewResultMutationResult = NonNullable<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>>
 
-    export type DismissBailSearchReviewResultMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type DismissBailSearchReviewResultMutationError = ErrorType<NotFoundResponse>
     export type DismissBailSearchReviewResultMutationVariables = {searchId: string;resultId: string}
 
     /**
- * @summary Remove a search result from the Review queue without deleting its evidence
+ * @summary Remove a search result from the shared Review queue without deleting its evidence
  */
-export const useDismissBailSearchReviewResult = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+export const useDismissBailSearchReviewResult = <TError = ErrorType<NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissBailSearchReviewResult>>, TError,DismissBailSearchReviewResultMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof dismissBailSearchReviewResult>>,
@@ -411,6 +412,83 @@ export const useDismissBailSearchReviewResult = <TError = ErrorType<ForbiddenRes
       > => {
       return useMutation(getDismissBailSearchReviewResultMutationOptions(options));
     }
+
+export const getListBailSearchReviewQueueUrl = () => {
+
+
+
+
+  return `/api/bail-search/review`
+}
+
+/**
+ * @summary List shared review results retained across searches
+ */
+export const listBailSearchReviewQueue = async ( options?: Parameters<typeof customFetch>[1]): Promise<BailSearchReviewItem[]> => {
+
+  return customFetch<BailSearchReviewItem[]>(getListBailSearchReviewQueueUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBailSearchReviewQueueQueryKey = () => {
+    return [
+    `/api/bail-search/review`
+    ] as const;
+    }
+
+
+export const getListBailSearchReviewQueueQueryOptions = <TData = Awaited<ReturnType<typeof listBailSearchReviewQueue>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchReviewQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBailSearchReviewQueueQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBailSearchReviewQueue>>> = ({ signal }) => listBailSearchReviewQueue({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBailSearchReviewQueue>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBailSearchReviewQueueQueryResult = NonNullable<Awaited<ReturnType<typeof listBailSearchReviewQueue>>>
+export type ListBailSearchReviewQueueQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List shared review results retained across searches
+ */
+
+export function useListBailSearchReviewQueue<TData = Awaited<ReturnType<typeof listBailSearchReviewQueue>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBailSearchReviewQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBailSearchReviewQueueQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListBailSearchCandidatesUrl = (params?: ListBailSearchCandidatesParams,) => {
   const normalizedParams = new URLSearchParams();

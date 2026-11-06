@@ -19,10 +19,11 @@ assert.deepEqual(WORKFLOW_NAV.map(({ href }) => href), ['/search', '/review', '/
 
 const reviewPanel = WORKFLOW_PANELS.find(({ href }) => href === '/review');
 assert.equal(reviewPanel?.title, 'Review');
-assert.match(reviewPanel?.text ?? '', /matches extracted from your latest search/i);
-assert.equal(REVIEW_TITLE, 'Latest search matches');
-assert.match(REVIEW_DESCRIPTION, /not human-confirmed findings/i);
-assert.match(REVIEW_DESCRIPTION, /shared Candidates list/i);
+assert.match(reviewPanel?.text ?? '', /matches from all searches/i);
+assert.equal(REVIEW_TITLE, 'Shared review queue');
+assert.match(REVIEW_DESCRIPTION, /until any workspace user deletes/i);
+assert.match(REVIEW_DESCRIPTION, /not human confirmation/i);
+assert.match(REVIEW_DESCRIPTION, /shared Candidates/i);
 
 const candidatePanel = WORKFLOW_PANELS.find(({ href }) => href === '/candidates');
 assert.match(candidatePanel?.text ?? '', /explicitly saved to the shared Candidates list/i);

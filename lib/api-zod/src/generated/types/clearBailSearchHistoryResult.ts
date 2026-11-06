@@ -13,4 +13,6 @@ export interface ClearBailSearchHistoryResult {
   deletedResults: number;
   /** @minimum 0 */
   retainedRunning: number;
+  /** @minimum 0 */
+  retainedReviewSearches: number;
 }

@@ -29,6 +29,7 @@
 - [Candidate outcome vs. evidence review](candidate-outcome-vs-evidence-review.md) — User-reported bail-out outcomes and candidate archiving must not rewrite source-evidence review decisions.
 - [ROR classification](ror-classification.md) — Treat release on own recognizance as nonmonetary; a printed $0.00 is not a $0 bail amount.
 - [Shared search visibility](shared-search-visibility.md) — Earlier searches are visible to all shared-password users; resume and save remain creator-session actions.
+- [Shared Review retention](shared-review-retention.md) — Keep reviewable dockets across searches until any workspace user deletes them; bulk history clearing must preserve them.
 - [Cached PDF provenance](cached-pdf-provenance.md) — Keep local cache consultation distinct from the PDF's original retrieval time.
 - [Dependency type rebuilds](dependency-type-rebuilds.md) — Force composite declarations to rebuild after major type-library upgrades; incremental checks can conceal incompatibilities.
 - [Offline live-search teardown](offline-live-search-teardown.md) — Interrupted integration tests can leave RUNNING jobs and simulated source approval; inspect and restore test state before rerunning.

@@ -244,6 +244,12 @@ export interface DismissBailSearchReviewResult {
   dismissed: boolean;
 }
 
+export type BailSearchReviewItem = BailSearchResult & {
+  search_id: string;
+  search_created_at: string;
+  can_manage: boolean;
+};
+
 export type BailSearchCandidateCourtLevel = typeof BailSearchCandidateCourtLevel[keyof typeof BailSearchCandidateCourtLevel];
 
 
@@ -316,6 +322,8 @@ export interface ClearBailSearchHistoryResult {
   deletedResults: number;
   /** @minimum 0 */
   retainedRunning: number;
+  /** @minimum 0 */
+  retainedReviewSearches: number;
 }
 
 export type BailSearchStatus = typeof BailSearchStatus[keyof typeof BailSearchStatus];

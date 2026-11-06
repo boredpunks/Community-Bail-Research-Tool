@@ -106,7 +106,7 @@ export const SaveBailSearchResultResponse = zod.object({
 
 
 /**
- * @summary Remove a search result from the Review queue without deleting its evidence
+ * @summary Remove a search result from the shared Review queue without deleting its evidence
  */
 export const DismissBailSearchReviewResultParams = zod.object({
   "searchId": zod.uuid(),
@@ -116,6 +116,51 @@ export const DismissBailSearchReviewResultParams = zod.object({
 export const DismissBailSearchReviewResultResponse = zod.object({
   "dismissed": zod.boolean()
 })
+
+
+/**
+ * @summary List shared review results retained across searches
+ */
+export const listBailSearchReviewQueueResponseOneSourcePdfSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const ListBailSearchReviewQueueResponseItem = zod.object({
+  "id": zod.string(),
+  "docket_number": zod.string(),
+  "hearing_date": zod.string(),
+  "decision_date": zod.string().nullable(),
+  "office": zod.string(),
+  "bail_amount": zod.number().nullable(),
+  "percentage": zod.number().nullable(),
+  "classification": zod.string(),
+  "evidence_page": zod.int().nullable(),
+  "evidence_quote": zod.string(),
+  "evidence_acquisition": zod.string(),
+  "document_status": zod.enum(['NOT_REQUESTED', 'REQUEST_IN_PROGRESS', 'RETRIEVAL_FAILED', 'RETRIEVED', 'EXTRACTED', 'NO_BAIL_SECTION', 'EXTRACTION_FAILED', 'IDENTITY_MISMATCH', 'AMBIGUOUS']),
+  "qualifies": zod.boolean(),
+  "ambiguous": zod.boolean(),
+  "error": zod.string().nullable(),
+  "source_url": zod.string().nullish(),
+  "source_retrieved_at": zod.string().nullish(),
+  "source_consulted_at": zod.string().nullish(),
+  "source_pdf_sha256": zod.string().regex(listBailSearchReviewQueueResponseOneSourcePdfSha256RegExp).nullish(),
+  "document_timings": zod.object({
+  "slot_wait_ms": zod.int().nullable(),
+  "retrieval_ms": zod.int().nullable(),
+  "extraction_ms": zod.int().nullable(),
+  "persistence_ms": zod.int().nullable()
+}).optional(),
+  "save_available": zod.boolean().optional(),
+  "save_reason": zod.string().nullish(),
+  "saved_record_id": zod.string().nullish(),
+  "review_status": zod.string().nullish(),
+  "review_dismissed": zod.boolean()
+}).and(zod.object({
+  "search_id": zod.uuid(),
+  "search_created_at": zod.coerce.date(),
+  "can_manage": zod.boolean()
+}))
+export const ListBailSearchReviewQueueResponse = zod.array(ListBailSearchReviewQueueResponseItem)
 
 
 /**
@@ -508,12 +553,15 @@ export const clearOwnedBailSearchesResponseDeletedResultsMin = 0;
 
 export const clearOwnedBailSearchesResponseRetainedRunningMin = 0;
 
+export const clearOwnedBailSearchesResponseRetainedReviewSearchesMin = 0;
+
 
 
 export const ClearOwnedBailSearchesResponse = zod.object({
   "deletedSearches": zod.int().min(clearOwnedBailSearchesResponseDeletedSearchesMin),
   "deletedResults": zod.int().min(clearOwnedBailSearchesResponseDeletedResultsMin),
-  "retainedRunning": zod.int().min(clearOwnedBailSearchesResponseRetainedRunningMin)
+  "retainedRunning": zod.int().min(clearOwnedBailSearchesResponseRetainedRunningMin),
+  "retainedReviewSearches": zod.int().min(clearOwnedBailSearchesResponseRetainedReviewSearchesMin)
 })
 
 

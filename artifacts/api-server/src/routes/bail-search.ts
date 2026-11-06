@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, volunteerFeedbackTable } from "@workspace/db";
 import {
   StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
@@ -10,10 +10,11 @@ import {
   SetBailSearchCandidateOutcomeParams, SetBailSearchCandidateOutcomeBody, SetBailSearchCandidateOutcomeResponse,
   SetBailSearchCandidateArchiveParams, SetBailSearchCandidateArchiveBody, SetBailSearchCandidateArchiveResponse,
   RemoveBailSearchCandidateParams, RemoveBailSearchCandidateResponse,
-  ClearOwnedBailSearchesResponse,
+  ClearOwnedBailSearchesResponse, ListBailSearchReviewQueueResponse,
 } from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
+import { partitionSearchesForHistoryClear } from "../services/bail-search-review";
 import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, enrichedResult, validateSearchDates } from "../services/bail-search-store";
 import { safeDocketLink, shareResult } from "../services/bail-search-evidence";
 import { discoveryPolicy } from "../lib/discovery";
@@ -70,6 +71,28 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/readiness", async (_req, res) => { res.json(await calendarSearchReadiness(getWorkspaceIdentity(res).ownerIds)); });
+router.get("/review", async (_req, res): Promise<void> => {
+  const rows = await db.select({
+    search: bailSearchesTable,
+    result: bailSearchResultsTable,
+  }).from(bailSearchResultsTable)
+    .innerJoin(bailSearchesTable, eq(bailSearchesTable.id, bailSearchResultsTable.searchId))
+    .where(and(
+      eq(bailSearchResultsTable.qualifies, true),
+      isNotNull(bailSearchResultsTable.amountCents),
+      eq(bailSearchResultsTable.ambiguous, false),
+      isNull(bailSearchResultsTable.reviewDismissedAt),
+    ))
+    .orderBy(desc(bailSearchesTable.createdAt), asc(bailSearchResultsTable.hearingDate),
+      asc(bailSearchResultsTable.docketNumber));
+  const review = await Promise.all(rows.map(async ({ search, result }) => ({
+    ...await enrichedResult(search, result),
+    search_id: search.id,
+    search_created_at: search.createdAt.toISOString(),
+    can_manage: canManageSearch(search.ownerId, res.locals.searchOwner),
+  })));
+  res.json(ListBailSearchReviewQueueResponse.parse(review));
+});
 router.get("/candidates", async (req, res) => {
   const query = ListBailSearchCandidatesQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -216,14 +239,29 @@ router.delete("/search", async (_req, res): Promise<void> => {
     const owned = await tx.select({
       id: bailSearchesTable.id,
       discoveryJobId: bailSearchesTable.discoveryJobId,
+      status: bailSearchesTable.status,
     })
       .from(bailSearchesTable)
       .where(eq(bailSearchesTable.ownerId, ownerId))
       .for("update");
     if (!owned.length) {
-      return { deletedSearches: 0, deletedResults: 0, retainedRunning: 0 };
+      return { deletedSearches: 0, deletedResults: 0, retainedRunning: 0, retainedReviewSearches: 0 };
     }
-    const ids = owned.map(search => search.id);
+    const ownedIds = owned.map(search => search.id);
+    const activeReviewResults = await tx.select({ searchId: bailSearchResultsTable.searchId })
+      .from(bailSearchResultsTable)
+      .where(and(
+        inArray(bailSearchResultsTable.searchId, ownedIds),
+        eq(bailSearchResultsTable.qualifies, true),
+        isNotNull(bailSearchResultsTable.amountCents),
+        eq(bailSearchResultsTable.ambiguous, false),
+        isNull(bailSearchResultsTable.reviewDismissedAt),
+      ))
+      .groupBy(bailSearchResultsTable.searchId);
+    const reviewSearchIds = new Set(activeReviewResults.map(row => row.searchId));
+    const { retainedReview: retainedReviewSearches, clearable } =
+      partitionSearchesForHistoryClear(owned, reviewSearchIds);
+    const ids = clearable.map(search => search.id);
     const jobIds = [...new Set(owned.flatMap(search => search.discoveryJobId ? [search.discoveryJobId] : []))];
     if (jobIds.length) {
       const sharedActiveJobs = await tx.select({ discoveryJobId: bailSearchesTable.discoveryJobId })
@@ -239,24 +277,40 @@ router.delete("/search", async (_req, res): Promise<void> => {
       if (jobsToStop.length) {
         await tx.update(discoveryJobsTable).set({
           status: "PAUSED",
-          message: "Stopped by its creator because the search and results were cleared.",
+          message: "Stopped by its creator during search-history cleanup; Review dockets were retained.",
           updatedAt: new Date(),
         }).where(and(
           inArray(discoveryJobsTable.id, jobsToStop),
           inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"]),
         ));
+        const retainedRunningIds = retainedReviewSearches
+          .filter(search => search.status === "running" && search.discoveryJobId && jobsToStop.includes(search.discoveryJobId))
+          .map(search => search.id);
+        if (retainedRunningIds.length) {
+          await tx.update(bailSearchesTable).set({
+            status: "paused",
+            reason: "Stopped during search-history cleanup; Review dockets were retained.",
+            updatedAt: new Date(),
+            leaseExpiresAt: null,
+          }).where(inArray(bailSearchesTable.id, retainedRunningIds));
+        }
       }
     }
-    const deletedResults = await tx.delete(bailSearchResultsTable)
-      .where(inArray(bailSearchResultsTable.searchId, ids))
-      .returning({ id: bailSearchResultsTable.id });
-    const deletedSearches = await tx.delete(bailSearchesTable)
-      .where(and(inArray(bailSearchesTable.id, ids), eq(bailSearchesTable.ownerId, ownerId)))
-      .returning({ id: bailSearchesTable.id });
+    const deletedResults = ids.length
+      ? await tx.delete(bailSearchResultsTable)
+        .where(inArray(bailSearchResultsTable.searchId, ids))
+        .returning({ id: bailSearchResultsTable.id })
+      : [];
+    const deletedSearches = ids.length
+      ? await tx.delete(bailSearchesTable)
+        .where(and(inArray(bailSearchesTable.id, ids), eq(bailSearchesTable.ownerId, ownerId)))
+        .returning({ id: bailSearchesTable.id })
+      : [];
     return {
       deletedSearches: deletedSearches.length,
       deletedResults: deletedResults.length,
       retainedRunning: 0,
+      retainedReviewSearches: retainedReviewSearches.length,
     };
   });
   res.json(ClearOwnedBailSearchesResponse.parse(cleared));
@@ -406,10 +460,6 @@ router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
   res.json(await enrichedResult(res.locals.search, updated!));
 });
 router.delete("/search/:searchId/results/:resultId/review", async (req, res): Promise<void> => {
-  if (!res.locals.canManageSearch) {
-    res.status(403).json({ error: "Only the session that created this search can remove its results from Review." });
-    return;
-  }
   const params = DismissBailSearchReviewResultParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Search or result ID is invalid." });

@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { eq } from "drizzle-orm";
+import { partitionSearchesForHistoryClear } from "../src/services/bail-search-review";
+
+const partition = partitionSearchesForHistoryClear(
+  [{ id: "search-a" }, { id: "search-b" }],
+  new Set(["search-b"]),
+);
+assert.deepEqual(partition.clearable.map(search => search.id), ["search-a"]);
+assert.deepEqual(partition.retainedReview.map(search => search.id), ["search-b"]);
 
 process.env.NODE_ENV = "test";
 process.env.SESSION_SECRET = "offline-clear-search-history-test-signing-key";
@@ -82,6 +90,7 @@ try {
     deletedSearches: 3,
     deletedResults: 0,
     retainedRunning: 0,
+    retainedReviewSearches: 0,
   });
   const [stoppedJob] = await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, runningJob!.id));
   assert.equal(stoppedJob?.status, "PAUSED", "Clearing a running search pauses its linked source job.");
