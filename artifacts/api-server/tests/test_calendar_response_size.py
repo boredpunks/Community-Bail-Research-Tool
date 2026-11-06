@@ -12,7 +12,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ujs"))
 from playwright.async_api import async_playwright
-from calendar_response import CalendarStream, CalendarResponse, html_byte_limit, DEFAULT_HTML_BYTES, CHUNK_BYTES
+from calendar_response import (
+    CalendarStream, CalendarResponse, html_byte_limit, DEFAULT_HTML_BYTES, CHUNK_BYTES,
+    CALENDAR_STREAM_TIMEOUT_SECONDS,
+)
+from calendar_protocol import SEARCH_CLICK_TIMEOUT_MS
 from calendar_dom import DOM_PROJECTION, complete_result_framing
 from calendar_diagnostics import RESPONSE_STRUCTURE
 from evidence import CalendarResults
@@ -37,6 +41,9 @@ CRITERIA = {"courtOffice": "ANY", "courtRoom": "ANY", "eventType": "ANY",
 
 
 class CalendarPolicyTests(unittest.TestCase):
+    def test_calendar_stream_and_submission_share_the_same_timeout(self):
+        self.assertEqual(CALENDAR_STREAM_TIMEOUT_SECONDS * 1_000, SEARCH_CLICK_TIMEOUT_MS)
+
     def test_policy_is_explicit_bounded_and_pdf_assets_unchanged(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(html_byte_limit(), 16_000_000)
