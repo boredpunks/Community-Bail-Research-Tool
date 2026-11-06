@@ -15,6 +15,7 @@ from source_protocol import classify_response
 DEFAULT_HTML_BYTES = 16_000_000
 MAX_HTML_BYTES = 32_000_000
 CHUNK_BYTES = 64 * 1024
+CALENDAR_STREAM_TIMEOUT_SECONDS = 180
 
 
 def html_byte_limit():
@@ -247,7 +248,7 @@ class CalendarStream:
             response.network_id = self.last_request[2]
             self.last_request = None
         try:
-            async with asyncio.timeout(45):
+            async with asyncio.timeout(CALENDAR_STREAM_TIMEOUT_SECONDS):
                 # The parent grant and pacing precede this method. Continue
                 # the original Chromium request with its form/cookies intact.
                 await route.continue_()
