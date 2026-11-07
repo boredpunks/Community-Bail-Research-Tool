@@ -17,6 +17,7 @@ type RecoveryEvidence = {
   expiryReason?: string | null;
   missingEvidence?: boolean;
   autoResumeQuota?: boolean;
+  autoResumeTransport?: boolean;
 };
 
 function stageName(input: RecoveryEvidence) {
@@ -174,6 +175,8 @@ export function chooseRecovery(input: {
     message: explanation(evidence,
       evidence.autoResumeQuota
         ? `This same search will continue automatically after the shared quota window clears (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
+        : evidence.autoResumeTransport
+          ? `This same search will continue automatically when its recorded cooldown and other source checks clear (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
         : `Wait until ${input.cooldown.toISOString()}, then check this same search again. Its scope and remaining budget are unchanged.`),
     availableAt: input.cooldown.toISOString(),
   };

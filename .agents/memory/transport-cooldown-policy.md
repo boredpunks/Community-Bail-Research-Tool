@@ -3,8 +3,8 @@ name: Transport-failure cooldown
 description: Live-source timeouts and uncertain transport stop the current search but do not create a permanent global lockout.
 ---
 
-A timeout, lost connection, stale in-flight request, or interrupted request stops its current job and never retries automatically. It imposes a 15-minute shared source cooldown, doubled for each previous transport failure in the preceding 24 hours up to four hours. After expiry, a later user action may start a new search or explicitly resume the same eligible paused search.
+A known timeout or network failure stops its current job and imposes a 15-minute shared source cooldown, doubled for each previous transport failure in the preceding 24 hours up to four hours. The same eligible live search may automatically resume as soon as that cooldown and all current source-admission checks clear, using only its original scope and remaining budget. Uncertain requests after restart or worker loss remain manual because their outcome cannot be established.
 
-**Why:** The user explicitly changed the earlier permanent-stop rule after the published app became unusable from one recorded court timeout.
+**Why:** After a known failure, the user asked for searches to resume automatically after a safe cooldown; uncertain outcomes and source barriers still need stricter handling.
 
-**How to apply:** Keep denials, challenges, validation barriers, sustained deterioration, quota rules, and request budgets unchanged. For a legacy transport stop with no stored expiry, derive its deadline from the matching source request record; if no matching record exists, fail closed. An expired cooldown does not establish access proof; the first eligible PDF still needs its ordinary response-based proof check.
+**How to apply:** Auto-continue only when the latest request for that same job matches TIMEOUT or NETWORK_ERROR and a cooldown can be derived from source state or its matching request. Recheck the exact job, expiry, request budget, admission, and access-proof gates before resuming. Do not auto-resume rate limits, denials, challenges, validation barriers, restart/worker uncertainty, sustained deterioration, or unverified legacy stops.

@@ -11,6 +11,8 @@ For live court searches, show the backend stage, request-slot usage, and an acti
 
 Resume availability must follow the same server-side source-admission decision as the resume endpoint. A future `nextEligibleAt` can reflect ordinary pacing, quota timing, or the explicit transport-failure cooldown; it does not make an access denial, challenge, validation barrier, or unresolved uncertainty recoverable.
 
-**Why:** A future source estimate previously allowed the UI to offer Resume while the actual server gate still rejected the request.
+Known timeouts and network failures may automatically continue the same eligible search after their recorded cooldown; restart/worker uncertainty and access barriers remain non-automatic.
 
-**How to apply:** Classify the admission result first, then expose a timed wait only for a recognized cooldown or quota block with a future release time. A timed-out, disconnected, or interrupted request still stops its current job and never retries automatically; a later explicit resume is allowed only after its transport cooldown expires. Keep the original scope and budget checks authoritative.
+**Why:** The user requested automatic continuation after a safe cooldown for known failed requests; a future source estimate still must not bypass the actual server gate.
+
+**How to apply:** Classify the admission result first and expose only verified waits. Auto-resume only known TIMEOUT or NETWORK_ERROR jobs after their recorded cooldown, rechecking source admission, access proof, expiry, scope, and budget. Uncertainty, denials, challenges, and validation barriers do not auto-resume.

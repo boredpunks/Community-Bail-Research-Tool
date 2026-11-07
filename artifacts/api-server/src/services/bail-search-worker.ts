@@ -1,16 +1,20 @@
-import { and, eq, gt, inArray } from "drizzle-orm";
-import { db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, type BailSearchRow, type BailSearchQueueItem } from "@workspace/db";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { db, bailSearchesTable, bailSearchResultsTable, discoveryItemsTable, discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, type BailSearchRow, type BailSearchQueueItem } from "@workspace/db";
 import { discoverySourceStatus } from "../lib/discovery-source-status";
+import { sourceTransportCooldownUntil } from "../lib/transport-cooldown";
 import { logger } from "../lib/logger";
 import { resultDatesForItem } from "./bail-search-projection";
 import { storeItem } from "./bail-search-document-publisher";
 import { completedLiveSearch } from "./bail-search-completion";
-import { quotaResumeReason, autoResumeQuotaBlock, isLegacyQuotaPause, legacyQuotaResumeBlock } from "./bail-search-auto-resume";
+import {
+  autoResumeBlock, autoResumeQuotaBlock, isLegacyQuotaPause, legacyQuotaResumeBlock,
+  quotaResumeReason, transportAutoResumeReason,
+} from "./bail-search-auto-resume";
 import { resumeBailSearch } from "./bail-search-resume";
 export { publishVerifiedDocumentToSearch } from "./bail-search-document-publisher";
 
 const active = new Set<string>();
-const automaticQuotaRejections = new Map<string, string>();
+const automaticResumeRejections = new Map<string, string>();
 export async function pauseSearch(search: BailSearchRow, reason: string, availableAt = new Date()) {
   await db.transaction(async tx => {
     if (search.discoveryJobId) await tx.update(discoveryJobsTable).set({ status: "PAUSED", updatedAt: new Date(), message: reason })
@@ -63,7 +67,15 @@ async function syncLive(search: BailSearchRow) {
   if (!["RUNNING", "QUEUED"].includes(job.status)) {
     const source = await discoverySourceStatus();
     const quotaReason = quotaResumeReason(source.blockedReason ?? "", job.message);
-    await pauseSearch(search, quotaReason ?? (job.message || "Processing paused. Partial results retained."),
+    const [sourceState] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+    const [latestRequest] = await db.select({ outcome: discoveryRequestsTable.outcome })
+      .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))
+      .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
+    const transportUntil = await sourceTransportCooldownUntil(db, sourceState);
+    const transportReason = transportAutoResumeReason(
+      sourceState?.blockedReason, latestRequest?.outcome, transportUntil,
+    );
+    await pauseSearch(search, quotaReason ?? transportReason ?? (job.message || "Processing paused. Partial results retained."),
       source.nextEligibleAt ? new Date(source.nextEligibleAt) : new Date());
   }
 }
@@ -99,20 +111,20 @@ async function autoContinueQuotaSearches() {
   }
   const now = new Date();
   const eligible = paused.filter(search => search.criteria.source === "live"
-    && autoResumeQuotaBlock(search.reason) !== null
+    && autoResumeBlock(search.reason) !== null
     && search.resumeAvailableAt !== null && search.resumeAvailableAt <= now);
   const outcomes = await Promise.all(eligible.map(async search => ({
     search,
-    result: await resumeBailSearch(search.id, { automaticQuota: true }),
+    result: await resumeBailSearch(search.id, { automatic: true }),
   })));
   for (const { search, result } of outcomes) {
     if (result.ok) {
-      automaticQuotaRejections.delete(search.id);
+      automaticResumeRejections.delete(search.id);
       continue;
     }
-    if (automaticQuotaRejections.get(search.id) !== result.error) {
-      automaticQuotaRejections.set(search.id, result.error);
-      logger.warn({ error: result.error }, "Automatic quota continuation deferred by an eligibility check");
+    if (automaticResumeRejections.get(search.id) !== result.error) {
+      automaticResumeRejections.set(search.id, result.error);
+      logger.warn({ error: result.error }, "Automatic search continuation deferred by an eligibility check");
     }
   }
 }

@@ -5,7 +5,10 @@ import { selectBailDecision, qualifiesMonetary, csvCell } from "../src/lib/bail-
 import { validCachedConsultationChronology } from "../src/lib/discovery-candidates";
 import { resultDatesForItem } from "../src/services/bail-search-projection";
 import { withSearchViewerAccess } from "../src/services/bail-search-access";
-import { autoResumeQuotaBlock, legacyQuotaResumeBlock, quotaResumeReason, visibleSearchPauseReason } from "../src/services/bail-search-auto-resume";
+import {
+  autoResumeBlock, autoResumeQuotaBlock, autoResumeTransportBlock, legacyQuotaResumeBlock,
+  quotaResumeReason, transportAutoResumeReason, visibleSearchPauseReason,
+} from "../src/services/bail-search-auto-resume";
 import { isSharedWorkspaceDiscoveryOwner } from "../src/lib/workspace-owner";
 
 const base = { paused: true, saved: true, missingEvidence: false, expired: false,
@@ -66,6 +69,22 @@ test("only shared rolling quota pauses are marked for automatic continuation", (
   assert.equal(quotaResumeReason("RATE_LIMIT"), null);
   assert.equal(autoResumeQuotaBlock("Source validation stopped collection."), null);
 });
+test("known transport failures auto-resume only after a matching recorded cooldown", () => {
+  const cooldown = new Date("2026-10-29T12:15:00Z");
+  const timeout = transportAutoResumeReason("TIMEOUT", "TIMEOUT", cooldown);
+  assert.match(timeout ?? "", /continue automatically after its recorded timeout cooldown/);
+  assert.equal(autoResumeTransportBlock(timeout), "TIMEOUT");
+  assert.equal(autoResumeBlock(timeout), "TIMEOUT");
+  assert.equal(visibleSearchPauseReason(timeout)?.includes("AUTO_RESUME_TRANSPORT"), false);
+  const networkFailure = transportAutoResumeReason("NETWORK_ERROR", "NETWORK_ERROR", cooldown);
+  assert.equal(autoResumeTransportBlock(networkFailure), "NETWORK_ERROR");
+  assert.equal(transportAutoResumeReason("TIMEOUT", "NETWORK_ERROR", cooldown), null);
+  assert.equal(transportAutoResumeReason("TIMEOUT", "TIMEOUT", null), null);
+  for (const blocked of ["RATE_LIMIT", "ACCESS_DENIED", "CHALLENGE", "SOURCE_VALIDATION_BARRIER",
+    "RESTART_IN_FLIGHT", "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER"]) {
+    assert.equal(transportAutoResumeReason(blocked, blocked, cooldown), null, blocked);
+  }
+});
 test("legacy scheduler pauses are adopted only with timestamp-matched old quota evidence", () => {
   const pausedAt = new Date("2026-10-29T12:00:00Z");
   const starts = Array.from({ length: 30 }, (_, index) => new Date(pausedAt.getTime() - 30 * 60_000 + index * 1000));
@@ -86,6 +105,17 @@ test("eligible quota waits explain automatic continuation without widening scope
   } });
   assert.equal(result.action, "wait");
   assert.match(result.message, /continue automatically/);
+  assert.doesNotMatch(result.message, /recorded cooldown/);
+  assert.match(result.message, /scope and remaining budget are unchanged/);
+});
+test("transport cooldown waits explain automatic continuation while preserving scope", () => {
+  const cooldown = new Date("2026-10-29T13:00:00Z");
+  const result = chooseRecovery({ ...base, saved: false, cooldown, evidence: {
+    calendarValidated: true, retainedRows: 2, documentsDiscovered: 3, documentsProcessed: 1,
+    autoResumeTransport: true, blockReason: "TIMEOUT", latestOutcome: "TIMEOUT",
+  } });
+  assert.equal(result.action, "wait");
+  assert.match(result.message, /continue automatically when its recorded cooldown/);
   assert.match(result.message, /scope and remaining budget are unchanged/);
 });
 test("access failures never invite a retry, even with a future cooldown", () => {

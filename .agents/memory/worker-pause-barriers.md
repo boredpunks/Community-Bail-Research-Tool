@@ -6,7 +6,9 @@ description: Distinguish pre-transmission scheduler denials and explicit pauses 
 A scheduler denial before transmission or an explicit user pause should pause
 the job without creating a global `SOURCE_VALIDATION_BARRIER`. Preserve any
 existing source-level block and the exact quota stop. A real source response or
-validation failure remains fail-closed.
+validation failure remains fail-closed. Known TIMEOUT and NETWORK_ERROR stops
+may auto-resume the same eligible search after their recorded cooldown;
+uncertain transport states remain manual.
 
 **Why:** An operator pause during calendar initialization was reported as an
 unexpected source response even though the retained requests succeeded and no
@@ -17,8 +19,8 @@ stage correctly stopped at `ACCESS_UNVERIFIED`.
 
 **How to apply:** Track parent denials separately from worker-observed response
 failures. Accept only a bounded no-transmission pause message in the parent,
-keep assessment-permit handling unchanged, and resume automatically only for
-explicit hourly or daily quota pauses when the user has authorized continuation.
+keep assessment-permit handling unchanged, and auto-resume only an explicitly
+eligible quota pause or a known timeout/network failure after its safe cooldown.
 After clearing a false barrier, re-check access-proof state. Never recreate old
 verification fields manually; require fresh, method-specific proof and
 authorization before any new source request.

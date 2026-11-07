@@ -3,6 +3,7 @@ export type SharedQuotaBlock = "HOURLY_REQUEST_LIMIT" | "DAILY_REQUEST_LIMIT";
 import { rollingUsage } from "../lib/discovery-safety";
 
 const marker = /\[AUTO_RESUME_QUOTA:(HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)\]$/;
+const transportMarker = /\[AUTO_RESUME_TRANSPORT:(TIMEOUT|NETWORK_ERROR)\]$/;
 
 export function quotaResumeReason(block: string, message?: string | null) {
   if (block !== "HOURLY_REQUEST_LIMIT" && block !== "DAILY_REQUEST_LIMIT") return null;
@@ -10,12 +11,31 @@ export function quotaResumeReason(block: string, message?: string | null) {
   return `The shared ${interval} request limit paused this search. It will continue automatically when quota is available; the original scope and remaining budget are unchanged.${message ? ` ${message}` : ""} [AUTO_RESUME_QUOTA:${block}]`;
 }
 
+export function transportAutoResumeReason(
+  block: string | null | undefined,
+  latestOutcome: string | null | undefined,
+  cooldownUntil: Date | null | undefined,
+) {
+  if ((block !== "TIMEOUT" && block !== "NETWORK_ERROR") || latestOutcome !== block
+    || !cooldownUntil || !Number.isFinite(cooldownUntil.getTime())) return null;
+  const description = block === "TIMEOUT" ? "timeout" : "network failure";
+  return `This same search will continue automatically after its recorded ${description} cooldown and when all source checks pass. Its original scope and remaining request budget are unchanged. [AUTO_RESUME_TRANSPORT:${block}]`;
+}
+
 export function autoResumeQuotaBlock(reason: string | null | undefined): SharedQuotaBlock | null {
   return marker.exec(reason ?? "")?.[1] as SharedQuotaBlock | undefined ?? null;
 }
 
+export function autoResumeTransportBlock(reason: string | null | undefined): "TIMEOUT" | "NETWORK_ERROR" | null {
+  return transportMarker.exec(reason ?? "")?.[1] as "TIMEOUT" | "NETWORK_ERROR" | undefined ?? null;
+}
+
+export function autoResumeBlock(reason: string | null | undefined) {
+  return autoResumeQuotaBlock(reason) ?? autoResumeTransportBlock(reason);
+}
+
 export function visibleSearchPauseReason(reason: string | null) {
-  return reason?.replace(/\s*\[AUTO_RESUME_QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)\]$/, "") ?? null;
+  return reason?.replace(/\s*\[AUTO_RESUME_(?:QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)|TRANSPORT:(?:TIMEOUT|NETWORK_ERROR))\]$/, "") ?? null;
 }
 
 export function isLegacySchedulerPause(reason: string | null) {
