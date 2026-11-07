@@ -128,7 +128,6 @@ export default function LatestReview() {
                       <CandidateAction
                         row={row}
                         searchId={row.search_id}
-                        canManage={row.can_manage}
                         buttonLabel={CANDIDATE_SAVE_LABEL}
                         savedLabel={CANDIDATE_SAVED_LABEL}
                         blue

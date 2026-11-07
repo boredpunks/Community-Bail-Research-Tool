@@ -436,10 +436,6 @@ router.get("/search/:searchId/export", async (_req, res) => {
     .send(await exportSearchCsv(res.locals.search, query.data.selection, query.data.office, query.data.officeMode));
 });
 router.post("/search/:searchId/results/:resultId/save", async (req, res) => {
-  if (!res.locals.canManageSearch) {
-    res.status(403).json({ error: "Only the session that created this search can save its results." });
-    return;
-  }
   const params = SaveBailSearchResultParams.safeParse(req.params);
   const input = SaveBailSearchResultBody.safeParse(req.body);
   if (!params.success || !input.success || input.data.shareWithWorkspace !== true) {

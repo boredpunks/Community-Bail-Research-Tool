@@ -254,7 +254,7 @@ export default function BailSearch() {
               {run.status === 'running' ? 'Running' : run.status === 'paused' ? 'Paused' : 'Complete'}
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
-            {!run.canManage ? <p className="hint" data-testid="text-search-readonly">View-only search. Only its creating session can resume or save results.</p> : null}
+            {!run.canManage ? <p className="hint" data-testid="text-search-readonly">Only its creating session can resume or clear this search. Any workspace user can save eligible results to shared Candidates.</p> : null}
             {run.status === 'complete' && run.reason ? (
               <p className="notice" role="status" data-testid="text-search-completion-warning">{run.reason}</p>
             ) : null}
@@ -334,7 +334,6 @@ export default function BailSearch() {
                       <CandidateAction
                         row={row}
                         searchId={run!.searchId}
-                        canManage={run!.canManage}
                         buttonLabel={CANDIDATE_SAVE_LABEL}
                         savedLabel={CANDIDATE_SAVED_LABEL}
                         testId={`button-save-for-candidates-${row.id}`}

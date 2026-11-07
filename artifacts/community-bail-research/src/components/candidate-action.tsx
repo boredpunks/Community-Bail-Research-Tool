@@ -6,7 +6,6 @@ import { CANDIDATE_SAVED_LABEL, CANDIDATE_SAVE_LABEL, CANDIDATE_SAVE_TITLE } fro
 type CandidateActionProps = {
   row: BailSearchResult;
   searchId: string;
-  canManage: boolean;
   buttonLabel?: string;
   savedLabel?: string;
   testId?: string;
@@ -18,7 +17,6 @@ type CandidateActionProps = {
 export function CandidateAction({
   row,
   searchId,
-  canManage,
   buttonLabel = CANDIDATE_SAVE_LABEL,
   savedLabel = CANDIDATE_SAVED_LABEL,
   testId = `button-candidate-${row.id}`,
@@ -28,11 +26,9 @@ export function CandidateAction({
 }: CandidateActionProps) {
   const after = useAfterCandidateSave(searchId);
   const save = useSaveBailSearchResult({ mutation: { onSuccess: after } });
-  const disabledReason = !canManage
-    ? 'Only the session that created this search can save its results.'
-    : row.save_available !== true
-      ? row.save_reason || 'This result is not ready to save for review.'
-      : null;
+  const disabledReason = row.save_available !== true
+    ? row.save_reason || 'This result is not ready to save for review.'
+    : null;
 
   if (row.saved_record_id && blue && showDisabledButton) {
     return (
@@ -49,9 +45,6 @@ export function CandidateAction({
   }
   if (row.saved_record_id) {
     return <span className="tag text-primary" data-testid={`status-candidate-${row.id}`}>{savedLabel}</span>;
-  }
-  if (!showDisabledButton && !canManage) {
-    return <span className="hint" data-testid={`text-readonly-result-${row.id}`}>View only · created by another session</span>;
   }
   if (!showDisabledButton && row.save_available !== true) {
     return <span className="hint" data-testid={`text-save-unavailable-${row.id}`}>Cannot save{row.save_reason ? `: ${row.save_reason}` : ''}</span>;

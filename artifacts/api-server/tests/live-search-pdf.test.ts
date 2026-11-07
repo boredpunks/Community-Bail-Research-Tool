@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
-  bailSearchResultsTable, bailSearchesTable, db, discoveryEventsTable, discoveryItemsTable,
+  bailRecordsTable, bailSearchResultsTable, bailSearchesTable, db, discoveryEventsTable, discoveryItemsTable,
   discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, pool,
 } from "@workspace/db";
 import app from "../src/app";
@@ -72,6 +72,7 @@ const server = createServer(app);
 const searchIds: string[] = [];
 const jobIds: string[] = [];
 let otherSearchId: string | undefined;
+let sharedCandidateId: string | undefined;
 try {
   await db.insert(discoverySourceTable).values({ id: "UJS" }).onConflictDoNothing();
   await db.update(discoverySourceTable).set({
@@ -187,7 +188,7 @@ try {
         };
       };
       results: Array<{
-        docket_number: string; hearing_date: string; bail_amount: number | null;
+        id: string; docket_number: string; hearing_date: string; bail_amount: number | null;
         evidence_page: number | null; evidence_quote: string; document_status: string;
         evidence_acquisition: string; source_pdf_sha256: string | null;
       }>;
@@ -213,6 +214,35 @@ try {
     assert.equal(result?.docket_number, scenario.docketNumber);
     assert.equal(result?.hearing_date, scenario.startDate);
     assert.match(result?.source_pdf_sha256 ?? "", /^[a-f0-9]{64}$/);
+    if (searchIds.length === 1 && result) {
+      const otherCookie = `${WORKSPACE_COOKIE_NAME}=${createWorkspaceSession()}`;
+      const otherHeaders = { cookie: otherCookie, origin, "content-type": "application/json" };
+      const otherStatusResponse = await fetch(`${origin}/api/bail-search/search/${started.searchId}/status`, {
+        headers: { cookie: otherCookie },
+      });
+      assert.equal(otherStatusResponse.status, 200);
+      const otherStatus = await otherStatusResponse.json() as { canManage: boolean; resumeToken: string | null };
+      assert.equal(otherStatus.canManage, false, "The second session must not gain creator-only search controls.");
+      assert.equal(otherStatus.resumeToken, null);
+
+      const saveResponse = await fetch(
+        `${origin}/api/bail-search/search/${started.searchId}/results/${result.id}/save`,
+        { method: "POST", headers: otherHeaders, body: JSON.stringify({ shareWithWorkspace: true }) },
+      );
+      assert.equal(saveResponse.status, 200, await saveResponse.text());
+      const savedResult = await saveResponse.json() as { saved_record_id: string | null };
+      assert.ok(savedResult.saved_record_id);
+      sharedCandidateId = savedResult.saved_record_id;
+
+      const sharedCandidatesResponse = await fetch(`${origin}/api/bail-search/candidates`, {
+        headers: { cookie: otherCookie },
+      });
+      assert.equal(sharedCandidatesResponse.status, 200);
+      const sharedCandidates = await sharedCandidatesResponse.json() as { id: string; docket_number: string }[];
+      assert.ok(sharedCandidates.some(candidate => candidate.id === sharedCandidateId
+        && candidate.docket_number === scenario.docketNumber),
+      "A different workspace session can save an eligible result and see it in shared Candidates.");
+    }
 
     const requests = await db.select().from(discoveryRequestsTable)
       .where(eq(discoveryRequestsTable.jobId, search.discoveryJobId));
@@ -515,6 +545,7 @@ try {
     await db.delete(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, searchId));
     await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, searchId));
   }
+  if (sharedCandidateId) await db.delete(bailRecordsTable).where(eq(bailRecordsTable.id, sharedCandidateId));
   if (otherSearchId) await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, otherSearchId));
   for (const jobId of jobIds) {
     await db.delete(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, jobId));
