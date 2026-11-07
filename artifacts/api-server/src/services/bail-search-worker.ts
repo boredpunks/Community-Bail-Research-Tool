@@ -94,7 +94,7 @@ async function syncLive(search: BailSearchRow) {
   }
 }
 
-async function autoContinueQuotaSearches() {
+export async function autoContinueQuotaSearches() {
   const paused = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "paused"));
   const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const legacy = paused.filter(search => search.criteria.source === "live"

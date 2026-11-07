@@ -127,7 +127,7 @@ const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.p
 
 type RunJobOptions = {
   exactSessionRefresh?: boolean; waitAcrossQuota?: boolean; singleDocumentProofItemId?: string;
-  offlineMockSource?: boolean;
+  offlineMockSource?: boolean; mockRateLimitOnce?: boolean;
 };
 
 async function finishSingleDocumentProof(jobId: string, permitId: string, itemId: string) {
@@ -171,7 +171,12 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   if (job.assessmentId !== (permitId ?? null)) throw new Error("Assessment runner scope mismatch");
   let mockSchedulerTime = new Date();
   const schedulerContext = options.offlineMockSource
-    ? { now: () => mockSchedulerTime }
+    ? {
+      now: () => mockSchedulerTime,
+      sleep: async (ms: number) => {
+        mockSchedulerTime = new Date(mockSchedulerTime.getTime() + ms);
+      },
+    }
     : undefined;
   const exactSessionRefresh = options.exactSessionRefresh === true;
   if (exactSessionRefresh && (!isExactAuthorizedSessionRefreshCriteria(job.criteria)
@@ -337,6 +342,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
      pendingItems: (proofItem ? [proofItem] : items.filter((item) => item.provenance.extractionOutcome === "UNPROCESSED"))
        .map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
      remainingRecords: calendarPreviewOnly ? 0 : singleDocumentProof ? 1 : job.criteria.recordCap - processed,
+     ...(options.mockRateLimitOnce ? { mockRateLimitOnce: true } : {}),
      ...(proofItem ? { singleDocumentProof: {
        itemId: proofItem.id, docketNumber: proofItem.docketNumber,
        sourceUrl: proofItem.sourceUrl, capturedAt: proofItem.provenance.calendarRetrievedAt,

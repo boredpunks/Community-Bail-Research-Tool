@@ -6,10 +6,11 @@ import {
   discoveryJobsTable, discoveryRequestsTable, discoverySourceTable, pool,
 } from "@workspace/db";
 import app from "../src/app";
+import { discoveryPolicy } from "../src/lib/discovery";
 import { integratedSourceMethod } from "../src/lib/discovery-safety";
 import { runJob } from "../src/lib/discovery-worker";
 import { createWorkspaceSession, WORKSPACE_COOKIE_NAME } from "../src/middlewares/researchAuth";
-import { runBailSearch } from "../src/services/bail-search-worker";
+import { autoContinueQuotaSearches, runBailSearch } from "../src/services/bail-search-worker";
 import { resumeToken, searchOwner } from "../src/services/bail-search-store";
 
 const baseUrl = "https://ujsportal.pacourts.us";
@@ -71,6 +72,7 @@ if (!acquired) {
 const server = createServer(app);
 const searchIds: string[] = [];
 const jobIds: string[] = [];
+let otherSearchId: string | undefined;
 let sharedCandidateId: string | undefined;
 try {
   await db.insert(discoverySourceTable).values({ id: "UJS" }).onConflictDoNothing();
@@ -228,7 +230,7 @@ try {
         `${origin}/api/bail-search/search/${started.searchId}/results/${result.id}/save`,
         { method: "POST", headers: otherHeaders, body: JSON.stringify({ shareWithWorkspace: true }) },
       );
-      assert.equal(saveResponse.status, 200, await saveResponse.text());
+      assert.equal(saveResponse.status, 200, await saveResponse.clone().text());
       const savedResult = await saveResponse.json() as { saved_record_id: string | null };
       assert.ok(savedResult.saved_record_id);
       sharedCandidateId = savedResult.saved_record_id;
@@ -290,6 +292,144 @@ try {
     .where(eq(bailSearchesTable.id, searchIds[0]!)))[0]!;
   const templateJob = (await db.select().from(discoveryJobsTable)
     .where(eq(discoveryJobsTable.id, templateSearch.discoveryJobId!)))[0]!;
+  await db.update(discoverySourceTable).set({
+    lastRequestAt: null,
+    lastCompletedAt: null,
+    pausedUntil: null,
+    blockedReason: null,
+    accessVerifiedAt: new Date(),
+    verifiedMethod: integratedSourceMethod,
+    collectionApprovedAt: new Date(),
+    activeRequestId: null,
+    adaptiveSpacingMs: 30_000,
+    slowResponseStreak: 0,
+    throttleCount: 0,
+    lastLatencyMs: null,
+    latencyWarning: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  const rateLimitCriteria = { ...templateJob.criteria };
+  const rateLimitStartedAt = new Date();
+  const [rateLimitJob] = await db.insert(discoveryJobsTable).values({
+    ownerId: templateJob.ownerId,
+    criteria: rateLimitCriteria,
+    status: "QUEUED",
+    calendarComplete: false,
+    requestsUsed: 0,
+  }).returning();
+  jobIds.push(rateLimitJob!.id);
+  const [rateLimitSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: searchOwner(cookie),
+    discoveryJobId: rateLimitJob!.id,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "running",
+  }).returning();
+  searchIds.push(rateLimitSearch!.id);
+  await runJob(rateLimitJob!, undefined, { offlineMockSource: true, mockRateLimitOnce: true });
+  await runBailSearch(rateLimitSearch!);
+
+  const [rateLimitedRequest] = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, rateLimitJob!.id));
+  assert.equal(rateLimitedRequest?.statusCode, 429);
+  assert.equal(rateLimitedRequest?.outcome, "RATE_LIMIT");
+  assert.ok(rateLimitedRequest?.completedAt);
+  const [rateLimitedSource] = await db.select().from(discoverySourceTable)
+    .where(eq(discoverySourceTable.id, "UJS"));
+  const [rateLimitedPausedSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  const [rateLimitedPausedJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, rateLimitJob!.id));
+  assert.ok(rateLimitedSource?.pausedUntil);
+  assert.ok(rateLimitedRequest?.completedAt);
+  const minimumRateLimitWait = Math.max(30 * 60_000, discoveryPolicy.cooldownMs);
+  assert.ok(rateLimitedSource!.pausedUntil!.getTime()
+    >= rateLimitedRequest!.completedAt!.getTime() + minimumRateLimitWait,
+  "The recorded pause must honor the later of Retry-After and configured cooldown.");
+  assert.ok(rateLimitedPausedSearch?.resumeAvailableAt);
+  assert.ok(rateLimitedPausedSearch!.resumeAvailableAt!.getTime() >= rateLimitedSource!.pausedUntil!.getTime(),
+    "The same search must remain paused through the later of Retry-After and configured cooldown.");
+  assert.match(rateLimitedPausedSearch?.reason ?? "", /\[AUTO_RESUME_SOURCE:RATE_LIMIT\]$/);
+  assert.equal(rateLimitedPausedSearch?.status, "paused");
+  assert.equal(rateLimitedPausedJob?.status, "PAUSED");
+
+  await autoContinueQuotaSearches();
+  const [stillCoolingSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  assert.equal(stillCoolingSearch?.status, "paused",
+    "An automatic scheduler pass before the recorded deadline must not resume the search.");
+
+  // Fast-forward only persisted deadlines after asserting the real recorded
+  // Retry-After. A changed challenge then proves that automatic resume rechecks
+  // current admission rather than treating expiry as permission to request.
+  const passedCooldown = new Date(Date.now() - 1_000);
+  await db.update(bailSearchesTable).set({ resumeAvailableAt: passedCooldown })
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  await db.update(discoverySourceTable).set({
+    blockedReason: "CHALLENGE",
+    pausedUntil: null,
+    accessVerifiedAt: null,
+    verifiedMethod: null,
+    collectionApprovedAt: null,
+    activeRequestId: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  await autoContinueQuotaSearches();
+  const [admissionBlockedSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  const [admissionBlockedJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, rateLimitJob!.id));
+  const blockedRetryRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, rateLimitJob!.id));
+  assert.equal(admissionBlockedSearch?.status, "paused");
+  assert.equal(admissionBlockedJob?.status, "PAUSED");
+  assert.equal(blockedRetryRequests.length, 1,
+    "A current challenge must block continuation without reserving another source request.");
+
+  const passedAt = new Date(Date.now() - 60 * 60_000);
+  await db.update(discoverySourceTable).set({
+    blockedReason: "RATE_LIMIT",
+    pausedUntil: passedCooldown,
+    accessVerifiedAt: new Date(),
+    verifiedMethod: integratedSourceMethod,
+    collectionApprovedAt: new Date(),
+    lastRequestAt: passedAt,
+    lastCompletedAt: passedAt,
+    adaptiveSpacingMs: 30_000,
+    activeRequestId: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  await autoContinueQuotaSearches();
+  const [resumedRateLimitSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  const [resumedRateLimitJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, rateLimitJob!.id));
+  assert.equal(resumedRateLimitSearch?.status, "running");
+  assert.equal(resumedRateLimitJob?.status, "QUEUED");
+  assert.deepEqual(resumedRateLimitSearch?.criteria, templateSearch.criteria);
+  assert.deepEqual(resumedRateLimitJob?.criteria, rateLimitCriteria,
+    "Automatic continuation must preserve the original source scope.");
+  assert.equal(resumedRateLimitJob?.requestsUsed, 1,
+    "The 429 remains charged to the original request budget.");
+  assert.equal(resumedRateLimitJob?.criteria.requestCap, rateLimitCriteria.requestCap);
+  const requestsAtResume = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, rateLimitJob!.id));
+  assert.equal(requestsAtResume.length, 1, "Resuming queues the original job without bypassing source request admission.");
+
+  await runJob(resumedRateLimitJob!, undefined, { offlineMockSource: true });
+  const [resumedSearchForProcessing] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, rateLimitSearch!.id));
+  await runBailSearch(resumedSearchForProcessing!);
+  const [completedRateLimitJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, rateLimitJob!.id));
+  assert.equal(completedRateLimitJob?.status, "COMPLETED");
+  assert.deepEqual(completedRateLimitJob?.criteria, rateLimitCriteria);
+  assert.equal(completedRateLimitJob?.requestsUsed, 3,
+    "The retry uses the same remaining budget, including calendar and document requests.");
+  const recoveredRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, rateLimitJob!.id));
+  assert.deepEqual(recoveredRequests.map(request => [request.method, request.path, request.outcome]).sort(),
+    [["GET", "/Report/CpDocketSheet", "OK"], ["POST", "/CaseSearch", "OK"], ["POST", "/CaseSearch", "RATE_LIMIT"]]);
+  assert.ok(rateLimitStartedAt.getTime() <= rateLimitedRequest!.startedAt.getTime());
+
   const [blockedJob] = await db.insert(discoveryJobsTable).values({
     ownerId: templateJob.ownerId,
     criteria: templateJob.criteria,
@@ -395,6 +535,7 @@ try {
   });
   await db.update(discoverySourceTable).set({
     blockedReason: "TIMEOUT",
+    pausedUntil: null,
     accessVerifiedAt: null,
     verifiedMethod: null,
     collectionApprovedAt: null,
@@ -406,17 +547,20 @@ try {
   const timedOutBody = await timedOutStatus.json() as {
     incomplete: boolean;
     progress: { calendarValidated: boolean };
-    recovery: { action: string; message: string };
+    recovery: { action: string; message: string; availableAt: string | null };
     resumeToken: string | null;
     results: Array<{ id: string; evidence_quote: string }>;
   };
   assert.equal(timedOutBody.incomplete, true);
   assert.equal(timedOutBody.progress.calendarValidated, false);
-  assert.equal(timedOutBody.recovery.action, "source_blocked");
+  assert.equal(timedOutBody.recovery.action, "wait");
+  assert.ok(timedOutBody.recovery.availableAt);
+  assert.ok(Date.parse(timedOutBody.recovery.availableAt!) > Date.now(),
+    "A recent timeout must expose its recorded cooldown before an explicit retry.");
   assert.match(timedOutBody.recovery.message, /latest source request timed out/);
   assert.match(timedOutBody.recovery.message, /not a confirmed empty search/);
   assert.match(timedOutBody.recovery.message, /1 docket row is retained/);
-  assert.equal(timedOutBody.resumeToken, null);
+  assert.ok(timedOutBody.resumeToken);
   assert.equal(timedOutBody.results.length, 1);
   assert.match(timedOutBody.results[0]!.evidence_quote, /10\.00% unsecured bail/);
   const timedOutResume = await fetch(`${origin}/api/bail-search/search/${timedOutSearch!.id}/resume`, {
@@ -435,6 +579,8 @@ try {
   assert.equal(stillTimedOutSource?.blockedReason, "TIMEOUT");
 
   await db.update(discoverySourceTable).set({
+    lastRequestAt: null,
+    lastCompletedAt: null,
     blockedReason: null,
     pausedUntil: null,
     activeRequestId: null,
@@ -497,7 +643,57 @@ try {
   await db.update(discoveryJobsTable).set({ status: "RUNNING" })
     .where(eq(discoveryJobsTable.id, resumableJob!.id));
 
-  console.log("PASS: mocked API preserves PDF evidence, resume scope, and shared candidate-saving behavior.");
+  const otherOwnerId = "offline-search-clear-other-session";
+  const [otherSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: otherOwnerId,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "paused",
+  }).returning();
+  otherSearchId = otherSearch!.id;
+  const allWorkspaceSearches = await db.select({ id: bailSearchesTable.id }).from(bailSearchesTable);
+  const fixtureSearchIds = new Set([...searchIds, otherSearch!.id]);
+  if (allWorkspaceSearches.every(search => fixtureSearchIds.has(search.id))) {
+    const candidateResponseBefore = await fetch(`${origin}/api/bail-search/candidates`, { headers: { cookie } });
+    assert.equal(candidateResponseBefore.status, 200);
+    const candidatesBefore = await candidateResponseBefore.json() as { id: string; evidence_page: number | null }[];
+
+    const clearResponse = await fetch(`${origin}/api/bail-search/search`, { method: "DELETE", headers });
+    assert.equal(clearResponse.status, 200);
+    const clearBody = await clearResponse.json() as {
+      deletedSearches: number; deletedResults: number; retainedRunning: number; retainedReviewSearches: number;
+    };
+    assert.equal(clearBody.deletedSearches + clearBody.retainedReviewSearches, allWorkspaceSearches.length);
+    assert.ok(clearBody.retainedReviewSearches > 0, "Active Review rows keep their source searches available.");
+    assert.equal(clearBody.retainedRunning, 0, "No workspace search remains active after clearing.");
+    const clearedSearch = (await db.select().from(bailSearchesTable)
+      .where(eq(bailSearchesTable.id, resumableSearch!.id)))[0];
+    const stoppedJob = (await db.select().from(discoveryJobsTable)
+      .where(eq(discoveryJobsTable.id, resumableJob!.id)))[0];
+    const clearedOtherSearch = (await db.select().from(bailSearchesTable)
+      .where(eq(bailSearchesTable.id, otherSearch!.id)))[0];
+    assert.equal(clearedSearch, undefined, "Clear removes the active search without a Review result.");
+    assert.equal(stoppedJob?.status, "PAUSED", "Clear stops queued source work before deleting its search.");
+    assert.equal(clearedOtherSearch, undefined, "Workspace clear includes searches created by another session.");
+    const candidateResponse = await fetch(`${origin}/api/bail-search/candidates`, { headers: { cookie } });
+    assert.equal(candidateResponse.status, 200);
+    const candidates = await candidateResponse.json() as { id: string; evidence_page: number | null }[];
+    assert.ok(candidatesBefore.every(before => candidates.some(after =>
+      after.id === before.id && after.evidence_page === before.evidence_page)),
+    "Saved candidates and citations remain available after workspace search cleanup.");
+    const remainingSearchResults = await db.select().from(bailSearchResultsTable)
+      .where(inArray(bailSearchResultsTable.searchId, searchIds));
+    assert.ok(remainingSearchResults.length > 0);
+    assert.ok(remainingSearchResults.every(row => row.qualifies && row.amountCents !== null
+      && !row.ambiguous && row.reviewDismissedAt === null),
+    "Only active Review results remain attached to retained searches.");
+    console.log("PASS: isolated workspace cleanup preserves Review rows and saved candidates.");
+  } else {
+    console.log("SKIP: workspace-wide history cleanup because unrelated shared searches exist.");
+  }
+
+  console.log("PASS: mocked API preserves PDF evidence and rate-limited resume scope.");
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
   for (const searchId of searchIds) {
@@ -505,6 +701,7 @@ try {
     await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, searchId));
   }
   if (sharedCandidateId) await db.delete(bailRecordsTable).where(eq(bailRecordsTable.id, sharedCandidateId));
+  if (otherSearchId) await db.delete(bailSearchesTable).where(eq(bailSearchesTable.id, otherSearchId));
   for (const jobId of jobIds) {
     await db.delete(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, jobId));
     await db.delete(discoveryEventsTable).where(eq(discoveryEventsTable.jobId, jobId));
