@@ -6,8 +6,8 @@ import { validCachedConsultationChronology } from "../src/lib/discovery-candidat
 import { resultDatesForItem } from "../src/services/bail-search-projection";
 import { withSearchViewerAccess } from "../src/services/bail-search-access";
 import {
-  autoResumeBlock, autoResumeQuotaBlock, autoResumeTransportBlock, legacyQuotaResumeBlock,
-  quotaResumeReason, transportAutoResumeReason, visibleSearchPauseReason,
+  autoResumeBlock, autoResumeQuotaBlock, autoResumeSourceBlock, autoResumeTransportBlock, legacyQuotaResumeBlock,
+  quotaResumeReason, temporarySourceAutoResumeReason, transportAutoResumeReason, visibleSearchPauseReason,
 } from "../src/services/bail-search-auto-resume";
 import { isSharedWorkspaceDiscoveryOwner } from "../src/lib/workspace-owner";
 
@@ -85,6 +85,24 @@ test("known transport failures auto-resume only after a matching recorded cooldo
     assert.equal(transportAutoResumeReason(blocked, blocked, cooldown), null, blocked);
   }
 });
+test("explicit rate limits and server errors auto-resume only after their recorded cooldown", () => {
+  const cooldown = new Date("2026-10-29T12:15:00Z");
+  const rate = temporarySourceAutoResumeReason("RATE_LIMIT", "RATE_LIMIT", 429, cooldown);
+  assert.equal(autoResumeSourceBlock(rate), "RATE_LIMIT");
+  assert.equal(autoResumeBlock(rate), "RATE_LIMIT");
+  assert.equal(visibleSearchPauseReason(rate)?.includes("AUTO_RESUME_SOURCE"), false);
+
+  const serverError = temporarySourceAutoResumeReason("HTTP_ERROR", "HTTP_ERROR", 503, cooldown);
+  assert.equal(autoResumeSourceBlock(serverError), "HTTP_ERROR_5XX");
+  assert.equal(temporarySourceAutoResumeReason("HTTP_ERROR", "HTTP_ERROR", 403, cooldown), null);
+  assert.equal(temporarySourceAutoResumeReason("HTTP_ERROR", "HTTP_ERROR", 503, null), null);
+  assert.equal(temporarySourceAutoResumeReason("RATE_LIMIT", "TIMEOUT", 429, cooldown), null);
+  assert.equal(temporarySourceAutoResumeReason("ACCESS_DENIED", "ACCESS_DENIED", 403, cooldown), null);
+
+  const deterioration = temporarySourceAutoResumeReason("RESPONSE_DETERIORATION", "OK", 200, cooldown);
+  assert.equal(autoResumeSourceBlock(deterioration), "RESPONSE_DETERIORATION");
+  assert.equal(temporarySourceAutoResumeReason("RESPONSE_DETERIORATION", "OK", 503, cooldown), null);
+});
 test("legacy scheduler pauses are adopted only with timestamp-matched old quota evidence", () => {
   const pausedAt = new Date("2026-10-29T12:00:00Z");
   const starts = Array.from({ length: 30 }, (_, index) => new Date(pausedAt.getTime() - 30 * 60_000 + index * 1000));
@@ -116,6 +134,16 @@ test("transport cooldown waits explain automatic continuation while preserving s
   } });
   assert.equal(result.action, "wait");
   assert.match(result.message, /continue automatically when its recorded cooldown/);
+  assert.match(result.message, /scope and remaining budget are unchanged/);
+});
+test("source-directed cooldown waits explain automatic continuation without widening scope", () => {
+  const cooldown = new Date("2026-10-29T13:00:00Z");
+  const result = chooseRecovery({ ...base, saved: false, cooldown, evidence: {
+    calendarValidated: false, retainedRows: 1, documentsDiscovered: 1, documentsProcessed: 0,
+    autoResumeSource: true, blockReason: "RATE_LIMIT", latestOutcome: "RATE_LIMIT",
+  } });
+  assert.equal(result.action, "wait");
+  assert.match(result.message, /continue automatically after the source-directed cooldown/);
   assert.match(result.message, /scope and remaining budget are unchanged/);
 });
 test("access failures never invite a retry, even with a future cooldown", () => {

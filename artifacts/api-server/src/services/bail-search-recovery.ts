@@ -18,6 +18,7 @@ type RecoveryEvidence = {
   missingEvidence?: boolean;
   autoResumeQuota?: boolean;
   autoResumeTransport?: boolean;
+  autoResumeSource?: boolean;
 };
 
 function stageName(input: RecoveryEvidence) {
@@ -97,7 +98,8 @@ function observedCause(input: RecoveryEvidence) {
 }
 
 const timedAdmissionBlocks = new Set([
-  "SOURCE_COOLDOWN", "RATE_LIMIT", "HOURLY_REQUEST_LIMIT", "DAILY_REQUEST_LIMIT",
+  "SOURCE_COOLDOWN", "RATE_LIMIT", "HTTP_ERROR", "RESPONSE_DETERIORATION",
+  "HOURLY_REQUEST_LIMIT", "DAILY_REQUEST_LIMIT",
   "TIMEOUT", "NETWORK_ERROR", "RESTART_IN_FLIGHT", "UNCERTAIN_SOURCE_STATE",
   "UNCERTAIN_AFTER_RESTART", "UNCERTAIN_AFTER_WORKER",
 ]);
@@ -177,6 +179,8 @@ export function chooseRecovery(input: {
         ? `This same search will continue automatically after the shared quota window clears (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
         : evidence.autoResumeTransport
           ? `This same search will continue automatically when its recorded cooldown and other source checks clear (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
+        : evidence.autoResumeSource
+          ? `This same search will continue automatically after the source-directed cooldown and other source checks clear (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
         : `Wait until ${input.cooldown.toISOString()}, then check this same search again. Its scope and remaining budget are unchanged.`),
     availableAt: input.cooldown.toISOString(),
   };

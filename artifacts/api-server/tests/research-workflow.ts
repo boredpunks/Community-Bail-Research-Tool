@@ -65,6 +65,7 @@ import { GetResearchOperationsResponse } from "@workspace/api-zod";
 
 const source = {blockedReason:"ACCESS_DENIED", pausedUntil:null, latencyWarning:null} as any;
 const denial = {method:"GET",path:"/Report/MdjDocketSheet",statusCode:401,outcome:"ACCESS_DENIED"};
+const cooldownNow = new Date("2026-11-01T12:00:00Z");
 assert.equal(calendarOperationBlock(source,[denial]),null);
 assert.equal(source.blockedReason,"ACCESS_DENIED"); // No relabel or clearance.
 assert.equal(calendarOperationBlock(
@@ -75,8 +76,16 @@ assert.equal(calendarOperationBlock({
 },[]),null); // First slow response retains pacing without locking ordinary calendar use.
 assert.equal(calendarOperationBlock({
   ...source, blockedReason:"RESPONSE_DETERIORATION",
-  latencyWarning:"Collection paused for assessment.",
-},[]),"LATENCY_WARNING"); // Sustained deterioration remains a hard stop.
+  latencyWarning:"Collection paused for a conservative recovery cooldown.",
+},[]),"LATENCY_WARNING"); // No recorded cooldown means no automatic recovery.
+assert.equal(calendarOperationBlock({
+  ...source, blockedReason:"RESPONSE_DETERIORATION",
+  pausedUntil:new Date(cooldownNow.getTime()+60_000),
+},[],cooldownNow),"SOURCE_COOLDOWN");
+assert.equal(calendarOperationBlock({
+  ...source, blockedReason:"RESPONSE_DETERIORATION",
+  pausedUntil:new Date(cooldownNow.getTime()-1),
+},[],cooldownNow),null);
 assert.equal(calendarOperationBlock(
   {...source,blockedReason:"COLLECTION_NOT_APPROVED"},[]),null);
 assert.equal(calendarOperationBlock(source,[]),"ACCESS_DENIED");
@@ -84,7 +93,6 @@ assert.equal(calendarOperationBlock(source,[{...denial,path:"/CaseSearch"}]),"AC
 assert.equal(calendarOperationBlock(source,[denial,{...denial,outcome:"CHALLENGE",path:"/CaseSearch"}]),"ACCESS_DENIED");
 assert.equal(calendarOperationBlock({...source,pausedUntil:new Date(Date.now()+60000)},[denial]),"SOURCE_COOLDOWN");
 assert.equal(calendarOperationBlock({...source,blockedReason:"RESTART_IN_FLIGHT"},[denial]),"RESTART_IN_FLIGHT");
-const cooldownNow = new Date("2026-11-01T12:00:00Z");
 assert.equal(transportCooldownDuration(0), 15 * 60_000);
 assert.equal(transportCooldownDuration(1), 30 * 60_000);
 assert.equal(transportCooldownDuration(20), 4 * 60 * 60_000);

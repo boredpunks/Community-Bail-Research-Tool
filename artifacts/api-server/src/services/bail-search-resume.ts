@@ -9,7 +9,7 @@ import { sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 import { isSharedWorkspaceDiscoveryOwner } from "../lib/workspace-owner";
 import { SEARCH_SLICE_MS, searchRecovery, validResumeToken } from "./bail-search-store";
-import { autoResumeBlock, autoResumeTransportBlock } from "./bail-search-auto-resume";
+import { autoResumeBlock, autoResumeSourceBlock } from "./bail-search-auto-resume";
 
 type ResumeOptions = { resumeToken?: string; automatic?: boolean };
 export type ResumeResult = { ok: true } | { ok: false; error: string; status: number; skipped?: boolean };
@@ -42,7 +42,7 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
     }
     return denied(recovery.message || "Search is not currently resumable.", 409, automatic);
   }
-  const automaticTransportBlock = automatic ? autoResumeTransportBlock(prior.reason) : null;
+  const automaticSourceBlock = automatic ? autoResumeSourceBlock(prior.reason) : null;
 
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prior.ownerId}))`);
@@ -70,8 +70,11 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
         || job.requestsUsed >= job.criteria.requestCap)
         return denied("Original source scope or budget cannot resume. Start a new eligible search.", 409, automatic);
       let block = !job.calendarComplete ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
+      const matchingRetryBlock = automaticSourceBlock === "HTTP_ERROR_5XX"
+        ? source?.blockedReason === "HTTP_ERROR"
+        : !!automaticSourceBlock && source?.blockedReason === automaticSourceBlock;
       const mayRecheckFirstPdfAccess = !automatic
-        || !!automaticTransportBlock && source?.blockedReason === automaticTransportBlock && block === "ACCESS_UNVERIFIED";
+        || matchingRetryBlock && block === "ACCESS_UNVERIFIED";
       if (mayRecheckFirstPdfAccess && ["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
         && await canAutomaticallyCheckOrdinaryPdfAccess(job, source, { store: tx })) block = null;
       if (block) return denied(`Source remains paused: ${block}.`, 409, automatic);

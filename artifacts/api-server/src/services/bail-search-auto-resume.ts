@@ -4,6 +4,7 @@ import { rollingUsage } from "../lib/discovery-safety";
 
 const marker = /\[AUTO_RESUME_QUOTA:(HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)\]$/;
 const transportMarker = /\[AUTO_RESUME_TRANSPORT:(TIMEOUT|NETWORK_ERROR)\]$/;
+const temporarySourceMarker = /\[AUTO_RESUME_SOURCE:(RATE_LIMIT|HTTP_ERROR_5XX|RESPONSE_DETERIORATION)\]$/;
 
 export function quotaResumeReason(block: string, message?: string | null) {
   if (block !== "HOURLY_REQUEST_LIMIT" && block !== "DAILY_REQUEST_LIMIT") return null;
@@ -22,6 +23,27 @@ export function transportAutoResumeReason(
   return `This same search will continue automatically after its recorded ${description} cooldown and when all source checks pass. Its original scope and remaining request budget are unchanged. [AUTO_RESUME_TRANSPORT:${block}]`;
 }
 
+export function temporarySourceAutoResumeReason(
+  block: string | null | undefined,
+  latestOutcome: string | null | undefined,
+  latestStatusCode: number | null | undefined,
+  cooldownUntil: Date | null | undefined,
+) {
+  if (!cooldownUntil || !Number.isFinite(cooldownUntil.getTime())) return null;
+  if (block === "RESPONSE_DETERIORATION" && latestOutcome === "OK" && latestStatusCode === 200) {
+    return `This same search will continue automatically after its conservative slow-response cooldown and when all source checks pass. Its original scope and remaining request budget are unchanged. [AUTO_RESUME_SOURCE:RESPONSE_DETERIORATION]`;
+  }
+  if (block === "RATE_LIMIT" && latestOutcome === "RATE_LIMIT") {
+    return `This same search will continue automatically after the source-directed rate-limit cooldown and when all source checks pass. Its original scope and remaining request budget are unchanged. [AUTO_RESUME_SOURCE:RATE_LIMIT]`;
+  }
+  if (block === "HTTP_ERROR" && latestOutcome === "HTTP_ERROR"
+    && latestStatusCode !== null && latestStatusCode !== undefined
+    && latestStatusCode >= 500 && latestStatusCode <= 599) {
+    return `This same search will continue automatically after the server-error backoff and when all source checks pass. Its original scope and remaining request budget are unchanged. [AUTO_RESUME_SOURCE:HTTP_ERROR_5XX]`;
+  }
+  return null;
+}
+
 export function autoResumeQuotaBlock(reason: string | null | undefined): SharedQuotaBlock | null {
   return marker.exec(reason ?? "")?.[1] as SharedQuotaBlock | undefined ?? null;
 }
@@ -30,12 +52,17 @@ export function autoResumeTransportBlock(reason: string | null | undefined): "TI
   return transportMarker.exec(reason ?? "")?.[1] as "TIMEOUT" | "NETWORK_ERROR" | undefined ?? null;
 }
 
+export function autoResumeSourceBlock(reason: string | null | undefined) {
+  return autoResumeTransportBlock(reason)
+    ?? temporarySourceMarker.exec(reason ?? "")?.[1] as "RATE_LIMIT" | "HTTP_ERROR_5XX" | "RESPONSE_DETERIORATION" | undefined ?? null;
+}
+
 export function autoResumeBlock(reason: string | null | undefined) {
-  return autoResumeQuotaBlock(reason) ?? autoResumeTransportBlock(reason);
+  return autoResumeQuotaBlock(reason) ?? autoResumeSourceBlock(reason);
 }
 
 export function visibleSearchPauseReason(reason: string | null) {
-  return reason?.replace(/\s*\[AUTO_RESUME_(?:QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)|TRANSPORT:(?:TIMEOUT|NETWORK_ERROR))\]$/, "") ?? null;
+  return reason?.replace(/\s*\[AUTO_RESUME_(?:QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)|TRANSPORT:(?:TIMEOUT|NETWORK_ERROR)|SOURCE:(?:RATE_LIMIT|HTTP_ERROR_5XX|RESPONSE_DETERIORATION))\]$/, "") ?? null;
 }
 
 export function isLegacySchedulerPause(reason: string | null) {

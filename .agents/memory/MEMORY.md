@@ -37,4 +37,4 @@
 - [Background search lifecycle](background-search-lifecycle.md) — Navigation must not stop searches; collection completion is separate from financial review.
 - [Search progress visibility](search-progress-visibility.md) — Show observed stages, source details, durations, and line-by-line activity; don't substitute ETA disclaimers for progress.
 - [Published app source state](production-source-state.md) — Production keeps its own source stops and access proof; a working preview proves nothing about live searches.
-- [Transport-failure cooldown](transport-cooldown-policy.md) — A failed request stops its job but only blocks later source traffic for a bounded, escalating cooldown.
+- [Automatic source recovery](transport-cooldown-policy.md) — Resume only after recorded quota, throttle, server-error, slow-response, or known transport cooldowns and fresh admission checks.

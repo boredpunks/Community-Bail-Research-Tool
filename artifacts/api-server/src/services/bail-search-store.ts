@@ -13,7 +13,7 @@ import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 import {
-  autoResumeQuotaBlock, autoResumeTransportBlock, visibleSearchPauseReason,
+  autoResumeQuotaBlock, autoResumeSourceBlock, autoResumeTransportBlock, visibleSearchPauseReason,
 } from "./bail-search-auto-resume";
 
 type CalendarCoverage = {
@@ -322,6 +322,7 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
         calendarValidated: !!job?.calendarComplete,
         autoResumeQuota: autoResumeQuotaBlock(search.reason) !== null,
         autoResumeTransport: autoResumeTransportBlock(search.reason) !== null,
+        autoResumeSource: autoResumeSourceBlock(search.reason) !== null,
         retainedRows: await db.select({ id: bailSearchResultsTable.id }).from(bailSearchResultsTable)
           .where(eq(bailSearchResultsTable.searchId, search.id)).then(rows => rows.length),
         documentsDiscovered: job ? await db.select({ id: discoveryItemsTable.id }).from(discoveryItemsTable)

@@ -218,7 +218,7 @@ export function responseHealth(source: {
     // A healthy response does not erase a retained latency incident; response
     // accounting is not an operator recovery path.
     latencyWarning: slow
-      ? `Slow response ${streak}; conservative pacing retained. ${streak >= 6 ? "Collection paused for assessment." : "No automatic acceleration."}`
+      ? `Slow response ${streak}; conservative pacing retained. ${streak >= 6 ? "Collection paused for a conservative recovery cooldown." : "No automatic acceleration."}`
       : source.latencyWarning ?? null,
     blockedReason: streak >= 6 ? "RESPONSE_DETERIORATION" : null,
   };
@@ -355,10 +355,11 @@ export function collectionBlock(
   const transportExpired = isTransportCooldownBlock(source?.blockedReason)
     && !!transportUntil && transportUntil <= now;
   // Denials, challenges, validation barriers, and other uncertain states remain
-  // fail-closed. Only known transport failures receive this bounded cooldown.
+  // Denials, challenges, validation barriers, and uncertain states remain
+  // fail-closed. Timed source stops pass only after their recorded deadline.
   // Verified ordinary jobs are authorized by the authenticated user's exact
   // search submission; the historical global collection flag is not a gate.
-  if (source?.blockedReason && !(source.blockedReason === "RATE_LIMIT"
+  if (source?.blockedReason && !(["RATE_LIMIT", "HTTP_ERROR", "RESPONSE_DETERIORATION"].includes(source.blockedReason)
     && source.pausedUntil && source.pausedUntil <= now) && !transportExpired)
     return source.blockedReason;
   if (source?.pausedUntil && source.pausedUntil > now) return source.blockedReason ?? "SOURCE_COOLDOWN";

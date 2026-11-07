@@ -517,7 +517,9 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
       : outcome === "HTTP_ERROR" && Number(message.status) >= 500
         ? throttleDeadline(now, 60_000, 0, message.retryAfter).getTime()
         : (transportFailureOutcomes as readonly string[]).includes(outcome)
-          ? now.getTime() + transportCooldownDuration(recentTransportFailures.length) : 0;
+          ? now.getTime() + transportCooldownDuration(recentTransportFailures.length)
+          : block === "RESPONSE_DETERIORATION"
+            ? now.getTime() + Math.max(60 * 60_000, health.adaptiveSpacingMs) : 0;
     const pauseUntil = Math.max(source.pausedUntil?.getTime() ?? 0, directedWait, automaticWait);
     await tx.update(discoveryRequestsTable).set({
       outcome, statusCode: message.status as number | null, completedAt: now, durationMs,
@@ -533,14 +535,20 @@ export async function accountSourceResponse(job: DiscoveryJobRow, message: Recor
         ...(throttle ? {
           throttleCount: source.throttleCount + 1,
           adaptiveSpacingMs: Math.min(3_600_000, Math.max(discoveryPolicy.spacingMs, source.adaptiveSpacingMs) * 2),
-          latencyWarning: "Throttling observed. Slower pacing retained; explicit resume required after cooldown.",
+          latencyWarning: "Throttling observed. Slower pacing retained; continuation waits for the recorded cooldown and source checks.",
         } : { accessVerifiedAt: null, verifiedMethod: null, collectionApprovedAt: null }),
       } : {}),
     }).where(eq(discoverySourceTable.id, sourceId));
     if (block) {
+      const safeCooldownContinuation = throttle
+        || outcome === "HTTP_ERROR" && Number(message.status) >= 500 && Number(message.status) <= 599
+        || (transportFailureOutcomes as readonly string[]).includes(outcome)
+        || block === "RESPONSE_DETERIORATION";
       await tx.update(discoveryJobsTable).set({
         status: "PAUSED", updatedAt: now,
-        message: `${block}: all source traffic stopped. No automatic retry or workaround; partial evidence and consumed slots retained.`,
+        message: `${block}: all source traffic stopped. ${safeCooldownContinuation
+          ? "The same eligible search may continue only after its recorded cooldown and all source checks pass; no workaround is used."
+          : "No automatic retry or workaround; partial evidence and consumed slots retained."}`,
       }).where(inArray(discoveryJobsTable.status, ["RUNNING", "QUEUED"]));
     }
     const [current] = await tx.select({ status: discoveryJobsTable.status }).from(discoveryJobsTable).where(eq(discoveryJobsTable.id, job.id));

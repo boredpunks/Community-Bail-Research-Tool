@@ -8,7 +8,7 @@ import { storeItem } from "./bail-search-document-publisher";
 import { completedLiveSearch } from "./bail-search-completion";
 import {
   autoResumeBlock, autoResumeQuotaBlock, isLegacyQuotaPause, legacyQuotaResumeBlock,
-  quotaResumeReason, transportAutoResumeReason,
+  quotaResumeReason, temporarySourceAutoResumeReason, transportAutoResumeReason,
 } from "./bail-search-auto-resume";
 import { resumeBailSearch } from "./bail-search-resume";
 export { publishVerifiedDocumentToSearch } from "./bail-search-document-publisher";
@@ -68,15 +68,29 @@ async function syncLive(search: BailSearchRow) {
     const source = await discoverySourceStatus();
     const quotaReason = quotaResumeReason(source.blockedReason ?? "", job.message);
     const [sourceState] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    const [latestRequest] = await db.select({ outcome: discoveryRequestsTable.outcome })
+    const [latestRequest] = await db.select({
+      outcome: discoveryRequestsTable.outcome,
+      statusCode: discoveryRequestsTable.statusCode,
+    })
       .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))
       .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
     const transportUntil = await sourceTransportCooldownUntil(db, sourceState);
     const transportReason = transportAutoResumeReason(
       sourceState?.blockedReason, latestRequest?.outcome, transportUntil,
     );
-    await pauseSearch(search, quotaReason ?? transportReason ?? (job.message || "Processing paused. Partial results retained."),
-      source.nextEligibleAt ? new Date(source.nextEligibleAt) : new Date());
+    const sourceCooldownUntil = sourceState?.pausedUntil ?? transportUntil;
+    const sourceRetryReason = temporarySourceAutoResumeReason(
+      sourceState?.blockedReason, latestRequest?.outcome, latestRequest?.statusCode, sourceCooldownUntil,
+    );
+    const availableAt = [
+      source.nextEligibleAt ? new Date(source.nextEligibleAt) : null,
+      sourceState?.pausedUntil ?? null,
+      transportUntil,
+    ].flatMap(value => value && Number.isFinite(value.getTime()) ? [value] : [])
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date();
+    await pauseSearch(search,
+      quotaReason ?? transportReason ?? sourceRetryReason ?? (job.message || "Processing paused. Partial results retained."),
+      availableAt);
   }
 }
 

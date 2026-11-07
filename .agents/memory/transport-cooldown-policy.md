@@ -1,10 +1,12 @@
 ---
-name: Transport-failure cooldown
-description: Live-source timeouts and uncertain transport stop the current search but do not create a permanent global lockout.
+name: Automatic source recovery
+description: Cooldown-based resumption for recoverable source stops, while preserving access and uncertainty barriers.
 ---
 
-A known timeout or network failure stops its current job and imposes a 15-minute shared source cooldown, doubled for each previous transport failure in the preceding 24 hours up to four hours. The same eligible live search may automatically resume as soon as that cooldown and all current source-admission checks clear, using only its original scope and remaining budget. Uncertain requests after restart or worker loss remain manual because their outcome cannot be established.
+Automatically resume the same eligible live search after a recorded shared-quota wait, source rate-limit cooldown (including `Retry-After`), HTTP 5xx backoff, conservative cooldown after sustained slow responses, or known timeout/network cooldown. Preserve the original scope and remaining request budget, and rerun all current source-admission checks before any request. A known timeout or network failure starts with a 15-minute shared source cooldown, doubled for each previous transport failure in the preceding 24 hours up to four hours. A 429 honors the longer of the source-directed wait and configured escalating throttle cooldown; sustained deterioration waits at least one hour and no less than current adaptive spacing.
 
-**Why:** After a known failure, the user asked for searches to resume automatically after a safe cooldown; uncertain outcomes and source barriers still need stricter handling.
+Access denials, challenges, login prompts, validation barriers, uncertain worker/restart outcomes, expired scopes, exhausted budgets, and local processing errors do not auto-resume. They require a specific human/source resolution or a new eligible search.
 
-**How to apply:** Auto-continue only when the latest request for that same job matches TIMEOUT or NETWORK_ERROR and a cooldown can be derived from source state or its matching request. Recheck the exact job, expiry, request budget, admission, and access-proof gates before resuming. Do not auto-resume rate limits, denials, challenges, validation barriers, restart/worker uncertainty, sustained deterioration, or unverified legacy stops.
+**Why:** The user asked that stops resume automatically after a safe cooldown that respects the site being searched. A source denial, challenge, or uncertain request is not a safe signal to retry.
+
+**How to apply:** Require the latest request for the same job to match a known retryable outcome and require its recorded cooldown. Recheck the exact job, expiry, request budget, source admission, and access-proof gates before resuming. Never interpret a cooldown as permission to bypass a denial, challenge, or validation barrier.

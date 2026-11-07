@@ -510,6 +510,14 @@ try {
   await reset(false);
   check(collectionBlock(undefined) === "ACCESS_UNVERIFIED");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null }) === null);
+  check(collectionBlock({ ...approved, blockedReason: "RATE_LIMIT", pausedUntil: new Date(time + 1_000) },
+    new Date(time), null) === "RATE_LIMIT");
+  check(collectionBlock({ ...approved, blockedReason: "RATE_LIMIT", pausedUntil: new Date(time - 1) },
+    new Date(time), null) === null);
+  check(collectionBlock({ ...approved, blockedReason: "HTTP_ERROR", pausedUntil: new Date(time - 1) },
+    new Date(time), null) === null);
+  check(collectionBlock({ ...approved, blockedReason: "ACCESS_DENIED", pausedUntil: new Date(time - 1) },
+    new Date(time), null) === "ACCESS_DENIED");
   check(integratedSourceMethod === "playwright-calendar+public-http-pdf-v16");
   check(collectionBlock({ ...approved, blockedReason: null, pausedUntil: null,
     verifiedMethod: "playwright-calendar+urllib-pdf-v14" }) === "ACCESS_UNVERIFIED");
@@ -818,6 +826,28 @@ try {
   check(rateState!.pausedUntil!.getTime() >= time + 900_000);
   check(rateState!.adaptiveSpacingMs === 120_000);
   check((await store.select().from(requests)).length === 1);
+
+  await reset();
+  const serverError = await createJob();
+  const serverGrant = await reserve(serverError);
+  assert.ok(serverGrant.allow && serverGrant.requestId);
+  check(!await response(serverError, serverGrant.requestId, "HTTP_ERROR", 503, "120"));
+  const [serverErrorState] = await store.select().from(sources);
+  check(serverErrorState!.blockedReason === "HTTP_ERROR");
+  check(serverErrorState!.pausedUntil!.getTime() >= time + 120_000,
+    "HTTP 5xx backoff must honor the source-provided Retry-After value.");
+
+  await reset();
+  const deteriorating = await createJob();
+  await store.update(sources).set({ slowResponseStreak: 5 }).where(eq(sources.id, "UJS"));
+  const deterioratingGrant = await reserve(deteriorating);
+  assert.ok(deterioratingGrant.allow && deterioratingGrant.requestId);
+  time += 30_000;
+  check(!await response(deteriorating, deterioratingGrant.requestId, "OK", 200));
+  const [deterioratedSource] = await store.select().from(sources);
+  check(deterioratedSource!.blockedReason === "RESPONSE_DETERIORATION");
+  check(deterioratedSource!.pausedUntil!.getTime() >= time + 60 * 60_000,
+    "Sustained slow responses must use a conservative recovery cooldown.");
 
   // Server-directed waits apply even to an otherwise successful response.
   await reset();

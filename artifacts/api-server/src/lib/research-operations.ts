@@ -24,7 +24,8 @@ export function calendarOperationBlock(
   // A single slow response raises an advisory and increases shared pacing.
   // Only the scheduler's explicit sustained-deterioration stop blocks ordinary
   // calendar work; do not turn the first warning into a source-wide lockout.
-  if (reason === "RESPONSE_DETERIORATION") return "LATENCY_WARNING";
+  if (reason === "RESPONSE_DETERIORATION")
+    return source.pausedUntil && source.pausedUntil <= now ? null : "LATENCY_WARNING";
   if (!reason || barriers.includes(reason)) return null;
   if (reason === "RATE_LIMIT" && source.pausedUntil && source.pausedUntil <= now) return null;
   if (reason === "HTTP_ERROR" && source.pausedUntil && source.pausedUntil <= now) return null;
