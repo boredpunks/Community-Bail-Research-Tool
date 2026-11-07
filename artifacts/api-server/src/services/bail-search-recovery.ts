@@ -19,6 +19,7 @@ type RecoveryEvidence = {
   autoResumeQuota?: boolean;
   autoResumeTransport?: boolean;
   autoResumeSource?: boolean;
+  autoResumeInternal?: boolean;
 };
 
 function stageName(input: RecoveryEvidence) {
@@ -153,12 +154,28 @@ export function chooseRecovery(input: {
     source: input.evidence?.source ?? (input.saved ? "saved" : "live"),
     missingEvidence: input.missingEvidence,
   };
-  if (input.saved && input.missingEvidence) return {
-    action: "evidence_needed",
-    message: explanation(evidence,
-      "Use Advanced court search or enter verified evidence, then start a new collected-evidence search."),
-    availableAt: null,
-  };
+  if (input.saved && input.missingEvidence) {
+    if (evidence.autoResumeInternal) {
+      if (input.cooldown && input.cooldown > now) return {
+        action: "wait",
+        message: explanation(evidence,
+          `The app will recheck this saved evidence automatically after its local processing backoff (${input.cooldown.toISOString()}); no court request will be made.`),
+        availableAt: input.cooldown.toISOString(),
+      };
+      return {
+        action: "resume",
+        message: explanation(evidence,
+          "The app will recheck this same saved evidence automatically; no court request will be made."),
+        availableAt: null,
+      };
+    }
+    return {
+      action: "evidence_needed",
+      message: explanation(evidence,
+        "Use Advanced court search or enter verified evidence, then start a new collected-evidence search."),
+      availableAt: null,
+    };
+  }
   if (input.expired || input.noJob) return {
     action: "new_search",
     message: explanation(evidence, input.sourceBlocked
@@ -181,6 +198,8 @@ export function chooseRecovery(input: {
           ? `This same search will continue automatically when its recorded cooldown and other source checks clear (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
         : evidence.autoResumeSource
           ? `This same search will continue automatically after the source-directed cooldown and other source checks clear (currently expected ${input.cooldown.toISOString()}). Its scope and remaining budget are unchanged.`
+          : evidence.autoResumeInternal
+            ? `The app will retry this same search automatically after its local processing backoff (currently expected ${input.cooldown.toISOString()}); any required source checks still apply.`
         : `Wait until ${input.cooldown.toISOString()}, then check this same search again. Its scope and remaining budget are unchanged.`),
     availableAt: input.cooldown.toISOString(),
   };

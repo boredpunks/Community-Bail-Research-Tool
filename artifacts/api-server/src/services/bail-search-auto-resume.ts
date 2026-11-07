@@ -5,6 +5,7 @@ import { rollingUsage } from "../lib/discovery-safety";
 const marker = /\[AUTO_RESUME_QUOTA:(HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)\]$/;
 const transportMarker = /\[AUTO_RESUME_TRANSPORT:(TIMEOUT|NETWORK_ERROR)\]$/;
 const temporarySourceMarker = /\[AUTO_RESUME_SOURCE:(RATE_LIMIT|HTTP_ERROR_5XX|RESPONSE_DETERIORATION)\]$/;
+const internalMarker = /\[AUTO_RESUME_INTERNAL:(\d+)\]$/;
 
 export function quotaResumeReason(block: string, message?: string | null) {
   if (block !== "HOURLY_REQUEST_LIMIT" && block !== "DAILY_REQUEST_LIMIT") return null;
@@ -61,8 +62,42 @@ export function autoResumeBlock(reason: string | null | undefined) {
   return autoResumeQuotaBlock(reason) ?? autoResumeSourceBlock(reason);
 }
 
+export function autoResumeInternalAttempt(reason: string | null | undefined): number | null {
+  const attempt = Number(internalMarker.exec(reason ?? "")?.[1]);
+  return Number.isSafeInteger(attempt) && attempt > 0 ? attempt : null;
+}
+
+export function autoResumeInternalPause(
+  reason: string,
+  previousReason: string | null | undefined,
+  now = new Date(),
+) {
+  const attempt = (autoResumeInternalAttempt(previousReason) ?? 0) + 1;
+  const delayMs = Math.min(5_000 * 2 ** Math.min(attempt - 1, 4), 60_000);
+  return {
+    reason: `${reason} [AUTO_RESUME_INTERNAL:${attempt}]`,
+    availableAt: new Date(now.getTime() + delayMs),
+    attempt,
+  };
+}
+
+export function isCompletedLocalProjectionRetry(
+  job: {
+    calendarComplete: boolean;
+    status: string;
+    resultsExpiredAt: Date | null;
+    assessmentId: string | null;
+  },
+  internalRetry: boolean,
+  deadline: Date | null,
+  now = new Date(),
+) {
+  return internalRetry && job.calendarComplete && job.status === "COMPLETED"
+    && !job.resultsExpiredAt && !job.assessmentId && !(deadline && deadline <= now);
+}
+
 export function visibleSearchPauseReason(reason: string | null) {
-  return reason?.replace(/\s*\[AUTO_RESUME_(?:QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)|TRANSPORT:(?:TIMEOUT|NETWORK_ERROR)|SOURCE:(?:RATE_LIMIT|HTTP_ERROR_5XX|RESPONSE_DETERIORATION))\]$/, "") ?? null;
+  return reason?.replace(/\s*\[AUTO_RESUME_(?:QUOTA:(?:HOURLY_REQUEST_LIMIT|DAILY_REQUEST_LIMIT)|TRANSPORT:(?:TIMEOUT|NETWORK_ERROR)|SOURCE:(?:RATE_LIMIT|HTTP_ERROR_5XX|RESPONSE_DETERIORATION)|INTERNAL:\d+)\]$/, "") ?? null;
 }
 
 export function isLegacySchedulerPause(reason: string | null) {

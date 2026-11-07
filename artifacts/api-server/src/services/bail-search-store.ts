@@ -13,7 +13,8 @@ import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock, discoverySourceStatus } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 import {
-  autoResumeQuotaBlock, autoResumeSourceBlock, autoResumeTransportBlock, visibleSearchPauseReason,
+  autoResumeInternalAttempt, autoResumeQuotaBlock, autoResumeSourceBlock, autoResumeTransportBlock,
+  isCompletedLocalProjectionRetry, visibleSearchPauseReason,
 } from "./bail-search-auto-resume";
 
 type CalendarCoverage = {
@@ -275,11 +276,15 @@ export async function enrichedResult(search: BailSearchRow, row: BailSearchResul
 }
 export async function searchRecovery(search: BailSearchRow, missingEvidence: boolean) {
   const [job] = search.discoveryJobId ? await db.select().from(discoveryJobsTable).where(eq(discoveryJobsTable.id, search.discoveryJobId)) : [];
+  const deadline = job ? resultsDeadline(job) : null;
+  const autoResumeInternal = autoResumeInternalAttempt(search.reason) !== null;
+  const localProjectionRetry = !!job && search.criteria.source === "live"
+    && isCompletedLocalProjectionRetry(job, autoResumeInternal, deadline);
   let cooldown: Date | null = null;
   let sourceBlocked = false;
   let block: string | null = null;
   let latestRequest: { outcome: string; statusCode: number | null } | undefined;
-  if (search.status === "paused" && search.criteria.source === "live") {
+  if (search.status === "paused" && search.criteria.source === "live" && !localProjectionRetry) {
     if (job) {
       [latestRequest] = await db.select({
         outcome: discoveryRequestsTable.outcome,
@@ -305,17 +310,19 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
     }
     sourceBlocked = !!block && !cooldown;
   }
-  const deadline = job ? resultsDeadline(job) : null;
-  const expired = !!job && (job.status !== "PAUSED" || !!job.resultsExpiredAt
+  if (autoResumeInternal && search.resumeAvailableAt && search.resumeAvailableAt > new Date()) {
+    cooldown = cooldown && cooldown > search.resumeAvailableAt ? cooldown : search.resumeAvailableAt;
+  }
+  const expired = !!job && (job.status !== "PAUSED" && !localProjectionRetry || !!job.resultsExpiredAt
     || !!job.assessmentId || !!(deadline && deadline <= new Date())
     || !job.calendarComplete && job.criteria.startDate < easternToday()
-    || job.requestsUsed >= job.criteria.requestCap);
+    || job.requestsUsed >= job.criteria.requestCap && !localProjectionRetry);
   const expiryReason = !job ? null
-    : job.requestsUsed >= job.criteria.requestCap ? "This search used its full source-request budget."
+    : job.requestsUsed >= job.criteria.requestCap && !localProjectionRetry ? "This search used its full source-request budget."
       : !job.calendarComplete && job.criteria.startDate < easternToday() ? "The original calendar date window has passed."
         : job.resultsExpiredAt || deadline && deadline <= new Date() ? "This checkpoint expired; dockets already in shared Review and Candidates remain."
           : job.assessmentId ? "This source job belongs to an assessment scope that cannot be resumed from this search."
-            : job.status !== "PAUSED" ? "The linked source job is no longer paused."
+            : job.status !== "PAUSED" && !localProjectionRetry ? "The linked source job is no longer paused."
               : null;
   return {
     job, recovery: chooseRecovery({ paused: search.status === "paused", saved: search.criteria.source === "saved",
@@ -325,6 +332,7 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
         autoResumeQuota: autoResumeQuotaBlock(search.reason) !== null,
         autoResumeTransport: autoResumeTransportBlock(search.reason) !== null,
         autoResumeSource: autoResumeSourceBlock(search.reason) !== null,
+        autoResumeInternal,
         retainedRows: await db.select({ id: bailSearchResultsTable.id }).from(bailSearchResultsTable)
           .where(eq(bailSearchResultsTable.searchId, search.id)).then(rows => rows.length),
         documentsDiscovered: job ? await db.select({ id: discoveryItemsTable.id }).from(discoveryItemsTable)

@@ -6,7 +6,8 @@ import { validCachedConsultationChronology } from "../src/lib/discovery-candidat
 import { resultDatesForItem } from "../src/services/bail-search-projection";
 import { withSearchViewerAccess } from "../src/services/bail-search-access";
 import {
-  autoResumeBlock, autoResumeQuotaBlock, autoResumeSourceBlock, autoResumeTransportBlock, legacyQuotaResumeBlock,
+  autoResumeBlock, autoResumeInternalAttempt, autoResumeInternalPause, autoResumeQuotaBlock,
+  autoResumeSourceBlock, autoResumeTransportBlock, isCompletedLocalProjectionRetry, legacyQuotaResumeBlock,
   quotaResumeReason, temporarySourceAutoResumeReason, transportAutoResumeReason, visibleSearchPauseReason,
 } from "../src/services/bail-search-auto-resume";
 import { isSharedWorkspaceDiscoveryOwner } from "../src/lib/workspace-owner";
@@ -33,6 +34,55 @@ test("interrupted local processing can resume explicitly", () => {
   assert.match(result.message, /Docket PDF processing stopped/);
   assert.match(result.message, /3 docket rows from the validated calendar/);
   assert.match(result.message, /Resume this same search/);
+});
+test("app-local interruptions retry automatically with increasing backoff and retained scope", () => {
+  const now = new Date("2026-10-29T12:00:00Z");
+  const first = autoResumeInternalPause("Local processing stopped.", null, now);
+  assert.equal(first.attempt, 1);
+  assert.equal(first.availableAt.toISOString(), "2026-10-29T12:00:05.000Z");
+  assert.equal(autoResumeInternalAttempt(first.reason), 1);
+  assert.equal(visibleSearchPauseReason(first.reason), "Local processing stopped.");
+
+  const second = autoResumeInternalPause("Local processing stopped.", first.reason, first.availableAt);
+  assert.equal(second.attempt, 2);
+  assert.equal(second.availableAt.toISOString(), "2026-10-29T12:00:15.000Z");
+  assert.equal(autoResumeInternalAttempt(second.reason), 2);
+
+  const waiting = chooseRecovery({ ...base, saved: false, cooldown: first.availableAt, evidence: {
+    calendarValidated: true, retainedRows: 2, documentsDiscovered: 3, documentsProcessed: 1,
+    autoResumeInternal: true,
+  } });
+  assert.equal(waiting.action, "wait");
+  assert.equal(waiting.availableAt, first.availableAt.toISOString());
+  assert.match(waiting.message, /app will retry this same search automatically/);
+
+  const savedEvidenceWaiting = chooseRecovery({ ...base, missingEvidence: true, cooldown: first.availableAt, evidence: {
+    source: "saved", calendarValidated: false, retainedRows: 1, documentsDiscovered: 1, documentsProcessed: 0,
+    autoResumeInternal: true,
+  } });
+  assert.equal(savedEvidenceWaiting.action, "wait");
+  assert.match(savedEvidenceWaiting.message, /no court request will be made/);
+
+  const savedEvidenceReady = chooseRecovery({ ...base, missingEvidence: true, evidence: {
+    source: "saved", calendarValidated: false, retainedRows: 1, documentsDiscovered: 1, documentsProcessed: 0,
+    autoResumeInternal: true,
+  } });
+  assert.equal(savedEvidenceReady.action, "resume");
+  assert.match(savedEvidenceReady.message, /recheck this same saved evidence automatically/);
+});
+test("completed source jobs may retry local result projection without resuming court traffic", () => {
+  const job = {
+    calendarComplete: true,
+    status: "COMPLETED",
+    resultsExpiredAt: null,
+    assessmentId: null,
+  };
+  const now = new Date("2026-10-29T12:00:00Z");
+  assert.equal(isCompletedLocalProjectionRetry(job, true, null, now), true);
+  assert.equal(isCompletedLocalProjectionRetry(job, false, null, now), false);
+  assert.equal(isCompletedLocalProjectionRetry({ ...job, status: "PAUSED" }, true, null, now), false);
+  assert.equal(isCompletedLocalProjectionRetry({ ...job, resultsExpiredAt: now }, true, null, now), false);
+  assert.equal(isCompletedLocalProjectionRetry(job, true, new Date(now.getTime() - 1), now), false);
 });
 test("quota wait exposes a concrete time then becomes resumable", () => {
   const cooldown = new Date("2026-10-29T13:00:00Z");

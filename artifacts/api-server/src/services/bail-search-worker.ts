@@ -7,7 +7,8 @@ import { resultDatesForItem } from "./bail-search-projection";
 import { storeItem } from "./bail-search-document-publisher";
 import { completedLiveSearch } from "./bail-search-completion";
 import {
-  autoResumeBlock, autoResumeQuotaBlock, isLegacyQuotaPause, legacyQuotaResumeBlock,
+  autoResumeBlock, autoResumeInternalAttempt, autoResumeInternalPause, autoResumeQuotaBlock,
+  isLegacyQuotaPause, legacyQuotaResumeBlock,
   quotaResumeReason, temporarySourceAutoResumeReason, transportAutoResumeReason,
 } from "./bail-search-auto-resume";
 import { resumeBailSearch } from "./bail-search-resume";
@@ -23,19 +24,24 @@ export async function pauseSearch(search: BailSearchRow, reason: string, availab
       .where(eq(bailSearchesTable.id, search.id));
   });
 }
+async function pauseForInternalRetry(search: BailSearchRow, reason: string) {
+  const retry = autoResumeInternalPause(reason, search.reason);
+  await pauseSearch(search, retry.reason, retry.availableAt);
+}
 async function processSaved(search: BailSearchRow) {
   const existing = await db.select().from(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, search.id));
   const done = new Set(existing.filter(r => !r.error).map(r => `${r.docketNumber}:${r.hearingDate}`));
   for (const item of search.queue) {
     if (done.has(`${item.docketNumber}:${item.hearingDate}`)) continue;
     if (Date.now() >= (search.leaseExpiresAt?.getTime() ?? 0)) {
-      await pauseSearch(search, "Processing time limit reached. Resume to continue from saved progress."); return;
+      await pauseForInternalRetry(search, "Processing time slice ended. Progress is retained and will continue automatically."); return;
     }
     await storeItem(search, item, true);
   }
   const results = await db.select().from(bailSearchResultsTable).where(eq(bailSearchResultsTable.searchId, search.id));
   if (results.some(row => row.error)) {
-    await pauseSearch(search, "Some evidence is unavailable locally. Completed results are saved. Resume after evidence becomes available; this mode makes no court requests.");
+    await pauseForInternalRetry(search,
+      "Some saved evidence is unavailable locally. The app will check again automatically; this mode makes no court requests.");
   } else await db.update(bailSearchesTable).set({ status: "complete", reason: null, updatedAt: new Date() }).where(eq(bailSearchesTable.id, search.id));
 }
 async function syncLive(search: BailSearchRow) {
@@ -65,36 +71,40 @@ async function syncLive(search: BailSearchRow) {
   // The live engine owns its request budgets and waits. The local saved-PDF
   // processing slice must not cancel a legitimate paced calendar search.
   if (!["RUNNING", "QUEUED"].includes(job.status)) {
-    const source = await discoverySourceStatus();
-    const quotaReason = quotaResumeReason(source.blockedReason ?? "", job.message);
-    const [sourceState] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    const [latestRequest] = await db.select({
-      outcome: discoveryRequestsTable.outcome,
-      statusCode: discoveryRequestsTable.statusCode,
-    })
-      .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))
-      .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
-    const transportUntil = await sourceTransportCooldownUntil(db, sourceState);
-    const transportReason = transportAutoResumeReason(
-      sourceState?.blockedReason, latestRequest?.outcome, transportUntil,
-    );
-    const sourceCooldownUntil = sourceState?.pausedUntil ?? transportUntil;
-    const sourceRetryReason = temporarySourceAutoResumeReason(
-      sourceState?.blockedReason, latestRequest?.outcome, latestRequest?.statusCode, sourceCooldownUntil,
-    );
-    const availableAt = [
-      source.nextEligibleAt ? new Date(source.nextEligibleAt) : null,
-      sourceState?.pausedUntil ?? null,
-      transportUntil,
-    ].flatMap(value => value && Number.isFinite(value.getTime()) ? [value] : [])
-      .sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date();
-    await pauseSearch(search,
-      quotaReason ?? transportReason ?? sourceRetryReason ?? (job.message || "Processing paused. Partial results retained."),
-      availableAt);
+    if (job.status === "COMPLETED" && autoResumeInternalAttempt(search.reason) !== null) {
+      await pauseForInternalRetry(search, "Local result projection is still incomplete. Retained progress will retry automatically.");
+    } else {
+      const source = await discoverySourceStatus();
+      const quotaReason = quotaResumeReason(source.blockedReason ?? "", job.message);
+      const [sourceState] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
+      const [latestRequest] = await db.select({
+        outcome: discoveryRequestsTable.outcome,
+        statusCode: discoveryRequestsTable.statusCode,
+      })
+        .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId, job.id))
+        .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
+      const transportUntil = await sourceTransportCooldownUntil(db, sourceState);
+      const transportReason = transportAutoResumeReason(
+        sourceState?.blockedReason, latestRequest?.outcome, transportUntil,
+      );
+      const sourceCooldownUntil = sourceState?.pausedUntil ?? transportUntil;
+      const sourceRetryReason = temporarySourceAutoResumeReason(
+        sourceState?.blockedReason, latestRequest?.outcome, latestRequest?.statusCode, sourceCooldownUntil,
+      );
+      const availableAt = [
+        source.nextEligibleAt ? new Date(source.nextEligibleAt) : null,
+        sourceState?.pausedUntil ?? null,
+        transportUntil,
+      ].flatMap(value => value && Number.isFinite(value.getTime()) ? [value] : [])
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date();
+      await pauseSearch(search,
+        quotaReason ?? transportReason ?? sourceRetryReason ?? (job.message || "Processing paused. Partial results retained."),
+        availableAt);
+    }
   }
 }
 
-export async function autoContinueQuotaSearches() {
+export async function autoContinuePausedSearches() {
   const paused = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "paused"));
   const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const legacy = paused.filter(search => search.criteria.source === "live"
@@ -124,8 +134,11 @@ export async function autoContinueQuotaSearches() {
     }
   }
   const now = new Date();
-  const eligible = paused.filter(search => search.criteria.source === "live"
-    && autoResumeBlock(search.reason) !== null
+  const eligible = paused.filter(search => (
+    search.criteria.source === "live" && autoResumeBlock(search.reason) !== null
+      || search.criteria.source === "live" && autoResumeInternalAttempt(search.reason) !== null
+      || search.criteria.source === "saved" && autoResumeInternalAttempt(search.reason) !== null
+  )
     && search.resumeAvailableAt !== null && search.resumeAvailableAt <= now);
   const outcomes = await Promise.all(eligible.map(async search => ({
     search,
@@ -148,8 +161,9 @@ export async function runBailSearch(search: BailSearchRow) {
   try {
     if (search.criteria.source === "saved") await processSaved(search);
     else await syncLive(search);
-  } catch {
-    await pauseSearch(search, "Processing stopped after a local error. Results are retained; no automatic retry.");
+  } catch (error) {
+    logger.error({ err: error, searchId: search.id }, "Local search processing failed; scheduling automatic retry");
+    await pauseForInternalRetry(search, "Local search processing failed. Retained progress will retry automatically.");
   } finally { active.delete(search.id); }
 }
 export async function publishCalendarRowsToSearch(jobId: string) {
@@ -186,7 +200,9 @@ export async function publishCalendarRowsToSearch(jobId: string) {
 export async function startBailSearchWorker() {
   // Startup cannot assume an interrupted request succeeded.
   const interrupted = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "running"));
-  for (const search of interrupted) await pauseSearch(search, "Server restarted. Saved results retained; resume explicitly.");
+  for (const search of interrupted) {
+    await pauseForInternalRetry(search, "The app restarted. Retained progress will continue automatically after source checks pass.");
+  }
   // Repair old presentation-only pauses using retained evidence. No court
   // worker is launched and no PDF is fetched or retried by this reconciliation.
   const finished = await db.select({ search: bailSearchesTable }).from(bailSearchesTable)
@@ -200,7 +216,7 @@ export async function startBailSearchWorker() {
     if (busy) return;
     busy = true;
     try {
-      await autoContinueQuotaSearches();
+      await autoContinuePausedSearches();
       const rows = await db.select().from(bailSearchesTable).where(eq(bailSearchesTable.status, "running"));
       await Promise.all(rows.map(runBailSearch));
     } catch { logger.error("Volunteer search worker unavailable"); }
