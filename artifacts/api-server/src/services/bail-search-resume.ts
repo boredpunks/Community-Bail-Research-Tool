@@ -8,6 +8,7 @@ import { calendarAdmission } from "../lib/research-operations";
 import { sourceAdmissionBlock } from "../lib/discovery-source-status";
 import { canAutomaticallyCheckOrdinaryPdfAccess } from "../lib/ordinary-search-proof";
 import { isSharedWorkspaceDiscoveryOwner } from "../lib/workspace-owner";
+import { BAIL_SEARCH_WORKSPACE_LOCK_KEY } from "./bail-search-review";
 import { SEARCH_SLICE_MS, searchRecovery, validResumeToken } from "./bail-search-store";
 import { autoResumeBlock, autoResumeSourceBlock } from "./bail-search-auto-resume";
 
@@ -45,6 +46,7 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
   const automaticSourceBlock = automatic ? autoResumeSourceBlock(prior.reason) : null;
 
   const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prior.ownerId}))`);
     const [search] = await tx.select().from(bailSearchesTable).where(eq(bailSearchesTable.id, prior.id)).for("update");
     if (!search || search.status !== "paused" || options.resumeToken && !validResumeToken(search, options.resumeToken))

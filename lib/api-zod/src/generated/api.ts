@@ -545,23 +545,23 @@ export const StartBailSearchResponse = zod.object({
 
 
 /**
- * @summary Clear completed or paused searches created by this session
+ * @summary Stop and clear eligible searches across the workspace
  */
-export const clearOwnedBailSearchesResponseDeletedSearchesMin = 0;
+export const clearWorkspaceBailSearchesResponseDeletedSearchesMin = 0;
 
-export const clearOwnedBailSearchesResponseDeletedResultsMin = 0;
+export const clearWorkspaceBailSearchesResponseDeletedResultsMin = 0;
 
-export const clearOwnedBailSearchesResponseRetainedRunningMin = 0;
+export const clearWorkspaceBailSearchesResponseRetainedRunningMin = 0;
 
-export const clearOwnedBailSearchesResponseRetainedReviewSearchesMin = 0;
+export const clearWorkspaceBailSearchesResponseRetainedReviewSearchesMin = 0;
 
 
 
-export const ClearOwnedBailSearchesResponse = zod.object({
-  "deletedSearches": zod.int().min(clearOwnedBailSearchesResponseDeletedSearchesMin),
-  "deletedResults": zod.int().min(clearOwnedBailSearchesResponseDeletedResultsMin),
-  "retainedRunning": zod.int().min(clearOwnedBailSearchesResponseRetainedRunningMin),
-  "retainedReviewSearches": zod.int().min(clearOwnedBailSearchesResponseRetainedReviewSearchesMin)
+export const ClearWorkspaceBailSearchesResponse = zod.object({
+  "deletedSearches": zod.int().min(clearWorkspaceBailSearchesResponseDeletedSearchesMin),
+  "deletedResults": zod.int().min(clearWorkspaceBailSearchesResponseDeletedResultsMin),
+  "retainedRunning": zod.int().min(clearWorkspaceBailSearchesResponseRetainedRunningMin),
+  "retainedReviewSearches": zod.int().min(clearWorkspaceBailSearchesResponseRetainedReviewSearchesMin)
 })
 
 

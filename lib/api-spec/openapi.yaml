@@ -190,11 +190,11 @@ paths:
               schema: { $ref: "#/components/schemas/BailSearch" }
         "409": { $ref: "#/components/responses/Conflict" }
     delete:
-      operationId: clearOwnedBailSearches
-      summary: Clear completed or paused searches created by this session
+      operationId: clearWorkspaceBailSearches
+      summary: Stop and clear eligible searches across the workspace
       responses:
         "200":
-          description: Searches without undeleted Review rows cleared; protected Review rows remain available
+          description: Searches without undeleted shared Review rows are cleared across sessions; protected Review rows and Candidates remain available
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ClearBailSearchHistoryResult" }

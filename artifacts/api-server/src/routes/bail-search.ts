@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, bailRecordsTable, bailSearchesTable, bailSearchResultsTable, discoveryJobsTable, volunteerFeedbackTable } from "@workspace/db";
 import {
   StartBailSearchBody, ResumeBailSearchBody, GetBailSearchStatusParams, SubmitVolunteerFeedbackBody,
@@ -10,11 +10,13 @@ import {
   SetBailSearchCandidateOutcomeParams, SetBailSearchCandidateOutcomeBody, SetBailSearchCandidateOutcomeResponse,
   SetBailSearchCandidateArchiveParams, SetBailSearchCandidateArchiveBody, SetBailSearchCandidateArchiveResponse,
   RemoveBailSearchCandidateParams, RemoveBailSearchCandidateResponse,
-  ClearOwnedBailSearchesResponse, ListBailSearchReviewQueueResponse,
+  ClearWorkspaceBailSearchesResponse, ListBailSearchReviewQueueResponse,
 } from "@workspace/api-zod";
 import { hasValidWorkspaceSession, requireResearchAuth, requireSameOrigin, getWorkspaceIdentity, WORKSPACE_COOKIE_NAME } from "../middlewares/researchAuth";
 import { calendarSearchReadiness } from "../services/calendar-search";
-import { partitionSearchesForHistoryClear } from "../services/bail-search-review";
+import {
+  BAIL_SEARCH_WORKSPACE_LOCK_KEY, planWorkspaceSearchHistoryClear,
+} from "../services/bail-search-review";
 import { SEARCH_SLICE_MS, exportSearchCsv, savedQueue, searchOwner, searchResponse, enrichedResult, validateSearchDates } from "../services/bail-search-store";
 import { safeDocketLink, shareResult } from "../services/bail-search-evidence";
 import { discoveryPolicy } from "../lib/discovery";
@@ -233,25 +235,23 @@ router.get("/search", async (_req, res) => {
   res.json(ListBailSearchesResponse.parse(searches));
 });
 router.delete("/search", async (_req, res): Promise<void> => {
-  const ownerId: string = res.locals.searchOwner;
   const cleared = await db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
-    const owned = await tx.select({
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
+    const searches = await tx.select({
       id: bailSearchesTable.id,
       discoveryJobId: bailSearchesTable.discoveryJobId,
       status: bailSearchesTable.status,
     })
       .from(bailSearchesTable)
-      .where(eq(bailSearchesTable.ownerId, ownerId))
       .for("update");
-    if (!owned.length) {
+    if (!searches.length) {
       return { deletedSearches: 0, deletedResults: 0, retainedRunning: 0, retainedReviewSearches: 0 };
     }
-    const ownedIds = owned.map(search => search.id);
+    const searchIds = searches.map(search => search.id);
     const activeReviewResults = await tx.select({ searchId: bailSearchResultsTable.searchId })
       .from(bailSearchResultsTable)
       .where(and(
-        inArray(bailSearchResultsTable.searchId, ownedIds),
+        inArray(bailSearchResultsTable.searchId, searchIds),
         eq(bailSearchResultsTable.qualifies, true),
         isNotNull(bailSearchResultsTable.amountCents),
         eq(bailSearchResultsTable.ambiguous, false),
@@ -259,43 +259,27 @@ router.delete("/search", async (_req, res): Promise<void> => {
       ))
       .groupBy(bailSearchResultsTable.searchId);
     const reviewSearchIds = new Set(activeReviewResults.map(row => row.searchId));
-    const { retainedReview: retainedReviewSearches, clearable } =
-      partitionSearchesForHistoryClear(owned, reviewSearchIds);
+    const plan = planWorkspaceSearchHistoryClear(searches, reviewSearchIds);
+    const { retainedReview: retainedReviewSearches, clearable } = plan;
     const ids = clearable.map(search => search.id);
-    const jobIds = [...new Set(owned.flatMap(search => search.discoveryJobId ? [search.discoveryJobId] : []))];
+    const jobIds = plan.linkedJobIds;
     if (jobIds.length) {
-      const sharedActiveJobs = await tx.select({ discoveryJobId: bailSearchesTable.discoveryJobId })
-        .from(bailSearchesTable)
-        .where(and(
-          inArray(bailSearchesTable.discoveryJobId, jobIds),
-          ne(bailSearchesTable.ownerId, ownerId),
-          eq(bailSearchesTable.status, "running"),
-        ));
-      const sharedJobIds = new Set(sharedActiveJobs.flatMap(search =>
-        search.discoveryJobId ? [search.discoveryJobId] : []));
-      const jobsToStop = jobIds.filter(id => !sharedJobIds.has(id));
-      if (jobsToStop.length) {
-        await tx.update(discoveryJobsTable).set({
-          status: "PAUSED",
-          message: "Stopped by its creator during search-history cleanup; Review dockets were retained.",
-          updatedAt: new Date(),
-        }).where(and(
-          inArray(discoveryJobsTable.id, jobsToStop),
-          inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"]),
-        ));
-        const retainedRunningIds = retainedReviewSearches
-          .filter(search => search.status === "running" && search.discoveryJobId && jobsToStop.includes(search.discoveryJobId))
-          .map(search => search.id);
-        if (retainedRunningIds.length) {
-          await tx.update(bailSearchesTable).set({
-            status: "paused",
-            reason: "Stopped during search-history cleanup; Review dockets were retained.",
-            updatedAt: new Date(),
-            leaseExpiresAt: null,
-          }).where(inArray(bailSearchesTable.id, retainedRunningIds));
-        }
-      }
+      await tx.update(discoveryJobsTable).set({
+        status: "PAUSED",
+        message: "Stopped by a workspace user during search-history cleanup; shared Review dockets were retained.",
+        updatedAt: new Date(),
+      }).where(and(
+        inArray(discoveryJobsTable.id, jobIds),
+        inArray(discoveryJobsTable.status, ["QUEUED", "RUNNING"]),
+      ));
     }
+    const runningSearchIds = plan.runningSearchIds;
+    if (runningSearchIds.length) await tx.update(bailSearchesTable).set({
+      status: "paused",
+      reason: "Stopped during workspace search-history cleanup; shared Review dockets were retained.",
+      updatedAt: new Date(),
+      leaseExpiresAt: null,
+    }).where(inArray(bailSearchesTable.id, runningSearchIds));
     const deletedResults = ids.length
       ? await tx.delete(bailSearchResultsTable)
         .where(inArray(bailSearchResultsTable.searchId, ids))
@@ -303,7 +287,7 @@ router.delete("/search", async (_req, res): Promise<void> => {
       : [];
     const deletedSearches = ids.length
       ? await tx.delete(bailSearchesTable)
-        .where(and(inArray(bailSearchesTable.id, ids), eq(bailSearchesTable.ownerId, ownerId)))
+        .where(inArray(bailSearchesTable.id, ids))
         .returning({ id: bailSearchesTable.id })
       : [];
     return {
@@ -313,7 +297,7 @@ router.delete("/search", async (_req, res): Promise<void> => {
       retainedReviewSearches: retainedReviewSearches.length,
     };
   });
-  res.json(ClearOwnedBailSearchesResponse.parse(cleared));
+  res.json(ClearWorkspaceBailSearchesResponse.parse(cleared));
 });
 router.post("/search", async (req, res) => {
   const input = StartBailSearchBody.safeParse(req.body);
@@ -344,6 +328,7 @@ router.post("/search", async (req, res) => {
         },
       });
       launched = await launchDiscovery(criteria, getWorkspaceIdentity(res).ownerId, ownerIds, async (tx, job) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
         const [running] = await tx.select().from(bailSearchesTable).where(and(
           eq(bailSearchesTable.ownerId, ownerId), eq(bailSearchesTable.status, "running"),
@@ -360,6 +345,7 @@ router.post("/search", async (req, res) => {
         }).returning();
         searchId = created!.id;
       }, async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
         const previous = await tx.select().from(bailSearchesTable).where(and(
           eq(bailSearchesTable.ownerId, ownerId), eq(bailSearchesTable.status, "running"),
@@ -400,6 +386,7 @@ router.post("/search", async (req, res) => {
   try { queue = await savedQueue(input.data, ownerIds); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Choose a narrower hearing-date range." }); return; }
   const search = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`);
     const [running] = await tx.select().from(bailSearchesTable).where(and(eq(bailSearchesTable.ownerId, ownerId), eq(bailSearchesTable.status, "running")));
     if (running) return null;

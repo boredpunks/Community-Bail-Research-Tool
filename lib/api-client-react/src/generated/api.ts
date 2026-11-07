@@ -1050,7 +1050,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getStartBailSearchMutationOptions(options));
     }
 
-export const getClearOwnedBailSearchesUrl = () => {
+export const getClearWorkspaceBailSearchesUrl = () => {
 
 
 
@@ -1059,11 +1059,11 @@ export const getClearOwnedBailSearchesUrl = () => {
 }
 
 /**
- * @summary Clear completed or paused searches created by this session
+ * @summary Stop and clear eligible searches across the workspace
  */
-export const clearOwnedBailSearches = async ( options?: Parameters<typeof customFetch>[1]): Promise<ClearBailSearchHistoryResult> => {
+export const clearWorkspaceBailSearches = async ( options?: Parameters<typeof customFetch>[1]): Promise<ClearBailSearchHistoryResult> => {
 
-  return customFetch<ClearBailSearchHistoryResult>(getClearOwnedBailSearchesUrl(),
+  return customFetch<ClearBailSearchHistoryResult>(getClearWorkspaceBailSearchesUrl(),
   {
     ...options,
     method: 'DELETE'
@@ -1076,13 +1076,13 @@ export const clearOwnedBailSearches = async ( options?: Parameters<typeof custom
 
 
 
-export const getClearOwnedBailSearchesMutationKey = () => ['clearOwnedBailSearches'] as const;
+export const getClearWorkspaceBailSearchesMutationKey = () => ['clearWorkspaceBailSearches'] as const;
 
-export const getClearOwnedBailSearchesMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearOwnedBailSearches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof clearOwnedBailSearches>>, TError,void, TContext> => {
+export const getClearWorkspaceBailSearchesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearWorkspaceBailSearches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearWorkspaceBailSearches>>, TError,void, TContext> => {
 
-const mutationKey = getClearOwnedBailSearchesMutationKey();
+const mutationKey = getClearWorkspaceBailSearchesMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1092,10 +1092,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearOwnedBailSearches>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearWorkspaceBailSearches>>, void> = () => {
 
 
-          return  clearOwnedBailSearches(requestOptions)
+          return  clearWorkspaceBailSearches(requestOptions)
         }
 
 
@@ -1105,23 +1105,23 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ClearOwnedBailSearchesMutationResult = NonNullable<Awaited<ReturnType<typeof clearOwnedBailSearches>>>
+    export type ClearWorkspaceBailSearchesMutationResult = NonNullable<Awaited<ReturnType<typeof clearWorkspaceBailSearches>>>
 
-    export type ClearOwnedBailSearchesMutationError = ErrorType<unknown>
+    export type ClearWorkspaceBailSearchesMutationError = ErrorType<unknown>
 
 
     /**
- * @summary Clear completed or paused searches created by this session
+ * @summary Stop and clear eligible searches across the workspace
  */
-export const useClearOwnedBailSearches = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearOwnedBailSearches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useClearWorkspaceBailSearches = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearWorkspaceBailSearches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof clearOwnedBailSearches>>,
+        Awaited<ReturnType<typeof clearWorkspaceBailSearches>>,
         TError,
         void,
         TContext
       > => {
-      return useMutation(getClearOwnedBailSearchesMutationOptions(options));
+      return useMutation(getClearWorkspaceBailSearchesMutationOptions(options));
     }
 
 export const getGetBailSearchStatusUrl = (searchId: string,) => {

@@ -4,7 +4,7 @@ import {
   getGetBailSearchReadinessQueryKey,
   getListBailSearchCandidatesQueryKey,
   getListBailSearchesQueryKey,
-  useClearOwnedBailSearches,
+  useClearWorkspaceBailSearches,
   useGetBailSearchReadiness,
   useResumeBailSearch,
   useStartBailSearch,
@@ -70,7 +70,7 @@ export default function BailSearch() {
   // Per-call callbacks below only update the currently mounted page.
   const started = useStartBailSearch({ mutation: { onSuccess: promote } });
   const resume = useResumeBailSearch({ mutation: { onSuccess: promote } });
-  const clearHistory = useClearOwnedBailSearches();
+  const clearHistory = useClearWorkspaceBailSearches();
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearNotice, setClearNotice] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -125,8 +125,8 @@ export default function BailSearch() {
         const resultLabel = result.deletedResults === 1 ? 'result' : 'results';
         const retainedLabel = result.retainedReviewSearches === 1 ? 'search' : 'searches';
         const summary = result.deletedSearches
-          ? `Cleared ${result.deletedSearches} ${searchLabel} and ${result.deletedResults} ${resultLabel}.`
-          : 'Search form and results reset.';
+          ? `Cleared ${result.deletedSearches} workspace ${searchLabel} and ${result.deletedResults} ${resultLabel}.`
+          : 'No eligible workspace searches were deleted. Search form and results reset.';
         const retained = result.retainedReviewSearches
           ? ` Kept ${result.retainedReviewSearches} ${retainedLabel} with dockets still in shared Review; delete those dockets from Review before clearing their search history.`
           : '';
@@ -212,7 +212,7 @@ export default function BailSearch() {
           {!list.isLoading && !list.isError ? (
             <button className="btn btn-danger" type="button" onClick={() => { setClearNotice(''); setConfirmClear(true); }}
               disabled={clearHistory.isPending || started.isPending || resume.isPending} data-testid="button-clear-search-history">
-              Clear my searches and results
+              Clear all workspace searches
             </button>
           ) : null}
         </div>
@@ -223,7 +223,7 @@ export default function BailSearch() {
         {status.isError ? <p className="errbox" role="alert">Status unavailable. {errMsg(status.error)} <button className="btn" type="button" onClick={() => status.refetch()}>Retry</button></p> : null}
         {!list.isLoading && !list.isError ? (
           <div className="mb-3 space-y-2">
-            {clearHistory.isError ? <p className="errbox" role="alert">Could not stop and clear searches. {errMsg(clearHistory.error)}</p> : null}
+            {clearHistory.isError ? <p className="errbox" role="alert">Could not stop and clear workspace searches. {errMsg(clearHistory.error)}</p> : null}
             {clearNotice ? <p className="notice" role="status" data-testid="text-clear-search-history-result">{clearNotice}</p> : null}
           </div>
         ) : null}
@@ -254,7 +254,7 @@ export default function BailSearch() {
               {run.status === 'running' ? 'Running' : run.status === 'paused' ? 'Paused' : 'Complete'}
               {' · '}{shortDate(run.criteria.startDate)} to {shortDate(run.criteria.endDate)} · max {money(run.criteria.maxBail)}
             </p>
-            {!run.canManage ? <p className="hint" data-testid="text-search-readonly">Only its creating session can resume or clear this search. Any workspace user can save eligible results to shared Candidates.</p> : null}
+            {!run.canManage ? <p className="hint" data-testid="text-search-readonly">Only its creating session can resume this search. Any workspace user can clear eligible workspace search history or save eligible results to shared Candidates.</p> : null}
             {run.status === 'complete' && run.reason ? (
               <p className="notice" role="status" data-testid="text-search-completion-warning">{run.reason}</p>
             ) : null}
@@ -356,18 +356,18 @@ export default function BailSearch() {
       <AlertDialog open={confirmClear} onOpenChange={(open) => { if (!clearHistory.isPending) setConfirmClear(open); }}>
         <AlertDialogContent className="border-primary bg-background text-foreground">
           <AlertDialogHeader>
-            <AlertDialogTitle className="mono">Stop and clear your searches?</AlertDialogTitle>
+            <AlertDialogTitle className="mono">Stop and clear all workspace searches?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes your searches that have no dockets left in shared Review. Searches with Review dockets are kept until any workspace user deletes those dockets from Review. Running searches are stopped first; a court request already underway may finish, but no further requests will be started. Saved candidates, searches started by others, and separate source-collection history in Discovery remain.
+              This clears searches across all sessions when they have no docket left in shared Review. Searches with Review dockets are kept until any workspace user deletes those dockets from Review. Running searches are stopped first; a court request already underway may finish, but no further requests will be started. Shared Candidates and separate source-collection history in Discovery are not deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {clearHistory.isError ? <p className="errbox" role="alert">Could not stop and clear searches. {errMsg(clearHistory.error)}</p> : null}
+          {clearHistory.isError ? <p className="errbox" role="alert">Could not stop and clear all workspace searches. {errMsg(clearHistory.error)}</p> : null}
           <AlertDialogFooter>
             <AlertDialogCancel className="btn" disabled={clearHistory.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction className="btn btn-danger" disabled={clearHistory.isPending}
               onClick={(event) => { event.preventDefault(); clearPastSearches(); }}
               data-testid="button-confirm-clear-search-history">
-              {clearHistory.isPending ? 'Stopping and clearing…' : 'Stop and clear'}
+              {clearHistory.isPending ? 'Stopping and clearing…' : 'Stop and clear all searches'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
