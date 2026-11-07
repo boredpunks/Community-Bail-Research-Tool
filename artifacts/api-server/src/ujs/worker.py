@@ -29,6 +29,8 @@ from inspection_safety import (
 )
 from network_sandbox import require_default_deny_active, verify_inspection_runtime
 
+CALENDAR_HANDLING_ACK_TIMEOUT_SECONDS = 50
+
 
 _output_lock = threading.Lock()
 
@@ -167,6 +169,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
     if not (inspection_only or config.get("coverageOnly") or config.get("filingInspectionOnly")):
         from calendar_diagnostics import (
             CalendarDiagnosticRecorder, CalendarLifecycle, RESPONSE_STRUCTURE, parser_outcome,
+            failure_class,
         )
         response_recorder = CalendarDiagnosticRecorder()
         calendar_lifecycle = CalendarLifecycle()
@@ -220,7 +223,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
         calendar_stream = None
 
         async def retrieve(url, method, fetcher, *, resource_type=None, headers=None, tracked_key=None,
-                           link_captured_at=None):
+                           link_captured_at=None, trace_sink=None):
             nonlocal stopped, requests, calendar_time, last_completed_clock
             nonlocal bounded_observation_complete, bounded_observation_limit_hit
             nonlocal calendar_post_observed, calendar_post_completed, source_stop_state
@@ -228,6 +231,37 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             nonlocal calendar_response_acknowledged, calendar_response_acknowledged_order
             nonlocal calendar_source_framing
             nonlocal parent_stop_reason
+
+            def emit_calendar_transport_trace(request_id, outcome, response_obj=None, timer="NONE"):
+                if method != "POST" or urlsplit(url).path != "/CaseSearch" or not response_recorder:
+                    return
+                trace = (response_obj.transport_trace(outcome=outcome, timer=timer)
+                         if isinstance(response_obj, CalendarResponse)
+                         else dict(calendar_stream.last_trace or {}))
+                if not trace:
+                    trace = {
+                        "version": 1, "outcome": outcome, "timer": timer, "statusCode": None,
+                        "responseHeaders": {
+                            "mediaType": "MISSING", "contentLength": None, "contentEncoding": "identity",
+                            "date": None, "server": None, "via": None, "retryAfter": None,
+                        },
+                        "networkCompletion": "NOT_OBSERVED", "networkFailureClass": "UNKNOWN",
+                        "browserFailureClass": "NOT_OBSERVED",
+                        "stages": {
+                            "grantToRequestMs": None, "requestToHeadersMs": None,
+                            "headersToNetworkEndMs": None, "grantToTerminalMs": None,
+                        },
+                    }
+                trace["requestId"] = request_id
+                trace["outcome"] = outcome
+                if timer != "NONE":
+                    trace["timer"] = timer
+                if tracked_key is not None and tracked_key.failure:
+                    trace["browserFailureClass"] = failure_class(tracked_key.failure)
+                if trace_sink:
+                    trace_sink(trace)
+                else:
+                    emit("calendar_transport_trace", **trace)
 
             async def read_protocol_line():
                 reader = (asyncio.to_thread(read_inspection_protocol_line, sys.stdin)
@@ -286,6 +320,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 requests += 1
                 # Measure after grant, immediately before GET, not from POST start.
                 link_elapsed = link_elapsed_seconds(link_captured_at, clock.time())
+                grant_started_at = clock.time()
                 started = datetime.now(timezone.utc).isoformat()
                 if method == "POST" and urlsplit(url).path == "/CaseSearch":
                     calendar_post_observed = True
@@ -322,6 +357,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                         last_completed_clock = clock.time()
                         stopped = True
                         raise SourceFailure(outcome, attempted=True)
+                    response = None
                     response = (InspectionBrokerResponse(permission)
                                 if inspection_only else None)
                     if not inspection_only:
@@ -329,6 +365,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                             response_recorder.decide(tracked_key, "FETCH_ATTEMPT")
                             if method == "POST" and urlsplit(url).path == "/CaseSearch":
                                 response_recorder.mark("POST_ATTEMPT")
+                        if method == "POST" and urlsplit(url).path == "/CaseSearch" and calendar_stream:
+                            calendar_stream.grant_started_at = grant_started_at
                         response = await fetcher()
                     if response_recorder and method == "POST":
                         response_recorder.mark("RESPONSE_RECEIVED")
@@ -372,6 +410,9 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                             calendar_lifecycle.advance("RESPONSE_ACKNOWLEDGED")
                             calendar_response_acknowledged_order = calendar_lifecycle.event_order()
                     last_completed_clock = clock.time()
+                    emit_calendar_transport_trace(
+                        permission["requestId"], outcome,
+                        response if isinstance(response, CalendarResponse) else None)
                     if not acknowledgement.get("continue"):
                         stopped = True
                         # A stop after a successful PDF response governs future
@@ -410,6 +451,12 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                              **({"linkCaptureToGetSeconds": link_elapsed}
                                 if urlsplit(url).path in ("/Report/CpDocketSheet", "/Report/MdjDocketSheet") else {}))
                         await read_protocol_line()
+                        timer = (calendar_stream.last_trace or {}).get("timer", "NONE")
+                        if outcome == "TIMEOUT" and timer == "NONE":
+                            timer = "SEARCH_ACTION_TIMEOUT" if isinstance(error, BrowserTimeout) else "WORKER_TIMEOUT"
+                        emit_calendar_transport_trace(
+                            permission["requestId"], outcome,
+                            response if isinstance(response, CalendarResponse) else None, timer)
                         if method == "POST" and urlsplit(url).path == "/CaseSearch":
                             calendar_response_acknowledged = True
                             if calendar_lifecycle:
@@ -433,6 +480,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             nonlocal criteria_validation, submission_payload_rejected
             nonlocal calendar_browser_fulfilled, calendar_browser_fulfilled_order
             request = route.request
+            calendar_trace_holder = []
             if response_recorder:
                 response_recorder.register(request, request.url, request.resource_type, diagnostic_phase)
             if request.resource_type in ("image", "font"):
@@ -534,6 +582,7 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     resource_type=request.resource_type,
                     headers=await request.all_headers() if inspection_only else None,
                     tracked_key=request,
+                    trace_sink=calendar_trace_holder.append,
                 )
                 if inspection_only and urlsplit(request.url).path == "/CaseSearch":
                     inspection_gate.declare_document(request.url, body)
@@ -581,6 +630,12 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                     pass
             finally:
                 if request.method == "POST" and urlsplit(request.url).path == "/CaseSearch":
+                    if calendar_trace_holder:
+                        await asyncio.sleep(0)
+                        trace = calendar_trace_holder[-1]
+                        if request.failure:
+                            trace["browserFailureClass"] = failure_class(request.failure)
+                        emit("calendar_transport_trace", **trace)
                     calendar_handling_done.set()
 
         if inspection_only:
@@ -667,6 +722,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
 
                 def note_request_failed(request):
                     request_start_state, request_start_order = calendar_lifecycle.request_start(request)
+                    if calendar_stream:
+                        calendar_stream.note_browser_failure(request, request.failure)
                     response_recorder.resource_failure(
                         request.url, request.resource_type, blocked_optional_urls, diagnostic_phase,
                         key=request, text=request.failure, event_state=calendar_lifecycle.state,
@@ -1052,7 +1109,8 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
                 if calendar_post_observed:
                     # Native Chromium completion can precede the parent's
                     # accounting acknowledgement. Never inspect in that gap.
-                    await asyncio.wait_for(calendar_handling_done.wait(), timeout=50)
+                    await asyncio.wait_for(
+                        calendar_handling_done.wait(), timeout=CALENDAR_HANDLING_ACK_TIMEOUT_SECONDS)
                 await inspect_loaded_response()
                 await validate_loaded_response()
                 if not calendar_post_observed:
@@ -1164,8 +1222,11 @@ async def main(config=None, *, _test_calendar_links_captured_at=None):
             if not stopped:
                 emit("finished", blockedAssets=blocked, requests=requests)
         except Exception as error:
+            if (calendar_post_observed and not calendar_handling_done.is_set()
+                    and isinstance(error, TimeoutError) and calendar_stream):
+                calendar_stream.stop_for_timer("CALENDAR_HANDLING_ACK_50S")
             if calendar_post_observed:
-                await asyncio.wait_for(calendar_handling_done.wait(), timeout=50)
+                await asyncio.wait_for(calendar_handling_done.wait(), timeout=10)
             if (bounded_engine_observation and isinstance(error, SourceFailure)
                     and error.outcome == "COURTROOM_OBSERVATION_REQUEST_LIMIT"):
                 emit("bounded_engine_stopped", code="COURTROOM_OBSERVATION_REQUEST_LIMIT")

@@ -1427,6 +1427,7 @@ export const GetDiscoveryJobResponse = zod.object({
   "createdAt": zod.coerce.date()
 })),
   "requests": zod.array(zod.object({
+  "id": zod.uuid(),
   "method": zod.string(),
   "path": zod.string(),
   "statusCode": zod.int().nullable(),

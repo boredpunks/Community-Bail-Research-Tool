@@ -17,6 +17,7 @@ try {
   const check = spawnSync("node", ["--enable-source-maps", out], { stdio: "inherit" });
   if (check.status) process.exitCode = check.status;
   const capture = path.join(dir, "calendar-diagnostics.jsonl");
+  const transportCapture = path.join(dir, "calendar-transport-traces.jsonl");
   // Keep the full suite as the default, but allow one named offline regression
   // to use the same real-worker → parent-validator harness.
   const target = process.env.CALENDAR_PYTHON_TEST_TARGET;
@@ -29,6 +30,7 @@ try {
       ...process.env,
       PYTHONPATH: [path.resolve("tests"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
       CALENDAR_DIAGNOSTIC_CAPTURE: capture,
+      CALENDAR_TRANSPORT_TRACE_CAPTURE: transportCapture,
     },
   });
   if (python.status) process.exitCode = python.status;
@@ -52,4 +54,24 @@ try {
   });
   const wireCheck = spawnSync("node", [wire, capture], { stdio: "inherit" });
   if (wireCheck.status) process.exitCode = wireCheck.status;
+  const transportWire = path.join(dir, "transport-wire.mjs");
+  await build({
+    stdin: { contents: `
+      import { readFileSync } from "node:fs";
+      import { validCalendarTransportTrace } from "./src/lib/calendar-transport-trace";
+      const lines = readFileSync(process.argv[2], "utf8").trim().split("\\n").filter(Boolean);
+      if (!lines.length) throw new Error("No actual-worker transport traces captured.");
+      for (const line of lines) {
+        const value = JSON.parse(line);
+        if (!validCalendarTransportTrace(value)) throw new Error("Parent rejected an actual-worker transport trace.");
+        if (["REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "cookie", "courtroomid"]
+            .some(secret => line.toLowerCase().includes(secret)))
+          throw new Error("Unsafe content in actual-worker transport trace.");
+      }
+      console.log("PASS: parent accepted " + lines.length + " actual calendar transport traces; redaction checked.");
+    `, resolveDir: process.cwd(), sourcefile: "transport-wire-check.ts" },
+    outfile: transportWire, bundle: true, platform: "node", format: "esm",
+  });
+  const transportWireCheck = spawnSync("node", [transportWire, transportCapture], { stdio: "inherit" });
+  if (transportWireCheck.status) process.exitCode = transportWireCheck.status;
 } finally { await rm(dir, { recursive: true, force: true }); }

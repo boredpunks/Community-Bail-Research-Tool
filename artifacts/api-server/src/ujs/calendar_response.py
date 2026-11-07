@@ -9,8 +9,11 @@ import asyncio
 import base64
 from collections import deque
 import os
+import re
+import time
 from urllib.parse import urlsplit
 from source_protocol import classify_response
+from calendar_diagnostics import failure_class
 
 DEFAULT_HTML_BYTES = 16_000_000
 MAX_HTML_BYTES = 32_000_000
@@ -23,6 +26,50 @@ def html_byte_limit():
     if not value.isascii() or not value.isdecimal() or not 4_000_000 <= int(value) <= MAX_HTML_BYTES:
         raise ValueError("CALENDAR_HTML_POLICY_INVALID")
     return int(value)
+
+
+def safe_response_headers(headers):
+    content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    media_type = {
+        "text/html": "HTML",
+        "application/json": "JSON",
+        "application/pdf": "PDF",
+        "text/plain": "TEXT",
+        "application/octet-stream": "BINARY",
+        "": "MISSING",
+    }.get(content_type, "OTHER")
+    encoding = headers.get("content-encoding", "identity").strip().lower()
+    if encoding not in ("identity", "gzip", "br", "deflate"):
+        encoding = "OTHER"
+    length = headers.get("content-length", "")
+    content_length = (int(length) if length.isascii() and length.isdecimal()
+                      and len(length) <= 10 and int(length) <= 2_147_483_647 else None)
+    date = headers.get("date", "")
+    if not re.fullmatch(
+            r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT",
+            date):
+        date = None
+    product = r"(?:nginx|cloudflare|envoy|Apache|Microsoft-IIS|Varnish|ATS|awselb)(?:/\d+(?:\.\d+){0,3})?"
+    server = headers.get("server", "")
+    if not re.fullmatch(product, server, re.IGNORECASE):
+        server = None
+    via = headers.get("via", "")
+    if not re.fullmatch(r"\d(?:\.\d)? " + product, via, re.IGNORECASE):
+        via = None
+    retry_after = headers.get("retry-after", "")
+    if not (re.fullmatch(r"\d{1,10}", retry_after) or re.fullmatch(
+            r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT",
+            retry_after)):
+        retry_after = None
+    return {
+        "mediaType": media_type,
+        "contentLength": content_length,
+        "contentEncoding": encoding,
+        "date": date,
+        "server": server,
+        "via": via,
+        "retryAfter": retry_after,
+    }
 
 
 class CalendarResponse:
@@ -39,6 +86,16 @@ class CalendarResponse:
         self.network_id = None
         self.setup = None
         self.streaming = False
+        self.browser_request = None
+        self.grant_started_at = None
+        self.request_started_at = None
+        self.headers_received_at = None
+        self.network_ended_at = None
+        self.network_completion = "NOT_OBSERVED"
+        self.network_failure_class = "UNKNOWN"
+        self.browser_failure_class = "NOT_OBSERVED"
+        self.timer = "NONE"
+        self.network_terminal = asyncio.Event()
 
     def metadata(self):
         media = self.headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -49,6 +106,32 @@ class CalendarResponse:
                     mediaType=media if media in ("text/html", "") else "OTHER",
                     contentEncoding=encoding if encoding in
                     ("identity", "gzip", "br", "deflate") else "OTHER")
+
+    def transport_trace(self, *, outcome, timer=None, now=None):
+        now = time.monotonic() if now is None else now
+        terminal_at = self.network_ended_at or now
+
+        def elapsed(start, end):
+            if start is None or end is None:
+                return None
+            return min(2_147_483_647, max(0, round((end - start) * 1000)))
+
+        return {
+            "version": 1,
+            "outcome": outcome,
+            "timer": timer or self.timer,
+            "statusCode": self.status or None,
+            "responseHeaders": safe_response_headers(self.headers),
+            "networkCompletion": self.network_completion,
+            "networkFailureClass": self.network_failure_class,
+            "browserFailureClass": self.browser_failure_class,
+            "stages": {
+                "grantToRequestMs": elapsed(self.grant_started_at, self.request_started_at),
+                "requestToHeadersMs": elapsed(self.request_started_at, self.headers_received_at),
+                "headersToNetworkEndMs": elapsed(self.headers_received_at, self.network_ended_at),
+                "grantToTerminalMs": elapsed(self.grant_started_at, terminal_at),
+            },
+        }
 
     def add_data(self, data):
         if self.outcome != "OK":
@@ -94,6 +177,11 @@ class CalendarStream:
         self.cdp, self.limit, self.document_url = cdp, limit, document_url
         self.response = self.pending = self.expected = None
         self.last_request = None
+        self.last_trace = None
+        self.last_browser_request = None
+        self.grant_started_at = None
+        self.last_trace_network_id = None
+        self.last_trace_headers_at = None
 
     async def start(self):
         self.cdp.on("Fetch.requestPaused", self._headers)
@@ -120,10 +208,11 @@ class CalendarStream:
                    and event.get("resourceType") == "Document"
                    and "responseStatusCode" in event)
         if matches:
-            response.network_id = event.get("networkId")
+            response.network_id = event.get("networkId") or response.network_id
             response.status = event["responseStatusCode"]
             response.headers = {h["name"].lower(): h["value"]
                                 for h in event.get("responseHeaders", [])}
+            response.headers_received_at = response.headers_received_at or time.monotonic()
             media = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
             if response.status == 200 and media == "text/html":
                 await self.cdp.send("Fetch.continueResponse", {"requestId": event["requestId"]})
@@ -158,7 +247,8 @@ class CalendarStream:
         request = event.get("request", {})
         if not response:
             if request.get("url") == self.document_url:
-                self.last_request = (request.get("url"), request.get("method"), event["requestId"])
+                self.last_request = (
+                    request.get("url"), request.get("method"), event["requestId"], time.monotonic())
             return
         if event.get("redirectResponse") and response.network_id == event.get("requestId"):
             old = event["redirectResponse"]
@@ -171,6 +261,7 @@ class CalendarStream:
                 asyncio.create_task(self._stop())
             else:
                 response.network_id = event["requestId"]
+                response.request_started_at = time.monotonic()
 
     def _response(self, event):
         response = self.response
@@ -179,6 +270,7 @@ class CalendarStream:
         raw = event["response"]
         response.status = int(raw["status"])
         response.headers = {k.lower(): str(v) for k, v in raw.get("headers", {}).items()}
+        response.headers_received_at = response.headers_received_at or time.monotonic()
         if response.status != 200:
             # classify_response retains precise HTTP/denial/rate-limit labels.
             asyncio.create_task(self._stop())
@@ -228,15 +320,47 @@ class CalendarStream:
     def _finished(self, event):
         if self.response and event.get("requestId") == self.response.network_id:
             self.response.complete = True
+            self.response.network_completion = "COMPLETED"
+            self.response.network_ended_at = time.monotonic()
+            self.response.network_terminal.set()
             self._resolve()
+        elif self.last_trace and event.get("requestId") == self.last_trace_network_id:
+            ended_at = time.monotonic()
+            self.last_trace["networkCompletion"] = "COMPLETED"
+            if self.last_trace_headers_at is not None:
+                self.last_trace["stages"]["headersToNetworkEndMs"] = max(
+                    0, round((ended_at - self.last_trace_headers_at) * 1000))
 
     def _failed(self, event):
         if self.response and event.get("requestId") == self.response.network_id:
+            self.response.network_completion = "FAILED"
+            self.response.network_failure_class = failure_class(event.get("errorText"))
+            self.response.network_ended_at = time.monotonic()
+            self.response.network_terminal.set()
             if self.response.outcome == "OK":
                 self.response.outcome = "NETWORK_ERROR"
             self._resolve()
+        elif self.last_trace and event.get("requestId") == self.last_trace_network_id:
+            ended_at = time.monotonic()
+            self.last_trace["networkCompletion"] = "FAILED"
+            self.last_trace["networkFailureClass"] = failure_class(event.get("errorText"))
+            if self.last_trace_headers_at is not None:
+                self.last_trace["stages"]["headersToNetworkEndMs"] = max(
+                    0, round((ended_at - self.last_trace_headers_at) * 1000))
 
-    async def fetch(self, route):
+    def note_browser_failure(self, request, failure):
+        if self.response and self.response.browser_request is request:
+            self.response.browser_failure_class = failure_class(failure)
+        elif self.last_browser_request is request and self.last_trace:
+            self.last_trace["browserFailureClass"] = failure_class(failure)
+
+    def stop_for_timer(self, timer):
+        if self.response and self.pending:
+            self.response.timer = timer
+            self.response.outcome = "TIMEOUT"
+            asyncio.create_task(self._stop())
+
+    async def fetch(self, route, grant_started_at=None):
         request = route.request
         if (self.pending is not None or request.url != self.document_url
                 or urlsplit(request.url).path != "/CaseSearch" or request.resource_type != "document"):
@@ -244,8 +368,12 @@ class CalendarStream:
         self.expected = (request.url, request.method)
         self.pending = asyncio.get_running_loop().create_future()
         response = self.response = CalendarResponse(self.limit)
+        response.browser_request = request
+        response.grant_started_at = (
+            grant_started_at if grant_started_at is not None else self.grant_started_at)
         if self.last_request and self.last_request[:2] == self.expected:
             response.network_id = self.last_request[2]
+            response.request_started_at = self.last_request[3]
             self.last_request = None
         try:
             async with asyncio.timeout(CALENDAR_STREAM_TIMEOUT_SECONDS):
@@ -253,22 +381,51 @@ class CalendarStream:
                 # the original Chromium request with its form/cookies intact.
                 await route.continue_()
                 await self.pending
+                if response.network_id and response.network_completion == "NOT_OBSERVED":
+                    try:
+                        async with asyncio.timeout(0.2):
+                            await response.network_terminal.wait()
+                    except TimeoutError:
+                        pass
                 if response.setup:
                     await response.setup
                 if response.status == 200 and response.outcome == "OK":
                     if (not response.complete or not response.streaming
                             or response.received != len(response.buffer)):
                         response.outcome = "NETWORK_ERROR"
+                if (response.outcome == "NETWORK_ERROR"
+                        and response.network_completion == "NOT_OBSERVED"):
+                    # The browser stream failed or ended without the required
+                    # original-network completion signal; keep the failure
+                    # explicit while leaving its lower-level cause unknown.
+                    response.network_completion = "FAILED"
+                    response.network_failure_class = "OTHER"
+                    response.network_ended_at = time.monotonic()
                 if response.outcome != "OK" or response.status != 200:
                     response.complete = False
                     await response.dispose()
                 return response
+        except TimeoutError:
+            response.timer = "CALENDAR_STREAM_180S"
+            if response.setup:
+                response.setup.cancel()
+                await asyncio.gather(response.setup, return_exceptions=True)
+            await self._stop()
+            await asyncio.sleep(0)
+            await response.dispose()
+            raise
         except BaseException:
             if response.setup:
                 response.setup.cancel()
                 await asyncio.gather(response.setup, return_exceptions=True)
             await self._stop()
+            await asyncio.sleep(0)
             await response.dispose()
             raise
         finally:
+            self.last_browser_request = response.browser_request
+            self.last_trace_network_id = response.network_id
+            self.last_trace_headers_at = response.headers_received_at
+            self.last_trace = response.transport_trace(
+                outcome=response.outcome if response.status else "NETWORK_ERROR")
             self.pending = self.expected = self.response = None

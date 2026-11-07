@@ -203,7 +203,7 @@ router.get("/discovery/jobs/:jobId", async (req, res): Promise<void> => {
       };
     }),
     events: events.map((event) => ({ kind: event.kind, message: event.message, createdAt: event.createdAt.toISOString() })),
-    requests: await db.select({method:discoveryRequestsTable.method,path:discoveryRequestsTable.path,statusCode:discoveryRequestsTable.statusCode,outcome:discoveryRequestsTable.outcome,startedAt:discoveryRequestsTable.startedAt,completedAt:discoveryRequestsTable.completedAt,durationMs:discoveryRequestsTable.durationMs})
+    requests: await db.select({id:discoveryRequestsTable.id,method:discoveryRequestsTable.method,path:discoveryRequestsTable.path,statusCode:discoveryRequestsTable.statusCode,outcome:discoveryRequestsTable.outcome,startedAt:discoveryRequestsTable.startedAt,completedAt:discoveryRequestsTable.completedAt,durationMs:discoveryRequestsTable.durationMs})
       .from(discoveryRequestsTable).where(eq(discoveryRequestsTable.jobId,job.id)).orderBy(asc(discoveryRequestsTable.startedAt)),
   };
   GetDiscoveryJobResponse.parse(payload);

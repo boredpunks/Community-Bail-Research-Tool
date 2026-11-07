@@ -17,6 +17,7 @@ import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservation
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
 import { makeResearchCriteria, validResearchCriteria, proofMethod, researchMethod, proofUrls } from "../src/lib/research-scope";
 import { validCalendarResponseDiagnostic } from "../src/lib/calendar-response-diagnostics";
+import { validCalendarTransportTrace } from "../src/lib/calendar-transport-trace";
 import { isValidatedExplicitEmptyResult } from "../src/lib/calendar-empty-result";
 import { spawnSync } from "node:child_process";
 import { reserveSourceRequest, accountSourceResponse, recoverUncertainRequests } from "../src/lib/discovery-scheduler";
@@ -48,6 +49,24 @@ const calendarPreviewCriteria = {
   recordCap: 1, requestCap: 8,
 } as const;
 const check = (ok: unknown) => { assert.ok(ok); checks++; };
+const calendarTimeoutTrace = {
+  kind: "calendar_transport_trace", requestId: "00000000-0000-0000-0000-000000000001",
+  version: 1, outcome: "TIMEOUT", timer: "CALENDAR_STREAM_180S", statusCode: null,
+  responseHeaders: {
+    mediaType: "MISSING", contentLength: null, contentEncoding: "identity",
+    date: null, server: null, via: null, retryAfter: null,
+  },
+  networkCompletion: "NOT_OBSERVED", networkFailureClass: "UNKNOWN",
+  browserFailureClass: "NOT_OBSERVED",
+  stages: { grantToRequestMs: 0, requestToHeadersMs: null, headersToNetworkEndMs: null, grantToTerminalMs: 180_000 },
+};
+check(validCalendarTransportTrace(calendarTimeoutTrace));
+check(validCalendarTransportTrace({...calendarTimeoutTrace, timer: "CALENDAR_HANDLING_ACK_50S"}));
+check(!validCalendarTransportTrace({ ...calendarTimeoutTrace, cookie: "private" }));
+check(!validCalendarTransportTrace({
+  ...calendarTimeoutTrace, responseHeaders: {...calendarTimeoutTrace.responseHeaders, server: "PRIVATE PERSON"},
+}));
+check(!validCalendarTransportTrace({...calendarTimeoutTrace, timer: "NONE"}));
 const sessionRefreshCriteria = {
   resultVersion: 2,
   courtOffice: "CP-05-02-Crim",

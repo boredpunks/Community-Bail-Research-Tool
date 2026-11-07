@@ -1230,6 +1230,7 @@ components:
           items:
             type: object
             properties:
+              id: { type: string, format: uuid }
               method: { type: string }
               path: { type: string }
               statusCode: { type: ["integer", "null"] }
@@ -1237,7 +1238,7 @@ components:
               startedAt: { type: string, format: date-time }
               completedAt: { type: ["string", "null"], format: date-time }
               durationMs: { type: ["integer", "null"] }
-            required: [method, path, statusCode, outcome, startedAt, completedAt, durationMs]
+            required: [id, method, path, statusCode, outcome, startedAt, completedAt, durationMs]
       required: [job, items, events]
     HealthStatus:
       type: object

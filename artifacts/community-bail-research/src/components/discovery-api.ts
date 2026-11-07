@@ -25,7 +25,7 @@ async function parse<T>(res: Response): Promise<T> {
 export type LocalUploadResult = { jobId: string; itemId: string; extractionOutcome: string; detail: string | null };
 
 export type LedgerRequest = {
-  method: string; path: string; statusCode: number | null; outcome: string;
+  id: string; method: string; path: string; statusCode: number | null; outcome: string;
   startedAt: string | null; completedAt: string | null; durationMs: number | null;
 };
 export type ReportWithRequests = DiscoveryReport & { requests?: LedgerRequest[] };

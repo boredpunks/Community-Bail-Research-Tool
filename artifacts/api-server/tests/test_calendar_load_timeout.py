@@ -5,6 +5,7 @@ import io
 import json
 import os
 import sys
+import uuid
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -243,6 +244,22 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         async def fixture_calendar_fetch(stream, route):
             # Only this local worker fixture replaces transport; the real CDP
             # bounded stream is separately exercised against a loopback server.
+            if post_case == "post_timeout" and route.request.method == "POST":
+                stream.last_trace = {
+                    "version": 1, "outcome": "NETWORK_ERROR", "timer": "CALENDAR_STREAM_180S",
+                    "statusCode": None,
+                    "responseHeaders": {
+                        "mediaType": "MISSING", "contentLength": None, "contentEncoding": "identity",
+                        "date": None, "server": None, "via": None, "retryAfter": None,
+                    },
+                    "networkCompletion": "NOT_OBSERVED", "networkFailureClass": "UNKNOWN",
+                    "browserFailureClass": "NOT_OBSERVED",
+                    "stages": {
+                        "grantToRequestMs": 0, "requestToHeadersMs": None,
+                        "headersToNetworkEndMs": None, "grantToTerminalMs": 180_000,
+                    },
+                }
+                raise TimeoutError()
             return await local_fetch(route, max_redirects=0, max_retries=0, timeout=45_000)
 
         async def fixture_calendar_start(stream):
@@ -304,7 +321,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
                                   "recordCap": 5, "requestCap": 12}
         protocol = []
         for index in range(8):
-            protocol.extend([json.dumps({"allow": True, "requestId": f"offline-{index}"}),
+            protocol.extend([json.dumps({"allow": True, "requestId": str(uuid.UUID(int=index + 1))}),
                              json.dumps({"continue": True})])
         loop = asyncio.get_running_loop()
         previous_handler = loop.get_exception_handler()
@@ -386,6 +403,7 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             "checkpointEmitted": any(row["kind"] in ("calendar", "docket", "calendar_preview_finished") for row in messages),
             "calendars": [row for row in messages if row["kind"] == "calendar"],
             "sizes": [row for row in messages if row["kind"] == "calendar_response_size"],
+            "transportTraces": [row for row in messages if row["kind"] == "calendar_transport_trace"],
         }
         capture = os.environ.get("CALENDAR_DIAGNOSTIC_CAPTURE")
         if capture:
@@ -397,6 +415,16 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
             serialized = json.dumps(row)
             for private in ("REDACTION_SENTINEL", "private-fixture", "invalid.test", "?token", "CourtRoomID", "fixture-room"):
                 self.assertNotIn(private, serialized)
+        trace_capture = os.environ.get("CALENDAR_TRANSPORT_TRACE_CAPTURE")
+        if trace_capture:
+            with open(trace_capture, "a") as output:
+                for row in observations["transportTraces"]:
+                    output.write(json.dumps(row) + "\n")
+        for row in observations["transportTraces"]:
+            serialized = json.dumps(row)
+            for private in ("redaction_sentinel", "private-fixture", "invalid.test", "?token", "cookie", "courtroomid"):
+                self.assertNotIn(private, serialized.lower())
+            self.assertEqual(row["requestId"], str(uuid.UUID(row["requestId"])))
         print("\nOFFLINE_REPRODUCTION", json.dumps(observations), flush=True)
         self.assertEqual(shutdown_errors, [], "Unhandled asynchronous shutdown errors")
         return observations
@@ -739,6 +767,19 @@ class CalendarLoadTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(observed["formStates"][-1]["formVisible"])
         self.assertEqual(observed["requestGrants"], 3)
         self.assertFalse(any(method == "POST" for method, _ in observed["network"]))
+
+    async def test_calendar_timeout_emits_correlated_redacted_transport_trace(self):
+        observed = await self.run_fixture(post_case="post_timeout")
+        self.assertEqual(len(observed["transportTraces"]), 1)
+        trace = observed["transportTraces"][0]
+        self.assertEqual(trace["outcome"], "TIMEOUT")
+        self.assertEqual(trace["timer"], "CALENDAR_STREAM_180S")
+        self.assertEqual(trace["networkCompletion"], "NOT_OBSERVED")
+        self.assertNotEqual(trace["browserFailureClass"], "NOT_OBSERVED")
+        self.assertIsNone(trace["statusCode"])
+        self.assertIsInstance(trace["stages"]["grantToTerminalMs"], int)
+        self.assertEqual(observed["barriers"], ["TIMEOUT"])
+        self.assertEqual(observed["responseAccounts"], 4)
 
     async def test_no_room_scope_never_silently_uses_source_selected_room(self):
         observed = await self.run_fixture(selected_room=True)

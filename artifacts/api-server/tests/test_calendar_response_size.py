@@ -111,6 +111,20 @@ class CalendarPolicyTests(unittest.TestCase):
 
 
 class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
+    async def test_calendar_handler_deadline_marks_and_stops_the_active_attempt(self):
+        class FakeCdp:
+            async def send(self, _command):
+                return None
+
+        stream = CalendarStream(FakeCdp(), DEFAULT_HTML_BYTES)
+        response = CalendarResponse(DEFAULT_HTML_BYTES)
+        stream.response = response
+        stream.pending = asyncio.get_running_loop().create_future()
+        stream.stop_for_timer("CALENDAR_HANDLING_ACK_50S")
+        await asyncio.wait_for(stream.pending, timeout=1)
+        self.assertEqual(response.outcome, "TIMEOUT")
+        self.assertEqual(response.timer, "CALENDAR_HANDLING_ACK_50S")
+
     async def run_stream(self, markup, *, limit=DEFAULT_HTML_BYTES, compress=False,
                          status=200, content_type="text/html; charset=utf-8", interrupted=False):
         body = markup.encode() if isinstance(markup, str) else markup
@@ -163,6 +177,7 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIs(body_ref, response.buffer)
                     self.assertIs(await response.body(), body_ref)
                     record = response.metadata()
+                    record["transportTrace"] = stream.last_trace
                     record["outcome"] = (response.outcome if response.outcome != "OK" else
                         classify_response(response.status, response.headers, body_ref,
                                           path="/CaseSearch", calendar_limit=limit))
@@ -214,6 +229,10 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
                 self.assertLess(wire, 4_000_000)
                 self.assertEqual(record["observedBytes"], decoded)
                 self.assertTrue(record["complete"])
+                self.assertEqual(record["transportTrace"]["networkCompletion"], "COMPLETED")
+                self.assertEqual(record["transportTrace"]["responseHeaders"]["mediaType"], "HTML")
+                self.assertEqual(record["transportTrace"]["responseHeaders"]["contentLength"], wire)
+                self.assertIsInstance(record["transportTrace"]["stages"]["requestToHeadersMs"], int)
                 self.assertTrue(record["framing"])
                 self.assertEqual(record["outcome"], "OK")
                 self.assertLess(len(projection["html"]), 2000)
@@ -236,6 +255,8 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
         record, projection, _, _ = await self.run_stream(empty_grid(), interrupted=True)
         self.assertEqual(record["outcome"], "NETWORK_ERROR")
         self.assertFalse(record["complete"])
+        self.assertEqual(record["transportTrace"]["networkCompletion"], "FAILED")
+        self.assertNotEqual(record["transportTrace"]["networkFailureClass"], "UNKNOWN")
         self.assertIsNone(projection)
 
     async def test_large_header_only_is_not_empty_proof(self):

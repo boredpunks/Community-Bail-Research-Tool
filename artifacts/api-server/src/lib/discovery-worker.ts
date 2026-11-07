@@ -1,4 +1,5 @@
 import { validCalendarResponseSize } from "./calendar-response-metadata";
+import { validCalendarTransportTrace } from "./calendar-transport-trace";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -307,6 +308,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
   let explicitEmptyDiagnosticSeen = false;
   let calendarLayoutSeen = false;
   let calendarResponseDiagnosticSeen = false;
+  const calendarTransportTraceSeen = new Set<string>();
   let rejectedCalendarRows = 0;
   let calendarCoverageSeen = false;
   let refreshCalendarActive = exactSessionRefresh;
@@ -422,6 +424,24 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
         if (diagnosticOnly || !validCalendarResponseSize(message))
           throw new Error("Invalid calendar response-size metadata");
         await discoveryEvent(job, "CALENDAR_RESPONSE_SIZE", JSON.stringify(message));
+      } else if (message.kind === "calendar_transport_trace") {
+        if (diagnosticOnly || !validCalendarTransportTrace(message)
+          || calendarTransportTraceSeen.has(String(message.requestId)))
+          throw new Error("Invalid calendar transport trace");
+        const [request] = await db.select({
+          path: discoveryRequestsTable.path, method: discoveryRequestsTable.method,
+          outcome: discoveryRequestsTable.outcome, durationMs: discoveryRequestsTable.durationMs,
+        }).from(discoveryRequestsTable).where(and(
+          eq(discoveryRequestsTable.id, String(message.requestId)),
+          eq(discoveryRequestsTable.jobId, job.id),
+        ));
+        if (!request || request.path !== "/CaseSearch" || request.method !== "POST"
+          || request.outcome !== message.outcome || request.durationMs === null)
+          throw new Error("Calendar transport trace does not match its source request");
+        calendarTransportTraceSeen.add(String(message.requestId));
+        await discoveryEvent(job, "CALENDAR_TRANSPORT_TRACE", JSON.stringify({
+          ...message, schedulerDurationMs: request.durationMs,
+        }));
       } else if (message.kind === "filing_metadata") {
         if (!filingInspectionOnly || !validFilingInventoryMetadata(message) || message.phase !== filingPhases[filingPhase])
           throw new Error("Invalid filing metadata");

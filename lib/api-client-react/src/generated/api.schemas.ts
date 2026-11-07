@@ -895,6 +895,7 @@ export interface DiscoveryEvent {
 }
 
 export type DiscoveryReportRequestsItem = {
+  id: string;
   method: string;
   path: string;
   /** @nullable */

@@ -63,6 +63,31 @@ function postingLabel(s: string): string {
   if (s === 'NOT_SHOWN') return 'NOT_SHOWN: no posted entry on this page; not proof of unpaid bail or custody';
   return 'UNKNOWN: posting state uncertain';
 }
+function eventMessage(kind: string, message: string): string {
+  if (kind !== 'CALENDAR_TRANSPORT_TRACE') return message;
+  try {
+    const trace = JSON.parse(message) as {
+      requestId?: string; outcome?: string; timer?: string; statusCode?: number | null;
+      networkCompletion?: string; networkFailureClass?: string; browserFailureClass?: string;
+      schedulerDurationMs?: number;
+      responseHeaders?: { mediaType?: string; contentLength?: number | null; server?: string | null; retryAfter?: string | null };
+      stages?: { grantToRequestMs?: number | null; requestToHeadersMs?: number | null;
+        headersToNetworkEndMs?: number | null; grantToTerminalMs?: number | null };
+    };
+    const stages = trace.stages;
+    const headers = trace.responseHeaders;
+    const elapsed = (value: number | null | undefined) => value == null ? 'not observed' : `${value} ms`;
+    const headerParts = [
+      headers?.mediaType && `media=${headers.mediaType}`,
+      headers?.contentLength != null && `content-length=${headers.contentLength}`,
+      headers?.server && `server=${headers.server}`,
+      headers?.retryAfter && `retry-after=${headers.retryAfter}`,
+    ].filter(Boolean);
+    return `Request ${trace.requestId ?? 'unknown'} ended ${trace.outcome ?? 'unknown'}; timer=${trace.timer ?? 'unknown'}; HTTP=${trace.statusCode ?? 'no response headers'}; network=${trace.networkCompletion ?? 'unknown'} (${trace.networkFailureClass ?? 'no failure class'}); browser=${trace.browserFailureClass ?? 'no failure class'}; elapsed grant-to-request ${elapsed(stages?.grantToRequestMs)}, request-to-headers ${elapsed(stages?.requestToHeadersMs)}, headers-to-network-end ${elapsed(stages?.headersToNetworkEndMs)}, grant-to-terminal ${elapsed(stages?.grantToTerminalMs)}; scheduler duration=${trace.schedulerDurationMs ?? 'not available'} ms; safe headers ${headerParts.join(', ') || 'not observed'}.`;
+  } catch {
+    return 'Calendar transport trace could not be displayed.';
+  }
+}
 function amountText(e: EntryExt) {
   if (['DENIED', 'NONMONETARY', 'RECOGNIZANCE'].includes(e.bailCategory)) return 'No monetary bail recorded';
   if (e.amountCents != null) return formatCents(e.amountCents);
@@ -576,16 +601,16 @@ export default function Discovery() {
                 <p className="hint mt-1" data-testid="text-search-submitted">Search submitted: {searchReq.length === 0 ? 'No POST /CaseSearch in ledger' : searchSubmitted ? `Yes (POST /CaseSearch, HTTP ${searchReq[searchReq.length - 1].statusCode})` : `Attempted, not confirmed (${searchReq[searchReq.length - 1].outcome})`}</p>
                 {requests.length === 0 ? <p className="hint mt-2">No ledger entries reported.</p> : (
                   <div className="overflow-x-auto mt-2"><table className="w-full text-sm mono">
-                    <thead><tr className="text-left"><th>Method</th><th>Path</th><th>Status</th><th>Outcome</th><th>Started</th><th>ms</th></tr></thead>
+                     <thead><tr className="text-left"><th>Request ID</th><th>Method</th><th>Path</th><th>Status</th><th>Outcome</th><th>Started</th><th>ms</th></tr></thead>
                     <tbody>{requests.map((r, i) => (
-                      <tr key={i} className="border-t border-border"><td>{r.method}</td><td className="break-all">{r.path}</td><td>{r.statusCode ?? '–'}</td><td>{r.outcome}</td><td>{formatInstant(r.startedAt)}</td><td>{r.durationMs ?? '–'}</td></tr>
+                       <tr key={i} className="border-t border-border"><td className="mono break-all">{r.id}</td><td>{r.method}</td><td className="break-all">{r.path}</td><td>{r.statusCode ?? '–'}</td><td>{r.outcome}</td><td>{formatInstant(r.startedAt)}</td><td>{r.durationMs ?? '–'}</td></tr>
                     ))}</tbody>
                   </table></div>
                 )}
               </details>
               <details className="mt-2">
                 <summary className="cursor-pointer mono font-semibold text-primary">Events ({data?.events.length ?? 0})</summary>
-                <ul className="mt-2 space-y-1 text-sm">{data?.events.map((ev, i) => <li key={i}><span className="mono">{formatInstant(ev.createdAt)} {ev.kind}</span> {ev.message}</li>)}</ul>
+                <ul className="mt-2 space-y-1 text-sm">{data?.events.map((ev, i) => <li key={i}><span className="mono">{formatInstant(ev.createdAt)} {ev.kind}</span> {eventMessage(ev.kind, ev.message)}</li>)}</ul>
               </details>
             </section>
 
