@@ -407,6 +407,7 @@ class CalendarStream:
                 return response
         except TimeoutError:
             response.timer = "CALENDAR_STREAM_180S"
+            response.outcome = "TIMEOUT"
             if response.setup:
                 response.setup.cancel()
                 await asyncio.gather(response.setup, return_exceptions=True)
@@ -427,5 +428,6 @@ class CalendarStream:
             self.last_trace_network_id = response.network_id
             self.last_trace_headers_at = response.headers_received_at
             self.last_trace = response.transport_trace(
-                outcome=response.outcome if response.status else "NETWORK_ERROR")
+                outcome=(response.outcome if response.status or response.timer != "NONE"
+                         else "NETWORK_ERROR"))
             self.pending = self.expected = self.response = None

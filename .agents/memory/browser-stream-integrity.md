@@ -24,3 +24,17 @@ grant when only request-stage routing was used.
 **How to apply:** Keep the header-stage stop and a local redirect fixture that
 asserts exactly one actual request. Browser completion can also precede parent
 accounting, so passive inspection must wait for accounting to settle.
+
+A synthetic timeout raised before `route.continue_()` cannot establish that
+Chromium observed a failed network request. A later route abort can race with
+trace emission, so the failure may be observed or not. Keep that distinction
+explicit in timeout assertions and use a loopback delayed-response fixture for
+browser transport behavior.
+
+**Why:** A worker-only timeout fixture can emit its trace before the browser
+failure observer runs; the separate loopback stream fixture provides the
+required browser-level evidence.
+
+**How to apply:** For pre-transport mocks, allow only the observed or
+unobserved failure states for that route-abort race. Test response deadlines,
+partial bytes, and cleanup with a local server and the real browser stream.

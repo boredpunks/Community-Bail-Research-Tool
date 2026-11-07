@@ -126,10 +126,12 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.timer, "CALENDAR_HANDLING_ACK_50S")
 
     async def run_stream(self, markup, *, limit=DEFAULT_HTML_BYTES, compress=False,
-                         status=200, content_type="text/html; charset=utf-8", interrupted=False):
+                         status=200, content_type="text/html; charset=utf-8", interrupted=False,
+                         request_method="GET", inter_chunk_delay=0):
         body = markup.encode() if isinstance(markup, str) else markup
         wire = gzip.compress(body) if compress else body
         records, requests, handlers = [], [], []
+        route_handled = asyncio.Event()
 
         async def serve(reader, writer):
             try:
@@ -143,9 +145,11 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
                 writer.write(headers.encode())
                 # Chunked server writes ensure the receiver doesn't rely on a
                 # single read or on compressed Content-Length as its size cap.
-                for i in range(0, len(wire), 32 * 1024):
+                for index, i in enumerate(range(0, len(wire), 32 * 1024)):
                     writer.write(wire[i:i + 32 * 1024])
                     await writer.drain()
+                    if index == 0 and inter_chunk_delay:
+                        await asyncio.sleep(inter_chunk_delay)
             except (ConnectionError, asyncio.IncompleteReadError):
                 pass  # Expected when client stops at its bound.
             finally:
@@ -171,8 +175,8 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
                 if route.request.url != url:
                     await route.abort()
                     return
-                response = await stream.fetch(route)
                 try:
+                    response = await stream.fetch(route)
                     body_ref = await response.body()
                     self.assertIs(body_ref, response.buffer)
                     self.assertIs(await response.body(), body_ref)
@@ -188,17 +192,39 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
                     records.append(record)
                     if record["outcome"] == "OK":
                         await response.fulfill()
+                except TimeoutError:
+                    records.append({
+                        "outcome": stream.last_trace["outcome"],
+                        "complete": False,
+                        "transportTrace": stream.last_trace,
+                        "cleanedUp": stream.response is None and stream.pending is None,
+                    })
                 finally:
-                    await response.dispose()
-                    self.assertEqual(len(response.buffer), 0)
+                    if "response" in locals():
+                        await response.dispose()
+                        self.assertEqual(len(response.buffer), 0)
             async def guarded_route(route):
                 task = asyncio.create_task(route_handler(route))
                 handlers.append(task)
-                await task
+                try:
+                    await task
+                finally:
+                    route_handled.set()
             await context.route("**/*", guarded_route)
             navigation_error = False
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                if request_method == "POST":
+                    await page.set_content(
+                        f'<form method="post" action="{url}"><input name="fixture" value="local"></form>')
+                    request_seen = asyncio.create_task(page.wait_for_event(
+                        "request", predicate=lambda request: request.url == url
+                        and request.method == "POST", timeout=5000))
+                    await page.evaluate("document.querySelector('form').submit()")
+                    await request_seen
+                    await asyncio.wait_for(route_handled.wait(), timeout=5)
+                    await asyncio.gather(*handlers)
+                else:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
             except Exception:
                 navigation_error = True
             await asyncio.gather(*handlers)
@@ -216,6 +242,7 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
         server.close()
         await server.wait_closed()
         self.assertEqual(len(requests), 1, "No redirects, automatic retries, or second fetch")
+        self.assertEqual(requests[0].split()[0], request_method)
         self.assertEqual(len(records), 1)
         return records[0], projection, len(body), len(wire)
 
@@ -258,6 +285,52 @@ class BrowserStreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["transportTrace"]["networkCompletion"], "FAILED")
         self.assertNotEqual(record["transportTrace"]["networkFailureClass"], "UNKNOWN")
         self.assertIsNone(projection)
+
+    async def test_delayed_calendar_post_is_retained_when_it_completes_before_deadline(self):
+        markup = "<html><body>" + empty_grid() + PADDING[:80_000] + "</body></html>"
+        with patch("calendar_response.CALENDAR_STREAM_TIMEOUT_SECONDS", 1.0):
+            record, projection, _, _ = await self.run_stream(
+                markup, request_method="POST", inter_chunk_delay=0.03)
+        self.assertEqual(record["outcome"], "OK")
+        self.assertTrue(record["complete"])
+        self.assertTrue(record["framing"])
+        parser = CalendarResults()
+        parser.feed(projection["html"])
+        self.assertEqual(parser.validated(CRITERIA), [])
+        self.assertTrue(parser.explicit_empty_state)
+
+    async def test_delayed_calendar_post_timeout_discards_partial_empty_looking_body(self):
+        # The first network chunk contains a complete-looking empty grid. The
+        # delayed remainder keeps the original response incomplete at timeout.
+        markup = "<html><body>" + empty_grid() + PADDING[:120_000] + "</body></html>"
+        disposed = []
+        original_dispose = CalendarResponse.dispose
+
+        async def capture_dispose(response):
+            disposed.append({
+                "outcome": response.outcome,
+                "complete": response.complete,
+                "received": response.received,
+                "retained": len(response.buffer),
+                "response": response,
+            })
+            await original_dispose(response)
+
+        with patch("calendar_response.CALENDAR_STREAM_TIMEOUT_SECONDS", 0.2), \
+                patch.object(CalendarResponse, "dispose", capture_dispose):
+            record, projection, _, _ = await self.run_stream(
+                markup, request_method="POST", inter_chunk_delay=0.8)
+        self.assertEqual(record["outcome"], "TIMEOUT")
+        self.assertEqual(record["transportTrace"]["timer"], "CALENDAR_STREAM_180S")
+        self.assertFalse(record["complete"])
+        self.assertTrue(record["cleanedUp"])
+        self.assertIsNotNone(disposed)
+        self.assertEqual(disposed[0]["outcome"], "TIMEOUT")
+        self.assertFalse(disposed[0]["complete"])
+        self.assertGreater(disposed[0]["received"], 0)
+        self.assertGreater(disposed[0]["retained"], 0)
+        self.assertEqual(len(disposed[0]["response"].buffer), 0)
+        self.assertIsNone(projection, "An incomplete body must never be projected or parsed")
 
     async def test_large_header_only_is_not_empty_proof(self):
         record, projection, _, _ = await self.run_stream(PADDING + empty_grid(empty=False))
