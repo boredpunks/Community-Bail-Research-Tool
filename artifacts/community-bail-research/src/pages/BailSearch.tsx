@@ -17,7 +17,7 @@ import { DocumentTimingDetails } from '@/components/DocumentTimingDetails';
 import { errMsg } from '@/lib/money';
 import { formatInstant } from '@/lib/money';
 import { bailDisplay, money, safeSourceUrl, shortDate, useLatestSearch, usePromoteSearch } from '@/lib/latest-search';
-import { clearSearchSelection, lastStartedSearchId } from '@/lib/search-history';
+import { clearSearchSelection } from '@/lib/search-history';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -55,7 +55,7 @@ function todayNewYork() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 export default function BailSearch() {
-  const [selectedSearchId, setSelectedSearchId] = useState<string | undefined>(lastStartedSearchId);
+  const [selectedSearchId, setSelectedSearchId] = useState<string | undefined>();
   const { run, status, list, latest, searchId } = useLatestSearch(selectedSearchId);
   const readiness = useGetBailSearchReadiness({
     query: {

@@ -1,6 +1,7 @@
 export type SearchHistoryItem = {
   searchId: string;
   status?: string;
+  criteria?: { source?: string };
   progress: {
     completed: number;
     documentsProcessed: number;
@@ -33,7 +34,14 @@ export function clearSearchSelection() {
 export function chooseDisplayedSearchId(
   searches: readonly SearchHistoryItem[],
   requestedId?: string,
+  preferRunningLive = false,
 ) {
+  if (preferRunningLive) {
+    const runningLiveSearch = searches.find((search) =>
+      search.criteria?.source === "live" && search.status === "running",
+    );
+    if (runningLiveSearch) return runningLiveSearch.searchId;
+  }
   if (requestedId === '') return '';
   if (requestedId && searches.some((search) => search.searchId === requestedId)) return requestedId;
   const latest = searches[0];

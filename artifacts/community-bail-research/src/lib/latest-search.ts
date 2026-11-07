@@ -10,7 +10,7 @@ import {
   type BailSearch,
   type BailSearchResult,
 } from '@workspace/api-client-react';
-import { chooseDisplayedSearchId, rememberStartedSearch } from '@/lib/search-history';
+import { chooseDisplayedSearchId, lastStartedSearchId, rememberStartedSearch } from '@/lib/search-history';
 
 /** Latest useful search, with older evidence retained when the newest is empty. */
 export function useLatestSearch(requestedSearchId?: string) {
@@ -19,7 +19,9 @@ export function useLatestSearch(requestedSearchId?: string) {
   });
   const searches = list.data ?? [];
   const latest = searches[0];
-  const searchId = chooseDisplayedSearchId(searches, requestedSearchId);
+  const defaultView = requestedSearchId === undefined;
+  const previousSearchId = defaultView ? lastStartedSearchId() : requestedSearchId;
+  const searchId = chooseDisplayedSearchId(searches, previousSearchId, defaultView);
   const selected = searches.find((item) => item.searchId === searchId);
   const queryClient = useQueryClient();
   useEffect(() => {
