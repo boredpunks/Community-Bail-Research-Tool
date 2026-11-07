@@ -430,6 +430,143 @@ try {
     [["GET", "/Report/CpDocketSheet", "OK"], ["POST", "/CaseSearch", "OK"], ["POST", "/CaseSearch", "RATE_LIMIT"]]);
   assert.ok(rateLimitStartedAt.getTime() <= rateLimitedRequest!.startedAt.getTime());
 
+  // A 5xx on the calendar request must wait for its recorded backoff. Once
+  // eligible, automatic continuation must preserve the linked calendar scope,
+  // remaining budget, and all current source access checks.
+  await db.update(discoverySourceTable).set({
+    lastRequestAt: null,
+    lastCompletedAt: null,
+    pausedUntil: null,
+    blockedReason: null,
+    accessVerifiedAt: new Date(),
+    verifiedMethod: integratedSourceMethod,
+    collectionApprovedAt: new Date(),
+    activeRequestId: null,
+    adaptiveSpacingMs: 30_000,
+    slowResponseStreak: 0,
+    throttleCount: 0,
+    lastLatencyMs: null,
+    latencyWarning: null,
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  const serverErrorCriteria = { ...templateJob.criteria };
+  const [serverErrorJob] = await db.insert(discoveryJobsTable).values({
+    ownerId: templateJob.ownerId,
+    criteria: serverErrorCriteria,
+    status: "QUEUED",
+    calendarComplete: false,
+    requestsUsed: 0,
+  }).returning();
+  jobIds.push(serverErrorJob!.id);
+  const [serverErrorSearch] = await db.insert(bailSearchesTable).values({
+    ownerId: searchOwner(cookie),
+    discoveryJobId: serverErrorJob!.id,
+    criteria: templateSearch.criteria,
+    queue: [],
+    total: 0,
+    status: "running",
+  }).returning();
+  searchIds.push(serverErrorSearch!.id);
+
+  await runJob(serverErrorJob!, undefined, {
+    offlineMockSource: true,
+    mockServerErrorOnCalendarOnce: true,
+  });
+  await runBailSearch(serverErrorSearch!);
+
+  const [failedServerErrorRequest] = await db.select().from(discoveryRequestsTable)
+    .where(and(eq(discoveryRequestsTable.jobId, serverErrorJob!.id),
+      eq(discoveryRequestsTable.path, "/CaseSearch")));
+  const [serverErrorSource] = await db.select().from(discoverySourceTable)
+    .where(eq(discoverySourceTable.id, "UJS"));
+  const [serverErrorPausedSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  const [serverErrorPausedJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, serverErrorJob!.id));
+  assert.equal(failedServerErrorRequest?.statusCode, 503);
+  assert.equal(failedServerErrorRequest?.outcome, "HTTP_ERROR");
+  assert.ok(failedServerErrorRequest?.completedAt);
+  assert.ok(serverErrorSource?.pausedUntil);
+  assert.ok(serverErrorSource!.pausedUntil!.getTime() >= failedServerErrorRequest!.completedAt!.getTime() + 60_000,
+    "A 5xx must retain the configured server-error backoff.");
+  assert.equal(serverErrorSource?.blockedReason, "HTTP_ERROR");
+  assert.equal(serverErrorPausedSearch?.status, "paused");
+  assert.match(serverErrorPausedSearch?.reason ?? "", /\[AUTO_RESUME_SOURCE:HTTP_ERROR_5XX\]$/);
+  assert.ok(serverErrorPausedSearch?.resumeAvailableAt);
+  assert.ok(serverErrorPausedSearch!.resumeAvailableAt!.getTime() >= serverErrorSource!.pausedUntil!.getTime());
+  assert.equal(serverErrorPausedJob?.status, "PAUSED");
+  assert.equal(serverErrorPausedJob?.requestsUsed, 1,
+    "The failed calendar request is charged to the original request budget.");
+  assert.deepEqual(serverErrorPausedJob?.criteria, serverErrorCriteria);
+  const earlyServerErrorRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, serverErrorJob!.id));
+  assert.equal(earlyServerErrorRequests.length, 1);
+
+  await autoContinueQuotaSearches();
+  const [stillCoolingServerErrorSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  const duringServerErrorCooldownRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, serverErrorJob!.id));
+  assert.equal(stillCoolingServerErrorSearch?.status, "paused",
+    "Automatic continuation must wait until the recorded 5xx backoff expires.");
+  assert.equal(duringServerErrorCooldownRequests.length, 1,
+    "No source request may be sent before the 5xx cooldown expires.");
+
+  const serverErrorCooldownExpired = new Date(Date.now() - 1_000);
+  await db.update(bailSearchesTable).set({ resumeAvailableAt: serverErrorCooldownExpired })
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  await db.update(discoverySourceTable).set({ pausedUntil: serverErrorCooldownExpired })
+    .where(eq(discoverySourceTable.id, "UJS"));
+  await autoContinueQuotaSearches();
+  const [accessBlockedServerErrorSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  const withoutAccessProofRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, serverErrorJob!.id));
+  assert.equal(accessBlockedServerErrorSearch?.status, "paused",
+    "Cooldown expiry alone must not bypass the source access-proof check.");
+  assert.equal(withoutAccessProofRequests.length, 1,
+    "No source request may be sent while access proof is missing.");
+
+  // Model a fresh, successful access check; the worker may continue only after
+  // that gate is restored, even though the 5xx deadline has already passed.
+  await db.update(discoverySourceTable).set({
+    accessVerifiedAt: new Date(),
+    verifiedMethod: integratedSourceMethod,
+    collectionApprovedAt: new Date(),
+  }).where(eq(discoverySourceTable.id, "UJS"));
+  await autoContinueQuotaSearches();
+  const [resumedServerErrorSearch] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  const [resumedServerErrorJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, serverErrorJob!.id));
+  const afterServerErrorResumeRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, serverErrorJob!.id));
+  assert.equal(resumedServerErrorSearch?.status, "running");
+  assert.equal(resumedServerErrorJob?.status, "QUEUED");
+  assert.deepEqual(resumedServerErrorSearch?.criteria, templateSearch.criteria);
+  assert.deepEqual(resumedServerErrorJob?.criteria, serverErrorCriteria,
+    "Automatic 5xx continuation must preserve the original search criteria.");
+  assert.equal(resumedServerErrorJob?.requestsUsed, 1,
+    "Resuming must retain the already-consumed source request.");
+  assert.equal(resumedServerErrorJob?.criteria.requestCap, serverErrorCriteria.requestCap);
+  assert.equal(afterServerErrorResumeRequests.length, 1,
+    "Automatic continuation queues the original job without bypassing request admission.");
+
+  await runJob(resumedServerErrorJob!, undefined, { offlineMockSource: true });
+  const [serverErrorSearchForProcessing] = await db.select().from(bailSearchesTable)
+    .where(eq(bailSearchesTable.id, serverErrorSearch!.id));
+  await runBailSearch(serverErrorSearchForProcessing!);
+  const [recoveredServerErrorJob] = await db.select().from(discoveryJobsTable)
+    .where(eq(discoveryJobsTable.id, serverErrorJob!.id));
+  assert.equal(recoveredServerErrorJob?.status, "COMPLETED");
+  assert.deepEqual(recoveredServerErrorJob?.criteria, serverErrorCriteria);
+  assert.equal(recoveredServerErrorJob?.requestsUsed, 3,
+    "Recovery uses the existing budget for the remaining calendar and PDF requests.");
+  const recoveredServerErrorRequests = await db.select().from(discoveryRequestsTable)
+    .where(eq(discoveryRequestsTable.jobId, serverErrorJob!.id));
+  assert.deepEqual(recoveredServerErrorRequests.map(request => [request.method, request.path, request.outcome]).sort(),
+    [["GET", "/Report/CpDocketSheet", "OK"], ["POST", "/CaseSearch", "HTTP_ERROR"],
+      ["POST", "/CaseSearch", "OK"]]);
+
   const [blockedJob] = await db.insert(discoveryJobsTable).values({
     ownerId: templateJob.ownerId,
     criteria: templateJob.criteria,
@@ -693,7 +830,7 @@ try {
     console.log("SKIP: workspace-wide history cleanup because unrelated shared searches exist.");
   }
 
-  console.log("PASS: mocked API preserves PDF evidence and rate-limited resume scope.");
+  console.log("PASS: mocked API preserves PDF evidence, rate-limited resume scope, and server-error recovery scope.");
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
   for (const searchId of searchIds) {

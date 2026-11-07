@@ -288,7 +288,9 @@ export async function searchRecovery(search: BailSearchRow, missingEvidence: boo
         .orderBy(desc(discoveryRequestsTable.startedAt)).limit(1);
     }
     const [source] = await db.select().from(discoverySourceTable).where(eq(discoverySourceTable.id, "UJS"));
-    block = !job?.calendarComplete ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
+    const requiresVerifiedAdmission = autoResumeSourceBlock(search.reason) === "HTTP_ERROR_5XX";
+    block = !job?.calendarComplete && !requiresVerifiedAdmission
+      ? await calendarAdmission(db, source) : await db.transaction(tx => sourceAdmissionBlock(tx, source));
     if (job && ["ACCESS_UNVERIFIED", "SOURCE_VALIDATION_BARRIER"].includes(block ?? "")
       && await canAutomaticallyCheckOrdinaryPdfAccess(job, source)) block = null;
     // Only a wait returned by the same admission calculation can expose

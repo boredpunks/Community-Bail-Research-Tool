@@ -25,6 +25,7 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
   if (!prior) return denied("Search not found.", 404, automatic);
   if (options.resumeToken && !validResumeToken(prior, options.resumeToken))
     return denied("Invalid or expired resume token.", 403);
+  const automaticSourceBlock = automatic ? autoResumeSourceBlock(prior.reason) : null;
   if (automatic && (prior.criteria.source !== "live" || !autoResumeBlock(prior.reason)
     || !prior.resumeAvailableAt || prior.resumeAvailableAt > new Date()))
     return denied("This is not an eligible automatic continuation.", 409, true);
@@ -43,8 +44,6 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
     }
     return denied(recovery.message || "Search is not currently resumable.", 409, automatic);
   }
-  const automaticSourceBlock = automatic ? autoResumeSourceBlock(prior.reason) : null;
-
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${BAIL_SEARCH_WORKSPACE_LOCK_KEY}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prior.ownerId}))`);
@@ -71,7 +70,8 @@ export async function resumeBailSearch(searchId: string, options: ResumeOptions 
         || (!job.calendarComplete && job.criteria.startDate < easternToday())
         || job.requestsUsed >= job.criteria.requestCap)
         return denied("Original source scope or budget cannot resume. Start a new eligible search.", 409, automatic);
-      let block = !job.calendarComplete ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
+      let block = !job.calendarComplete && !(automatic && automaticSourceBlock === "HTTP_ERROR_5XX")
+        ? await calendarAdmission(tx, source) : await sourceAdmissionBlock(tx, source);
       const matchingRetryBlock = automaticSourceBlock === "HTTP_ERROR_5XX"
         ? source?.blockedReason === "HTTP_ERROR"
         : !!automaticSourceBlock && source?.blockedReason === automaticSourceBlock;

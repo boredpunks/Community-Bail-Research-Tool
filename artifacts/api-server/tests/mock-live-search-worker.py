@@ -30,7 +30,7 @@ def parent_message():
     return json.loads(line)
 
 
-def require_grant(url, method, rate_limit=False):
+def require_grant(url, method, rate_limit=False, server_error=False):
     emit("request", path=urlsplit(url).path, method=method, url=url)
     grant = parent_message()
     if grant.get("allow") is not True or not grant.get("requestId"):
@@ -40,6 +40,10 @@ def require_grant(url, method, rate_limit=False):
     if rate_limit:
         emit("response", requestId=grant["requestId"], status=429,
              outcome="RATE_LIMIT", retryAfter="1800")
+        return False
+    if server_error:
+        emit("response", requestId=grant["requestId"], status=503,
+             outcome="HTTP_ERROR", retryAfter=None)
         return False
     emit("response", requestId=grant["requestId"], status=200, outcome="OK", retryAfter=None)
     return parent_message().get("continue") is True
@@ -101,7 +105,8 @@ def main():
     event_type = criteria["eventType"]
     report_path = "/Report/MdjDocketSheet" if no_bail else "/Report/CpDocketSheet"
     pdf_url = f"https://ujsportal.pacourts.us{report_path}?docketNumber={docket}"
-    if not require_grant(CALENDAR_URL, "POST", config.get("mockRateLimitOnce", False)):
+    if not require_grant(CALENDAR_URL, "POST", config.get("mockRateLimitOnce", False),
+                         config.get("mockServerErrorOnCalendarOnce", False)):
         return
     court_office = "05-3-10" if no_bail else criteria["courtOffice"]
     rows, rejected_rows, observed_rows = calendar_rows(criteria, docket, court_type, court_office, event_type)

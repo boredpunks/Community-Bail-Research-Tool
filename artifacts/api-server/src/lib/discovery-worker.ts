@@ -127,7 +127,7 @@ const extractionProvenance = GetDiscoveryJobResponse.shape.items.element.shape.p
 
 type RunJobOptions = {
   exactSessionRefresh?: boolean; waitAcrossQuota?: boolean; singleDocumentProofItemId?: string;
-  offlineMockSource?: boolean; mockRateLimitOnce?: boolean;
+  offlineMockSource?: boolean; mockRateLimitOnce?: boolean; mockServerErrorOnCalendarOnce?: boolean;
 };
 
 async function finishSingleDocumentProof(jobId: string, permitId: string, itemId: string) {
@@ -343,6 +343,7 @@ export async function runJob(job: DiscoveryJobRow, permitId?: string, options: R
        .map((item) => ({ docketNumber: item.docketNumber, sourceUrl: item.sourceUrl })),
      remainingRecords: calendarPreviewOnly ? 0 : singleDocumentProof ? 1 : job.criteria.recordCap - processed,
      ...(options.mockRateLimitOnce ? { mockRateLimitOnce: true } : {}),
+      ...(options.mockServerErrorOnCalendarOnce ? { mockServerErrorOnCalendarOnce: true } : {}),
      ...(proofItem ? { singleDocumentProof: {
        itemId: proofItem.id, docketNumber: proofItem.docketNumber,
        sourceUrl: proofItem.sourceUrl, capturedAt: proofItem.provenance.calendarRetrievedAt,
