@@ -179,8 +179,14 @@ export function rollingUsage(starts: Date[], now: Date, hourlyCap: number, daily
   };
 }
 
-export function paceEligibleAt(source: { lastRequestAt: Date | null; lastCompletedAt: Date | null; adaptiveSpacingMs: number }, baseSpacingMs: number) {
-  const anchor = Math.max(source.lastRequestAt?.getTime() ?? 0, source.lastCompletedAt?.getTime() ?? 0);
+export function paceEligibleAt(
+  source: { lastRequestAt: Date | null; lastCompletedAt: Date | null; adaptiveSpacingMs: number },
+  baseSpacingMs: number,
+  completionBased = true,
+) {
+  const anchor = completionBased
+    ? Math.max(source.lastRequestAt?.getTime() ?? 0, source.lastCompletedAt?.getTime() ?? 0)
+    : source.lastRequestAt?.getTime() ?? source.lastCompletedAt?.getTime() ?? 0;
   return anchor ? new Date(anchor + Math.max(baseSpacingMs, source.adaptiveSpacingMs)) : null;
 }
 

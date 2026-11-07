@@ -345,8 +345,11 @@ export async function reserveSourceRequest(
         effectiveAdaptiveSpacing(source, requestSpacing(requestPath, method)),
         randomizedRequestSpacing(requestPath, method, jitterMs),
       );
+      // Ordinary searches keep the same 30–40s minimum between request
+      // starts, without adding that full delay again after a slow response.
+      // Scoped assessment runs retain their stricter completion-based audit.
       const eligibleAt = paceEligibleAt({...source,
-        adaptiveSpacingMs: spacing}, spacing);
+        adaptiveSpacingMs: spacing}, spacing, current.assessmentId !== null);
       if (eligibleAt && eligibleAt > now) return { waitMs: Math.min(1000, eligibleAt.getTime() - now.getTime()) };
       let itemId: string | null = null;
       const resourceKey = createHash("sha256").update(`${method}|${url}`).digest("hex");

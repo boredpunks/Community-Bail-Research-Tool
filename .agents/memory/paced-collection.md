@@ -11,11 +11,13 @@ Do not apply a local PDF-processing time slice to an active paced live search.
 
 **How to apply:** Live searches obey source request budgets, pacing, server waits and genuine stop conditions independently of local extraction deadlines.
 
-Run downloads one at a time, with a pause after each download finishes, rather than requiring the user to start each download separately.
+Run ordinary requests one at a time and enforce the configured spacing between request starts. A slow response counts toward that interval, so the next request can begin once it finishes if the interval has already elapsed. Keep scoped assessment runs completion-paced.
 
 **Why:** The user said, “The successful download method should be a continuous search that takes time to pause after each download so as not to trip the too many attempts error.”
 
-**How to apply:** Continue within the explicitly selected date range and budgets, preserve progress when stopped, and do not promise that pacing prevents rate limits.
+**Why:** Production timings showed that ordinary searches were adding the full application delay after each response. The user asked to speed up app-side blocking without bypassing source controls or increasing budgets.
+
+**How to apply:** Preserve the configured minimum start interval, single-request serialization, explicit scope and request budgets. Do not promise that pacing prevents rate limits.
 
 The requested target counts distinct dockets matching the selected bail filters, not all dockets processed. Keep processing and request safety caps separate.
 
@@ -33,11 +35,11 @@ Prioritize anticipating rate-limit failures through a shared scheduler, persiste
 
 **How to apply:** Treat initial pacing and quota values as proposed safeguards, not established court limits. Implementation approval does not authorize live verification requests or the larger research sample.
 
-For UJS requests, use bounded 30–40-second pauses; the shared scheduler's higher adaptive delay always wins. This is an application setting, not a court-approved rate or guarantee.
+For UJS requests, preserve the configured start interval and jitter; the shared scheduler's higher adaptive delay always wins. This is an application setting, not a court-approved rate or guarantee.
 
 **Why:** On 2026-10-30, the user asked to pick up the pace after a slow calendar response.
 
-**How to apply:** Keep one request in flight and preserve rolling quotas, adaptive slowdowns, and stop conditions for denial, challenge, throttle, validation, uncertainty, timeout, or sustained latency deterioration. Do not automatically retry.
+**How to apply:** Keep one request in flight and preserve rolling quotas, adaptive slowdowns, and stop conditions for denial, challenge, throttle, validation, uncertainty, timeout, or sustained latency deterioration. For ordinary searches, measure spacing from request start; scoped assessments retain completion-based pacing. Do not automatically retry.
 
 A successful HTTP response and extracted document do not prove pacing compliance. Audit each transmitted request against the current configured protected delay; per-path defaults must not bypass it.
 

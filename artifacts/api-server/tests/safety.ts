@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validParentDeniedPause, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection, singleDocumentProofItemId, validSingleDocumentProofCriteria, validSingleDocumentProofRow } from "../src/lib/discovery-safety";
+import { allowedSourceRequest, validCalendarDocketLink, calendarAuditHeaders, calendarPreviewMethod, calendarPreviewRequestAllowed, calendarPreviewSourceAllowed, isCalendarPreviewCriteria, collectionBlock, integratedSourceMethod, qualifyingMonetaryTotal, responseHealth, rollingUsage, throttleDeadline, validAccountingMessage, validParentDeniedPause, validCalendarAuditHeaders, validCalendarDiagnostics, validCalendarFormDiagnostic, calendarDiagnosticRejection, singleDocumentProofItemId, validSingleDocumentProofCriteria, validSingleDocumentProofRow, paceEligibleAt } from "../src/lib/discovery-safety";
 import { makeCalendarPreviewCriteria, validCalendarCriteria, validCalendarRowDates, easternToday } from "../src/lib/calendar-criteria";
 import { boundedEngineMethod, boundedEngineRequestsRemaining, boundedObservationCanContinue,
   boundedObservationRequestAllowed, makeBoundedEngineCriteria, validBoundedEngineCriteria } from "../src/lib/bounded-engine";
@@ -656,6 +656,14 @@ try {
   check(await canAutomaticallyCheckOrdinaryPdfAccess(pausedOrdinaryJob!, waitingOrdinarySource,
     { store, now: () => new Date(time) }));
   const originalTime = time;
+  const lastStarted = new Date(time);
+  const lastCompleted = new Date(time + 2_000);
+  check(paceEligibleAt({
+    lastRequestAt: lastStarted, lastCompletedAt: lastCompleted, adaptiveSpacingMs: 30_000,
+  }, 30_000, false)?.getTime() === lastStarted.getTime() + 30_000);
+  check(paceEligibleAt({
+    lastRequestAt: lastStarted, lastCompletedAt: lastCompleted, adaptiveSpacingMs: 30_000,
+  }, 30_000, true)?.getTime() === lastCompleted.getTime() + 30_000);
   await store.update(sources).set({
     blockedReason: "TIMEOUT", pausedUntil: new Date(time + 60_000),
     accessVerifiedAt: null, verifiedMethod: null,
@@ -733,6 +741,7 @@ try {
     randomJitterMs: () => 10_000,
   });
   await enteredWait;
+  const [firstReservedRequest] = await store.select().from(requests).where(eq(requests.id, a.requestId));
   check((await store.select().from(requests)).length === 1);
   // Even bypassing the application, PostgreSQL forbids a second live slot.
   await assert.rejects(store.insert(requests).values({ jobId: second.id, ownerId: second.ownerId, path: "/CaseSearch", method: "GET" }));
@@ -744,7 +753,7 @@ try {
   const b = await bPromise;
   assert.ok(b.allow && b.requestId);
   const [reserved] = await store.select().from(requests).where(eq(requests.id, b.requestId));
-  check(reserved!.startedAt.getTime() >= completed + discoveryPolicy.spacingMs + 10_000);
+  check(reserved!.startedAt.getTime() >= firstReservedRequest!.startedAt.getTime() + discoveryPolicy.spacingMs + 10_000);
   await response(second, b.requestId);
 
   // Document slot wait includes shared-scheduler delays but remains separate
